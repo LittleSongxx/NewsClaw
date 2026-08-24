@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>vip.newsclaw</groupId>
+        <artifactId>newsclaw</artifactId>
+        <version>${revision}</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>newsclaw-plugin-sample</artifactId>
+    <packaging>jar</packaging>
+
+    <name>NewsClaw Sample Plugin</name>
+    <description>A sample plugin demonstrating the NewsClaw Plugin SDK</description>
+
+    <dependencies>
+        <!-- NewsClaw Plugin API -->
+        <dependency>
+            <groupId>vip.newsclaw</groupId>
+            <artifactId>newsclaw-plugin-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Spring AI (provided by the platform) -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-model</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- SLF4J (provided by the platform) -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

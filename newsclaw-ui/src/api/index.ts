@@ -1,0 +1,2047 @@
+import axios from 'axios'
+import { handleAuthFailure, updateTokenFromHeader } from '@/utils/auth'
+import { WIKI_UPLOAD_TIMEOUT_MS } from '@/utils/wikiUpload'
+import type {
+  ApprovalGrant,
+  ApprovalGrantPage,
+  ActiveGrantsSummary,
+  CreateGrantPayload,
+  ResolutionLog,
+  GrantScope,
+} from '@/types'
+
+/**
+ * URL-encode a conversation id before interpolating it into a path. Some ids
+ * contain characters that the browser interprets as URL structural — notably
+ * `#`, which webchat emits as a hash marker when the visitorId+sessionId pair
+ * exceeds the conversation_id column width (see WebChatController#deriveConversationId:
+ * `webchat:<key8>:#<sha256[0..40]>`). Without encoding, everything after the
+ * `#` is treated as a fragment and never reaches the server, producing 405 on
+ * `@DeleteMapping` fallbacks and 403 from the owner check.
+ */
+const encId = (id: string) => encodeURIComponent(id)
+
+// Axios 实例
+export const http = axios.create({
+  baseURL: '/api/v1',
+  timeout: 30000,
+})
+
+// 请求拦截器：注入 Token + Workspace ID + Accept-Language
+http.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  const workspaceId = localStorage.getItem('mc-workspace-id')
+  if (workspaceId) {
+    config.headers['X-Workspace-Id'] = workspaceId
+  }
+  // Forward the user's UI locale so locale-sensitive endpoints (e.g.
+  // template apply) can pick the right display strings. Native browsers
+  // already send Accept-Language, but the user's chosen UI language may
+  // differ from the OS default — explicitly setting it keeps the two
+  // in sync.
+  const locale = localStorage.getItem('newsclaw_locale')
+  if (locale) {
+    config.headers['Accept-Language'] = locale
+  }
+  return config
+})
+
+// 响应拦截器：适配后端 R<T> { code, msg, data } 格式
+http.interceptors.response.use(
+  (res) => {
+    // 滑动窗口续期：后端在 Token 接近过期时通过响应头下发新 Token
+    updateTokenFromHeader(res.headers)
+
+    const data = res.data
+    // 后端统一响应格式 R<T>: { code: number, msg: string, data: T }
+    if (data && typeof data === 'object' && 'code' in data) {
+      if (data.code === 200) return data
+      // 401 = authentication failure → log out
+      // 403 = authorization failure (e.g. workspace permission denied) → keep session, surface error to caller
+      if (data.code === 401) {
+        handleAuthFailure()
+        return Promise.reject(new Error(data.msg || 'Unauthorized'))
+      }
+      return Promise.reject(new Error(data.msg || 'Request failed'))
+    }
+    return data
+  },
+  (err) => {
+    if (err.response?.status === 401) {
+      handleAuthFailure()
+    }
+    // Wrap as Error so consumers can read e.message uniformly, but preserve
+    // err.response so callers needing the structured payload (e.g. workflow
+    // compile errors → response.data.data.errors[]) can still reach it.
+    // The previous shape rejected with a bare string, which silently
+    // stripped the body and made 422-class errors look like "no response"
+    // on the publish/compile flows.
+    const wrapped = new Error(err.response?.data?.msg || err.message || 'Request failed')
+    ;(wrapped as Error & { response?: unknown }).response = err.response
+    return Promise.reject(wrapped)
+  }
+)
+
+// ==================== 受保护文件访问 ====================
+
+/**
+ * 使用 JWT 认证 fetch 受保护文件，返回 Blob。
+ * 用于 <img> 和 <a download> 无法自动携带 Authorization header 的场景。
+ * 使用原生 fetch（不走 axios），避免 baseURL 拼接和 R<T> 拦截器干扰。
+ */
+export async function fetchAuthenticatedBlob(fileUrl: string): Promise<Blob> {
+  const token = localStorage.getItem('token')
+  const headers: Record<string, string> = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  const workspaceId = localStorage.getItem('mc-workspace-id')
+  if (workspaceId) headers['X-Workspace-Id'] = workspaceId
+  const response = await fetch(fileUrl, { headers })
+  if (!response.ok) throw new Error(`Fetch failed: ${response.status}`)
+  return response.blob()
+}
+
+// ==================== Auth ====================
+export const authApi = {
+  login: (data: { username: string; password: string }) =>
+    http.post('/auth/login', data),
+  listUsers: () => http.get('/auth/users'),
+  createUser: (data: any) => http.post('/auth/users', data),
+  changePassword: (id: string | number, oldPassword: string, newPassword: string) =>
+    http.put(`/auth/users/${id}/password`, null, { params: { oldPassword, newPassword } }),
+}
+
+// ==================== SSO ====================
+export const ssoApi = {
+  /** List enabled SSO providers (for rendering login buttons) */
+  providers: () => http.get('/auth/sso/providers'),
+  /** Get the authorize URL + state for a provider */
+  authorize: (provider: string) => http.get(`/auth/sso/${provider}/authorize`),
+  /** Exchange OAuth2 code for JWT */
+  callback: (provider: string, code: string, state: string) =>
+    http.post(`/auth/sso/${provider}/callback`, { code, state }),
+  /** Bind an SSO identity to an existing account (link-only mode) */
+  bind: (bindToken: string, username: string, password: string) =>
+    http.post('/auth/sso/bind', { bindToken, username, password }),
+}
+
+// ==================== Agent ====================
+export const agentApi = {
+  /**
+   * @param params.enabled when `true`, restricts the result to enabled agents
+   *   (used by chat selectors so disabled agents disappear from the picker).
+   *   Omit to receive enabled + disabled (admin management page).
+   */
+  list: (params?: { enabled?: boolean }) => http.get('/agents', { params }),
+  get: (id: string | number) => http.get(`/agents/${id}`),
+  create: (data: any) => http.post('/agents', data),
+  /** Generate a reviewable employee draft from a one-sentence requirement (no persistence). */
+  generate: (requirement: string) => http.post('/agents/generate', { requirement }),
+  update: (id: string | number, data: any) => http.put(`/agents/${id}`, data),
+  delete: (id: string | number) => http.delete(`/agents/${id}`),
+  chat: (id: string | number, data: any) => http.post(`/agents/${id}/chat`, data),
+  execute: (id: string | number, data: any) => http.post(`/agents/${id}/execute`, data),
+  getState: (id: string | number) => http.get(`/agents/${id}/state`),
+  /** Lightweight capability snapshot used by the chat console attachment hint. */
+  getCapabilities: (id: string | number) => http.get(`/agents/${id}/capabilities`),
+}
+
+// ==================== Templates ====================
+export const templateApi = {
+  list: () => http.get('/templates'),
+  apply: (id: string) => http.post(`/templates/${id}/apply`),
+}
+
+// ==================== Chat ====================
+export const chatApi = {
+  uploadFile: async (conversationId: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('conversationId', conversationId)
+    return http.post('/chat/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+  },
+  stream: (data: any, signal?: AbortSignal) => {
+    const headers: Record<string, string> = {
+      Accept: 'text/event-stream',
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+    }
+    const token = localStorage.getItem('token')
+    if (token) {
+      headers.Authorization = `Bearer ${token}`
+    }
+    return fetch('/api/v1/chat/stream', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data),
+      signal,
+    })
+  },
+  stop: (conversationId: string) =>
+    http.post<{ stopped: boolean }>(`/chat/${encId(conversationId)}/stop`),
+  getPendingApprovals: (conversationId: string) =>
+    http.get(`/chat/${encId(conversationId)}/pending-approvals`),
+}
+
+// ==================== Conversation ====================
+// Content calendar (read-only) — produced 公众号 / 小红书 pieces + lifecycle status.
+export const contentItemApi = {
+  list: (params?: { page?: number; size?: number; platform?: string; status?: string }) =>
+    http.get('/content-items', { params }),
+  summary: () => http.get('/content-items/summary'),
+}
+
+// ==================== AI news operations ====================
+// Events are the durable hand-off between the radar, evidence review and
+// content production stages. Keep this API workspace-agnostic: the shared
+// axios interceptor adds the selected X-Workspace-Id header for every call.
+export interface AiNewsEvent {
+  id: string | number
+  workspaceId?: string | number
+  eventKey: string
+  title: string
+  summary?: string
+  category?: string
+  entitiesJson?: string
+  status: string
+  confidence?: number
+  claimsJson?: string
+  conflictsJson?: string
+  discoveredAt?: string
+  publishedAt?: string
+  wikiPageId?: string | number | null
+  wikiKbId?: string | number | null
+  wikiSlug?: string | null
+  teamRunId?: string | number | null
+  gzhContentItemId?: string | number | null
+  xhsContentItemId?: string | number | null
+  evidenceCount?: number
+  verifiedEvidenceCount?: number
+  primaryEvidenceTier?: 'official' | 'media' | 'community' | string | null
+  createTime?: string
+  updateTime?: string
+}
+
+export interface AiNewsEvidence {
+  id: string | number
+  eventId: string | number
+  sourceUrl: string
+  sourceTitle?: string
+  sourcePublishedAt?: string
+  sourceTier?: 'official' | 'media' | 'community' | string
+  claim: string
+  quote?: string
+  confidence?: number
+  verified?: boolean
+  finalUrl?: string
+  fetchedAt?: string
+  contentHash?: string
+  httpStatus?: number
+  captureMethod?: string
+  redirectChainJson?: string
+}
+
+export interface AiNewsCaptureAttempt {
+  id: string | number
+  eventId: string | number
+  sourceUrl: string
+  finalUrl?: string
+  captureStatus: 'success' | 'blocked' | 'not_found' | 'timeout' | 'empty_content' | 'redirect_rejected' | 'network_error' | string
+  captureError?: string
+  httpStatus?: number
+  captureMethod?: string
+  redirectChainJson?: string
+  attemptedAt?: string
+}
+
+export interface AiNewsEventDetail {
+  event: AiNewsEvent
+  evidence: AiNewsEvidence[]
+  captureAttempts: AiNewsCaptureAttempt[]
+}
+
+export const aiNewsApi = {
+  list: (params?: {
+    page?: number
+    size?: number
+    category?: string
+    status?: string
+    keyword?: string
+  }) => http.get('/ai-news/events', { params }),
+  get: (id: string | number) => http.get(`/ai-news/events/${id}`),
+  verify: (id: string | number, data?: { verdict?: string; confidence?: number }) =>
+    http.post(`/ai-news/events/${id}/verify`, data || {}),
+  dismiss: (id: string | number) => http.post(`/ai-news/events/${id}/dismiss`),
+  produce: (id: string | number, startTeamRun = true) =>
+    http.post(`/ai-news/events/${id}/produce`, { startTeamRun }),
+  markPublished: (id: string | number) => http.post(`/ai-news/events/${id}/published`),
+  archive: (id: string | number) => http.post(`/ai-news/events/${id}/archive`),
+  upsert: (data: {
+    eventKey?: string
+    title: string
+    summary?: string
+    category?: string
+    entities?: string[]
+    discoveredAt?: string
+    publishedAt?: string
+    claims?: string[]
+    conflicts?: string[]
+    evidence?: Array<{
+      sourceUrl: string
+      sourceTitle?: string
+      sourcePublishedAt?: string
+      sourceTier?: string
+      claim: string
+      quote?: string
+      confidence?: number
+    }>
+  }) => http.post('/ai-news/events', data),
+  linkRun: (id: string | number, runId: string | number) =>
+    http.post(`/ai-news/events/${id}/run`, { id: runId }),
+  linkContent: (id: string | number, contentId: string | number, platform: 'gzh' | 'xhs') =>
+    http.post(`/ai-news/events/${id}/content`, { id: contentId, platform }),
+  linkWiki: (id: string | number, wikiPageId: string | number) =>
+    http.post(`/ai-news/events/${id}/wiki`, { id: wikiPageId }),
+}
+
+export const conversationApi = {
+  list: () => http.get('/conversations'),
+  /**
+   * Paginated list used by the Sessions admin page. Keyword matches title
+   * or conversationId server-side; ChatConsole's left panel still uses the
+   * non-paginated list() because it shows a per-agent rolling history.
+   */
+  page: (params: { page?: number; size?: number; keyword?: string }) =>
+    http.get('/conversations/page', { params }),
+  listMessages: (conversationId: string, params?: { beforeId?: number; limit?: number; runId?: string; taskId?: string }) =>
+    http.get(`/conversations/${encId(conversationId)}/messages`, { params }),
+  getStatus: (conversationId: string) =>
+    http.get(`/conversations/${encId(conversationId)}/status`),
+  getTeamWorkerContext: (conversationId: string, params?: { runId?: string; taskId?: string }) =>
+    http.get(`/conversations/${encId(conversationId)}/team-worker-context`, { params }),
+  delete: (conversationId: string) =>
+    http.delete(`/conversations/${encId(conversationId)}`),
+  clearMessages: (conversationId: string) =>
+    http.delete(`/conversations/${encId(conversationId)}/messages`),
+  // messageId is a snowflake ID — keep it a string end-to-end (never Number()).
+  rewindMessage: (conversationId: string, messageId: string) =>
+    http.post(`/conversations/${encId(conversationId)}/messages/${messageId}/rewind`),
+  rename: (conversationId: string, title: string) =>
+    http.put(`/conversations/${encId(conversationId)}/title`, { title }),
+  setPinned: (conversationId: string, pinned: boolean) =>
+    http.put(`/conversations/${encId(conversationId)}/pin`, { pinned }),
+  /**
+   * Pin this conversation to a specific (provider, model). Closes issue
+   * #183 — lets the admin UI switch model for IM-channel conversations
+   * (Feishu / DingTalk / WeCom / Telegram / Discord / QQ / Slack / WeChat),
+   * not just for the Web channel. Both params required and non-empty.
+   */
+  setModel: (conversationId: string, modelProvider: string, modelName: string) =>
+    http.put(`/conversations/${encId(conversationId)}/model`, { modelProvider, modelName }),
+  batchDelete: (conversationIds: string[]) =>
+    http.post('/conversations/batch-delete', { conversationIds }),
+}
+
+// ==================== Skill ====================
+export const skillApi = {
+  /** Paginated skill listing with search, source, status, and sort filters. */
+  page: (params: {
+    page?: number
+    size?: number
+    keyword?: string
+    skillType?: string
+    source?: string
+    sort?: string
+    runtime?: string
+    agentId?: string | number
+    enabled?: boolean
+    /** 'PASSED' / 'FAILED' — filters by security_scan_status. */
+    scanStatus?: string
+    /** 'active' / 'stale' / 'archived' — filters by lifecycle_state. */
+    lifecycleState?: string
+  } = {}) => http.get('/skills', { params }),
+  /** Tab count aggregate — returns { all, builtin, mcp, dynamic } */
+  counts: () => http.get('/skills/counts'),
+  /** RFC-042 §2.3.4 — manually rescan a single skill's security */
+  rescan: (id: string | number) => http.post(`/skills/${id}/rescan`),
+  listEnabled: () => http.get('/skills/enabled'),
+  get: (id: string | number) => http.get(`/skills/${id}`),
+  create: (data: any) => http.post('/skills', data),
+  update: (id: string | number, data: any) => http.put(`/skills/${id}`, data),
+  delete: (id: string | number) => http.delete(`/skills/${id}`),
+  toggle: (id: string | number, enabled: boolean) =>
+    http.put(`/skills/${id}/toggle?enabled=${enabled}`),
+  getActiveSkills: () => http.get('/skills/runtime/active'),
+  getRuntimeStatus: () => http.get('/skills/runtime/status'),
+  refreshRuntime: () => http.post('/skills/runtime/refresh'),
+  exportWorkspace: (id: string | number) => http.post(`/skills/${id}/export-workspace`),
+  getWorkspaceInfo: (id: string | number) => http.get(`/skills/${id}/workspace`),
+  /**
+   * Bundle files (scripts/ + references/ + templates/) — canonical rows in
+   * mate_skill_file; writes also materialize the workspace cache and
+   * re-resolve the skill.
+   */
+  listFiles: (id: string | number) => http.get(`/skills/${id}/files`),
+  getFileContent: (id: string | number, path: string) =>
+    http.get(`/skills/${id}/files/content`, { params: { path } }),
+  saveFileContent: (id: string | number, path: string, content: string) =>
+    http.put(`/skills/${id}/files/content`, { path, content }),
+  deleteFile: (id: string | number, path: string) =>
+    http.delete(`/skills/${id}/files`, { params: { path } }),
+  // RFC-090 §7 + §11.4 — pre-flight requirements + LESSONS.md + reverse lookup
+  requirements: (id: string | number) => http.get(`/skills/${id}/requirements`),
+  getLessons: (id: string | number) => http.get(`/skills/${id}/lessons`),
+  clearLessons: (id: string | number) => http.post(`/skills/${id}/lessons/clear`),
+  employees: (id: string | number) => http.get(`/skills/${id}/employees`),
+  /**
+   * Per-skill secrets — env-var-shaped key/value pairs that get injected
+   * into the script subprocess at runtime. Plaintext values never leave
+   * the server; list returns masked previews only.
+   */
+  listSecrets: (id: string | number) => http.get(`/skills/${id}/secrets`),
+  putSecret: (id: string | number, key: string, value: string) =>
+    http.post(`/skills/${id}/secrets`, { key, value }),
+  deleteSecret: (id: string | number, key: string) =>
+    http.delete(`/skills/${id}/secrets/${encodeURIComponent(key)}`),
+
+  // ---- Lifecycle curator ----
+  /** Pin / unpin a skill — pinned skills are never auto-archived. */
+  pin: (id: string | number, pinned: boolean) =>
+    http.post(`/skills/${id}/pin`, { pinned }),
+  /**
+   * Manually archive a skill. When the skill is bound to an enabled agent
+   * and {@code force} is false, the backend replies HTTP 409 with
+   * {@code code: 'BOUND_SKILL_CONFIRM_REQUIRED'} and a {@code boundAgents}
+   * list; retry with {@code force: true} to confirm.
+   */
+  archive: (id: string | number, opts: { force?: boolean; reason?: string } = {}) =>
+    http.post(`/skills/${id}/archive`, { reason: opts.reason ?? null },
+      { params: { force: opts.force ?? false } }),
+  /** Restore an archived skill back to active. */
+  restore: (id: string | number) => http.post(`/skills/${id}/restore`),
+  /** Curator control-panel status (config / control / counts / lastReport). */
+  curatorStatus: () => http.get('/skills/curator/status'),
+  /** Run a curator dry-run preview immediately. */
+  curatorDryRun: () => http.post('/skills/curator/dry-run'),
+  /** Activate (apply transitions) or deactivate (preview-only) the curator. */
+  curatorActivate: (activate: boolean) =>
+    http.post('/skills/curator/activate', null, { params: { activate } }),
+  curatorPause: () => http.post('/skills/curator/pause'),
+  curatorResume: () => http.post('/skills/curator/resume'),
+  /** Enable or disable the consolidation (merge near-duplicate skills) pass. */
+  curatorConsolidate: (enabled: boolean) =>
+    http.post('/skills/curator/consolidate', null, { params: { enabled } }),
+  /** List recent curator run report ids. */
+  curatorReports: () => http.get('/skills/curator/reports'),
+  /** Read one curator run report (parsed run.json). */
+  curatorReport: (runId: string) => http.get(`/skills/curator/reports/${runId}`),
+
+  // ---- Curator restore points ----
+  /** List recent skill-library restore points (newest first). */
+  /** Skills currently under autonomous curation — the set that can be released. */
+  curatorManaged: () => http.get('/skills/curator/managed'),
+  /** Skills outside autonomous curation, with the reason each one is out. */
+  curatorUnmanaged: () => http.get('/skills/curator/unmanaged'),
+  /**
+   * Hand skills over to autonomous curation. Ids stay strings — 19-digit
+   * snowflake ids lose precision through the JS Number type.
+   */
+  curatorAdopt: (skillIds: string[]) => http.post('/skills/curator/adopt', skillIds),
+  /** Take skills back from autonomous curation. */
+  curatorRelease: (skillIds: string[]) => http.post('/skills/curator/release', skillIds),
+  curatorSnapshots: () => http.get('/skills/curator/snapshots'),
+  /** Capture a restore point on demand. */
+  curatorSnapshotCapture: (reason?: string) =>
+    http.post('/skills/curator/snapshots', null, { params: reason ? { reason } : {} }),
+  /**
+   * Roll the skill library back to a restore point. The id stays a string —
+   * 19-digit snowflake ids lose precision as a JS number.
+   */
+  curatorSnapshotRestore: (snapshotId: string) =>
+    http.post(`/skills/curator/snapshots/${snapshotId}/restore`),
+
+  // ---- Routine mining ----
+  /** Mined recurring-request candidates plus the promotion thresholds. */
+  routines: (status?: string) =>
+    http.get('/skills/routines', { params: status ? { status } : {} }),
+  /** Run a mining sweep now instead of waiting for the nightly job. */
+  routineMine: () => http.post('/skills/routines/mine'),
+  /** Reject a candidate so later sweeps stop re-detecting it. */
+  routineDismiss: (id: string) => http.post(`/skills/routines/${id}/dismiss`),
+  /** Put a dismissed candidate back under observation. */
+  routineReopen: (id: string) => http.post(`/skills/routines/${id}/reopen`),
+  /** Synthesize a reviewable change proposal now, bypassing recurrence thresholds. */
+  routinePromote: (id: string) => http.post(`/skills/routines/${id}/promote`),
+
+  // ---- Reviewable Skill evolution proposals ----
+  /** List autonomous Skill changes without coercing snowflake ids to Number. */
+  skillProposals: (params: { page?: number; size?: number; status?: string } = {}) =>
+    http.get('/skills/proposals', { params }),
+  skillProposal: (id: string) => http.get(`/skills/proposals/${id}`),
+  /** Approval never applies in the same request; application stays an explicit second step. */
+  skillProposalApprove: (id: string, review: { reviewer?: string; note?: string } = {}) =>
+    http.post(`/skills/proposals/${id}/approve`, { ...review, applyNow: false }),
+  skillProposalReject: (id: string, review: { reviewer?: string; note?: string } = {}) =>
+    http.post(`/skills/proposals/${id}/reject`, { ...review, applyNow: false }),
+  skillProposalApply: (id: string) => http.post(`/skills/proposals/${id}/apply`),
+  skillProposalRollback: (id: string, review: { reviewer?: string; note?: string } = {}) =>
+    http.post(`/skills/proposals/${id}/rollback`, { ...review, applyNow: false }),
+}
+
+/** Shape returned by GET /skills/{id}/secrets. */
+export interface SkillSecretSummary {
+  key: string
+  /** Masked preview, e.g. "abc...xyz". Plaintext is never shipped. */
+  preview: string
+  updatedAt: string
+}
+
+// ==================== Activity Feed (RFC-090 §4.5) ====================
+export const activityApi = {
+  feed: (params: { source?: string; page?: number; size?: number; workspaceId?: number } = {}) =>
+    http.get('/activity/feed', { params }),
+}
+
+// ==================== Live (admin runtime view) ====================
+export interface LiveRunCard {
+  conversationId: string
+  agentId: number | null
+  agentName: string | null
+  agentIcon: string | null
+  username: string | null
+  currentPhase: string | null
+  runningToolName: string | null
+  waitingReason: string | null
+  done: boolean
+  stopRequested: boolean
+  firstTokenReceived: boolean
+  subscriberCount: number
+  queueLen: number
+  ageMs: number
+  msSinceLastEvent: number
+  /** null when healthy; otherwise: 'idle_silent' | 'tool_silent' | 'hard_cap' */
+  stuckReason: string | null
+  orphan: boolean
+  subagentCount: number
+}
+
+export interface LiveSubagentCard {
+  subagentId: string
+  parentConversationId: string | null
+  childConversationId: string | null
+  rootConversationId: string | null
+  /** subagentId of the immediate parent; null for first-level (depth-1) children. */
+  parentSubagentId: string | null
+  /** 1 for a first-level child, 2 for a grandchild, etc. */
+  depth: number
+  agentId: number | null
+  agentName: string | null
+  agentIcon: string | null
+  goal: string | null
+  status: string | null
+  currentPhase: string | null
+  lastTool: string | null
+  toolCount: number
+  ageMs: number
+}
+
+export interface LiveSummary {
+  running: number
+  stuck: number
+  orphan: number
+  queued: number
+  subagentsActive: number
+}
+
+export interface LiveSnapshot {
+  summary: LiveSummary
+  runs: LiveRunCard[]
+  subagents: LiveSubagentCard[]
+  timestamp: number
+}
+
+export const liveApi = {
+  snapshot: () => http.get<{ data: LiveSnapshot }>('/admin/agent-runtime/snapshot'),
+  dshDiagnostics: () => http.get<{ data: Record<string, any> }>('/admin/agent-runtime/dsh/diagnostics'),
+  stop: (conversationId: string) =>
+    http.post(`/admin/agent-runtime/runs/${encodeURIComponent(conversationId)}/stop`),
+  recycle: (conversationId: string) =>
+    http.post(`/admin/agent-runtime/runs/${encodeURIComponent(conversationId)}/recycle`),
+  interruptSubagent: (subagentId: string) =>
+    http.post(`/admin/agent-runtime/subagents/${encodeURIComponent(subagentId)}/interrupt`),
+  sweep: () => http.post('/admin/agent-runtime/sweep'),
+}
+
+// ==================== Notification summary (sidebar attention badges) ====================
+export interface NotificationSummary {
+  pendingApprovals: number
+  stuckAgents: number
+  failedWikiJobs: number
+  failedCrons: number
+  downChannels: number
+  downMcps: number
+}
+
+export const notificationApi = {
+  summary: () => http.get<{ data: NotificationSummary }>('/notifications/summary'),
+}
+
+// ==================== ACP Endpoints (RFC-090 Phase 7) ====================
+export const acpApi = {
+  list: () => http.get('/acp/endpoints'),
+  get: (id: number | string) => http.get(`/acp/endpoints/${id}`),
+  create: (data: any) => http.post('/acp/endpoints', data),
+  update: (id: number | string, data: any) => http.put(`/acp/endpoints/${id}`, data),
+  delete: (id: number | string) => http.delete(`/acp/endpoints/${id}`),
+  toggle: (id: number | string, enabled: boolean) =>
+    http.put(`/acp/endpoints/${id}/toggle?enabled=${enabled}`),
+  test: (id: number | string) => http.post(`/acp/endpoints/${id}/test`),
+}
+
+// ==================== Skill Templates (RFC-091) ====================
+export const skillTemplateApi = {
+  list: () => http.get('/skill-templates'),
+  get: (id: string) => http.get(`/skill-templates/${id}`),
+  instantiate: (id: string, values: Record<string, unknown>) =>
+    http.post(`/skill-templates/${id}/instantiate`, values),
+}
+
+// ==================== Skill Install ====================
+export const skillInstallApi = {
+  searchHub: (q: string, limit = 20) =>
+    http.get('/skills/install/hub/search', { params: { q, limit } }),
+  startInstall: (data: { bundleUrl: string; version?: string; enable?: boolean; targetName?: string; overwrite?: boolean }) =>
+    http.post('/skills/install/start', data),
+  getStatus: (taskId: string) =>
+    http.get(`/skills/install/status/${taskId}`),
+  cancelInstall: (taskId: string) =>
+    http.post(`/skills/install/cancel/${taskId}`),
+  uninstall: (skillName: string) =>
+    http.delete(`/skills/install/${skillName}`),
+  uploadZip: (file: File, options?: { enable?: boolean; overwrite?: boolean; targetName?: string }) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return http.post('/skills/install/upload', formData, {
+      params: options,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+}
+
+// ==================== Datasource ====================
+export const datasourceApi = {
+  list: () => http.get('/datasources'),
+  get: (id: string | number) => http.get(`/datasources/${id}`),
+  create: (data: any) => http.post('/datasources', data),
+  update: (id: string | number, data: any) => http.put(`/datasources/${id}`, data),
+  delete: (id: string | number) => http.delete(`/datasources/${id}`),
+  toggle: (id: string | number, enabled: boolean) =>
+    http.put(`/datasources/${id}/toggle?enabled=${enabled}`),
+  test: (id: string | number) => http.post(`/datasources/${id}/test`),
+}
+
+// ==================== Tool ====================
+export const toolApi = {
+  list: () => http.get('/tools'),
+  listEnabled: () => http.get('/tools/enabled'),
+  /**
+   * Unified picker source for the agent edit tool tab — returns built-in,
+   * channel, plugin, and MCP-discovered tools. The `name`
+   * field is what gets saved into mate_agent_tool.tool_name.
+   */
+  listAvailable: () => http.get('/tools/available'),
+  get: (id: string | number) => http.get(`/tools/${id}`),
+  create: (data: any) => http.post('/tools', data),
+  update: (id: string | number, data: any) => http.put(`/tools/${id}`, data),
+  delete: (id: string | number) => http.delete(`/tools/${id}`),
+  toggle: (id: string | number, enabled: boolean) =>
+    http.put(`/tools/${id}/toggle?enabled=${enabled}`),
+  /**
+   * Set a builtin/channel tool's progressive-disclosure tier
+   * ('core' | 'extension'). MCP/ACP/skill tools are tiered at their owning
+   * source and return 409 here.
+   */
+  setDisclosureTier: (id: string | number, tier: 'core' | 'extension') =>
+    http.put(`/tools/${id}/disclosure-tier`, { tier }),
+}
+
+// ==================== Channel ====================
+export const channelApi = {
+  list: () => http.get('/channels'),
+  get: (id: string | number) => http.get(`/channels/${id}`),
+  create: (data: any) => http.post('/channels', data),
+  update: (id: string | number, data: any) => http.put(`/channels/${id}`, data),
+  delete: (id: string | number) => http.delete(`/channels/${id}`),
+  toggle: (id: string | number, enabled: boolean) =>
+    http.put(`/channels/${id}/toggle?enabled=${enabled}`),
+  status: () => http.get('/channels/status'),
+  /** Real-time per-channel health (true transport state, not DB enabled flag). */
+  health: (id: string | number) => http.get(`/channels/${id}/health`),
+  /** Batch health for all channels in current workspace. */
+  healthAll: () => http.get('/channels/health'),
+  /**
+   * List a channel's known conversations (proactive-push targets). Used by
+   * the cron delivery-target picker; a conversation appears here once the
+   * bot has received at least one inbound message in it.
+   */
+  listSessions: (id: string | number) => http.get(`/channels/${id}/sessions`),
+  /**
+   * Wizard Step 2 — validate a draft config without persisting.
+   * Returns a VerificationResult: { ok, skipped, durationMs, headline,
+   * identity, invalidField, hint }.
+   */
+  preflight: (channelType: string, configJson: string) =>
+    http.post('/channels/preflight', { channelType, configJson }),
+  // 微信 iLink Bot QR 码登录
+  weixinQrcode: () => http.get('/channels/webhook/weixin/qrcode'),
+  weixinQrcodeStatus: (qrcode: string) =>
+    http.get(`/channels/webhook/weixin/qrcode/status?qrcode=${encodeURIComponent(qrcode)}`),
+  // Feishu one-click app registration (oapi-sdk 2.6+ scene/registration)
+  feishuRegisterBegin: (domain: string) =>
+    http.post(`/channels/webhook/feishu/register/begin?domain=${encodeURIComponent(domain)}`),
+  feishuRegisterStatus: (sessionId: string) =>
+    http.get(`/channels/webhook/feishu/register/status?session=${encodeURIComponent(sessionId)}`),
+  // DingTalk one-click app registration (OAuth Device Flow)
+  dingtalkRegisterBegin: () =>
+    http.post('/channels/webhook/dingtalk/register/begin'),
+  dingtalkRegisterStatus: (sessionId: string) =>
+    http.get(`/channels/webhook/dingtalk/register/status?session=${encodeURIComponent(sessionId)}`),
+  // QQ Bot scan-to-bind (Lite portal). Uses the unified channel QR auth endpoint.
+  qqRegisterBegin: () =>
+    http.post('/channels/qrcode/qq/begin'),
+  qqRegisterStatus: (sessionId: string) =>
+    http.get(`/channels/qrcode/qq/status?session=${encodeURIComponent(sessionId)}`),
+}
+
+// ==================== MCP Server ====================
+export const mcpApi = {
+  list: () => http.get('/mcp/servers'),
+  get: (id: string | number) => http.get(`/mcp/servers/${id}`),
+  create: (data: any) => http.post('/mcp/servers', data),
+  update: (id: string | number, data: any) => http.put(`/mcp/servers/${id}`, data),
+  delete: (id: string | number) => http.delete(`/mcp/servers/${id}`),
+  toggle: (id: string | number, enabled: boolean) =>
+    http.put(`/mcp/servers/${id}/toggle?enabled=${enabled}`),
+  test: (id: string | number) => http.post(`/mcp/servers/${id}/test`),
+  refresh: () => http.post('/mcp/servers/refresh'),
+  /** Set the whole server's tool disclosure tier ('core' | 'extension'). */
+  setDisclosureTier: (id: string | number, tier: 'core' | 'extension') =>
+    http.put(`/mcp/servers/${id}/disclosure-tier`, { tier }),
+}
+
+// ==================== Plan ====================
+export const planApi = {
+  listByAgent: (agentId: string) => http.get(`/plans?agentId=${agentId}`),
+  /** Cross-agent recent plans for the team / swimlane board. */
+  listAll: (limit = 100) => http.get('/plans', { params: { limit } }),
+  get: (id: string | number) => http.get(`/plans/${id}`),
+}
+
+// ==================== Model ====================
+export const modelApi = {
+  listProviders: () => http.get('/models'),
+  // Provider id + name only. /models carries connection settings and is
+  // admin-only, so anything a workspace member can reach (the agent's
+  // preferred-provider picker) has to read the choices from here.
+  listProviderOptions: () => http.get('/models/options'),
+  listEnabled: () => http.get('/models/enabled'),
+  get: (id: string | number) => http.get(`/models/${id}`),
+  getDefault: () => http.get('/models/default'),
+  create: (data: any) => http.post('/models', data),
+  update: (id: string | number, data: any) => http.put(`/models/${id}`, data),
+  delete: (id: string | number) => http.delete(`/models/${id}`),
+  setDefault: (id: string | number) => http.post(`/models/${id}/default`),
+  updateProviderConfig: (providerId: string, data: any) =>
+    http.put(`/models/${providerId}/config`, data),
+  createCustomProvider: (data: any) => http.post('/models/custom-providers', data),
+  // Issue #39: fall back to a query-param endpoint when the providerId can't
+  // safely sit in a path segment (slash / space / etc.) — those rows would
+  // otherwise be undeletable because Spring's {providerId} doesn't span "/".
+  deleteCustomProvider: (providerId: string) => {
+    const safe = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(providerId)
+    return safe
+      ? http.delete(`/models/custom-providers/${providerId}`)
+      : http.delete('/models/custom-providers', { params: { providerId } })
+  },
+  addProviderModel: (providerId: string, data: any) =>
+    http.post(`/models/${providerId}/models`, data),
+  removeProviderModel: (providerId: string, modelId: string) =>
+    http.delete(`/models/${providerId}/models`, { params: { modelId } }),
+  /** Per-model input context window. Pass null to clear the override. */
+  updateModelContextWindow: (providerId: string, modelId: string, maxInputTokens: number | null) =>
+    http.put(`/models/${providerId}/models/context-window`, { modelId, maxInputTokens }),
+  getActive: () => http.get('/models/active'),
+  setActive: (data: { providerId: string; model: string }) =>
+    http.put('/models/active', data),
+  // 模型发现与连接测试
+  discoverModels: (providerId: string) =>
+    http.post(`/models/${providerId}/discover`),
+  applyDiscoveredModels: (providerId: string, modelIds: string[]) =>
+    http.post(`/models/${providerId}/discover/apply`, { modelIds }),
+  testConnection: (providerId: string) =>
+    http.post(`/models/${providerId}/test-connection`),
+  testModel: (providerId: string, modelId: string) =>
+    http.post(`/models/${providerId}/models/test`, null, { params: { modelId } }),
+
+  // ==================== RFC-074: enabled / catalog ====================
+  /** Full provider catalog including enabled=false rows; powers the Add Provider drawer. */
+  catalog: () => http.get('/models/catalog'),
+  /** Opt a provider into the dropdown; backend triggers re-probe via ModelConfigChangedEvent. */
+  enableProvider: (providerId: string) => http.post(`/models/${providerId}/enable`),
+  /** Hide a provider; if it owned the current default model, backend auto-promotes a replacement. */
+  disableProvider: (providerId: string) => http.post(`/models/${providerId}/disable`),
+
+  // ==================== Embedding Model (RFC Embedding UI) ====================
+  listByType: (modelType: 'chat' | 'embedding', modality?: 'vision' | 'video' | 'audio') =>
+    http.get('/models/by-type', { params: { modelType, modality } }),
+  testEmbedding: (modelId: string | number) =>
+    http.post(`/models/embedding/${modelId}/test`),
+  getDefaultEmbedding: () => http.get('/models/embedding/default'),
+  setDefaultEmbedding: (modelId: string | number | '') =>
+    http.post('/models/embedding/default', { modelId }),
+}
+
+// ==================== Provider Pool (RFC-009 Phase 4) ====================
+export interface ProviderPoolEntry {
+  providerId: string
+  providerName: string
+  inPool: boolean
+  removalSource: string | null
+  removalMessage: string | null
+  removedAtMs: number | null
+  inCooldown: boolean
+  cooldownRemainingMs: number
+  consecutiveFailures: number
+}
+
+export interface ReprobeResult {
+  providerId: string
+  success: boolean
+  latencyMs: number
+  errorMessage: string | null
+  inPool: boolean
+}
+
+export const providerPoolApi = {
+  snapshot: () => http.get<ProviderPoolEntry[]>('/llm/provider-pool'),
+  reprobe: (providerId: string) =>
+    http.post<ReprobeResult>(`/llm/provider-pool/${encodeURIComponent(providerId)}/reprobe`),
+}
+
+// ==================== OAuth ====================
+export const oauthApi = {
+  authorize: () => http.get('/oauth/openai/authorize'),
+  status: () => http.get('/oauth/openai/status'),
+  refresh: () => http.post('/oauth/openai/refresh'),
+  revoke: () => http.delete('/oauth/openai/revoke'),
+  callbackPaste: (callbackUrl: string) =>
+    http.post('/oauth/openai/callback-paste', { callbackUrl }),
+  // Device Authorization Grant — used when NewsClaw runs on a remote host so the
+  // browser cannot reach localhost:1455 for the PKCE callback.
+  deviceStart: () => http.post('/oauth/openai/device/start'),
+  devicePoll: (deviceAuthId: string) =>
+    http.post('/oauth/openai/device/poll', { deviceAuthId }),
+  deviceCancel: (deviceAuthId: string) =>
+    http.post('/oauth/openai/device/cancel', { deviceAuthId }),
+}
+
+// RFC-062: Claude Code OAuth piggybacks on the user's local Claude Code
+// install — no in-app authorize/revoke flow yet (PR-4). Until then the UI
+// can only check status + force a re-detect from disk.
+export const claudeCodeOAuthApi = {
+  status: () => http.get('/oauth/anthropic/status'),
+  reload: () => http.post('/oauth/anthropic/reload'),
+}
+
+// ==================== Setup ====================
+export const setupApi = {
+  onboardingStatus: () => http.get('/setup/onboarding-status'),
+}
+
+// ==================== Settings ====================
+export const settingsApi = {
+  get: () => http.get('/settings'),
+  update: (data: any) => http.put('/settings', data),
+  getLanguage: () => http.get('/settings/language'),
+  updateLanguage: (language: string) => http.put('/settings/language', { language }),
+  // Dedicated endpoint for the multimodal sidecar configuration. The bulk
+  // /settings PUT now guards vision/video model ids with non-null checks so
+  // unrelated settings pages can't clobber them via partial payloads. This
+  // endpoint is the only path that writes those fields unconditionally —
+  // pass {defaultVisionModelId: null} here to explicitly clear a sidecar.
+  // Model IDs are accepted as either JSON numbers or strings — Jackson
+  // coerces both into Long. The string form is preferred from the UI to
+  // sidestep JS Number precision loss on 19-digit Snowflake IDs.
+  updateSidecar: (data: { defaultVisionModelId: number | string | null; defaultVideoModelId: number | string | null }) =>
+    http.put('/settings/sidecar', data),
+  getSearchProviders: () => http.get('/settings/search-providers'),
+}
+
+// ==================== DeepSeek Harness runtime ====================
+export const dshApi = {
+  status: () => http.get('/admin/dsh/status'),
+  saveConfig: (data: Record<string, string>) => http.put('/admin/dsh/config', data),
+  install: () => http.post('/admin/dsh/install'),
+  verify: () => http.post('/admin/dsh/verify'),
+  testConnection: () => http.post('/admin/dsh/test-connection'),
+  enable: () => http.post('/admin/dsh/enable'),
+  disable: () => http.post('/admin/dsh/disable'),
+}
+
+// ==================== Global outbound proxy ====================
+export const proxyApi = {
+  get: () => http.get('/settings/proxy'),
+  update: (data: { enabled: boolean; url: string; nonProxyHosts?: string }) =>
+    http.put('/settings/proxy', data),
+  test: (url: string) => http.post('/settings/proxy/test', { url }),
+}
+
+// ==================== Workspace ====================
+const encodeFilePath = (filename: string) =>
+  filename.split('/').map(encodeURIComponent).join('/')
+
+export const agentContextApi = {
+  listFiles: (agentId: string | number) =>
+    http.get(`/agents/${agentId}/workspace/files`),
+  getFile: (agentId: string | number, filename: string) =>
+    http.get(`/agents/${agentId}/workspace/files/${encodeFilePath(filename)}`),
+  saveFile: (agentId: string | number, filename: string, content: string) =>
+    http.put(`/agents/${agentId}/workspace/files/${encodeFilePath(filename)}`, { content }),
+  deleteFile: (agentId: string | number, filename: string) =>
+    http.delete(`/agents/${agentId}/workspace/files/${encodeFilePath(filename)}`),
+  // Per-owner PERSONAL memory copies written by agents during conversations.
+  // Admin-only on the backend; callers should treat a 403 as "hide the section".
+  listPersonalFiles: (agentId: string | number) =>
+    http.get(`/agents/${agentId}/workspace/memory/personal-files`),
+  getPersonalFile: (agentId: string | number, filename: string, ownerKey: string) =>
+    http.get(`/agents/${agentId}/workspace/memory/personal-file`, { params: { filename, ownerKey } }),
+  getPromptFiles: (agentId: string | number) =>
+    http.get(`/agents/${agentId}/workspace/prompt-files`),
+  setPromptFiles: (agentId: string | number, files: string[]) =>
+    http.put(`/agents/${agentId}/workspace/prompt-files`, { files }),
+
+  // Memory snapshot — export downloads a ZIP via native fetch (axios R<T>
+  // interceptor would mis-handle the binary body); import + preview go
+  // through axios with multipart so the standard auth / workspace headers
+  // flow automatically.
+  exportMemorySnapshot: async (agentId: string | number): Promise<Blob> => {
+    const token = localStorage.getItem('token')
+    const workspaceId = localStorage.getItem('mc-workspace-id')
+    const headers: Record<string, string> = {}
+    if (token) headers.Authorization = `Bearer ${token}`
+    if (workspaceId) headers['X-Workspace-Id'] = workspaceId
+    const url = `/api/v1/agents/${agentId}/workspace/memory/export`
+    const response = await fetch(url, { headers })
+    if (!response.ok) {
+      // Try to parse the standard R<T> error envelope for a useful message.
+      let detail = `HTTP ${response.status}`
+      try {
+        const body = await response.json()
+        if (body && typeof body.msg === 'string') detail = body.msg
+      } catch { /* ignore — non-JSON body */ }
+      throw new Error(detail)
+    }
+    return response.blob()
+  },
+  previewImportMemorySnapshot: (agentId: string | number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return http.post(`/agents/${agentId}/workspace/memory/import/preview`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  applyImportMemorySnapshot: (agentId: string | number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return http.post(`/agents/${agentId}/workspace/memory/import`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+}
+
+// ==================== Security ====================
+export const securityApi = {
+  getGuardConfig: () => http.get('/security/guard/config'),
+  updateGuardConfig: (data: any) => http.put('/security/guard/config', data),
+  getFileGuardConfig: () => http.get('/security/guard/config/file-guard'),
+  updateFileGuardConfig: (data: any) => http.put('/security/guard/config/file-guard', data),
+  listRules: (params?: any) => http.get('/security/guard/rules', { params }),
+  listBuiltinRules: (params?: any) => http.get('/security/guard/rules/builtin', { params }),
+  createRule: (data: any) => http.post('/security/guard/rules', data),
+  updateRule: (ruleId: string, data: any) => http.put(`/security/guard/rules/${ruleId}`, data),
+  toggleRule: (ruleId: string, enabled: boolean) =>
+    http.put(`/security/guard/rules/${ruleId}/toggle?enabled=${enabled}`),
+  deleteRule: (ruleId: string) => http.delete(`/security/guard/rules/${ruleId}`),
+  exportRules: () => http.get('/security/guard/rules/export'),
+  importRules: (data: { rules: any[] }) => http.post('/security/guard/rules/import', data),
+  listAuditLogs: (params?: any) => http.get('/security/audit/logs', { params }),
+  getAuditStats: () => http.get('/security/audit/stats'),
+  listApprovals: (params?: any) => http.get('/security/approvals', { params }),
+}
+
+// ==================== Token Usage ====================
+export const tokenUsageApi = {
+  getSummary: (params?: { startDate?: string; endDate?: string; modelName?: string; providerId?: string }) =>
+    http.get('/token-usage', { params }),
+}
+
+// ==================== CronJob ====================
+export const cronJobApi = {
+  list: () => http.get('/cron-jobs'),
+  get: (id: string | number) => http.get(`/cron-jobs/${id}`),
+  create: (data: any) => http.post('/cron-jobs', data),
+  update: (id: string | number, data: any) => http.put(`/cron-jobs/${id}`, data),
+  delete: (id: string | number) => http.delete(`/cron-jobs/${id}`),
+  toggle: (id: string | number, enabled: boolean) =>
+    http.put(`/cron-jobs/${id}/toggle`, null, { params: { enabled } }),
+  runNow: (id: string | number) => http.post(`/cron-jobs/${id}/run`),
+  activeRuns: (conversationId: string) =>
+    http.get('/cron-jobs/active-runs', { params: { conversationId } }),
+}
+
+// ==================== Agent Teams ====================
+// All ids are strings end-to-end (global Long→String Jackson config) — never
+// coerce them to number, Snowflake ids exceed Number.MAX_SAFE_INTEGER.
+
+export interface AgentTeam {
+  id: string
+  name: string
+  description: string | null
+  leadAgentId: string
+  status: string
+  settings: string | null
+  createTime?: string
+}
+
+export interface TeamVO {
+  team: AgentTeam
+  leadName: string | null
+  leadIcon?: string | null
+  memberCount: number
+}
+
+export interface TeamMemberVO {
+  agentId: string
+  name: string
+  role: 'lead' | 'member' | 'reviewer'
+  icon?: string | null
+}
+
+export interface TeamTask {
+  id: string
+  teamId: string
+  runId?: string | null
+  taskNumber: number
+  subject: string
+  description: string | null
+  status: string
+  priority: number
+  assigneeAgentId: string | null
+  ownerAgentId: string | null
+  blockedBy: string | null
+  requireApproval: boolean | null
+  progressPercent: number | null
+  progressStep: string | null
+  result: string | null
+  reason: string | null
+  dispatchCount: number
+  conversationId: string | null
+  leadConversationId: string | null
+  metadata: string | null
+  createTime?: string
+  updateTime?: string
+}
+
+export interface TeamTaskDeliverable {
+  name: string
+  url: string
+  time?: string
+}
+
+export interface TeamTaskVO {
+  task: TeamTask
+  assigneeName: string | null
+  ownerName: string | null
+  runId?: string | null
+}
+
+export interface TeamTaskComment {
+  id: string
+  taskId: string
+  authorType: string
+  authorId: string
+  commentType: string
+  content: string
+  createTime?: string
+}
+
+export interface TeamTaskEvent {
+  id: string
+  teamId: string
+  taskId: string
+  eventType: string
+  actorType: string | null
+  actorId: string | null
+  detail: string | null
+  createTime?: string
+}
+
+const TEAM_TASK_READ_TIMEOUT_MS = 15_000
+
+export const teamApi = {
+  list: () => http.get('/teams'),
+  get: (id: string) => http.get(`/teams/${id}`),
+  create: (data: {
+    name: string
+    description?: string
+    leadAgentId: string
+    memberAgentIds: string[]
+  }) => http.post('/teams', data),
+  update: (id: string, data: { name?: string; description?: string; settings?: string }) =>
+    http.put(`/teams/${id}`, data),
+  delete: (id: string) => http.delete(`/teams/${id}`),
+  addMember: (id: string, agentId: string, role: string) =>
+    http.post(`/teams/${id}/members`, { agentId, role }),
+  removeMember: (id: string, agentId: string) => http.delete(`/teams/${id}/members/${agentId}`),
+  listTasks: (id: string, status?: string[], opts?: { limit?: number; offset?: number; runId?: string }) =>
+    http.get(`/teams/${id}/tasks`, {
+      timeout: TEAM_TASK_READ_TIMEOUT_MS,
+      params: {
+        ...(status?.length ? { status: status.join(',') } : {}),
+        ...(opts?.limit != null ? { limit: opts.limit } : {}),
+        ...(opts?.offset != null ? { offset: opts.offset } : {}),
+        ...(opts?.runId ? { runId: opts.runId } : {}),
+      },
+    }),
+  taskStats: (id: string, runId?: string) => http.get(`/teams/${id}/tasks/stats`, {
+    timeout: TEAM_TASK_READ_TIMEOUT_MS,
+    params: runId ? { runId } : {},
+  }),
+  getTask: (id: string, taskId: string) => http.get(`/teams/${id}/tasks/${taskId}`, {
+    timeout: TEAM_TASK_READ_TIMEOUT_MS,
+  }),
+  createTask: (
+    id: string,
+    data: {
+      subject: string
+      description?: string
+      runId?: string
+      assigneeAgentId: string
+      priority?: number
+      blockedBy?: string[]
+      requireApproval?: boolean
+    },
+  ) => http.post(`/teams/${id}/tasks`, data),
+  listTaskEvents: (id: string, taskId: string) => http.get(`/teams/${id}/tasks/${taskId}/events`),
+  approveTask: (id: string, taskId: string) => http.post(`/teams/${id}/tasks/${taskId}/approve`),
+  rejectTask: (id: string, taskId: string, reason?: string) =>
+    http.post(`/teams/${id}/tasks/${taskId}/reject`, { reason }),
+  retryTask: (id: string, taskId: string) => http.post(`/teams/${id}/tasks/${taskId}/retry`),
+  cancelTask: (id: string, taskId: string, reason?: string) =>
+    http.post(`/teams/${id}/tasks/${taskId}/cancel`, { reason }),
+  commentTask: (id: string, taskId: string, content: string) =>
+    http.post(`/teams/${id}/tasks/${taskId}/comments`, { content }),
+}
+
+export type TeamRunStatus =
+  | 'planning'
+  | 'running'
+  | 'awaiting_review'
+  | 'finalizing'
+  | 'completed'
+  | 'partial'
+  | 'failed'
+  | 'cancelled'
+
+export interface TeamRunProgress {
+  total: number
+  done: number
+  failed: number
+  inReview: number
+  percent: number
+}
+
+export interface TeamRunTask {
+  id: string
+  teamId: string
+  runId: string
+  taskNumber: number
+  subject: string
+  description: string | null
+  status: string
+  priority: number
+  taskType: string
+  assigneeAgentId: string
+  ownerAgentId: string | null
+  blockedBy: string | null
+  requireApproval: boolean | null
+  progressPercent: number | null
+  progressStep: string | null
+  result: string | null
+  reason: string | null
+  conversationId: string | null
+  metadata: string | null
+  createTime: string | null
+  updateTime: string | null
+}
+
+export type TeamRunOutcomeQuality = 'synthesized' | 'fallback' | 'partial' | 'pending'
+export type TeamRunLivenessState = 'live' | 'quiet' | 'stalled' | 'terminal'
+export interface TeamRunDeliverable { id: string; name: string; url: string; type: string; sourceTaskIds: string[]; sourceAgentIds: string[]; createdAt: string | null; verificationStatus: string }
+export interface TeamRunContribution { taskId: string; agentId: string; subject: string; status: string; durationSeconds: number | null; lastActivityAt: string | null; resultSummary: string | null; conversationId: string | null }
+export interface TeamRunAttentionItem { id: string; type: string; severity: string; priority: number; taskId: string | null; message: string; createdAt: string | null }
+export interface TeamRunLiveness { state: TeamRunLivenessState; lastActivityAt: string | null }
+export interface TeamRunMetrics { durationSeconds: number | null; totalTasks: number; completedTasks: number; failedTasks: number; deliverableCount: number }
+export interface TeamRunPage { items: TeamRun[]; nextCursor: string | null }
+
+export interface TeamRun {
+  id: string
+  teamId: string
+  workspaceId: string
+  leadAgentId: string
+  leadConversationId: string
+  originMessageId: string | null
+  title: string
+  objective: string
+  status: TeamRunStatus
+  finalSummary: string | null
+  stopReason: string | null
+  metadata: string | null
+  startedAt: string | null
+  completedAt: string | null
+  createTime: string | null
+  updateTime: string | null
+  projectionCompleteness?: 'full' | 'summary' | string
+  outcomeQuality?: TeamRunOutcomeQuality | null
+  deliverables?: TeamRunDeliverable[]
+  contributions?: TeamRunContribution[]
+  attentionItems?: TeamRunAttentionItem[]
+  liveness?: TeamRunLiveness | null
+  metrics?: TeamRunMetrics | null
+  progress: TeamRunProgress
+  tasks: TeamRunTask[]
+}
+
+const TEAM_RUN_READ_TIMEOUT_MS = 15_000
+
+export const teamRunApi = {
+  get: (runId: string) => http.get(`/team-runs/${runId}`, { timeout: TEAM_RUN_READ_TIMEOUT_MS }),
+  listByTeamPage: (
+    teamId: string,
+    options: { activeOnly?: boolean; cursor?: string; limit?: number } = {},
+  ) => {
+    const params: { activeOnly?: boolean; cursor?: string; limit: number } = {
+      limit: options.limit ?? 20,
+    }
+    if (options.activeOnly) params.activeOnly = true
+    if (options.cursor) params.cursor = options.cursor
+    return http.get(`/teams/${teamId}/runs/page`, { params, timeout: TEAM_RUN_READ_TIMEOUT_MS })
+  },
+  listByConversationPage: (
+    conversationId: string,
+    options: { cursor?: string; limit?: number } = {},
+  ) => {
+    const params: { cursor?: string; limit: number } = { limit: options.limit ?? 20 }
+    if (options.cursor) params.cursor = options.cursor
+    return http.get(`/conversations/${encId(conversationId)}/team-runs/page`, {
+      params,
+      timeout: TEAM_RUN_READ_TIMEOUT_MS,
+    })
+  },
+  listByTeam: (teamId: string, activeOnly = false, cursor?: string, limit = 30) => {
+    const query = new URLSearchParams()
+    if (activeOnly) query.set('activeOnly', 'true')
+    if (cursor) query.set('cursor', cursor)
+    if (limit !== 30) query.set('limit', String(limit))
+    const suffix = query.size ? `?${query}` : ''
+    return http.get(`/teams/${teamId}/runs${suffix}`)
+  },
+  listByConversation: (conversationId: string, cursor?: string, limit = 30) => {
+    const query = new URLSearchParams()
+    if (cursor) query.set('cursor', cursor)
+    if (limit !== 30) query.set('limit', String(limit))
+    const suffix = query.size ? `?${query}` : ''
+    return http.get(`/conversations/${encId(conversationId)}/team-runs${suffix}`)
+  },
+  cancel: (runId: string, reason?: string) =>
+    http.post(`/team-runs/${runId}/cancel`, { reason }),
+}
+
+// ==================== Wiki Knowledge Base ====================
+// One row in the cross-KB failure center. ids are strings (global Long→String
+// Jackson config) to avoid Snowflake precision loss.
+export interface WikiFailureItem {
+  rawId: string
+  kbId: string
+  kbName: string
+  workspaceId: string | null
+  title: string
+  processingStatus: string
+  errorCode: string | null
+  errorMessage: string | null
+  warningCode: string | null
+  warningMessage: string | null
+  updateTime: string | null
+}
+
+export const wikiApi = {
+  // Knowledge Base
+  listKBs: () => http.get('/wiki/knowledge-bases'),
+  getKB: (id: string | number) => http.get(`/wiki/knowledge-bases/${id}`),
+  listKBsByAgent: (agentId: string | number) => http.get(`/wiki/knowledge-bases/agent/${agentId}`),
+  listBindableKBs: () => http.get('/wiki/knowledge-bases/bindable'),
+  createKB: (data: { name: string; description?: string; agentId?: string | number }) =>
+    http.post('/wiki/knowledge-bases', data),
+  updateKB: (id: string | number, data: { name?: string; description?: string; embeddingModelId?: string | number | null }) =>
+    http.put(`/wiki/knowledge-bases/${id}`, data),
+  deleteKB: (id: number) => http.delete(`/wiki/knowledge-bases/${id}`),
+  getConfig: (id: number) => http.get(`/wiki/knowledge-bases/${id}/config`),
+  updateConfig: (id: number, content: string) =>
+    http.put(`/wiki/knowledge-bases/${id}/config`, { content }),
+
+  // Directory Scan
+  setSourceDirectory: (id: string | number, path: string) =>
+    http.put(`/wiki/knowledge-bases/${id}/source-directory`, { path }),
+  scanDirectory: (id: number) => http.post(`/wiki/knowledge-bases/${id}/scan`),
+
+  // Centralized cross-KB failure center (admin only)
+  listFailures: (limit = 100) => http.get<{ data: WikiFailureItem[] }>(`/wiki/admin/failures?limit=${limit}`),
+
+  // Raw Materials
+  listRaw: (
+    kbId: number,
+    filters?: { status?: string; sourceType?: string; keyword?: string; startTime?: string; endTime?: string },
+  ) => http.get(`/wiki/knowledge-bases/${kbId}/raw`, filters ? { params: filters } : undefined),
+  addRawText: (kbId: number, data: { title: string; content: string }) =>
+    http.post(`/wiki/knowledge-bases/${kbId}/raw/text`, data),
+  uploadRaw: (kbId: number, formData: FormData, onProgress?: (pct: number) => void) =>
+    http.post(`/wiki/knowledge-bases/${kbId}/raw/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: WIKI_UPLOAD_TIMEOUT_MS,
+      onUploadProgress: onProgress
+        ? (e) => { if (e.total) onProgress(Math.round((e.loaded / e.total) * 100)) }
+        : undefined,
+    }),
+  deleteRaw: (kbId: number, rawId: number) =>
+    http.delete(`/wiki/knowledge-bases/${kbId}/raw/${rawId}`),
+  reprocessRaw: (kbId: number, rawId: number) =>
+    http.post(`/wiki/knowledge-bases/${kbId}/raw/${rawId}/reprocess`),
+  cancelRaw: (kbId: number, rawId: number) =>
+    http.post(`/wiki/knowledge-bases/${kbId}/raw/${rawId}/cancel`),
+  // Batch reprocess/delete. Select by explicit `ids` (Snowflake strings — never
+  // coerce to number) or by a `status` selector (e.g. retry all failed).
+  batchReprocessRaw: (
+    kbId: number,
+    body: { ids?: (string | number)[]; status?: string; force?: boolean },
+  ) => http.post(`/wiki/knowledge-bases/${kbId}/raw/batch/reprocess`, body),
+  batchDeleteRaw: (
+    kbId: number,
+    body: { ids?: (string | number)[]; status?: string },
+  ) => http.post(`/wiki/knowledge-bases/${kbId}/raw/batch/delete`, body),
+  downloadRaw: (kbId: number, rawId: number) =>
+    http.get<Blob>(`/wiki/knowledge-bases/${kbId}/raw/${rawId}/download`, {
+      responseType: 'blob',
+    }),
+
+  // Wiki Pages
+  listPages: (kbId: number, rawId?: number) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/pages`, rawId != null ? { params: { rawId } } : undefined),
+  // Lightweight {slug, title, archived} list for wikilink resolution. Never
+  // paginated and not scoped by the current raw-material filter — this is the
+  // authoritative resolution index used by the viewer's wikilink postprocess.
+  listPageRefs: (kbId: number, includeArchived = false) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/pages/refs`, { params: { includeArchived } }),
+
+  // Broken-link lint (job-based async). POST starts/returns the running job,
+  // GET reads the most recent completed scan aggregated across the KB.
+  startBrokenLinksScan: (kbId: number) =>
+    http.post(`/wiki/knowledge-bases/${kbId}/lint/broken-links`),
+  getBrokenLinksReport: (kbId: number) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/lint/broken-links`),
+  getBrokenLinksJob: (kbId: number, jobId: string) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/lint/broken-links/jobs/${jobId}`),
+  getPage: (kbId: number, slug: string) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/pages/${encodeURIComponent(slug)}`),
+  updatePage: (kbId: number, slug: string, content: string) =>
+    http.put(`/wiki/knowledge-bases/${kbId}/pages/${encodeURIComponent(slug)}`, { content }),
+  deletePage: (kbId: number, slug: string) =>
+    http.delete(`/wiki/knowledge-bases/${kbId}/pages/${encodeURIComponent(slug)}`),
+  batchDeletePages: (kbId: number, slugs: string[]) =>
+    http.delete(`/wiki/knowledge-bases/${kbId}/pages/batch`, { data: slugs }),
+  getBacklinks: (kbId: number, slug: string) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/pages/${encodeURIComponent(slug)}/backlinks`),
+
+  // Cross-KB lookup used by the global wikilink click handler — chat
+  // messages render [[Title]] without knowing which KB the agent read
+  // from, so the handler resolves the title across every visible KB.
+  lookupPage: (params: { title?: string; slug?: string }) =>
+    http.get(`/wiki/pages/lookup`, { params }),
+
+  // Archived pages
+  listArchivedPages: (kbId: number) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/pages/archived`),
+  archivePage: (kbId: number, slug: string) =>
+    http.post(`/wiki/knowledge-bases/${kbId}/pages/${encodeURIComponent(slug)}/archive`),
+  unarchivePage: (kbId: number, slug: string) =>
+    http.post(`/wiki/knowledge-bases/${kbId}/pages/${encodeURIComponent(slug)}/unarchive`),
+
+  // Processing
+  processKB: (kbId: number) => http.post(`/wiki/knowledge-bases/${kbId}/process`),
+  getProcessingStatus: (kbId: number) => http.get(`/wiki/knowledge-bases/${kbId}/processing-status`),
+
+  // RFC-029: Relations
+  getRelatedPages: (kbId: number | string, slug: string, topK = 5) =>
+    http.get(`/wiki/kb/${kbId}/pages/${encodeURIComponent(slug)}/related`, { params: { topK } }),
+  explainRelation: (kbId: number, slugA: string, slugB: string) =>
+    http.get(`/wiki/kb/${kbId}/pages/${encodeURIComponent(slugA)}/relation/${encodeURIComponent(slugB)}`),
+  getPageCitations: (kbId: number | string, pageId: number | string) =>
+    http.get(`/wiki/kb/${kbId}/pages/${pageId}/citations`),
+
+  // Entity-level knowledge graph
+  listEntities: (kbId: number | string, params?: { type?: string; limit?: number }) =>
+    http.get(`/wiki/kb/${kbId}/entities`, { params }),
+  getEntityGraph: (kbId: number | string, limit = 150) =>
+    http.get(`/wiki/kb/${kbId}/entity-graph`, { params: { limit } }),
+  getEntityEgo: (kbId: number | string, entityId: number | string, limit = 50) =>
+    http.get(`/wiki/kb/${kbId}/entities/${entityId}/graph`, { params: { limit } }),
+  extractEntities: (kbId: number | string, force = false) =>
+    http.post(`/wiki/kb/${kbId}/entities/extract`, null, { params: { force } }),
+
+  // RFC-030: Jobs
+  getWikiJobs: (kbId: number, rawId: number) =>
+    http.get(`/wiki/kb/${kbId}/jobs`, { params: { rawId } }),
+  getKBStats: (kbId: number) =>
+    http.get(`/wiki/kb/${kbId}/stats`),
+
+  // RFC-031: Enrichment & Repair
+  enrichPage: (kbId: number, slug: string) =>
+    http.post(`/wiki/kb/${kbId}/pages/${encodeURIComponent(slug)}/enrich`),
+  repairPage: (kbId: number, slug: string) =>
+    http.post(`/wiki/kb/${kbId}/pages/${encodeURIComponent(slug)}/repair`),
+
+  // RFC-032: Search preview
+  searchPreview: (kbId: number, data: { query: string; mode?: string; topK?: number }) =>
+    http.post(`/wiki/kb/${kbId}/search-preview`, data),
+
+  // Transformations: reusable prompt templates run over raw materials
+  listTransformations: (kbId?: number) =>
+    http.get('/wiki/transformations', kbId != null ? { params: { kbId } } : undefined),
+  getTransformation: (id: number) =>
+    http.get(`/wiki/transformations/${id}`),
+  createTransformation: (data: {
+    kbId?: number | null
+    name: string
+    title: string
+    description?: string
+    promptTemplate: string
+    applyDefault?: boolean
+    enabled?: boolean
+    modelId?: number | null
+    outputTarget?: 'none' | 'page'
+    outputFormat?: 'markdown' | 'json'
+    outputSchema?: string | null
+    targetPageType?: string | null
+  }) =>
+    http.post('/wiki/transformations', data),
+  updateTransformation: (id: number, data: {
+    title?: string
+    description?: string
+    promptTemplate?: string
+    applyDefault?: boolean
+    enabled?: boolean
+    modelId?: number | null
+    outputTarget?: 'none' | 'page'
+    outputFormat?: 'markdown' | 'json'
+    outputSchema?: string | null
+    targetPageType?: string | null
+  }) =>
+    http.put(`/wiki/transformations/${id}`, data),
+  deleteTransformation: (id: number) =>
+    http.delete(`/wiki/transformations/${id}`),
+  applyTransformation: (id: number, rawId: number, sync = true) =>
+    http.post(`/wiki/transformations/${id}/apply`, { rawId }, { params: { sync } }),
+  applyTransformationToPage: (id: number, pageId: number, sync = true) =>
+    http.post(`/wiki/transformations/${id}/apply`, { pageId }, { params: { sync } }),
+  aggregateTransformation: (id: number, kbId: number) =>
+    http.post(`/wiki/transformations/${id}/aggregate`, undefined, { params: { kbId } }),
+  listTransformationRuns: (params: { rawId?: number; kbId?: number; transformationId?: number; limit?: number }) =>
+    http.get('/wiki/transformations/runs', { params }),
+  getTransformationRun: (runId: number) =>
+    http.get(`/wiki/transformations/runs/${runId}`),
+  deleteTransformationRun: (runId: number) =>
+    http.delete(`/wiki/transformations/runs/${runId}`),
+  saveTransformationRunAsPage: (runId: number) =>
+    http.post(`/wiki/transformations/runs/${runId}/save-as-page`),
+  cancelTransformationRun: (runId: number) =>
+    http.post(`/wiki/transformations/runs/${runId}/cancel`),
+
+  // ---- PageType Profile (REQ-1) ----
+  getPageTypeProfile: (kbId: string | number) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/page-type-profile`),
+  savePageTypeProfile: (kbId: string | number, config: string, name?: string) =>
+    http.put(`/wiki/knowledge-bases/${kbId}/page-type-profile`, { config, name }),
+  validatePageTypeProfile: (kbId: string | number, config: string) =>
+    http.post(`/wiki/knowledge-bases/${kbId}/page-type-profile/validate`, { config }),
+  resetPageTypeProfile: (kbId: string | number) =>
+    http.post(`/wiki/knowledge-bases/${kbId}/page-type-profile/reset-default`),
+  reclassifyKB: (kbId: string | number, modelId?: string | number | null) =>
+    http.post(`/wiki/knowledge-bases/${kbId}/reclassify`, modelId != null ? { modelId } : {}),
+
+  // ---- Agent pageType permissions (REQ-3) ----
+  listPageTypePermissions: (kbId: string | number, agentId: string | number) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/agents/${agentId}/page-type-permissions`),
+  savePageTypePermission: (kbId: string | number, agentId: string | number, row: {
+    pageType: string
+    canRead?: number
+    canCreate?: number
+    canUpdate?: number
+    canDelete?: number
+    writePolicy?: 'allow' | 'deny' | 'approval_required'
+  }) =>
+    http.post(`/wiki/knowledge-bases/${kbId}/agents/${agentId}/page-type-permissions`, row),
+  deletePageTypePermission: (kbId: string | number, agentId: string | number, id: string | number) =>
+    http.delete(`/wiki/knowledge-bases/${kbId}/agents/${agentId}/page-type-permissions/${id}`),
+
+  // ---- Source watcher (REQ-4) ----
+  getSourceWatcher: (kbId: string | number) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/source-watcher`),
+  triggerSourceWatcher: (kbId: string | number) =>
+    http.post(`/wiki/knowledge-bases/${kbId}/source-watcher/scan`),
+  setWatcherEnabled: (kbId: string | number, enabled: boolean) =>
+    http.put(`/wiki/knowledge-bases/${kbId}/source-watcher/enabled`, { enabled }),
+
+  // ---- Pipelines (REQ-5) ----
+  listPipelines: (kbId: string | number) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/pipelines`),
+  savePipeline: (kbId: string | number, config: string, format: 'yaml' | 'json' = 'yaml') =>
+    http.post(`/wiki/knowledge-bases/${kbId}/pipelines`, { config, format }),
+  validatePipeline: (kbId: string | number, config: string, format: 'yaml' | 'json' = 'yaml') =>
+    http.post(`/wiki/knowledge-bases/${kbId}/pipelines/validate`, { config, format }),
+  deletePipeline: (kbId: string | number, id: string | number) =>
+    http.delete(`/wiki/knowledge-bases/${kbId}/pipelines/${id}`),
+  listPipelineRuns: (kbId: string | number, id: string | number) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/pipelines/${id}/runs`),
+  getPipelineRun: (kbId: string | number, runId: string | number) =>
+    http.get(`/wiki/knowledge-bases/${kbId}/pipeline-runs/${runId}`),
+}
+
+// ==================== Workspace (Team) ====================
+export const workspaceTeamApi = {
+  list: () => http.get('/workspaces'),
+  get: (id: string | number) => http.get(`/workspaces/${id}`),
+  getAccess: (id: string | number) => http.get(`/workspaces/${id}/access`),
+  create: (data: any) => http.post('/workspaces', data),
+  update: (id: string | number, data: any) => http.put(`/workspaces/${id}`, data),
+  delete: (id: string | number) => http.delete(`/workspaces/${id}`),
+  listMembers: (id: string | number) => http.get(`/workspaces/${id}/members`),
+  addMember: (id: string | number, data: { username: string; password?: string; nickname?: string; role?: string }) =>
+    http.post(`/workspaces/${id}/members`, data),
+  updateMemberRole: (id: string | number, memberId: string | number, role: string) =>
+    http.put(`/workspaces/${id}/members/${memberId}`, { role }),
+  removeMember: (id: string | number, memberId: string | number) =>
+    http.delete(`/workspaces/${id}/members/${memberId}`),
+}
+
+// ==================== Agent Binding ====================
+export const agentBindingApi = {
+  listSkills: (agentId: string | number) => http.get(`/agents/${agentId}/skills`),
+  setSkills: (agentId: string | number, skillIds: number[]) => http.put(`/agents/${agentId}/skills`, skillIds),
+  bindSkill: (agentId: string | number, skillId: number) => http.post(`/agents/${agentId}/skills/${skillId}`),
+  unbindSkill: (agentId: string | number, skillId: number) => http.delete(`/agents/${agentId}/skills/${skillId}`),
+  listTools: (agentId: string | number) => http.get(`/agents/${agentId}/tools`),
+  setTools: (agentId: string | number, toolNames: string[]) => http.put(`/agents/${agentId}/tools`, toolNames),
+  // Per-agent preferred-model chain (provider + model). Empty list = use the
+  // global chain order. modelId null = the provider's default model; the same
+  // provider may appear multiple times with different models. modelId is a
+  // string to preserve Snowflake precision.
+  listProviderPreferences: (agentId: string | number) =>
+    http.get(`/agents/${agentId}/provider-preferences`),
+  setProviderPreferences: (
+    agentId: string | number,
+    preferences: Array<{ providerId: string; modelId: string | null }>,
+  ) => http.put(`/agents/${agentId}/provider-preferences`, preferences),
+  // Per-agent knowledge base access scope. Empty array = unrestricted
+  // (agent can reach every KB in its workspace). IDs are kept as strings
+  // for the Snowflake-precision contract.
+  listKbs: (agentId: string | number) => http.get(`/agents/${agentId}/kbs`),
+  setKbs: (agentId: string | number, kbIds: (string | number)[]) =>
+    http.put(`/agents/${agentId}/kbs`, kbIds),
+}
+
+// ==================== Dashboard ====================
+export const dashboardApi = {
+  overview: () => http.get('/dashboard/overview'),
+  trend: (days = 30) => http.get('/dashboard/trend', { params: { days } }),
+  agentRanking: (days = 7, topN = 10) => http.get('/dashboard/agent-ranking', { params: { days, topN } }),
+  cronJobRuns: (cronJobId: string | number, limit = 20) => http.get(`/dashboard/cron-runs/${cronJobId}`, { params: { limit } }),
+  recentRuns: (limit = 20) => http.get('/dashboard/cron-runs', { params: { limit } }),
+}
+
+// ==================== Operational Data Export ====================
+export const operationalApi = {
+  generate: (startDate: string, endDate: string) =>
+    http.post('/operational-data/generate', null, { params: { startDate, endDate } }),
+  progress: (taskId: string) =>
+    http.get('/operational-data/progress', { params: { taskId } }),
+  /** Download file — uses native fetch to avoid axios R<T> interceptor */
+  download: async (taskId: string, token: string): Promise<void> => {
+    const jwt = localStorage.getItem('token')
+    const resp = await fetch(`/api/v1/operational-data/download?taskId=${taskId}&token=${token}`, {
+      headers: { Authorization: jwt ? `Bearer ${jwt}` : '' },
+    })
+    if (!resp.ok) throw new Error(`Download failed: ${resp.status}`)
+    const blob = await resp.blob()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `ops_data.zip`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  },
+}
+
+// ==================== Plugins ====================
+export const pluginApi = {
+  list: () => http.get('/plugins'),
+  get: (name: string) => http.get(`/plugins/${name}`),
+  disable: (name: string) => http.post(`/plugins/${name}/disable`),
+  enable: (name: string) => http.post(`/plugins/${name}/enable`),
+  updateConfig: (name: string, config: Record<string, any>) => http.put(`/plugins/${name}/config`, config),
+}
+
+// ==================== Audit Events ====================
+export const auditApi = {
+  listEvents: (params: {
+    action?: string
+    resourceType?: string
+    startTime?: string
+    endTime?: string
+    page?: number
+    size?: number
+  }) => http.get('/audit/events', { params }),
+}
+
+// ==================== Feature Flags ====================
+export interface FeatureFlag {
+  id: number
+  flagKey: string
+  enabled: boolean
+  description?: string
+  whitelistKbIds?: string
+  whitelistUserIds?: string
+  rolloutPercent?: number
+  createTime?: string
+  updateTime?: string
+}
+
+export interface FeatureFlagUpdate {
+  enabled?: boolean
+  description?: string
+  whitelistKbIds?: string
+  whitelistUserIds?: string
+  rolloutPercent?: number
+}
+
+export const featureFlagApi = {
+  list: () => http.get<FeatureFlag[]>('/feature-flags'),
+  update: (flagKey: string, data: FeatureFlagUpdate) =>
+    http.put(`/feature-flags/${flagKey}`, data),
+}
+
+export interface WikiHotCache {
+  id: number
+  kbId: number
+  content: string | null
+  contentHash: string | null
+  lastUpdated: string | null
+  updateReason: string | null
+  rebuildCount: number
+  lastRebuildStartedAt: string | null
+  lastRebuildDurationMs: number | null
+  lastRebuildError: string | null
+  createTime: string
+  updateTime: string
+}
+
+export const hotCacheApi = {
+  get: (kbId: number) => http.get<WikiHotCache | null>(`/wiki/hot-cache/${kbId}`),
+  regenerate: (kbId: number) => http.post(`/wiki/hot-cache/${kbId}/regenerate`),
+  reset: (kbId: number) => http.delete(`/wiki/hot-cache/${kbId}`),
+}
+
+// ==================== Workflow ====================
+
+export interface WorkflowSummary {
+  id: number
+  workspaceId: string | number
+  name: string
+  description?: string
+  enabled: boolean
+  draftJson?: string
+  draftUpdatedAt?: string
+  latestRevisionId?: number
+  /** Human version number of the latest published revision (1, 2, 3…) — shown
+   *  as "v3" instead of the latestRevisionId snowflake. Null when unpublished. */
+  latestRevisionNumber?: number
+  /** Latest published revision's graph JSON — populated by GET /workflows/{id}
+   *  so the editor can render a published workflow whose draft was cleared. */
+  publishedGraphJson?: string
+  createTime: string
+  updateTime: string
+}
+
+export interface WorkflowCompileError {
+  code: string
+  path: string
+  message: string
+}
+
+export interface WorkflowCompileFailure {
+  errorCount: number
+  errors: WorkflowCompileError[]
+}
+
+export interface WorkflowRun {
+  id: number
+  workflowId: number
+  revisionId: number
+  workspaceId: string | number
+  state: string
+  triggeredBy?: string
+  initialInputRef?: string
+  finalOutputRef?: string
+  errorMessage?: string
+  startedAt?: string
+  completedAt?: string
+}
+
+export interface WorkflowRunStep {
+  id: number
+  runId: number
+  stepIndex: number
+  iterationIndex?: number
+  stepName?: string
+  state: string
+  outputRef?: string
+  outputSummary?: string
+  outputContentType?: string
+  errorMessage?: string
+  durationMs?: number
+  startedAt?: string
+  completedAt?: string
+}
+
+/** Pause record carried inline on a paused run so the UI can resume
+ *  without a second roundtrip. Mirrors mate_workflow_run_pause. */
+export interface WorkflowRunPause {
+  id: number
+  runId: number
+  stepId?: number
+  pauseKind: string
+  pauseToken: string
+  externalApprovalId?: number
+  pausedAt: string
+  resumeDeadline?: string
+  resumePayloadRef?: string
+  resumedAt?: string
+  resumeOutcome?: string
+}
+
+export interface PausedRunSummary {
+  run: WorkflowRun
+  pause: WorkflowRunPause | null
+}
+
+export interface RunDetail {
+  run: WorkflowRun
+  steps: WorkflowRunStep[]
+  /** Most recent unresolved pause record; null when the run is not paused. */
+  activePause: WorkflowRunPause | null
+}
+
+export type ResumeOutcome = 'approved' | 'rejected' | 'timeout' | 'cancelled'
+
+export interface ResumeResponse {
+  kind: string
+  runId?: number | null
+  errorMessage?: string | null
+}
+
+export const workflowApi = {
+  list: (workspaceId: string | number) =>
+    http.get<WorkflowSummary[]>('/workflows', { params: { workspaceId } }),
+  get: (id: number) => http.get<WorkflowSummary>(`/workflows/${id}`),
+  create: (data: Partial<WorkflowSummary>) =>
+    http.post<WorkflowSummary>('/workflows', data),
+  update: (id: number, data: Partial<WorkflowSummary>) =>
+    http.put<WorkflowSummary>(`/workflows/${id}`, data),
+  delete: (id: number) => http.delete(`/workflows/${id}`),
+  saveDraft: (id: number, draftJson: string, userId?: number) =>
+    http.put(`/workflows/${id}/draft`, { draftJson }, { params: userId ? { userId } : {} }),
+  compile: (id: number) => http.post(`/workflows/${id}/compile`),
+  publish: (id: number, note?: string, userId?: number) =>
+    http.post(`/workflows/${id}/publish`,
+      note ? { note } : {},
+      { params: userId ? { userId } : {} }),
+  runs: (id: number, limit = 50) =>
+    http.get<WorkflowRun[]>(`/workflows/${id}/runs`, { params: { limit } }),
+  runDetail: (runId: number) =>
+    http.get<RunDetail>(`/workflows/runs/${runId}`),
+  /** List paused runs across the workspace so operators can resume them. */
+  listPausedRuns: (limit = 50) =>
+    http.get<PausedRunSummary[]>('/workflows/runs/paused', { params: { limit } }),
+  /** Resume a paused workflow run with one of the four documented outcomes. */
+  resumeRun: (runId: number, pauseToken: string, outcome: ResumeOutcome, payload?: string) =>
+    http.post<ResumeResponse>(`/workflows/runs/${runId}/resume`, {
+      pauseToken,
+      outcome,
+      payload,
+    }),
+  /** Generate a workflow draft from natural language. Returns the parsed
+   *  shape; the caller is responsible for creating a workflow row +
+   *  saving the draft if the user accepts it. */
+  generateDraft: (description: string) =>
+    http.post<GeneratedDraft>('/workflows/draft/generate', { description }),
+  /** Canonical workflow templates the generator can apply directly. */
+  listDraftTemplates: () =>
+    http.get<WorkflowDraftTemplate[]>('/workflows/draft/templates'),
+  /** Compile arbitrary draft JSON without persisting. Used by the template
+   *  picker / generator-result preview to give the operator the same compile
+   *  signal the existing /workflows/{id}/compile endpoint provides for saved
+   *  workflows. Resolves on success; rejects with an axios error whose
+   *  response.data.data carries the WorkflowCompileFailure on a 422. */
+  previewCompileDraft: (draftJson: string) =>
+    http.post('/workflows/draft/preview-compile', { draftJson }),
+}
+
+export interface GeneratedDraft {
+  name: string
+  description: string
+  draftJson: string
+  triggerDrafts: Array<Record<string, unknown>>
+  warnings: string[]
+  missingFields: string[]
+  confidence?: number | null
+  compileOk: boolean
+  compileErrors: WorkflowCompileError[]
+}
+
+export interface WorkflowDraftTemplate {
+  id: string
+  label: string
+  description: string
+  matchHints: string[]
+  draftJson: string
+  triggerDraftsJson: string
+}
+
+// ==================== Trigger ====================
+
+export interface TriggerSummary {
+  id: number
+  workspaceId: string | number
+  name?: string
+  patternType: string
+  patternJson: string
+  targetType: string
+  // Snowflake ID — backend serializes Long as string (ToStringSerializer).
+  // Keep the union so v-model can hold the string form without TS errors
+  // and JS Number() coercion stays out of the round-trip.
+  targetId: number | string
+  payloadTemplate?: string
+  rateLimitPerMin: number
+  dedupWindowSecs: number
+  botSelfFilter: boolean
+  enabled: boolean
+  fireCount: number
+  maxFires: number
+  lastFiredAt?: string
+  /** Stamp of the last dispatch attempt regardless of outcome (FIRED /
+   *  SKIPPED / FAILED). Distinguishes "never attempted" from
+   *  "attempted but the pre-flight skipped". */
+  lastDispatchedAt?: string
+  /** Most recent dispatch outcome message; null when the last attempt
+   *  fired cleanly. */
+  lastError?: string
+  patternVersion: number
+  createTime: string
+  updateTime: string
+}
+
+export const triggerApi = {
+  list: (workspaceId: string | number) =>
+    http.get<TriggerSummary[]>('/triggers', { params: { workspaceId } }),
+  get: (id: number) => http.get<TriggerSummary>(`/triggers/${id}`),
+  create: (data: Partial<TriggerSummary>) =>
+    http.post<TriggerSummary>('/triggers', data),
+  update: (id: number, data: Partial<TriggerSummary>) =>
+    http.put<TriggerSummary>(`/triggers/${id}`, data),
+  delete: (id: number) => http.delete(`/triggers/${id}`),
+  ingestEvent: (envelope: {
+    workspaceId: string | number
+    patternType: string
+    eventId?: string
+    senderId?: string
+    data?: Record<string, unknown>
+  }) => http.post('/triggers/events', envelope),
+}
+
+// ==================== Persistent goals ====================
+//
+// Snowflake IDs are sent as strings end-to-end — the backend's
+// ToStringSerializer makes responses strings, and request payloads keep
+// them as strings to dodge JS Number precision loss. See CLAUDE.md
+// "ID Handling — Snowflake Precision Convention".
+
+/** One checkable item of a goal's exit checklist. */
+export interface GoalCriterion {
+  id: string
+  text: string
+  passed: boolean
+  evidence?: string
+}
+
+export interface Goal {
+  id: string
+  conversationId: string
+  agentId: string
+  workspaceId: string
+  createdBy: string
+  title: string
+  description: string
+  exitCriteria?: string | null
+  status: 'active' | 'paused' | 'completed' | 'abandoned' | 'exhausted'
+  turnBudget: number
+  turnsUsed: number
+  llmCallBudget: number
+  agentLlmCallsUsed: number
+  evalLlmCallsUsed: number
+  totalLlmCallsUsed?: number
+  progressSummary?: string | null
+  completionScore?: number | null
+  lastEvaluationAt?: string | null
+  autoFollowupEnabled: boolean
+  followupCooldownSeconds: number
+  lastFollowupAt?: string | null
+  createTime: string
+  updateTime: string
+  /** Parsed checklist; the backend always sends an array (empty when none). */
+  criteria: GoalCriterion[]
+}
+
+export interface GoalEvent {
+  id: string
+  goalId: string
+  eventType: string
+  messageId?: string | null
+  detailJson?: string | null
+  createTime: string
+}
+
+export const goalApi = {
+  create: (data: {
+    conversationId: string
+    agentId: string | number
+    workspaceId: string | number
+    title: string
+    description?: string
+    exitCriteria?: string
+    turnBudget?: number
+    llmCallBudget?: number
+    autoFollowupEnabled?: boolean
+    followupCooldownSeconds?: number
+    criteria?: { text: string }[]
+  }) => http.post<Goal>('/goals', data),
+
+  findActive: (conversationId: string) =>
+    http.get<Goal | null>(`/goals/by-conversation/${encId(conversationId)}`),
+
+  get: (id: string) => http.get<Goal>(`/goals/${id}`),
+
+  events: (id: string, limit = 100) =>
+    http.get<GoalEvent[]>(`/goals/${id}/events`, { params: { limit } }),
+
+  list: (params?: { status?: string; limit?: number }) =>
+    http.get<Goal[]>('/goals', { params }),
+
+  update: (id: string, data: Partial<Goal>) => http.patch<Goal>(`/goals/${id}`, data),
+  pause: (id: string) => http.post<Goal>(`/goals/${id}/pause`),
+  resume: (id: string) => http.post<Goal>(`/goals/${id}/resume`),
+  abandon: (id: string) => http.post<Goal>(`/goals/${id}/abandon`),
+  addCriterion: (id: string, criterion: string) =>
+    http.post<Goal>(`/goals/${id}/criteria`, { criterion }),
+}
+
+// ==================== Approval Auto-Grant ====================
+
+/**
+ * Client for the /api/v1/approval/* surface. The backend serializes all
+ * snowflake ids as strings (CLAUDE.md precision convention); callers should
+ * keep them as strings end-to-end and never run them through Number().
+ */
+export const approvalApi = {
+  /**
+   * List grants visible in the current workspace, paged. mine=true skips the
+   * admin gate. Page is 1-based; size is bounded server-side to [1, 200].
+   */
+  listGrants: (params?: {
+    scopeType?: GrantScope
+    toolName?: string
+    revoked?: 0 | 1
+    mine?: boolean
+    page?: number
+    size?: number
+  }) => http.get<ApprovalGrantPage>('/approval/grants', { params }),
+
+  /** Active-grant summary used by the global chip + ChatInput pill counters. */
+  activeSummary: () =>
+    http.get<ActiveGrantsSummary>('/approval/grants/active'),
+
+  /** Create a grant. Returns the persisted row. */
+  createGrant: (payload: CreateGrantPayload) =>
+    http.post<ApprovalGrant>('/approval/grants', payload),
+
+  /** Soft-revoke a grant. Caller must be the grant owner OR a workspace admin. */
+  revokeGrant: (id: string) =>
+    http.delete<void>(`/approval/grants/${id}`),
+
+  /**
+   * Read approval-layer final decisions. {@code grantId} queries require admin;
+   * {@code conversationId} queries are visible to any workspace member.
+   */
+  listResolutions: (params: {
+    grantId?: string
+    conversationId?: string
+    limit?: number
+  }) => http.get<ResolutionLog[]>('/approval/resolutions', { params }),
+}
+
+// ==================== 内置帮助文档 ====================
+
+export interface DocMeta {
+  slug: string
+  title: string
+  /** Group label (e.g. 开始 / 使用 / 扩展), mirroring the docs site sidebar sections. */
+  group: string
+}
+
+export interface DocContent {
+  slug: string
+  title: string
+  content: string
+}
+
+export const docsApi = {
+  /** 列出某语言下的全部帮助文档（slug + 标题）。 */
+  list: (lang: string) =>
+    http.get<DocMeta[]>('/docs', { params: { lang } }),
+
+  /** 读取单篇文档正文（已剥离 frontmatter）。 */
+  content: (lang: string, slug: string) =>
+    http.get<DocContent>('/docs/content', { params: { lang, slug } }),
+}

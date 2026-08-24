@@ -1,0 +1,636 @@
+---
+title: AI Memory System — 4-Layer Memory Lifecycle (Extract, Consolidate, Dream, Recall)
+description: NewsClaw's 4-layer memory lifecycle — in-conversation context, post-chat extraction, workspace persistence (PROFILE.md/MEMORY.md), and scheduled Dreaming consolidation. Your AI gets smarter every day.
+head:
+  - - meta
+    - name: keywords
+      content: AI memory,memory system,Dreaming,PROFILE.md,MEMORY.md,memory lifecycle,long-term memory,memory extraction,memory consolidation
+---
+
+# AI Memory System
+
+**Memory is how the system gets better at knowing you.**
+
+Everything else in NewsClaw is static the moment you configure it. Agents, tools, knowledge bases — they change when you change them. Memory is the one part that changes on its own, as a byproduct of actual use. That's the whole point.
+
+::: tip Your AI dreams about you while you sleep
+That's not a marketing line. It's literal code in the `memory/dreaming/` package.
+
+Every night at 3 AM (default; configurable) a scheduled job runs — its name is **Dreaming**. It walks every agent's conversation trail from the day, consolidates scattered signals into a coherent understanding of you, filters out one-offs and contradictions and stale facts, promotes recurring patterns into `MEMORY.md`, and appends "what it saw, what it concluded, what it rewrote" to `DREAMS.md` — a human-readable audit trail of how memory got to where it is today.
+
+When you open NewsClaw the next morning, it **picks up where yesterday left off** — not from zero.
+
+> Every other AI starts each day from scratch. NewsClaw continues from where yesterday ended.
+:::
+
+This page covers the four layers that make up memory, the files the system writes for each agent, and how agents themselves read and write those files during a conversation.
+
+---
+
+## The four layers
+
+```
+  ┌────────────────────────────────────────────────────────────┐
+  │  1. This turn                                                │
+  │     What you're saying, what was just said, auto-trimmed     │
+  │     to the model's token budget                              │
+  │     Updated: every turn                                      │
+  └────────────────────────────────────────────────────────────┘
+                            │
+                            ▼ (after conversation completes)
+  ┌────────────────────────────────────────────────────────────┐
+  │  2. Post-chat extraction                                     │
+  │     Pulls the worth-keeping bits out of the conversation,    │
+  │     writes them into PROFILE.md / MEMORY.md / today's note   │
+  │     Updated: asynchronously, after each meaningful chat      │
+  └────────────────────────────────────────────────────────────┘
+                            │
+                            ▼ (daily at 3:00 AM, configurable)
+  ┌────────────────────────────────────────────────────────────┐
+  │  3. Nightly consolidation (Dreaming)                         │
+  │     Scans recent daily notes, finds recurring patterns,      │
+  │     merges them into MEMORY.md, logs the run in DREAMS.md    │
+  │     Updated: scheduled; manual trigger available             │
+  └────────────────────────────────────────────────────────────┘
+                            │
+                            ▼ (next conversation picks up the latest)
+  ┌────────────────────────────────────────────────────────────┐
+  │  4. Workspace files as system prompt                         │
+  │     The four markdown files are injected every turn          │
+  │     Updated: file changes take effect on the next turn       │
+  └────────────────────────────────────────────────────────────┘
+```
+
+Each layer operates at a different timescale. Short-term is *this turn*. Extraction is *after each conversation*. Consolidation is *nightly*. Workspace file injection is *every turn uses whatever's current*. Together they form a loop — what you say becomes context, context becomes files, files become system prompt, system prompt becomes what the agent knows tomorrow.
+
+---
+
+## Memory knows who's who: per-owner isolation (1.5.0)
+
+Before, an employee's memory was **shared**: whether it was you logged into the web, a colleague in a Feishu group, or an end user coming in through a third-party API, the memory piled into the same `MEMORY.md`. One employee serving multiple people would cross wires.
+
+1.5.0 gives every memory an **owner** and a **visibility scope**.
+
+### A unified owner_key
+
+Whatever the identity source, it normalizes to one prefixed string:
+
+| Source | owner_key |
+|---|---|
+| Web console | `user:<user id>` |
+| IM channel (Feishu / DingTalk / WeCom…) | `<channel>:<sender id>` |
+| Third-party API (with endUserId) | `api:<endUserId>` |
+| System / cron | `system` |
+
+### Three visibility scopes
+
+| scope | Who reads it | Typical content |
+|---|---|---|
+| **PERSONAL** | Only the matching owner | Memory extracted from conversations defaults here |
+| **TEAM** | Everyone using this employee | Agent config files (AGENTS.md / SOUL.md / PROFILE.md), backfilled legacy data |
+| **GLOBAL** | Always visible across employees / workspaces | Preset facts, system reference material |
+
+### Recall prefers personal memory
+
+The system prompt bakes in only the shared TEAM/GLOBAL memory (cacheable); each turn then **prefetches** that owner's personal memory by owner_key. So when someone asks "what stack does my project use," the employee recalls *that person's* private memory files first, not generic KB material.
+
+> On the structured "fact" layer: the **fact recall query itself supports owner-visibility filtering** (PERSONAL is owner-only, TEAM/GLOBAL shared). But the current **automatic fact projection** is built mainly from shared memory files and doesn't set `ownerKey/scope` on insert — so personalization shows up more in the personal-memory-file prefetch; per-owner facts are still being filled in.
+
+### Third-party APIs pass through an end-user identity
+
+`/api/v1/chat` and `/api/v1/chat/stream` request bodies gain an optional **`endUserId`** field (a string, to preserve large-integer precision). One PAT-authenticated integration represents one NewsClaw user but can pass a distinct `endUserId` per end user, and memory isolates per end user automatically.
+
+### It's a feature flag
+
+The master switch is `newsclaw.memory.lifecycle-mediator-enabled`.
+
+::: warning Mind the default
+The Java property's bare default is `false`, but the `application.yml` **shipped with the release sets it to `true`** — so per-owner isolation is **on by default in a default install**. To go back to the old shared behavior (all writes to TEAM), set it to `false` explicitly in your config.
+:::
+
+When on: conversation extraction writes to the owner's PERSONAL memory and recall filters by owner_key; when off, all writes fall back to shared TEAM. Multi-tenant instances stay on; single-user deployments can turn it off.
+
+Under the hood: migration `V137` adds `owner_key` + `scope` columns to `mate_workspace_file` / `mate_memory_recall` / `mate_fact`, backfilling legacy rows as `TEAM` (so no memory gets hidden on upgrade). Memory tools like `remember` resolve owner_key from the current request context — when the flag is on they write to that owner's PERSONAL memory, when off they fall back to shared writes.
+
+---
+
+## Multi-layer memory with pluggable providers
+
+The memory layer is not one hard-coded implementation. It's an **interface** — the multi-layer architecture lets you stack providers:
+
+- The **default provider** is the workspace-file-based memory described in the rest of this page. It ships with NewsClaw, and for most people it's all they'll ever need.
+- **Custom providers** can be dropped in for specialized retrieval — vector-based long-term memory, graph memory, external memory services.
+- **Layering** means a single agent can talk to multiple providers at once. A short-term provider returns recent context; a semantic provider returns related memories; a Wiki provider returns authoritative references. They compose at read time.
+
+For most agents, **default is enough** and you should ignore this section. If you're building something specialized — an agent that needs to remember thousands of facts with vector search, an agent that needs graph-structured memory — this is where you plug in. See [Architecture](./architecture).
+
+---
+
+## The four files every agent has
+
+Every agent has its own workspace. Four markdown files form the backbone of long-term memory:
+
+```
+workspace/{agentId}/
+├── AGENTS.md          # How the agent uses memory — behavior guide
+├── SOUL.md            # Who the agent is — core identity, personality, boundaries
+├── PROFILE.md         # Who you are — user profile, preferences, background
+├── MEMORY.md          # What matters — key decisions, project context, todos
+└── memory/
+    ├── 2026-04-09.md  # Daily notes — what happened today, append-only
+    ├── 2026-04-10.md
+    └── 2026-04-11.md
+```
+
+The first four are **injected into the system prompt on every turn** (if `enabled=true`). Daily notes are not — they feed consolidation instead.
+
+### What each file is *for*
+
+- **AGENTS.md** — the agent's user manual for itself. When to write memory, what goes where, what tools are available. Seed: `enabled=true`, `sort_order=0`.
+- **SOUL.md** — who the agent fundamentally is. Self-awareness, evolution guidance, privacy and boundary principles. Edit when you want to change the agent's character at a deep level. Seed: `enabled=true`, `sort_order=1`.
+- **PROFILE.md** — what the agent has learned about you. Name, occupation, tech stack, communication preferences. Updated by the extractor when conversations reveal something durable. Full-replace writes. Seed: `enabled=true`, `sort_order=2`.
+- **MEMORY.md** — what the agent has decided matters enough to keep. Active projects, unresolved decisions, open threads, things you asked it to remember. Updated by both the extractor and the consolidator. Seed: `enabled=true`, `sort_order=3`.
+
+::: tip New in 1.3.0: workflows can write memory
+From v1.3.0, the [workflow](./workflow) `write_memory` step can write the run's output directly into an employee's `MEMORY.md` (or any enabled memory file) when the flow completes. Four merge strategies: `append` / `replace_section` / `upsert_kv` / `overwrite`. Memory is no longer written exclusively by the conversation extractor or the Dreaming consolidator — a business-process outcome can be persisted too.
+:::
+
+### Daily notes
+
+Conversation highlights archived by date, in append mode — multiple conversations in one day concatenate into the same file. Not injected into the system prompt (`enabled=false`). They exist so the consolidator has something to scan at 3 AM.
+
+---
+
+## Short-term: the context window
+
+Before every LLM call, NewsClaw builds the prompt that actually gets sent:
+
+```
+[System Prompt]                        ← Always first
+[Workspace file injection]             ← AGENTS / SOUL / PROFILE / MEMORY
+[Conversation context summary]         ← Only if earlier turns got compressed
+[Message 1: user]
+[Message 2: assistant]
+...
+[Current user message]                 ← Always last
+```
+
+Workspace files are injected sorted by `sort_order`, formatted as:
+
+```
+--- AGENTS.md ---
+(content)
+
+--- SOUL.md ---
+(content)
+
+--- PROFILE.md ---
+(content)
+
+--- MEMORY.md ---
+(content)
+```
+
+Only files with `enabled=true` are included.
+
+### When context gets too big
+
+Three-stage defense:
+
+**Stage 1 — proactive compression.** When estimated total exceeds 75% of the budget (default window 128k tokens), the system calls the LLM to summarize earlier turns. The tail is retained dynamically based on a token budget, with a floor controlled by `preserve-recent-pairs` and `protect-last-min-messages` (whichever is larger; defaults to at least 10 messages). The summary is cached for 30 minutes.
+
+**Stage 2 — emergency recovery.** If the LLM still returns context-too-large, the system stops calling the LLM. It discards older messages, keeps the last 2 turns, and retries once.
+
+**Stage 3 — hard trim.** If tokens are *still* over budget, messages drop from the front until the prompt fits. The last 2 messages are always preserved.
+
+> **Security design** — the summary is injected as a **user message**, not a system message. Deliberate: preventing compressed historical user input from being elevated into system-level instructions eliminates an injection vector.
+
+### Configuration
+
+```yaml
+newsclaw:
+  agent:
+    conversation:
+      window:
+        default-max-input-tokens: 128000   # Global max
+        compact-trigger-ratio: 0.75        # Compression trigger
+        preserve-recent-pairs: 2           # Turns preserved verbatim
+        summary-max-tokens: 300            # Compression budget
+```
+
+---
+
+## Post-chat extraction
+
+After a conversation ends, the system asynchronously pulls out what's memorable and writes it to PROFILE.md, MEMORY.md, and the day's daily note. This happens off the user-response path — it never blocks the next turn.
+
+### What triggers it
+
+After a turn completes, the system handles extraction on a background thread. A few preconditions must pass before it actually runs:
+
+- Auto-summarize is on
+- The conversation wasn't itself triggered by the consolidation cron job (avoids recursion)
+- Message count meets the minimum (default 4)
+- The last user message is long enough (default at least 10 chars)
+
+All pass — extraction begins.
+
+### Concurrency control
+
+- **Cooldown** — same agent won't extract twice within 5 minutes (default)
+- **Per-agent lock** — if an extraction is already running for this agent, the new request is skipped
+
+### What the LLM actually does
+
+1. Load conversation messages
+2. Read current PROFILE.md, MEMORY.md, today's daily note
+3. Build a transcript: up to 30 messages, each truncated to 2000 chars
+4. Call the LLM with the memory-summarize prompt templates
+5. Parse the JSON response
+6. Apply writes
+
+### LLM response schema
+
+| Field | Type | What it does |
+|-------|------|--------------|
+| `should_update` | boolean | Whether memory needs updating |
+| `reason` | string | Why (for audit) |
+| `daily_entry` | string | Content to append to today's daily note |
+| `memory_update` | string | Full new content for MEMORY.md |
+| `profile_update` | string | Full new content for PROFILE.md |
+
+### File write rules
+
+- **PROFILE.md** — full replace, only if `profile_update` is non-empty
+- **MEMORY.md** — full replace, only if `memory_update` is non-empty
+- **memory/YYYY-MM-DD.md** — append, created with date heading if missing
+
+---
+
+## Consolidation and dreaming
+
+The third layer runs on a schedule. Its job is to watch daily notes pile up and periodically ask: *what's the pattern here, what should be promoted into core memory, what's stale and should be forgotten?*
+
+### What it does
+
+1. Lists the agent's `memory/*.md` files, takes the most recent 7 days
+2. Reads those + the current MEMORY.md
+3. Calls the LLM with the consolidation prompt templates
+4. The LLM returns `{should_update, reason, memory_content}`
+5. If `should_update` is true, MEMORY.md is fully replaced
+
+### Trigger methods
+
+- **Automatic** — every agent has a row in the system's scheduled jobs, set to run nightly at 3 AM
+- **Manual** — `POST /api/v1/memory/{agentId}/emergence`
+
+### Why it's not recursive
+
+Consolidation triggers a "conversation" through the agent. Without protection, that conversation would re-trigger the post-chat extraction listener, which would trigger another conversation, ad infinitum.
+
+The event carries a trigger-source flag. The extraction listener sees that the conversation was started by the consolidation job and skips it.
+
+### DREAMS.md — the consolidation diary
+
+Each consolidation run appends a short entry to `workspace/{agentId}/DREAMS.md`:
+
+- what it looked at
+- what patterns it found
+- what changed in MEMORY.md
+- the date
+
+Human-readable audit trail — open DREAMS.md and see *how* the memory got to its current state. Caps its own growth; old entries get summarized when the file exceeds a threshold.
+
+### Scored emergence and recall tracking
+
+Consolidation tracks:
+
+- **Which memory entries were actively recalled** in recent conversations — read patterns feed back into importance
+- **Scored emergence** — candidate patterns ranked by frequency + recency + explicit recall, only high-scoring ones make it into MEMORY.md
+- **Multi-gate filtering** — low-signal extractions (one-off mentions, contradictions, things the user later corrected) get filtered before becoming memory
+- **Dreaming status API** — `GET /api/v1/memory/{agentId}/dreaming/status`
+
+### Full lifecycle (opt-in via flag)
+
+Memory grows from "dream nightly" to a complete turn-by-turn lifecycle. This behavior lands behind feature flags — default off in the open-source build, on in production builds.
+
+What it does:
+
+- **Every turn is bookkept** — the system takes notes at the start and end of every turn, not just at nightly consolidation
+- **Fact projection** — conversations are projected into structured "fact" rows the agent can query. Trust scoring + decay built in.
+- **Structured nightly report** — consolidation produces a full report; you can re-consolidate by topic on demand
+- **Morning card** — the first conversation of the day surfaces yesterday's report; you Confirm / Edit / Forget each fact
+- **Contradiction inbox** — when new facts conflict with old ones, you get a queue instead of silent overwrites
+- **Explicit forget** — say "forget that," and it actually forgets, everywhere
+- **Feedback scoring** — thumbs up/down on retrieved facts feeds back into trust
+- **SOUL auto-evolution** — the agent's persona file rewrites itself from accumulated facts
+- **Monthly archive** — old reports roll into a compressed monthly archive, browsable in the timeline
+- **Memory Browser** — timeline, facts, contradictions, diff viewer, and a trust bar across the top
+
+Enable in `application.yml` (these flags all live under `newsclaw.memory`, grouped by phase):
+
+```yaml
+newsclaw:
+  memory:
+    # Phase 1: turn-by-turn lifecycle bus
+    lifecycle-mediator-enabled: true
+    dream:
+      focused-enabled: true        # focused dream endpoint
+      archive-enabled: true        # monthly archive rotation
+      archive-keep-days: 30
+      max-candidates-per-dream: 100
+    # Phase 2: SOUL auto-evolution
+    soul-update-interval: 20       # one SOUL.md rewrite every 20 writes (0 = off)
+    # Phase 3: fact projection
+    fact:
+      projection-enabled: true
+      projection-rebuild-cron: "0 */30 * * * ?"
+      contradiction-check-enabled: false   # contradiction detection (experimental, off by default)
+      trust-half-life-days: 60
+      forget-enabled: true         # the "Forget" button in the UI
+```
+
+> The morning card is an endpoint (`GET /api/v1/memory/{agentId}/dream/morning-card`), not a standalone flag — it has data as long as the fact-projection + dream lifecycle is on.
+
+---
+
+## Bounding always-on memory size
+
+::: tip New
+The memory that gets injected into the system prompt on every turn — `user` / `feedback` structured entries, `PROFILE.md`, `MEMORY.md` — has a silent problem: **it only ever grows**. As entries accumulate, each round's token cost climbs steadily. This group of mechanisms puts deterministic size limits on always-on memory.
+:::
+
+Three layers, each covering a different stage:
+
+### Injection budget (truncate at inject time, disk untouched)
+
+When `user` / `feedback` structured entries are injected into the system prompt they are sorted by their `Updated:` date (LRU) and only the most recent N are kept. Entries beyond the limit are **discarded at inject time** — the on-disk file is not modified — and the block footer discloses how many were omitted.
+
+- `newsclaw.memory.system-block-max-chars` (default `4000`): character cap for the always-on structured block; when exceeded, entries are dropped oldest-first. `0` = unlimited.
+- `newsclaw.memory.system-block-max-entries-per-type` (default `40`): maximum entries injected per type (`user` / `feedback`). `0` = unlimited.
+
+### Nightly consolidation (shrink files at the storage layer)
+
+The injection budget truncates at inject time, but the on-disk files keep growing. **Consolidation** compacts them at the storage layer: a nightly job (default 03:30, on its own schedule independent of [Dreaming](#consolidation-and-dreaming)) walks each agent's shared bucket and all per-owner buckets, and when entry count exceeds the threshold it calls the LLM to merge near-duplicate or stale entries and writes the result back.
+
+One **safety invariant**: the entry count after consolidation can only decrease — if the model hallucinates additional entries, that write is skipped entirely.
+
+- `newsclaw.memory.structured-consolidation-enabled` (default `true`): when off, only the injection budget applies — no storage-side merging.
+- `newsclaw.memory.structured-consolidation-min-entries` (default `8`): buckets with fewer entries than this skip the LLM call to save cost.
+- `newsclaw.memory.structured-consolidation-cron` (default `"0 30 3 * * ?"`): independent schedule; does not affect Dreaming.
+- `newsclaw.memory.structured-consolidation-max-owners-per-run` (default `50`): maximum owner buckets processed per agent per run; the rest are deferred to the next run. `0` = unlimited.
+
+Manual trigger: `POST /api/v1/memory/{agentId}/structured-consolidation` — returns stats including `ownersConsolidated`, `updated`, `entriesBefore`, and `entriesAfter`.
+
+> Don't confuse this with [Dreaming](#consolidation-and-dreaming): Dreaming merges daily notes into `MEMORY.md` (promoting what matters); consolidation deduplicates and trims `user` / `feedback` structured entries. Two different jobs, two different schedules.
+
+### File ceiling (deterministic hard cap at rewrite time)
+
+`PROFILE.md` and `MEMORY.md` are fully rewritten by the LLM. The prompt asks for conciseness, but there is no hard constraint, so files can still grow unbounded. The file ceiling is the **deterministic fallback at write time**: if the content exceeds the budget it is truncated at the last `##` section boundary that still fits (preserving the head of the file), and a truncation marker is appended.
+
+- `newsclaw.memory.profile-max-chars` (default `4000`): hard character cap for PROFILE.md. `0` = unlimited.
+- `newsclaw.memory.memory-md-max-chars` (default `8000`): hard character cap for MEMORY.md. `0` = unlimited.
+
+---
+
+## Agents reading and writing their own memory
+
+Memory isn't just something that *happens to* an agent. The agent itself can actively read and write its own files during a conversation, through a set of workspace memory tools:
+
+| Method | What it does |
+|--------|--------------|
+| `list_workspace_memory_files` | List files, optional filename prefix filter, sorted by `sort_order` |
+| `read_workspace_memory_file` | Read a specific file's content |
+| `write_workspace_memory_file` | Create or overwrite a file (full replace) |
+| `edit_workspace_memory_file` | Find-and-replace edit (incremental, `replaceAll` supported) |
+
+### Keyword search over its own memory
+
+::: tip New in 1.4.0
+An employee can do more than read whole files — during a conversation it can **search all of its workspace memory files by keyword** and jump straight to the line.
+:::
+
+This is an agent runtime capability: the employee supplies a keyword and the system searches across its own workspace memory files:
+
+- **Tokenization** — CJK is split into 2-character sliding windows, Latin text on whitespace, so both languages match
+- **Per-file weighted scoring** — hits in core files like `AGENTS.md` / `MEMORY.md` / `PROFILE.md` rank above hits in the daily ledger
+- **What comes back** — each hit gives a filename + line number + an 80-char context snippet (matched term highlighted) + a relevance score
+- **Scan scope** — up to ~50 candidate files, sorted by score, highest first
+
+Use it when the employee wants to confirm "did I note this before?" or recover a specific decision spread across many days of notes — without pulling whole files into context.
+
+### Examples
+
+**List:**
+
+```json
+// in
+{"agentId": 1, "filenamePrefix": "memory/"}
+// out
+{"agentId": 1, "count": 3, "files": [
+  {"filename": "memory/2026-04-09.md", "enabled": false, "fileSize": 512},
+  ...
+]}
+```
+
+**Read:**
+
+```json
+// in
+{"agentId": 1, "filename": "MEMORY.md"}
+// out
+{"agentId": 1, "filename": "MEMORY.md", "enabled": true, "content": "..."}
+```
+
+**Edit:**
+
+```json
+// in
+{"agentId": 1, "filename": "MEMORY.md", "oldText": "old", "newText": "new"}
+// out
+{"agentId": 1, "filename": "MEMORY.md", "replacements": 1}
+```
+
+### Safety rules
+
+- `.md` files only
+- No absolute paths, no `..` directory traversal
+- `write` is a full overwrite — read first if you care about existing content
+- Newly created files have `enabled=false` by default
+
+---
+
+## Memory snapshot export / import
+
+::: tip New in 1.4.0
+An employee's entire accumulated memory can be packaged into a ZIP and taken with you — for backup, migration to another deployment, or cloning a coworker who "already knows you."
+:::
+
+A snapshot packages an employee's core memory into a single ZIP:
+
+- `AGENTS.md` / `MEMORY.md` / `PROFILE.md` / `SOUL.md` / `KNOWLEDGE.md`
+- daily ledger files (`memory/YYYY-MM-DD.md`)
+- a `manifest.json` (what's in the package, and which employee it came from)
+
+### Three endpoints
+
+| Method | Path | Role | What it does |
+|--------|------|------|--------------|
+| GET | `/api/v1/agents/{agentId}/workspace/memory/export` | Viewer | Export the ZIP — even read-only access can take a backup |
+| POST | `.../workspace/memory/import/preview` | Member | **Dry run**: parse the ZIP, classify each file as create / update / skip, write nothing |
+| POST | `.../workspace/memory/import` | Member | Apply the import, written **atomically** |
+
+Preview to see the diff, confirm, then import — you always know what will change before it does.
+
+### Safety guards
+
+- **Whitelist** — only the file types listed above are accepted; everything else is ignored
+- **Zip-bomb guards** — ≤ 500 entries, ≤ 1 MB each (uncompressed), ≤ 16 MB total; anything over is rejected
+- **UI toggle state is not serialized** — `enabled` / `sortOrder` are kept out of the snapshot; on import into a new employee the target decides them by seed rules, rather than forcing the source's toggle state
+
+### UI
+
+- The **Agent Context page right panel** has **Export / Import** buttons
+- Import shows a **diff** first (what's created, overwritten, skipped) and only writes after you confirm
+
+---
+
+## Configuration reference
+
+### Memory extraction & consolidation
+
+```yaml
+newsclaw:
+  memory:
+    # --- Automatic extraction ---
+    auto-summarize-enabled: true
+    min-messages-for-summarize: 4
+    min-user-message-length: 10
+    skip-cron-conversations: true
+    summary-max-tokens: 1000
+    max-transcript-messages: 30
+
+    # --- Concurrency ---
+    cooldown-minutes: 5
+
+    # --- Consolidation / dreaming ---
+    emergence-enabled: true
+    emergence-day-range: 7
+
+    # --- per-owner memory isolation (1.5.0) ---
+    # The value shipped with the release is true (on): conversation extraction writes to the owner's
+    # PERSONAL memory and recall filters by owner_key. Set false for the old shared behavior (all writes
+    # to TEAM). The bare Java-property default is false.
+    lifecycle-mediator-enabled: true
+
+    # --- always-on memory size bounds ---
+    # Injection budget: always-on user/feedback structured block (LRU truncation at inject time, 0 = unlimited)
+    system-block-max-chars: 4000
+    system-block-max-entries-per-type: 40
+    # Nightly consolidation: merge/deduplicate user/feedback entries at the storage layer (independent of dreaming)
+    structured-consolidation-enabled: true
+    structured-consolidation-min-entries: 8
+    structured-consolidation-cron: "0 30 3 * * ?"
+    structured-consolidation-max-owners-per-run: 50
+    # File ceiling: hard cap applied when PROFILE.md / MEMORY.md are rewritten (section boundary, 0 = unlimited)
+    profile-max-chars: 4000
+    memory-md-max-chars: 8000
+```
+
+Prefix: `newsclaw.memory`.
+
+### Context window
+
+```yaml
+newsclaw:
+  agent:
+    conversation:
+      window:
+        default-max-input-tokens: 128000
+        compact-trigger-ratio: 0.75
+        preserve-recent-pairs: 2
+        summary-max-tokens: 300
+```
+
+---
+
+## API endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/v1/memory/{agentId}/emergence` | Manually trigger consolidation |
+| POST | `/api/v1/memory/{agentId}/summarize/{conversationId}` | Manually trigger extraction |
+| POST | `/api/v1/memory/{agentId}/structured-consolidation` | Manually trigger user/feedback structured-entry consolidation |
+| GET | `/api/v1/memory/{agentId}/dreaming/status` | Last run, next run, latest DREAMS.md entry |
+
+---
+
+For developers extending the memory layer, see [Architecture](./architecture).
+
+---
+
+## Mem0 Integration (Optional)
+
+::: warning Not in the default stack
+Mem0 integration is an **optional community contribution** — it is NOT part of a default NewsClaw install. It requires you to **self-host a Mem0 service** (FastAPI + pgvector + optional Neo4j). NewsClaw's "local-first, zero external dependencies" stance is unchanged — this plugin just adds an **additive semantic recall channel** for people willing to run that extra service.
+:::
+
+[Mem0](https://github.com/mem0ai/mem0) is a standalone memory service that handles LLM memory extraction, deduplication, and vector-based recall. NewsClaw's `newsclaw-plugin-mem0` module plugs it in as a **plugin-style memory provider** — none of the 4 built-in providers (Builtin / Structured / Session / Fact) are touched. Mem0 stacks on top as a 5th, external provider. **They don't replace each other.**
+
+### What it does
+
+| Hook | Behavior |
+|------|----------|
+| `systemPromptBlock` | Returns empty — leaves the resident system prompt alone, avoids per-turn token bloat |
+| `prefetch(agentId, query, ownerKey)` | When `searchEnabled=true` and `ownerKey` is non-blank, calls `POST {baseUrl}/memories/search/` and returns a `[Mem0 Recall]` block concatenated into the current turn's context |
+| `syncTurn(agentId, conversationId, userMessage, assistantReply, ownerKey)` | When `syncEnabled=true` and `ownerKey` is non-blank, **asynchronously** pushes this turn's user/assistant messages to `POST {baseUrl}/memories/` under `user_id = ownerKey` — the same identifier recall queries by. Failures are logged only, never block the response |
+| `getToolBeans` | Empty list — v1 exposes no agent-callable tools |
+
+**Fault isolation**: any exception in recall or sync is swallowed and logged by the plugin itself; the platform keeps going with the other providers. Mem0 being down does not affect NewsClaw's local memory.
+
+### Per-owner isolation mapping
+
+Mem0 isolates by `user_id` + `agent_id`. NewsClaw maps them as:
+
+| NewsClaw field | Mem0 field | Notes |
+|---|---|---|
+| `ownerKey` (e.g. `user:42` / `feishu:sender_abc`) | `user_id` | Passed through verbatim |
+| `agentId` | `agent_id` | The digital employee ID |
+
+Both `prefetch` and `syncTurn` receive `ownerKey` from the platform, so writes and recalls are keyed by the same `user_id`. The variants without `ownerKey` skip (empty recall / dropped write) — Mem0 requires `user_id`, without it isolation is impossible.
+
+### Installation
+
+1. **Deploy Mem0**: following Mem0's official docs, self-host an instance (FastAPI + pgvector + optional Neo4j). Note its base URL, e.g. `http://localhost:8080`.
+2. **Build the plugin JAR**: from the NewsClaw repo root, run `mvn -pl newsclaw-plugin-mem0 -am package` — the JAR lands at `newsclaw-plugin-mem0/target/newsclaw-plugin-mem0-*.jar`.
+3. **Drop the JAR**: place it in NewsClaw's `plugins/` directory.
+4. **Configure**: in the plugin admin UI, set `baseUrl` (required) and optionally `apiKey` and other tunables. Restart or reload the plugin.
+
+### Configuration
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `baseUrl` | string | yes | — | Mem0 REST API base URL, e.g. `http://localhost:8080` |
+| `apiKey` | string | no | — | Bearer token sent as the `Authorization` header to Mem0 |
+| `searchEnabled` | boolean | no | `true` | Whether prefetch should call `/memories/search/` for semantic recall |
+| `syncEnabled` | boolean | no | `true` | Whether syncTurn should push each turn to `/memories/` |
+| `maxResults` | integer | no | `5` | Cap on memories returned per recall |
+| `timeoutMs` | integer | no | `3000` | HTTP timeout in milliseconds, shared by recall and sync |
+
+Config is read once at plugin load — changes require a plugin reload to take effect.
+
+### Known limitations (v1)
+
+- **Turns without a resolved owner are not synced**: `syncTurn` requires `ownerKey`; turns where the platform cannot resolve one (e.g. system-triggered runs) are skipped rather than written under a fallback identifier that recall could never surface.
+- **No token budget control**: the `[Mem0 Recall]` block returned by prefetch is concatenated into the context directly — it is NOT subject to the `system-block-max-chars` injection budget (that budget only governs `user`/`feedback` structured entries). `maxResults` is the only size knob.
+- **No agent tools**: v1 does not expose `mem0_search` / `mem0_add` style tools for the agent to call proactively. The agent only passively receives prefetch results.
+
+---
+
+## Next
+
+- [Agents](./agents) — how agents use memory during a turn
+- [LLM Wiki](./wiki) — the *deliberate* knowledge layer, contrasted with passive memory
+- [Tools](./tools) — the workspace memory tool is one of many
+- [Configuration](./config) — full config reference
+- [Architecture](./architecture) — backend code organization, SPI extension points

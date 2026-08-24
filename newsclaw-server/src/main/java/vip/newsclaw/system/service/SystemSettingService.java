@@ -1,0 +1,719 @@
+package vip.newsclaw.system.service;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Service;
+import vip.newsclaw.config.EnvironmentConfig;
+import vip.newsclaw.exception.NewsClawException;
+import vip.newsclaw.plugin.PluginManager;
+import vip.newsclaw.system.model.SearchProviderCatalogEntry;
+import vip.newsclaw.system.model.SearchProviderCatalogResponse;
+import vip.newsclaw.system.model.SystemSettingEntity;
+import vip.newsclaw.system.model.SystemSettingsDTO;
+import vip.newsclaw.system.repository.SystemSettingMapper;
+import vip.newsclaw.tool.guard.WorkspacePathGuard;
+import vip.newsclaw.tool.search.SearchProvider;
+import vip.newsclaw.tool.search.SearchProviderRegistry;
+import vip.newsclaw.workspace.core.config.WorkspaceSandboxProperties;
+
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.Set;
+
+@Slf4j
+@Service
+public class SystemSettingService {
+
+    private static final String LANGUAGE_KEY = "language";
+    private static final String STREAM_ENABLED_KEY = "streamEnabled";
+    private static final String DEBUG_MODE_KEY = "debugMode";
+    private static final String SHOW_THINKING_KEY = "showThinking";
+    private static final String THINKING_FULL_KEY = "thinkingFull";
+    private static final String STATEGRAPH_ENABLED_KEY = "stateGraphEnabled";
+
+    // 搜索服务配置 keys
+    private static final String SEARCH_ENABLED_KEY = "searchEnabled";
+    private static final String SEARCH_PROVIDER_KEY = "searchProvider";
+    private static final String SEARCH_FALLBACK_ENABLED_KEY = "searchFallbackEnabled";
+    private static final String SERPER_API_KEY_KEY = "serperApiKey";
+    private static final String SERPER_BASE_URL_KEY = "serperBaseUrl";
+    private static final String TAVILY_API_KEY_KEY = "tavilyApiKey";
+    private static final String TAVILY_BASE_URL_KEY = "tavilyBaseUrl";
+
+    // WeChat Official Account (公众号) publish credentials — read by GzhPublishTool.
+    private static final String WEIXINOA_APP_ID_KEY = "weixinoa.app_id";
+    private static final String WEIXINOA_APP_SECRET_KEY = "weixinoa.app_secret";
+    private static final String DUCKDUCKGO_ENABLED_KEY = "duckduckgoEnabled";
+    private static final String SEARXNG_BASE_URL_KEY = "searxngBaseUrl";
+
+    // 视频生成配置 keys
+    private static final String VIDEO_ENABLED_KEY = "videoEnabled";
+    private static final String VIDEO_PROVIDER_KEY = "videoProvider";
+    private static final String VIDEO_FALLBACK_ENABLED_KEY = "videoFallbackEnabled";
+
+    // 图片生成配置 keys
+    private static final String IMAGE_ENABLED_KEY = "imageEnabled";
+    private static final String IMAGE_PROVIDER_KEY = "imageProvider";
+    private static final String IMAGE_FALLBACK_ENABLED_KEY = "imageFallbackEnabled";
+
+    // TTS 配置 keys
+    private static final String TTS_ENABLED_KEY = "ttsEnabled";
+    private static final String TTS_PROVIDER_KEY = "ttsProvider";
+    private static final String TTS_FALLBACK_ENABLED_KEY = "ttsFallbackEnabled";
+    private static final String TTS_AUTO_MODE_KEY = "ttsAutoMode";
+    private static final String TTS_DEFAULT_VOICE_KEY = "ttsDefaultVoice";
+    private static final String TTS_SPEED_KEY = "ttsSpeed";
+
+    // STT 配置 keys
+    private static final String STT_ENABLED_KEY = "sttEnabled";
+    private static final String STT_PROVIDER_KEY = "sttProvider";
+    private static final String STT_FALLBACK_ENABLED_KEY = "sttFallbackEnabled";
+    // Issue #76: let the OpenAI STT provider point at any OpenAI-compat endpoint.
+    private static final String STT_OPENAI_COMPAT_PROVIDER_ID_KEY = "sttOpenAiCompatProviderId";
+    private static final String STT_OPENAI_COMPAT_MODEL_KEY = "sttOpenAiCompatModel";
+
+    // 音乐生成配置 keys
+    private static final String MUSIC_ENABLED_KEY = "musicEnabled";
+    private static final String MUSIC_PROVIDER_KEY = "musicProvider";
+    private static final String MUSIC_FALLBACK_ENABLED_KEY = "musicFallbackEnabled";
+
+    // 3D 模型生成配置 keys
+    private static final String MODEL3D_ENABLED_KEY = "model3dEnabled";
+    private static final String MODEL3D_PROVIDER_KEY = "model3dProvider";
+    private static final String MODEL3D_FALLBACK_ENABLED_KEY = "model3dFallbackEnabled";
+
+    // Multimodal sidecar routing keys (id values; references mate_model_config.id)
+    private static final String DEFAULT_VISION_MODEL_KEY = "default.vision_model";
+    private static final String DEFAULT_VIDEO_MODEL_KEY = "default.video_model";
+
+    /**
+     * Default workspace storage root override. When set, it replaces the
+     * yml/env-configured {@code newsclaw.workspace.sandbox.root} as the global
+     * fallback sandbox root for conversations without a per-workspace base
+     * path. Empty string means "not overridden" (fall back to yml/env).
+     */
+    private static final String WORKSPACE_STORAGE_ROOT_KEY = "workspace.storage_root";
+
+    /** Managed DeepSeek Harness runtime configuration. */
+    public static final String DSH_API_KEY_KEY = "dsh.api_key";
+
+    private static final String ZHIPU_API_KEY_KEY = "zhipuApiKey";
+    private static final String ZHIPU_BASE_URL_KEY = "zhipuBaseUrl";
+    private static final String FAL_API_KEY_KEY = "falApiKey";
+    private static final String KLING_ACCESS_KEY_KEY = "klingAccessKey";
+    private static final String KLING_SECRET_KEY_KEY = "klingSecretKey";
+    private static final String RUNWAY_API_KEY_KEY = "runwayApiKey";
+    private static final String MINIMAX_API_KEY_KEY = "minimaxApiKey";
+    private static final String MINIMAX_REGION_KEY = "minimaxRegion";
+
+    /**
+     * Keys whose values are secrets and must be encrypted at rest. Reads decrypt
+     * transparently and writes encrypt; legacy plaintext is upgraded on next save
+     * (see {@link SettingCrypto}). Add every credential-bearing key here.
+     */
+    private static final Set<String> SENSITIVE_KEYS = Set.of(
+            SERPER_API_KEY_KEY, TAVILY_API_KEY_KEY, WEIXINOA_APP_SECRET_KEY,
+            ZHIPU_API_KEY_KEY, FAL_API_KEY_KEY, KLING_ACCESS_KEY_KEY, KLING_SECRET_KEY_KEY,
+            RUNWAY_API_KEY_KEY, MINIMAX_API_KEY_KEY, DSH_API_KEY_KEY);
+
+    private final SystemSettingMapper systemSettingMapper;
+    private final SearchProviderRegistry searchProviderRegistry;
+    private final SettingCrypto settingCrypto;
+    private final WorkspaceSandboxProperties workspaceSandboxProperties;
+
+    /**
+     * {@code PluginManager} is injected lazily because the bean graph is
+     * cyclic: {@code pluginManager → toolRegistry → i18nService →
+     * systemSettingService}. It is only consulted from
+     * {@link #toEntry} at request time (never at construction), so a lazy
+     * proxy is safe and breaks the cycle cleanly. Note: {@code @Lazy} must be
+     * applied via an explicit constructor (not {@code @RequiredArgsConstructor})
+     * — Lombok does not copy field-level annotations onto the generated
+     * constructor parameter, so a Lombok-only {@code @Lazy} silently has no
+     * effect and Spring still resolves the bean eagerly.
+     */
+    @Lazy
+    private final PluginManager pluginManager;
+
+    public SystemSettingService(SystemSettingMapper systemSettingMapper,
+                                 SearchProviderRegistry searchProviderRegistry,
+                                 SettingCrypto settingCrypto,
+                                 WorkspaceSandboxProperties workspaceSandboxProperties,
+                                 @Lazy PluginManager pluginManager) {
+        this.systemSettingMapper = systemSettingMapper;
+        this.searchProviderRegistry = searchProviderRegistry;
+        this.settingCrypto = settingCrypto;
+        this.workspaceSandboxProperties = workspaceSandboxProperties;
+        this.pluginManager = pluginManager;
+    }
+
+    /**
+     * Resolve the SearXNG base URL: DB value takes priority; fall back to the
+     * {@code SEARXNG_BASE_URL} environment variable so Docker deployments work
+     * out-of-the-box without manual configuration in the UI.
+     */
+    private String resolveSearxngBaseUrl() {
+        // getValue() already applies the centralized .env overlay and honors
+        // NEWSCLAW_ENV_CONFIG_ENABLED. Do not read System.getenv directly
+        // here, otherwise disabling the overlay would still leak this value
+        // into the search provider.
+        return getValue(SEARXNG_BASE_URL_KEY, "");
+    }
+
+    public SystemSettingsDTO getSettings() {
+        SystemSettingsDTO dto = new SystemSettingsDTO();
+        dto.setLanguage(getValue(LANGUAGE_KEY, "zh-CN"));
+        dto.setStreamEnabled(Boolean.parseBoolean(getValue(STREAM_ENABLED_KEY, "true")));
+        dto.setDebugMode(Boolean.parseBoolean(getValue(DEBUG_MODE_KEY, "false")));
+        dto.setShowThinking(Boolean.parseBoolean(getValue(SHOW_THINKING_KEY, "true")));
+        dto.setThinkingFull(Boolean.parseBoolean(getValue(THINKING_FULL_KEY, "true")));
+        dto.setStateGraphEnabled(Boolean.parseBoolean(getValue(STATEGRAPH_ENABLED_KEY, "false")));
+
+        // 搜索服务配置
+        dto.setSearchEnabled(Boolean.parseBoolean(getValue(SEARCH_ENABLED_KEY, "true")));
+        dto.setSearchProvider(getValue(SEARCH_PROVIDER_KEY, "serper"));
+        dto.setSearchFallbackEnabled(Boolean.parseBoolean(getValue(SEARCH_FALLBACK_ENABLED_KEY, "false")));
+        dto.setSerperBaseUrl(getValue(SERPER_BASE_URL_KEY, "https://google.serper.dev/search"));
+        dto.setTavilyBaseUrl(getValue(TAVILY_BASE_URL_KEY, "https://api.tavily.com/search"));
+        // Keyless provider 配置
+        dto.setDuckduckgoEnabled(Boolean.parseBoolean(getValue(DUCKDUCKGO_ENABLED_KEY, "true")));
+        dto.setSearxngBaseUrl(resolveSearxngBaseUrl());
+        // API Key 脱敏回显
+        dto.setSerperApiKeyMasked(maskApiKey(getValue(SERPER_API_KEY_KEY, "")));
+        dto.setTavilyApiKeyMasked(maskApiKey(getValue(TAVILY_API_KEY_KEY, "")));
+
+        // 公众号发布凭证（AppSecret 脱敏回显，AppID 明文）
+        dto.setWeixinoaAppId(getValue(WEIXINOA_APP_ID_KEY, ""));
+        dto.setWeixinoaAppSecretMasked(maskApiKey(getValue(WEIXINOA_APP_SECRET_KEY, "")));
+
+        // 视频生成配置
+        dto.setVideoEnabled(Boolean.parseBoolean(getValue(VIDEO_ENABLED_KEY, "false")));
+        dto.setVideoProvider(getValue(VIDEO_PROVIDER_KEY, "auto"));
+        dto.setVideoFallbackEnabled(Boolean.parseBoolean(getValue(VIDEO_FALLBACK_ENABLED_KEY, "true")));
+        dto.setZhipuBaseUrl(getValue(ZHIPU_BASE_URL_KEY, ""));
+        dto.setZhipuApiKeyMasked(maskApiKey(getValue(ZHIPU_API_KEY_KEY, "")));
+        dto.setFalApiKeyMasked(maskApiKey(getValue(FAL_API_KEY_KEY, "")));
+        dto.setKlingAccessKeyMasked(maskApiKey(getValue(KLING_ACCESS_KEY_KEY, "")));
+        dto.setKlingSecretKeyMasked(maskApiKey(getValue(KLING_SECRET_KEY_KEY, "")));
+        dto.setRunwayApiKeyMasked(maskApiKey(getValue(RUNWAY_API_KEY_KEY, "")));
+        dto.setMinimaxApiKeyMasked(maskApiKey(getValue(MINIMAX_API_KEY_KEY, "")));
+        dto.setMinimaxRegion(getValue(MINIMAX_REGION_KEY, "global"));
+
+        // 图片生成配置
+        dto.setImageEnabled(Boolean.parseBoolean(getValue(IMAGE_ENABLED_KEY, "false")));
+        dto.setImageProvider(getValue(IMAGE_PROVIDER_KEY, "auto"));
+        dto.setImageFallbackEnabled(Boolean.parseBoolean(getValue(IMAGE_FALLBACK_ENABLED_KEY, "true")));
+
+        // TTS 配置
+        dto.setTtsEnabled(Boolean.parseBoolean(getValue(TTS_ENABLED_KEY, "false")));
+        dto.setTtsProvider(getValue(TTS_PROVIDER_KEY, "auto"));
+        dto.setTtsFallbackEnabled(Boolean.parseBoolean(getValue(TTS_FALLBACK_ENABLED_KEY, "true")));
+        dto.setTtsAutoMode(getValue(TTS_AUTO_MODE_KEY, "off"));
+        dto.setTtsDefaultVoice(getValue(TTS_DEFAULT_VOICE_KEY, ""));
+        String speedStr = getValue(TTS_SPEED_KEY, "1.0");
+        try { dto.setTtsSpeed(Double.parseDouble(speedStr)); } catch (NumberFormatException e) { dto.setTtsSpeed(1.0); }
+
+        // STT 配置
+        dto.setSttEnabled(Boolean.parseBoolean(getValue(STT_ENABLED_KEY, "false")));
+        dto.setSttProvider(getValue(STT_PROVIDER_KEY, "auto"));
+        dto.setSttFallbackEnabled(Boolean.parseBoolean(getValue(STT_FALLBACK_ENABLED_KEY, "true")));
+        // Issue #76: default to "openai" so upgrades behave identically to the
+        // old hard-coded path; users can swap to any OpenAI-compat provider row.
+        dto.setSttOpenAiCompatProviderId(getValue(STT_OPENAI_COMPAT_PROVIDER_ID_KEY, "openai"));
+        dto.setSttOpenAiCompatModel(getValue(STT_OPENAI_COMPAT_MODEL_KEY, "whisper-1"));
+
+        // 音乐生成配置
+        dto.setMusicEnabled(Boolean.parseBoolean(getValue(MUSIC_ENABLED_KEY, "false")));
+        dto.setMusicProvider(getValue(MUSIC_PROVIDER_KEY, "auto"));
+        dto.setMusicFallbackEnabled(Boolean.parseBoolean(getValue(MUSIC_FALLBACK_ENABLED_KEY, "true")));
+
+        // 3D 模型生成配置
+        dto.setModel3dEnabled(Boolean.parseBoolean(getValue(MODEL3D_ENABLED_KEY, "false")));
+        dto.setModel3dProvider(getValue(MODEL3D_PROVIDER_KEY, "auto"));
+        dto.setModel3dFallbackEnabled(Boolean.parseBoolean(getValue(MODEL3D_FALLBACK_ENABLED_KEY, "true")));
+
+        // Multimodal sidecar routing — empty string means "not configured"
+        dto.setDefaultVisionModelId(parseIdOrNull(getValue(DEFAULT_VISION_MODEL_KEY, "")));
+        dto.setDefaultVideoModelId(parseIdOrNull(getValue(DEFAULT_VIDEO_MODEL_KEY, "")));
+
+        // Default workspace storage root — empty string means "not overridden"
+        dto.setWorkspaceStorageRoot(getValue(WORKSPACE_STORAGE_ROOT_KEY, ""));
+        return dto;
+    }
+
+    private Long parseIdOrNull(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 获取全部配置（内部使用，包含明文 API Key）— 供 VideoGenerationService 等后端服务使用
+     */
+    public SystemSettingsDTO getAllSettings() {
+        SystemSettingsDTO dto = getSettings();
+        // 补充搜索明文 Key
+        dto.setSerperApiKey(getValue(SERPER_API_KEY_KEY, ""));
+        dto.setTavilyApiKey(getValue(TAVILY_API_KEY_KEY, ""));
+        // 补充视频明文 Key
+        dto.setZhipuApiKey(getValue(ZHIPU_API_KEY_KEY, ""));
+        dto.setFalApiKey(getValue(FAL_API_KEY_KEY, ""));
+        dto.setKlingAccessKey(getValue(KLING_ACCESS_KEY_KEY, ""));
+        dto.setKlingSecretKey(getValue(KLING_SECRET_KEY_KEY, ""));
+        dto.setRunwayApiKey(getValue(RUNWAY_API_KEY_KEY, ""));
+        dto.setMinimaxApiKey(getValue(MINIMAX_API_KEY_KEY, ""));
+        return dto;
+    }
+
+    /**
+     * 获取搜索配置（内部使用，包含明文 API Key）
+     */
+    public SystemSettingsDTO getSearchSettings() {
+        SystemSettingsDTO dto = new SystemSettingsDTO();
+        dto.setSearchEnabled(Boolean.parseBoolean(getValue(SEARCH_ENABLED_KEY, "true")));
+        dto.setSearchProvider(getValue(SEARCH_PROVIDER_KEY, "serper"));
+        dto.setSearchFallbackEnabled(Boolean.parseBoolean(getValue(SEARCH_FALLBACK_ENABLED_KEY, "false")));
+        dto.setSerperApiKey(getValue(SERPER_API_KEY_KEY, ""));
+        dto.setSerperBaseUrl(getValue(SERPER_BASE_URL_KEY, "https://google.serper.dev/search"));
+        dto.setTavilyApiKey(getValue(TAVILY_API_KEY_KEY, ""));
+        dto.setTavilyBaseUrl(getValue(TAVILY_BASE_URL_KEY, "https://api.tavily.com/search"));
+        dto.setDuckduckgoEnabled(Boolean.parseBoolean(getValue(DUCKDUCKGO_ENABLED_KEY, "true")));
+        dto.setSearxngBaseUrl(resolveSearxngBaseUrl());
+        return dto;
+    }
+
+    /**
+     * 搜索 provider catalog：内置 + 插件注册的全部 provider，标注是否可用、
+     * 属于哪个插件，以及当前实际会被 resolve() 选中的是哪一个。
+     */
+    public SearchProviderCatalogResponse getSearchProviderCatalog() {
+        SystemSettingsDTO config = getSearchSettings();
+
+        List<SearchProviderCatalogEntry> entries = searchProviderRegistry.allSorted().stream()
+                .map(p -> toEntry(p, config))
+                .toList();
+
+        SearchProviderRegistry.ResolvedProvider resolved = searchProviderRegistry.resolve(config);
+        String resolvedId = resolved != null ? resolved.provider().id() : null;
+        String resolvedSource = resolved != null ? resolved.source() : null;
+
+        return new SearchProviderCatalogResponse(entries, resolvedId, resolvedSource);
+    }
+
+    private SearchProviderCatalogEntry toEntry(SearchProvider provider, SystemSettingsDTO config) {
+        boolean builtin = !searchProviderRegistry.isPluginProvider(provider.id());
+        String pluginName = builtin ? null : pluginManager.getPluginNameForSearchProvider(provider.id());
+        return new SearchProviderCatalogEntry(
+                provider.id(),
+                provider.label(),
+                builtin,
+                provider.requiresCredential(),
+                provider.isAvailable(config),
+                pluginName
+        );
+    }
+
+    public SystemSettingsDTO saveSettings(SystemSettingsDTO dto) {
+        // All of these are null-guarded: the bulk PUT /settings is shared by
+        // every settings page (System, Music, Video, Image, Stt, Tts, Model3D),
+        // each sending a partial payload. An unconditional write coerces the
+        // absent fields (null) to false/blank and silently resets them — that
+        // is how streamEnabled kept flipping off (killing live thinking and
+        // content streaming) whenever an unrelated settings page was saved.
+        if (dto.getLanguage() != null) {
+            saveValue(LANGUAGE_KEY, dto.getLanguage(), "当前界面语言");
+        }
+        if (dto.getStreamEnabled() != null) {
+            saveValue(STREAM_ENABLED_KEY, String.valueOf(dto.getStreamEnabled()), "是否开启流式响应");
+        }
+        if (dto.getDebugMode() != null) {
+            saveValue(DEBUG_MODE_KEY, String.valueOf(dto.getDebugMode()), "是否开启调试模式");
+        }
+        if (dto.getShowThinking() != null) {
+            saveValue(SHOW_THINKING_KEY, String.valueOf(dto.getShowThinking()), "聊天界面是否展示模型思考过程");
+        }
+        if (dto.getThinkingFull() != null) {
+            saveValue(THINKING_FULL_KEY, String.valueOf(dto.getThinkingFull()),
+                    "聊天界面是否展示每一轮的思考，而非只展示得出答案的那一轮");
+        }
+        if (dto.getStateGraphEnabled() != null) {
+            saveValue(STATEGRAPH_ENABLED_KEY, String.valueOf(dto.getStateGraphEnabled()), "启用 StateGraph 架构的 ReAct Agent");
+        }
+
+        // 搜索服务配置
+        if (dto.getSearchEnabled() != null) {
+            saveValue(SEARCH_ENABLED_KEY, String.valueOf(dto.getSearchEnabled()), "是否启用搜索功能");
+        }
+        if (dto.getSearchProvider() != null) {
+            saveValue(SEARCH_PROVIDER_KEY, dto.getSearchProvider(), "搜索服务提供商");
+        }
+        if (dto.getSearchFallbackEnabled() != null) {
+            saveValue(SEARCH_FALLBACK_ENABLED_KEY, String.valueOf(dto.getSearchFallbackEnabled()), "搜索失败时是否回退到备用提供商");
+        }
+        // API Key 仅在非空时保存（前端不回传明文，避免覆盖为空）
+        if (dto.getSerperApiKey() != null && !dto.getSerperApiKey().isBlank()) {
+            saveValue(SERPER_API_KEY_KEY, dto.getSerperApiKey(), "Serper API Key");
+        }
+        if (dto.getSerperBaseUrl() != null) {
+            saveValue(SERPER_BASE_URL_KEY, dto.getSerperBaseUrl(), "Serper 接口地址");
+        }
+        if (dto.getTavilyApiKey() != null && !dto.getTavilyApiKey().isBlank()) {
+            saveValue(TAVILY_API_KEY_KEY, dto.getTavilyApiKey(), "Tavily API Key");
+        }
+        if (dto.getTavilyBaseUrl() != null) {
+            saveValue(TAVILY_BASE_URL_KEY, dto.getTavilyBaseUrl(), "Tavily 接口地址");
+        }
+
+        // 公众号发布凭证（AppSecret 仅在非空时保存，避免脱敏回显覆盖为空）
+        if (dto.getWeixinoaAppId() != null) {
+            saveValue(WEIXINOA_APP_ID_KEY, dto.getWeixinoaAppId().trim(), "公众号 AppID");
+        }
+        if (dto.getWeixinoaAppSecret() != null && !dto.getWeixinoaAppSecret().isBlank()) {
+            saveValue(WEIXINOA_APP_SECRET_KEY, dto.getWeixinoaAppSecret().trim(), "公众号 AppSecret");
+        }
+        // Keyless provider 配置
+        if (dto.getDuckduckgoEnabled() != null) {
+            saveValue(DUCKDUCKGO_ENABLED_KEY, String.valueOf(dto.getDuckduckgoEnabled()), "DuckDuckGo 免 Key 搜索（零配置兜底）");
+        }
+        if (dto.getSearxngBaseUrl() != null) {
+            saveValue(SEARXNG_BASE_URL_KEY, dto.getSearxngBaseUrl(), "SearXNG 实例地址");
+        }
+
+        // 视频生成配置
+        if (dto.getVideoEnabled() != null) {
+            saveValue(VIDEO_ENABLED_KEY, String.valueOf(dto.getVideoEnabled()), "是否启用视频生成");
+        }
+        if (dto.getVideoProvider() != null) {
+            saveValue(VIDEO_PROVIDER_KEY, dto.getVideoProvider(), "视频生成首选 Provider");
+        }
+        if (dto.getVideoFallbackEnabled() != null) {
+            saveValue(VIDEO_FALLBACK_ENABLED_KEY, String.valueOf(dto.getVideoFallbackEnabled()), "视频 Provider 级 Fallback");
+        }
+        if (dto.getZhipuApiKey() != null && !dto.getZhipuApiKey().isBlank()) {
+            saveValue(ZHIPU_API_KEY_KEY, dto.getZhipuApiKey(), "智谱 CogVideo API Key");
+        }
+        if (dto.getZhipuBaseUrl() != null) {
+            saveValue(ZHIPU_BASE_URL_KEY, dto.getZhipuBaseUrl(), "智谱 API Base URL");
+        }
+        if (dto.getFalApiKey() != null && !dto.getFalApiKey().isBlank()) {
+            saveValue(FAL_API_KEY_KEY, dto.getFalApiKey(), "fal.ai API Key");
+        }
+        if (dto.getKlingAccessKey() != null && !dto.getKlingAccessKey().isBlank()) {
+            saveValue(KLING_ACCESS_KEY_KEY, dto.getKlingAccessKey(), "快手可灵 Access Key");
+        }
+        if (dto.getKlingSecretKey() != null && !dto.getKlingSecretKey().isBlank()) {
+            saveValue(KLING_SECRET_KEY_KEY, dto.getKlingSecretKey(), "快手可灵 Secret Key");
+        }
+        if (dto.getRunwayApiKey() != null && !dto.getRunwayApiKey().isBlank()) {
+            saveValue(RUNWAY_API_KEY_KEY, dto.getRunwayApiKey(), "Runway API Key");
+        }
+        if (dto.getMinimaxApiKey() != null && !dto.getMinimaxApiKey().isBlank()) {
+            saveValue(MINIMAX_API_KEY_KEY, dto.getMinimaxApiKey(), "MiniMax API Key");
+        }
+        if (dto.getMinimaxRegion() != null && !dto.getMinimaxRegion().isBlank()) {
+            saveValue(MINIMAX_REGION_KEY, dto.getMinimaxRegion(), "MiniMax API 区域 (global / cn)");
+        }
+
+        // 图片生成配置
+        if (dto.getImageEnabled() != null) {
+            saveValue(IMAGE_ENABLED_KEY, String.valueOf(dto.getImageEnabled()), "是否启用图片生成");
+        }
+        if (dto.getImageProvider() != null) {
+            saveValue(IMAGE_PROVIDER_KEY, dto.getImageProvider(), "图片生成首选 Provider");
+        }
+        if (dto.getImageFallbackEnabled() != null) {
+            saveValue(IMAGE_FALLBACK_ENABLED_KEY, String.valueOf(dto.getImageFallbackEnabled()), "图片 Provider 级 Fallback");
+        }
+
+        // TTS 配置
+        if (dto.getTtsEnabled() != null) {
+            saveValue(TTS_ENABLED_KEY, String.valueOf(dto.getTtsEnabled()), "是否启用 TTS 语音合成");
+        }
+        if (dto.getTtsProvider() != null) {
+            saveValue(TTS_PROVIDER_KEY, dto.getTtsProvider(), "TTS 首选 Provider");
+        }
+        if (dto.getTtsFallbackEnabled() != null) {
+            saveValue(TTS_FALLBACK_ENABLED_KEY, String.valueOf(dto.getTtsFallbackEnabled()), "TTS Provider 级 Fallback");
+        }
+        if (dto.getTtsAutoMode() != null) {
+            saveValue(TTS_AUTO_MODE_KEY, dto.getTtsAutoMode(), "TTS 自动模式（off/always）");
+        }
+        if (dto.getTtsDefaultVoice() != null) {
+            saveValue(TTS_DEFAULT_VOICE_KEY, dto.getTtsDefaultVoice(), "TTS 默认语音");
+        }
+        if (dto.getTtsSpeed() != null) {
+            saveValue(TTS_SPEED_KEY, String.valueOf(dto.getTtsSpeed()), "TTS 默认语速");
+        }
+
+        // STT 配置
+        if (dto.getSttEnabled() != null) {
+            saveValue(STT_ENABLED_KEY, String.valueOf(dto.getSttEnabled()), "是否启用 STT 语音识别");
+        }
+        if (dto.getSttProvider() != null) {
+            saveValue(STT_PROVIDER_KEY, dto.getSttProvider(), "STT 首选 Provider");
+        }
+        if (dto.getSttFallbackEnabled() != null) {
+            saveValue(STT_FALLBACK_ENABLED_KEY, String.valueOf(dto.getSttFallbackEnabled()), "STT Provider 级 Fallback");
+        }
+        // Issue #76: persist the OpenAI-compatible STT routing target.
+        if (dto.getSttOpenAiCompatProviderId() != null) {
+            saveValue(STT_OPENAI_COMPAT_PROVIDER_ID_KEY, dto.getSttOpenAiCompatProviderId(),
+                    "OpenAI-compat STT 凭证来源 provider id");
+        }
+        if (dto.getSttOpenAiCompatModel() != null) {
+            saveValue(STT_OPENAI_COMPAT_MODEL_KEY, dto.getSttOpenAiCompatModel(),
+                    "OpenAI-compat STT 模型名");
+        }
+
+        // 音乐生成配置
+        if (dto.getMusicEnabled() != null) {
+            saveValue(MUSIC_ENABLED_KEY, String.valueOf(dto.getMusicEnabled()), "是否启用音乐生成");
+        }
+        if (dto.getMusicProvider() != null) {
+            saveValue(MUSIC_PROVIDER_KEY, dto.getMusicProvider(), "音乐生成首选 Provider");
+        }
+        if (dto.getMusicFallbackEnabled() != null) {
+            saveValue(MUSIC_FALLBACK_ENABLED_KEY, String.valueOf(dto.getMusicFallbackEnabled()), "音乐 Provider 级 Fallback");
+        }
+
+        // 3D 模型生成配置
+        if (dto.getModel3dEnabled() != null) {
+            saveValue(MODEL3D_ENABLED_KEY, String.valueOf(dto.getModel3dEnabled()), "是否启用 3D 模型生成");
+        }
+        if (dto.getModel3dProvider() != null) {
+            saveValue(MODEL3D_PROVIDER_KEY, dto.getModel3dProvider(), "3D 模型生成首选 Provider");
+        }
+        if (dto.getModel3dFallbackEnabled() != null) {
+            saveValue(MODEL3D_FALLBACK_ENABLED_KEY, String.valueOf(dto.getModel3dFallbackEnabled()), "3D Provider 级 Fallback");
+        }
+
+        // Multimodal sidecar routing — guarded with null check, matching the
+        // pattern used for music / 3D / image / video / tts / stt blocks
+        // above. The bulk PUT /settings is used by every settings page (System,
+        // Music, Video, Image, Stt, Tts, Model3D), each sending a partial
+        // payload that omits sidecar fields. Without this guard, saving any
+        // unrelated setting would silently write "" into the sidecar keys
+        // (Long? defaultVisionModelId deserializes to null when absent), which
+        // wiped users' configured vision/video models the moment they touched
+        // an unrelated settings page. Explicit clearing via the sidecar UI now
+        // routes through {@link #updateSidecarSettings} instead.
+        if (dto.getDefaultVisionModelId() != null) {
+            saveValue(DEFAULT_VISION_MODEL_KEY,
+                    String.valueOf(dto.getDefaultVisionModelId()),
+                    "Default vision-capable model id (mate_model_config.id) for sidecar routing");
+        }
+        if (dto.getDefaultVideoModelId() != null) {
+            saveValue(DEFAULT_VIDEO_MODEL_KEY,
+                    String.valueOf(dto.getDefaultVideoModelId()),
+                    "Default video-capable model id (mate_model_config.id) for sidecar routing");
+        }
+
+        // Default workspace storage root. null = field not submitted (partial
+        // save from an unrelated settings page); blank = explicit clear, fall
+        // back to the yml/env-configured sandbox root. Applied immediately —
+        // no restart required. Only affects newly created files; existing data
+        // is never migrated.
+        if (dto.getWorkspaceStorageRoot() != null) {
+            String root = dto.getWorkspaceStorageRoot().trim();
+            if (!root.isEmpty()) {
+                validateWorkspaceStorageRoot(root);
+            }
+            saveValue(WORKSPACE_STORAGE_ROOT_KEY, root, "默认工作空间存储路径（全局兜底沙箱根，空=使用配置文件默认值）");
+            applyWorkspaceStorageRoot(root);
+        }
+        return getSettings();
+    }
+
+    /**
+     * Reject a storage root that could never work: relative paths (the guard
+     * needs a stable absolute boundary) and paths that cannot be created.
+     */
+    private void validateWorkspaceStorageRoot(String root) {
+        Path path;
+        try {
+            path = Paths.get(root);
+        } catch (InvalidPathException e) {
+            throw new NewsClawException("err.settings.storage_root_invalid", 400,
+                    "Invalid storage path: " + e.getMessage());
+        }
+        if (!path.isAbsolute()) {
+            throw new NewsClawException("err.settings.storage_root_not_absolute", 400,
+                    "Storage path must be absolute: " + root);
+        }
+        try {
+            Files.createDirectories(path);
+        } catch (Exception e) {
+            throw new NewsClawException("err.settings.storage_root_create_failed", 400,
+                    "Cannot create storage directory " + root + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Register the effective global fallback sandbox root with
+     * {@link WorkspacePathGuard}. Priority: DB override > yml/env > built-in
+     * default. A blank override restores the yml/env-configured behaviour,
+     * including the {@code enabled=false} escape hatch.
+     */
+    private void applyWorkspaceStorageRoot(String override) {
+        if (override == null || override.isBlank()) {
+            if (workspaceSandboxProperties.isEnabled()) {
+                Path root = Paths.get(workspaceSandboxProperties.getRoot()).toAbsolutePath().normalize();
+                WorkspacePathGuard.setDefaultRoot(root.toString());
+            } else {
+                WorkspacePathGuard.setDefaultRoot(null);
+            }
+            return;
+        }
+        Path root = Paths.get(override).toAbsolutePath().normalize();
+        WorkspacePathGuard.setDefaultRoot(root.toString());
+    }
+
+    /**
+     * Apply a persisted storage-root override once the database is ready.
+     * Startup registration order: WorkspaceSandboxAutoConfiguration registers
+     * the yml/env root at context construction, then this listener overrides
+     * it with the DB value when one is set.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void applyPersistedWorkspaceStorageRoot() {
+        String root = getValue(WORKSPACE_STORAGE_ROOT_KEY, "");
+        if (root == null || root.isBlank()) {
+            return;
+        }
+        try {
+            Files.createDirectories(Paths.get(root));
+        } catch (Exception e) {
+            // Registering the root still tightens the boundary even if the
+            // directory can't be pre-created; log and continue.
+            log.warn("[SystemSetting] Failed to create workspace storage root {}: {}", root, e.getMessage());
+        }
+        applyWorkspaceStorageRoot(root);
+        log.info("[SystemSetting] Workspace storage root override applied: {}", root);
+    }
+
+    /**
+     * Dedicated update path for the multimodal sidecar configuration.
+     * <p>
+     * This endpoint is the ONLY place vision/video model ids can be written
+     * unconditionally — null is treated as an explicit "clear" and writes
+     * an empty string (parse-back returns null). The bulk
+     * {@link #saveSettings} now guards both keys with non-null checks so
+     * unrelated settings pages can't accidentally clobber sidecar config.
+     * <p>
+     * Both fields are always written so a single API call can independently
+     * assign / clear either modality.
+     */
+    public SystemSettingsDTO updateSidecarSettings(Long visionModelId, Long videoModelId) {
+        saveValue(DEFAULT_VISION_MODEL_KEY,
+                visionModelId == null ? "" : String.valueOf(visionModelId),
+                "Default vision-capable model id (mate_model_config.id) for sidecar routing");
+        saveValue(DEFAULT_VIDEO_MODEL_KEY,
+                videoModelId == null ? "" : String.valueOf(videoModelId),
+                "Default video-capable model id (mate_model_config.id) for sidecar routing");
+        return getSettings();
+    }
+
+    public String getLanguage() {
+        return getValue(LANGUAGE_KEY, "zh-CN");
+    }
+
+    public String saveLanguage(String language) {
+        saveValue(LANGUAGE_KEY, language, "当前界面语言");
+        return getLanguage();
+    }
+
+    public boolean isStateGraphEnabled() {
+        return Boolean.parseBoolean(getValue(STATEGRAPH_ENABLED_KEY, "false"));
+    }
+
+    /**
+     * Read a boolean setting. Returns {@code defaultValue} when the key is
+     * absent or stored as a non-boolean string.
+     */
+    public boolean getBool(String key, boolean defaultValue) {
+        return Boolean.parseBoolean(getValue(key, String.valueOf(defaultValue)));
+    }
+
+    /** Persist a boolean setting. */
+    public void saveBool(String key, boolean value, String description) {
+        saveValue(key, String.valueOf(value), description);
+    }
+
+    /**
+     * Read a raw string setting. Returns {@code defaultValue} (which may be
+     * {@code null}) when the key is absent.
+     */
+    public String getString(String key, String defaultValue) {
+        return getValue(key, defaultValue);
+    }
+
+    /** Persist a raw string setting. */
+    public void saveString(String key, String value, String description) {
+        saveValue(key, value, description);
+    }
+
+    /** Return a masked representation suitable for an admin status response. */
+    public String maskSecret(String value) {
+        return maskApiKey(value);
+    }
+
+    private String getValue(String key, String defaultValue) {
+        // Docker deployments can keep credentials and operational toggles in
+        // .env.  Environment values intentionally win over the database so a
+        // rotated secret takes effect after a restart without requiring an
+        // admin-UI write.  When absent, preserve the existing DB/UI behavior.
+        String environmentValue = EnvironmentConfig.systemSetting(key);
+        if (environmentValue != null) {
+            return environmentValue;
+        }
+        SystemSettingEntity entity = systemSettingMapper.selectOne(new LambdaQueryWrapper<SystemSettingEntity>()
+                .eq(SystemSettingEntity::getSettingKey, key)
+                .last("LIMIT 1"));
+        if (entity == null || entity.getSettingValue() == null) {
+            return defaultValue;
+        }
+        String stored = entity.getSettingValue();
+        // Sensitive keys are stored encrypted; decrypt() passes legacy plaintext through.
+        return SENSITIVE_KEYS.contains(key) ? settingCrypto.decrypt(stored) : stored;
+    }
+
+    private String maskApiKey(String apiKey) {
+        if (apiKey == null || apiKey.isBlank()) {
+            return "";
+        }
+        if (apiKey.length() <= 4) {
+            return "****";
+        }
+        return "****" + apiKey.substring(apiKey.length() - 4);
+    }
+
+    private void saveValue(String key, String value, String description) {
+        // Encrypt secrets at rest; non-blank only (blank passes through to clear).
+        if (SENSITIVE_KEYS.contains(key) && value != null && !value.isEmpty()) {
+            value = settingCrypto.encrypt(value);
+        }
+        SystemSettingEntity entity = systemSettingMapper.selectOne(new LambdaQueryWrapper<SystemSettingEntity>()
+                .eq(SystemSettingEntity::getSettingKey, key)
+                .last("LIMIT 1"));
+        if (entity == null) {
+            entity = new SystemSettingEntity();
+            entity.setSettingKey(key);
+            entity.setDescription(description);
+            entity.setSettingValue(value);
+            systemSettingMapper.insert(entity);
+            return;
+        }
+        entity.setSettingValue(value);
+        entity.setDescription(description);
+        systemSettingMapper.updateById(entity);
+    }
+}

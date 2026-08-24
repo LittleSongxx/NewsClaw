@@ -1,0 +1,179 @@
+package vip.newsclaw.agent.binding.controller;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+import vip.newsclaw.agent.AgentService;
+import vip.newsclaw.agent.binding.model.AgentProviderPreference;
+import vip.newsclaw.llm.routing.ProviderModelRef;
+import vip.newsclaw.agent.binding.model.AgentSkillBinding;
+import vip.newsclaw.agent.binding.model.AgentToolBinding;
+import vip.newsclaw.agent.binding.model.AgentWikiKbBinding;
+import vip.newsclaw.agent.binding.service.AgentBindingService;
+import vip.newsclaw.agent.model.AgentEntity;
+import vip.newsclaw.audit.service.AuditEventService;
+import vip.newsclaw.common.result.R;
+import vip.newsclaw.exception.NewsClawException;
+import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Agent 能力绑定接口
+ *
+ * @author NewsClaw Team
+ */
+@Tag(name = "Agent能力绑定")
+@RestController
+@RequestMapping("/api/v1/agents/{agentId}")
+@RequiredArgsConstructor
+public class AgentBindingController {
+
+    private final AgentBindingService bindingService;
+    private final AgentService agentService;
+    private final AuditEventService auditEventService;
+
+    // ==================== Skill Bindings ====================
+
+    @Operation(summary = "获取 Agent 已绑定的 Skills")
+    @GetMapping("/skills")
+    @RequireWorkspaceRole("viewer")
+    public R<List<AgentSkillBinding>> listSkills(@PathVariable Long agentId,
+                                                  @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifyAgentWorkspace(agentId, workspaceId);
+        return R.ok(bindingService.listSkillBindings(agentId));
+    }
+
+    @Operation(summary = "批量设置 Agent 的 Skill 绑定")
+    @PutMapping("/skills")
+    @RequireWorkspaceRole("member")
+    public R<Void> setSkills(@PathVariable Long agentId, @RequestBody List<Long> skillIds,
+                              @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifyAgentWorkspace(agentId, workspaceId);
+        bindingService.setSkillBindings(agentId, skillIds);
+        agentService.invalidateAgentCache(agentId);
+        // The Vue client always sends an array, but a non-Vue caller (curl /
+        // SDK) can POST a body of just `null`, which Spring binds to a null
+        // list. The service tolerates that — guard the audit message too.
+        int count = skillIds == null ? 0 : skillIds.size();
+        auditEventService.record("UPDATE", "AGENT_SKILL", String.valueOf(agentId),
+                "skills=" + count, null);
+        return R.ok();
+    }
+
+    @Operation(summary = "绑定单个 Skill")
+    @PostMapping("/skills/{skillId}")
+    @RequireWorkspaceRole("member")
+    public R<AgentSkillBinding> bindSkill(@PathVariable Long agentId, @PathVariable Long skillId,
+                                           @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifyAgentWorkspace(agentId, workspaceId);
+        AgentSkillBinding binding = bindingService.bindSkill(agentId, skillId);
+        agentService.invalidateAgentCache(agentId);
+        return R.ok(binding);
+    }
+
+    @Operation(summary = "解绑单个 Skill")
+    @DeleteMapping("/skills/{skillId}")
+    @RequireWorkspaceRole("member")
+    public R<Void> unbindSkill(@PathVariable Long agentId, @PathVariable Long skillId,
+                                @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifyAgentWorkspace(agentId, workspaceId);
+        bindingService.unbindSkill(agentId, skillId);
+        agentService.invalidateAgentCache(agentId);
+        return R.ok();
+    }
+
+    // ==================== Tool Bindings ====================
+
+    @Operation(summary = "获取 Agent 已绑定的 Tools")
+    @GetMapping("/tools")
+    @RequireWorkspaceRole("viewer")
+    public R<List<AgentToolBinding>> listTools(@PathVariable Long agentId,
+                                                @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifyAgentWorkspace(agentId, workspaceId);
+        return R.ok(bindingService.listToolBindings(agentId));
+    }
+
+    @Operation(summary = "批量设置 Agent 的 Tool 绑定")
+    @PutMapping("/tools")
+    @RequireWorkspaceRole("member")
+    public R<Void> setTools(@PathVariable Long agentId, @RequestBody List<String> toolNames,
+                             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifyAgentWorkspace(agentId, workspaceId);
+        bindingService.setToolBindings(agentId, toolNames);
+        agentService.invalidateAgentCache(agentId);
+        // Same null-safety rationale as setSkills above.
+        int count = toolNames == null ? 0 : toolNames.size();
+        auditEventService.record("UPDATE", "AGENT_TOOL", String.valueOf(agentId),
+                "tools=" + count, null);
+        return R.ok();
+    }
+
+    // ==================== Provider Preferences ====================
+
+    @Operation(summary = "获取 Agent 的偏好 Provider 顺序")
+    @GetMapping("/provider-preferences")
+    @RequireWorkspaceRole("viewer")
+    public R<List<AgentProviderPreference>> listProviderPreferences(
+            @PathVariable Long agentId,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifyAgentWorkspace(agentId, workspaceId);
+        return R.ok(bindingService.listProviderPreferences(agentId));
+    }
+
+    @Operation(summary = "批量设置 Agent 的偏好模型链（供应商 + 模型，替换模式）")
+    @PutMapping("/provider-preferences")
+    @RequireWorkspaceRole("member")
+    public R<Void> setProviderPreferences(
+            @PathVariable Long agentId,
+            @RequestBody List<ProviderModelRef> preferences,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifyAgentWorkspace(agentId, workspaceId);
+        bindingService.setProviderModelPreferences(agentId, preferences);
+        agentService.invalidateAgentCache(agentId);
+        auditEventService.record("UPDATE", "AGENT_PROVIDER_PREF", String.valueOf(agentId),
+                "entries=" + (preferences == null ? 0 : preferences.size()), null);
+        return R.ok();
+    }
+
+    // ==================== Knowledge Base Access Scope ====================
+
+    @Operation(summary = "获取 Agent 的知识库访问范围")
+    @GetMapping("/kbs")
+    @RequireWorkspaceRole("viewer")
+    public R<List<AgentWikiKbBinding>> listKbs(@PathVariable Long agentId,
+                                               @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifyAgentWorkspace(agentId, workspaceId);
+        return R.ok(bindingService.listKbBindings(agentId));
+    }
+
+    @Operation(summary = "批量设置 Agent 的知识库访问范围（替换模式，空表示不限制）")
+    @PutMapping("/kbs")
+    @RequireWorkspaceRole("member")
+    public R<Void> setKbs(@PathVariable Long agentId, @RequestBody List<Long> kbIds,
+                          @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifyAgentWorkspace(agentId, workspaceId);
+        bindingService.setKbBindings(agentId, kbIds);
+        agentService.invalidateAgentCache(agentId);
+        // A non-Vue caller can POST a bare `null`; the service tolerates it.
+        int count = kbIds == null ? 0 : kbIds.size();
+        auditEventService.record("UPDATE", "AGENT_WIKI_KB", String.valueOf(agentId),
+                "kbs=" + count, null);
+        return R.ok();
+    }
+
+    // ==================== Workspace Verification ====================
+
+    private void verifyAgentWorkspace(Long agentId, Long headerWorkspaceId) {
+        AgentEntity agent = agentService.getAgent(agentId);
+        if (agent == null) {
+            throw new NewsClawException("Agent not found");
+        }
+        long requestedWs = headerWorkspaceId != null ? headerWorkspaceId : 1L;
+        if (agent.getWorkspaceId() != null && !agent.getWorkspaceId().equals(requestedWs)) {
+            throw new NewsClawException("err.common.wrong_workspace", 403, "资源不属于当前工作区");
+        }
+    }
+}

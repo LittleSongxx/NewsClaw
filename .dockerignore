@@ -13,7 +13,7 @@
 **/target
 
 # Desktop / webchat (not needed for server or sites build)
-mateclaw-desktop
+newsclaw-desktop
 
 # Data and logs
 data
@@ -23,5 +23,5 @@ data
 .env
 *.md
 !docs/**/*.md
-!mateclaw-plugin-api/**
-!mateclaw-server/**
+!newsclaw-plugin-api/**
+!newsclaw-server/**

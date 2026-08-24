@@ -1,0 +1,79 @@
+package vip.newsclaw.common.result;
+
+import lombok.Data;
+
+import java.io.Serializable;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * 统一响应结果封装
+ *
+ * @author NewsClaw Team
+ */
+@Data
+public class R<T> implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** 状态码 */
+    private int code;
+
+    /** 提示信息 */
+    private String msg;
+
+    /** 数据 */
+    private T data;
+
+    /** i18n holder — managed by I18nAutoConfig, used by ok()/fail() */
+    private static final AtomicReference<vip.newsclaw.i18n.I18nService> I18N = new AtomicReference<>();
+
+    public static void setI18n(vip.newsclaw.i18n.I18nService service) {
+        I18N.set(service);
+    }
+
+    /**
+     * Clear the holder only when it still points at the closing application
+     * context's service. Multiple Spring test contexts may overlap, so an old
+     * context must not clear a newer context's registration.
+     */
+    public static void clearI18n(vip.newsclaw.i18n.I18nService service) {
+        I18N.compareAndSet(service, null);
+    }
+
+    private static String resolveMsg(ResultCode rc) {
+        vip.newsclaw.i18n.I18nService service = I18N.get();
+        return service != null ? rc.getMsg(service) : rc.getMsg();
+    }
+
+    public static <T> R<T> ok() {
+        return result(ResultCode.SUCCESS.getCode(), resolveMsg(ResultCode.SUCCESS), null);
+    }
+
+    public static <T> R<T> ok(T data) {
+        return result(ResultCode.SUCCESS.getCode(), resolveMsg(ResultCode.SUCCESS), data);
+    }
+
+    public static <T> R<T> ok(String msg, T data) {
+        return result(ResultCode.SUCCESS.getCode(), msg, data);
+    }
+
+    public static <T> R<T> fail() {
+        return result(ResultCode.SYSTEM_ERROR.getCode(), resolveMsg(ResultCode.SYSTEM_ERROR), null);
+    }
+
+    public static <T> R<T> fail(String msg) {
+        return result(ResultCode.SYSTEM_ERROR.getCode(), msg, null);
+    }
+
+    public static <T> R<T> fail(int code, String msg) {
+        return result(code, msg, null);
+    }
+
+    private static <T> R<T> result(int code, String msg, T data) {
+        R<T> r = new R<>();
+        r.setCode(code);
+        r.setMsg(msg);
+        r.setData(data);
+        return r;
+    }
+}

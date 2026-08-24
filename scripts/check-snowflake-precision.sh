@@ -7,7 +7,7 @@ set -euo pipefail
 # timestamps and pagination values. Existing call sites can opt out with the
 # marker `snowflake-precision-ok` when the value is demonstrably not an id.
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-UI_DIR="$ROOT_DIR/mateclaw-ui/src"
+UI_DIR="$ROOT_DIR/newsclaw-ui/src"
 
 if ! command -v rg >/dev/null 2>&1 || [[ ! -d "$UI_DIR" ]]; then
   exit 0

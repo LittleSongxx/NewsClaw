@@ -1,0 +1,1553 @@
+package vip.newsclaw.tool.builtin;
+
+import cn.hutool.http.HttpUtil;
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
+import com.google.gson.JsonObject;
+import com.google.gson.Gson;
+import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.BrowserContext;
+import com.microsoft.playwright.CDPSession;
+import com.microsoft.playwright.ConsoleMessage;
+import com.microsoft.playwright.ElementHandle;
+import com.microsoft.playwright.Locator;
+import com.microsoft.playwright.Page;
+import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.PlaywrightException;
+import com.microsoft.playwright.options.LoadState;
+import com.microsoft.playwright.options.WaitForSelectorState;
+import jakarta.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Component;
+import vip.newsclaw.tool.browser.BrowserDiagnosticsService;
+import vip.newsclaw.tool.browser.BrowserLauncher;
+import vip.newsclaw.tool.browser.BrowserNavigationGuard;
+import vip.newsclaw.tool.browser.BrowserPrivacyGuard;
+import vip.newsclaw.tool.browser.BrowserRefState;
+import vip.newsclaw.tool.browser.BrowserSessionGate;
+import vip.newsclaw.tool.browser.BrowserWaitCondition;
+import vip.newsclaw.common.net.SsrfProperties;
+import vip.newsclaw.tool.browser.PageSnapshotScript;
+import vip.newsclaw.tool.browser.UrlSafetyChecker;
+
+import java.net.Socket;
+import java.nio.file.Paths;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.*;
+import java.util.regex.Pattern;
+
+/**
+ * 浏览器自动化工具
+ * 基于 Playwright Java，实现 action-based 浏览器自动化 API。
+ * 支持 start / stop / open / snapshot / screenshot / click / type / eval / connect_cdp / list_cdp_targets。
+ */
+@Slf4j
+@Component
+public class BrowserUseTool {
+
+    private static final long IDLE_TIMEOUT_MINUTES = 30;
+    private static final int CDP_SCAN_PORT_MIN = 9000;
+    private static final int CDP_SCAN_PORT_MAX = 10000;
+    private static final Gson GSON = new Gson();
+
+    /**
+     * Legacy visible-text extractor kept as a fallback: {@link #doSnapshot}
+     * prefers the accessibility-tree snapshot ({@link PageSnapshotScript}) and
+     * only falls back to this plain-text dump if the tree script throws on an
+     * unusual page. Runs as an ElementHandle.evaluate so {@code this} is the
+     * scoped root (document.body when no selector is passed). Uses a budget
+     * object so truncation stops at element boundaries rather than
+     * mid-TEXT_NODE, and surfaces a {@code truncated:true} flag.
+     */
+    private static final String TEXT_SNAPSHOT_JS_FALLBACK = """
+            (rootEl, maxLen) => {
+                const budget = { remaining: maxLen, truncated: false };
+                function getVisibleText(node, depth) {
+                    if (depth > 10 || budget.remaining <= 0) return '';
+                    const results = [];
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        const text = node.textContent.trim();
+                        if (text) {
+                            if (text.length > budget.remaining) {
+                                const slice = text.substring(0, budget.remaining);
+                                const lastSpace = slice.lastIndexOf(' ');
+                                results.push(lastSpace > budget.remaining * 0.5
+                                    ? slice.substring(0, lastSpace) : slice);
+                                budget.remaining = 0;
+                                budget.truncated = true;
+                            } else {
+                                results.push(text);
+                                budget.remaining -= text.length;
+                            }
+                        }
+                    } else if (node.nodeType === Node.ELEMENT_NODE) {
+                        const el = node;
+                        const style = window.getComputedStyle(el);
+                        if (style.display === 'none' || style.visibility === 'hidden') return '';
+                        const tag = el.tagName.toLowerCase();
+                        if (['a', 'button', 'input', 'select', 'textarea'].includes(tag)) {
+                            const id = el.id ? '#' + el.id : '';
+                            const cls = el.className && typeof el.className === 'string'
+                                ? '.' + el.className.trim().split(/\\s+/).slice(0, 2).join('.')
+                                : '';
+                            const text = el.textContent ? el.textContent.trim().substring(0, 80) : '';
+                            const href = el.getAttribute('href') || '';
+                            const placeholder = el.getAttribute('placeholder') || '';
+                            const desc = '[' + tag + id + cls + ']'
+                                + (text ? ' "' + text + '"' : '')
+                                + (href ? ' href=' + href : '')
+                                + (placeholder ? ' placeholder=' + placeholder : '');
+                            if (desc.length > budget.remaining) {
+                                budget.remaining = 0;
+                                budget.truncated = true;
+                                return results.join('\\n');
+                            }
+                            results.push(desc);
+                            budget.remaining -= desc.length;
+                        }
+                        for (const child of el.childNodes) {
+                            if (budget.remaining <= 0) break;
+                            const childText = getVisibleText(child, depth + 1);
+                            if (childText) results.push(childText);
+                        }
+                    }
+                    return results.join('\\n');
+                }
+                const text = getVisibleText(rootEl, 0);
+                return JSON.stringify({ text: text, truncated: budget.truncated });
+            }
+            """;
+
+    /** SSE broadcaster for pushing browser actions to the frontend in real time. */
+    private final vip.newsclaw.channel.web.ChatStreamTracker streamTracker;
+    private final BrowserLauncher launcher;
+    private final BrowserDiagnosticsService diagnostics;
+    private final SsrfProperties ssrfProperties;
+    private final BrowserPrivacyGuard privacyGuard;
+
+    public BrowserUseTool(vip.newsclaw.channel.web.ChatStreamTracker streamTracker,
+                          BrowserLauncher launcher,
+                          BrowserDiagnosticsService diagnostics,
+                          SsrfProperties ssrfProperties,
+                          BrowserPrivacyGuard privacyGuard) {
+        this.streamTracker = streamTracker;
+        this.launcher = launcher;
+        this.diagnostics = diagnostics;
+        this.ssrfProperties = ssrfProperties;
+        this.privacyGuard = privacyGuard;
+    }
+
+    /**
+     * Enforce the privacy guard for a content-reading action. Returns an error
+     * JSON string to return to the caller when the action is refused on a
+     * sensitive page of a user-managed browser, or {@code null} to proceed.
+     */
+    private String guardReadOrNull(BrowserSession session, String action) {
+        String reason = privacyGuard.blockReason(session.isUserManagedBrowser(),
+                session.page.url(), action);
+        if (reason == null) {
+            return null;
+        }
+        String conversationId = ToolExecutionContext.conversationId(currentToolContext.get());
+        privacyGuard.audit(conversationId, action, session.page.url(), reason);
+        log.info("[BrowserUse] Privacy guard blocked action={} on {}", action, session.page.url());
+        return error(reason);
+    }
+
+    /**
+     * 共享 Playwright 实例（Node.js 进程）。
+     * Playwright.create() 启动一个 Node.js 子进程，耗时 1-2 秒。
+     * 复用同一实例可将后续 start/connect_cdp 的延迟从 ~98s 降至 ~1s。
+     */
+    private volatile Playwright sharedPlaywright;
+    private final Object playwrightLock = new Object();
+
+    private final ConcurrentHashMap<String, BrowserSession> sessions = new ConcurrentHashMap<>();
+
+    /**
+     * Invocation context is thread-local. The shared Playwright driver is
+     * guarded globally because Playwright Java permits multi-threaded callers
+     * only when no two threads invoke its objects at the same time.
+     */
+    private final ThreadLocal<ToolContext> currentToolContext = new ThreadLocal<>();
+    private final BrowserSessionGate sessionGate = new BrowserSessionGate(1);
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "browser-idle-watchdog");
+        t.setDaemon(true);
+        return t;
+    });
+
+    @Tool(description = """
+        Control a browser (Playwright with multi-strategy launch: system Chrome/Edge channel, explicit path, bundled, or external CDP).
+        Default is headless. Use headed=true with action=start for a visible window.
+        Typical flow: start → open(url) → snapshot → click/type → current_surface or wait_for → stop.
+        If start fails, run action=diagnose for a full report of what's missing and how to fix it.
+
+        SCOPE — use this tool ONLY for tasks that require driving a real browser:
+        clicking, typing into forms, taking screenshots, executing JS in page context, or
+        interacting with sites that need a logged-in session. For plain web search or
+        retrieving public page content, prefer the `search` tool — do not call `browser_use`
+        as a search alternative.
+
+        Supported actions:
+        - start: Launch a new browser (tries system Chrome, system Edge, then Playwright bundled). Optional headed=true.
+        - stop: Close browser. If connected via CDP, only disconnects (Chrome keeps running).
+        - open: Navigate to a URL. Requires url parameter. Auto-starts browser if not running.
+        - snapshot: Get the page as an accessibility tree. Every interactive element (link, button,
+          input, ...) is tagged with a stable reference like `@e1`, `@e2`. Read the tree, then act on
+          an element by passing ref=<eN> to action=click/type — no CSS selector guessing needed.
+          References belong to the returned `generation`; re-snapshot if the page changes. Optional
+          `selector` scopes to a subtree — USE IT when the page is large to avoid truncation
+          (`truncated:true` is flagged with a hint).
+        - screenshot: Take a screenshot. Optional path to save file; returns base64 if no path.
+        - current_surface: Return current URL/title/document readiness, recent console/page errors, and ref validity.
+        - wait_for: Wait for condition=selector|text|url|load_state. Use selector/text/value plus optional timeoutSeconds.
+        - click: Click an element. Pass ref=<eN> from a snapshot (preferred) or a CSS selector.
+        - type: Type text into an element. Pass ref=<eN> (preferred) or selector, plus text.
+        - hover: Hover over an element (reveals menus/tooltips). Pass ref=<eN> or selector.
+        - select: Choose an option in a dropdown. Pass ref=<eN> or selector, plus value.
+        - eval: Execute JavaScript on the page. Requires code parameter. Top-level await is supported; use `return` to surface a value.
+        - cdp: Send a raw Chrome DevTools Protocol command. Requires method (e.g. 'Page.navigate'), optional params (JSON). Constrained by an allowlist; use only when the higher-level actions cannot express what you need.
+        - connect_cdp: Connect to an existing Chrome via CDP. Requires url (e.g. "http://localhost:9222").
+        - list_cdp_targets: Scan local ports (9000-10000) for CDP endpoints. Optional cdpPort for single port.
+        - navigate_back: Go back in browser history.
+        - diagnose: Run a self-check — reports which launch strategies are available and what to install if none are.
+        """)
+    public String browser_use(
+            @ToolParam(description = "Action: start|stop|open|snapshot|screenshot|current_surface|wait_for|click|type|hover|select|eval|connect_cdp|list_cdp_targets|navigate_back|diagnose") String action,
+            @ToolParam(description = "URL to navigate to (for open), or CDP base URL (for connect_cdp, e.g. http://localhost:9222)", required = false) String url,
+            @ToolParam(description = "CSS selector. Alternative to ref for click/type/hover/select. OPTIONAL for snapshot: pass to scope to a subtree when previous snapshot returned truncated:true.", required = false) String selector,
+            @ToolParam(description = "Element reference from a snapshot (e.g. 'e4'). PREFERRED for click/type/hover/select — takes priority over selector. Re-snapshot if it reports stale.", required = false) String ref,
+            @ToolParam(description = "Text to type (for action=type)", required = false) String text,
+            @ToolParam(description = "Option value or visible label to choose (for action=select)", required = false) String value,
+            @ToolParam(description = "Wait condition for action=wait_for: selector|text|url|load_state", required = false) String condition,
+            @ToolParam(description = "Timeout seconds for action=wait_for; capped by newsclaw.browser.default-timeout-seconds", required = false) Integer timeoutSeconds,
+            @ToolParam(description = "JavaScript code to execute (for action=eval). Top-level await is allowed; add `return` to return a value when the snippet uses await.", required = false) String code,
+            @ToolParam(description = "CDP method for action=cdp (e.g. 'Page.navigate', 'Input.dispatchMouseEvent'). Must be in the allowlist.", required = false) String method,
+            @ToolParam(description = "Structured params object for action=cdp (e.g. {\"url\":\"https://example.com\"})", required = false) Map<String, Object> params,
+            @ToolParam(description = "File path to save screenshot (for action=screenshot)", required = false) String path,
+            @ToolParam(description = "Launch visible browser window (for action=start, default false)", required = false) Boolean headed,
+            @ToolParam(description = "Single CDP port to scan (for action=list_cdp_targets)", required = false) Integer cdpPort,
+            // RFC-063r §2.5: hidden from LLM by JsonSchemaGenerator.
+            @Nullable ToolContext ctx
+    ) {
+        if (action == null || action.isBlank()) {
+            return error("action is required");
+        }
+
+        // Isolate browser state per conversation so concurrent chats don't drive
+        // (and navigate) each other's page. Falls back to a shared key when no
+        // conversation context is present (e.g. internal/system invocations).
+        String conversationId = ToolExecutionContext.conversationId(ctx);
+        String sessionKey = (conversationId != null && !conversationId.isBlank())
+                ? conversationId : "default";
+        // Closing the per-conversation session aborts Playwright's native
+        // wait/navigation even when a Java thread interrupt alone is not
+        // observed by the driver transport.
+        Runnable removeCancellationHook = streamTracker != null && conversationId != null
+                ? streamTracker.registerCancellationHook(conversationId, () -> doStop(sessionKey))
+                : () -> { };
+        log.info("[BrowserUse] action={}, session={}, url={}, selector={}, headed={}, cdpPort={}",
+                action, sessionKey, url, selector, headed, cdpPort);
+
+        try (BrowserSessionGate.Lease ignored = sessionGate.enter(sessionKey)) {
+            currentToolContext.set(ctx);
+            try {
+                return switch (action.toLowerCase().trim()) {
+                    case "start" -> doStart(sessionKey, Boolean.TRUE.equals(headed));
+                    case "stop" -> doStop(sessionKey);
+                    case "open" -> doOpen(sessionKey, url);
+                    case "snapshot" -> doSnapshot(sessionKey, selector);
+                    case "screenshot" -> doScreenshot(sessionKey, path);
+                    case "current_surface" -> doCurrentSurface(sessionKey);
+                    case "wait_for" -> doWaitFor(sessionKey, condition, selector, text, value, timeoutSeconds);
+                    case "click" -> doClick(sessionKey, ref, selector);
+                    case "type" -> doType(sessionKey, ref, selector, text);
+                    case "hover" -> doHover(sessionKey, ref, selector);
+                    case "select" -> doSelect(sessionKey, ref, selector, value);
+                    case "eval" -> doEval(sessionKey, code);
+                    case "cdp" -> doCdp(sessionKey, method, params);
+                    case "connect_cdp" -> doConnectCdp(sessionKey, url);
+                    case "list_cdp_targets" -> doListCdpTargets(cdpPort);
+                    case "navigate_back" -> doNavigateBack(sessionKey);
+                    case "diagnose" -> doDiagnose();
+                    default -> error("Unknown action: " + action + ". Supported: start, stop, open, snapshot, screenshot, current_surface, wait_for, click, type, hover, select, eval, cdp, connect_cdp, list_cdp_targets, navigate_back, diagnose");
+                };
+            } catch (PlaywrightException e) {
+                log.error("[BrowserUse] Playwright error: {}", e.getMessage());
+                return error("Browser error: " + e.getMessage());
+            } catch (Exception e) {
+                log.error("[BrowserUse] Unexpected error: {}", e.getMessage(), e);
+                return error("Unexpected error: " + e.getMessage());
+            } finally {
+                currentToolContext.remove();
+            }
+        } finally {
+            removeCancellationHook.run();
+        }
+    }
+
+    // ==================== Playwright Lifecycle ====================
+
+    /**
+     * 获取或创建共享 Playwright 实例（双重检查锁定）。
+     * 首次调用约 1-2s（启动 Node.js），后续调用 ~0ms。
+     *
+     * <p>Issue #40: Playwright.create() spawns a Node.js driver subprocess by extracting
+     * a bundled binary to a temp directory. On Windows this can fail when the user profile
+     * path contains non-ASCII characters or when antivirus quarantines the extracted exe.
+     * We wrap the failure with a message that points the LLM/user at action=diagnose so
+     * they don't get a bare stack trace.
+     */
+    private Playwright getOrCreatePlaywright() {
+        Playwright pw = sharedPlaywright;
+        if (pw != null) {
+            return pw;
+        }
+        synchronized (playwrightLock) {
+            pw = sharedPlaywright;
+            if (pw != null) {
+                return pw;
+            }
+            log.info("[BrowserUse] Creating shared Playwright instance...");
+            long start = System.currentTimeMillis();
+            try {
+                pw = Playwright.create();
+            } catch (Throwable t) {
+                String os = System.getProperty("os.name", "?");
+                log.error("[BrowserUse] Playwright.create() failed on {}: {}", os, t.getMessage(), t);
+                throw new PlaywrightException(
+                        "Failed to start Playwright driver on " + os + ": " + t.getMessage()
+                                + ". Common causes on Windows: (a) user profile path contains non-ASCII chars,"
+                                + " (b) antivirus blocked the extracted driver exe, (c) %TEMP% is on a read-only volume."
+                                + " Run action=diagnose for a full report.", t);
+            }
+            sharedPlaywright = pw;
+            log.info("[BrowserUse] Playwright instance created in {}ms", System.currentTimeMillis() - start);
+            return pw;
+        }
+    }
+
+    // ==================== Browser Event Broadcasting ====================
+
+    /**
+     * 向前端广播浏览器操作事件（通过 SSE）
+     */
+    private void broadcastBrowserEvent(String action, boolean success, String url, String title,
+                                        String screenshot, long durationMs) {
+        String conversationId = ToolExecutionContext.conversationId(currentToolContext.get());
+        if (conversationId == null || streamTracker == null) {
+            return;
+        }
+        try {
+            java.util.Map<String, Object> eventData = new java.util.LinkedHashMap<>();
+            eventData.put("action", action);
+            eventData.put("success", success);
+            if (url != null) eventData.put("url", url);
+            if (title != null) eventData.put("title", title);
+            if (screenshot != null) eventData.put("screenshot", screenshot);
+            eventData.put("durationMs", durationMs);
+            eventData.put("timestamp", System.currentTimeMillis());
+            streamTracker.broadcastObject(conversationId, "browser_action", eventData);
+        } catch (Exception e) {
+            log.debug("[BrowserUse] Failed to broadcast event: {}", e.getMessage());
+        }
+    }
+
+    // ==================== Action Handlers ====================
+
+    private String doStart(String sessionKey, boolean headed) {
+        BrowserSession existing = sessions.get(sessionKey);
+        if (existing != null && existing.isAlive()) {
+            if (existing.headed == headed) {
+                existing.touch();
+                return ok("Browser already running (headed=" + headed + ")");
+            }
+            doStop(sessionKey);
+        }
+
+        int max = launcher.properties().getMaxSessions();
+        if (max > 0 && sessions.size() >= max) {
+            return error("Maximum browser sessions reached (" + max
+                    + "). Stop an existing session first or raise newsclaw.browser.max-sessions.");
+        }
+
+        log.info("[BrowserUse] Starting browser via launcher (headed={})", headed);
+        long startTime = System.currentTimeMillis();
+
+        Playwright pw = getOrCreatePlaywright();
+        BrowserLauncher.Result r = launcher.launch(pw, headed);
+
+        if (!r.isSuccess()) {
+            log.warn("[BrowserUse] All launch strategies failed:\n{}",
+                    BrowserLauncher.formatTrace(r.getAttempts()));
+            broadcastBrowserEvent("start", false, null, null, null,
+                    System.currentTimeMillis() - startTime);
+            JSONObject result = new JSONObject();
+            result.set("ok", false);
+            result.set("error", r.getFailureSummary());
+            result.set("hint", "Run action=diagnose for a detailed report and fix suggestions.");
+            return JSONUtil.toJsonPrettyStr(result);
+        }
+
+        BrowserSession session = new BrowserSession(r.getBrowser(), r.getContext(), r.getPage(),
+                headed, r.isConnectedViaCdp(), r.getCdpUrl(),
+                r.getUserDataDir(), r.getOwnedProcess());
+        sessions.put(sessionKey, session);
+        scheduleIdleCheck(sessionKey);
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        log.info("[BrowserUse] Browser started via {} in {}ms", r.getStrategy(), elapsed);
+        broadcastBrowserEvent("start", true, null, null, null, elapsed);
+        return ok("Browser started via " + r.getStrategy() + " (headed=" + headed + ") in "
+                + elapsed + "ms. Use action=open with url to navigate.");
+    }
+
+    private String doConnectCdp(String sessionKey, String cdpUrl) {
+        if (cdpUrl == null || cdpUrl.isBlank()) {
+            return error("url is required for action=connect_cdp (e.g. http://127.0.0.1:9222)");
+        }
+
+        BrowserSession existing = sessions.get(sessionKey);
+        if (existing != null) {
+            doStop(sessionKey);
+        }
+
+        // Delegate to the launcher with the user-provided URL injected as a one-shot override.
+        // The launcher handles URL normalisation (localhost → 127.0.0.1, protocol prefix).
+        long startTime = System.currentTimeMillis();
+        Playwright pw = getOrCreatePlaywright();
+        String priorCdp = launcher.properties().getCdpUrl();
+        launcher.properties().setCdpUrl(cdpUrl);
+        BrowserLauncher.Result r;
+        try {
+            r = launcher.launch(pw, true);
+        } finally {
+            launcher.properties().setCdpUrl(priorCdp);
+        }
+
+        if (!r.isSuccess() || !r.isConnectedViaCdp()) {
+            log.warn("[BrowserUse] CDP connect failed. Trace:\n{}",
+                    BrowserLauncher.formatTrace(r.getAttempts()));
+            return error("Failed to connect to CDP at " + cdpUrl + ": " + r.getFailureSummary());
+        }
+
+        // action=connect_cdp attaches to a user-managed Chrome — we did not spawn it,
+        // so userDataDir / ownedProcess stay null and close() will only disconnect.
+        BrowserSession session = new BrowserSession(r.getBrowser(), r.getContext(), r.getPage(),
+                true, true, r.getCdpUrl(), null, null);
+        sessions.put(sessionKey, session);
+        scheduleIdleCheck(sessionKey);
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        String title = r.getPage().title();
+        String currentUrl = r.getPage().url();
+        log.info("[BrowserUse] Connected to CDP at {} in {}ms (page: {} - {})",
+                r.getCdpUrl(), elapsed, currentUrl, title);
+
+        JSONObject result = new JSONObject();
+        result.set("ok", true);
+        result.set("cdpUrl", r.getCdpUrl());
+        result.set("currentUrl", currentUrl);
+        result.set("currentTitle", title);
+        result.set("pagesCount", r.getContext().pages().size());
+        result.set("message", "Connected to Chrome via CDP at " + r.getCdpUrl() + ". Current page: " + title);
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    private String doDiagnose() {
+        BrowserDiagnosticsService.Report report = diagnostics.run();
+        JSONObject result = new JSONObject();
+        result.set("ok", "healthy".equals(report.overall()) || "warning".equals(report.overall()));
+        result.set("overall", report.overall());
+
+        // Hutool's JSONUtil reflects on JavaBean-style getters and does not recognise
+        // Java record accessors (r.id() vs r.getId()), so toJsonStr(record) yields {}.
+        // Build the array by hand to keep the payload useful to the LLM.
+        JSONArray findingsArr = new JSONArray();
+        for (BrowserDiagnosticsService.Finding f : report.findings()) {
+            JSONObject fo = new JSONObject();
+            fo.set("id", f.id());
+            fo.set("status", f.status() != null ? f.status().name() : null);
+            fo.set("message", f.message());
+            if (f.data() != null && !f.data().isEmpty()) {
+                fo.set("data", f.data());
+            }
+            if (f.advice() != null) {
+                fo.set("advice", f.advice());
+            }
+            findingsArr.add(fo);
+        }
+        result.set("findings", findingsArr);
+
+        result.set("advice", report.advice());
+        result.set("summary", BrowserDiagnosticsService.summarise(report));
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    private String doListCdpTargets(Integer cdpPort) {
+        log.info("[BrowserUse] Scanning for CDP targets (port={})", cdpPort);
+
+        JSONArray targets = new JSONArray();
+
+        if (cdpPort != null && cdpPort > 0) {
+            // Scan single port
+            JSONObject target = probeCdpPort(cdpPort);
+            if (target != null) {
+                targets.add(target);
+            }
+        } else {
+            // Scan port range
+            for (int port = CDP_SCAN_PORT_MIN; port <= CDP_SCAN_PORT_MAX; port++) {
+                if (isPortOpen(port)) {
+                    JSONObject target = probeCdpPort(port);
+                    if (target != null) {
+                        targets.add(target);
+                    }
+                }
+            }
+        }
+
+        log.info("[BrowserUse] Found {} CDP target(s)", targets.size());
+
+        JSONObject result = new JSONObject();
+        result.set("ok", true);
+        result.set("targets", targets);
+        result.set("count", targets.size());
+        if (targets.isEmpty()) {
+            result.set("message", "No CDP targets found. Start Chrome with --remote-debugging-port=9222 first.");
+        } else {
+            result.set("message", "Found " + targets.size() + " CDP target(s). Use connect_cdp with the url to connect.");
+        }
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    private String doStop(String sessionKey) {
+        BrowserSession session = sessions.remove(sessionKey);
+        if (session == null) {
+            return ok("No browser running");
+        }
+
+        // 取消空闲看门狗（避免 stop 后定时任务继续运行）
+        ScheduledFuture<?> watchdog = session.idleWatchdog;
+        if (watchdog != null && !watchdog.isDone()) {
+            watchdog.cancel(false);
+        }
+
+        String cdpUrl = session.cdpUrl;
+        boolean wasCdp = session.connectedViaCdp;
+        session.close(); // Only closes Browser/Context, not the shared Playwright instance
+
+        if (wasCdp) {
+            log.info("[BrowserUse] Disconnected from CDP (Chrome keeps running at {})", cdpUrl);
+            broadcastBrowserEvent("stop", true, null, null, null, 0);
+            return ok("Disconnected from CDP. Chrome process at " + cdpUrl + " keeps running.");
+        } else {
+            log.info("[BrowserUse] Browser stopped");
+            broadcastBrowserEvent("stop", true, null, null, null, 0);
+            return ok("Browser stopped and resources released");
+        }
+    }
+
+    private String doOpen(String sessionKey, String url) {
+        if (url == null || url.isBlank()) {
+            return error("url is required for action=open");
+        }
+
+        String normalizedUrl = url.trim();
+        if (!normalizedUrl.matches("^https?://.*")) {
+            normalizedUrl = "https://" + normalizedUrl;
+        }
+
+        if (launcher.properties().isSsrfCheckEnabled()) {
+            try {
+                UrlSafetyChecker.check(normalizedUrl,
+                        ssrfProperties.getSsrfAllowlist(),
+                        launcher.properties().isAllowPrivateNetwork());
+            } catch (SecurityException se) {
+                log.warn("[BrowserUse] SSRF check rejected url={}: {}", normalizedUrl, se.getMessage());
+                return error(se.getMessage());
+            }
+        }
+
+        BrowserSession session = getSession(sessionKey);
+        if (session == null) {
+            String startResp = doStart(sessionKey, false);
+            session = getSession(sessionKey);
+            if (session == null) {
+                return startResp;
+            }
+        }
+
+        session.touch();
+        session.invalidateRefs();
+        Page page = session.page;
+
+        page.navigate(normalizedUrl);
+        page.waitForLoadState(LoadState.DOMCONTENTLOADED);
+
+        String title = page.title();
+        String currentUrl = page.url();
+
+        log.info("[BrowserUse] Opened: {} (title={})", currentUrl, title);
+        broadcastBrowserEvent("open", true, currentUrl, title, null, 0);
+
+        JSONObject result = new JSONObject();
+        result.set("ok", true);
+        result.set("title", title);
+        result.set("url", currentUrl);
+        result.set("message", "Page loaded: " + title);
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    private String doNavigateBack(String sessionKey) {
+        BrowserSession session = requireSession(sessionKey);
+        if (session == null) {
+            return error("No browser running. Use action=start first.");
+        }
+
+        session.touch();
+        session.invalidateRefs();
+        session.page.goBack();
+
+        String title = session.page.title();
+        String url = session.page.url();
+        session.refState.reconcileUrl(url);
+
+        log.info("[BrowserUse] Navigated back to: {} ({})", url, title);
+
+        JSONObject result = new JSONObject();
+        result.set("ok", true);
+        result.set("title", title);
+        result.set("url", url);
+        result.set("message", "Navigated back to: " + title);
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    private String doSnapshot(String sessionKey, String selector) {
+        BrowserSession session = requireSession(sessionKey);
+        if (session == null) {
+            return error("No browser running. Use action=start first.");
+        }
+
+        String blocked = guardReadOrNull(session, "snapshot");
+        if (blocked != null) {
+            return blocked;
+        }
+
+        session.touch();
+        Page page = session.page;
+
+        String title = page.title();
+        String url = page.url();
+
+        // Resolve root element via ElementHandle — safer than string-concatenating
+        // the selector into JS (avoids selector-injection via crafted selectors).
+        // Falls back to body when no selector is provided.
+        ElementHandle root;
+        if (selector != null && !selector.isBlank()) {
+            root = page.querySelector(selector);
+            if (root == null) {
+                return error("Snapshot root not found for selector: " + selector);
+            }
+        } else {
+            root = page.querySelector("body");
+            if (root == null) {
+                return error("Snapshot failed: document.body not available");
+            }
+        }
+
+        int maxLen = launcher.properties().getSnapshotMaxLength();
+        boolean includeNon = launcher.properties().isSnapshotIncludeNonInteractive();
+
+        JSONObject result = new JSONObject();
+        result.set("ok", true);
+        result.set("title", title);
+        result.set("url", url);
+
+        try {
+            // Accessibility-tree snapshot: assigns stable @eN references to
+            // interactive elements (materialised as data-mate-ref attributes)
+            // so click/type can address them precisely instead of guessing a
+            // CSS selector. Bumps the session generation so a later action on a
+            // stale reference (page changed / navigated) resolves to not-found.
+            JSONObject opts = new JSONObject();
+            opts.set("maxLen", maxLen);
+            opts.set("includeNonInteractive", includeNon);
+            String jsResult = (String) root.evaluate(PageSnapshotScript.SNAPSHOT_JS, opts);
+            PageSnapshotScript.Result snap = PageSnapshotScript.Result.fromJson(jsResult);
+
+            String snapshotUrl = page.url();
+            int generation = session.nextSnapshotGeneration(snapshotUrl, snap.refs(), snap.refInfos());
+            result.set("url", snapshotUrl);
+
+            result.set("snapshotMode", "accessibility-tree");
+            result.set("generation", generation);
+            // IMPORTANT: flags/hints MUST precede the (large) tree. The framework's
+            // spill-preview keeps only the head of the JSON, so ordering these
+            // first ensures the LLM still sees them after a spill.
+            result.set("truncated", snap.truncated());
+            result.set("hint", "Interactive elements are tagged @eN. To act on one, call"
+                    + " action=click or action=type with ref=<eN> (e.g. ref='e4') — no CSS"
+                    + " selector needed. References are valid only for generation "
+                    + generation + "; re-snapshot if the page changes."
+                    + (snap.truncated() ? " Content truncated — pass selector=<CSS> to scope"
+                    + " to a subtree (e.g. selector='#main')." : ""));
+            if (selector != null && !selector.isBlank()) {
+                result.set("scopedTo", selector);
+            }
+            result.set("refCount", snap.refs().size());
+            result.set("nativeAriaSnapshot", clippedNativeAriaSnapshot(page));
+            result.set("content", snap.tree());
+            return JSONUtil.toJsonPrettyStr(result);
+        } catch (PlaywrightException e) {
+            // Rare pages break the tree walk (exotic custom elements, CSP on
+            // attribute writes). Fall back to the plain visible-text dump so the
+            // model still gets *something* readable, flagged so it knows refs
+            // are unavailable and it must use CSS selectors for this page.
+            log.warn("[BrowserUse] Accessibility snapshot failed, falling back to text dump: {}", e.getMessage());
+            // The tree script wipes data-mate-ref attributes before it walks, so a
+            // mid-walk failure leaves the DOM with no refs. Drop currentRefs too,
+            // otherwise a later ref action would pass the stale-check but resolve
+            // to nothing (bare timeout) instead of a clean re-snapshot prompt.
+            session.invalidateRefs();
+            String jsResult = (String) root.evaluate(TEXT_SNAPSHOT_JS_FALLBACK, maxLen);
+            JSONObject parsed = JSONUtil.parseObj(jsResult);
+            boolean truncated = parsed.getBool("truncated", false);
+            result.set("snapshotMode", "text-fallback");
+            result.set("truncated", truncated);
+            result.set("hint", "Accessibility tree unavailable on this page — no @eN refs."
+                    + " Use action=click/type with selector=<CSS>."
+                    + (truncated ? " Content truncated — pass selector=<CSS> to scope." : ""));
+            if (selector != null && !selector.isBlank()) {
+                result.set("scopedTo", selector);
+            }
+            result.set("content", parsed.getStr("text"));
+            return JSONUtil.toJsonPrettyStr(result);
+        }
+    }
+
+    private String doScreenshot(String sessionKey, String path) {
+        BrowserSession session = requireSession(sessionKey);
+        if (session == null) {
+            return error("No browser running. Use action=start first.");
+        }
+
+        String blocked = guardReadOrNull(session, "screenshot");
+        if (blocked != null) {
+            return blocked;
+        }
+
+        session.touch();
+        Page page = session.page;
+
+        Page.ScreenshotOptions opts = new Page.ScreenshotOptions().setFullPage(false);
+
+        if (path != null && !path.isBlank()) {
+            opts.setPath(Paths.get(path));
+            page.screenshot(opts);
+            log.info("[BrowserUse] Screenshot saved to: {}", path);
+
+            JSONObject result = new JSONObject();
+            result.set("ok", true);
+            result.set("path", path);
+            result.set("message", "Screenshot saved to " + path);
+            return JSONUtil.toJsonPrettyStr(result);
+        } else {
+            byte[] bytes = page.screenshot(opts);
+            String base64 = Base64.getEncoder().encodeToString(bytes);
+            log.info("[BrowserUse] Screenshot captured ({} bytes)", bytes.length);
+            broadcastBrowserEvent("screenshot", true, null, null, base64, 0);
+
+            JSONObject result = new JSONObject();
+            result.set("ok", true);
+            result.set("format", "png");
+            result.set("base64", base64);
+            result.set("size", bytes.length);
+            result.set("message", "Screenshot captured (" + bytes.length + " bytes)");
+            return JSONUtil.toJsonPrettyStr(result);
+        }
+    }
+
+    private String doCurrentSurface(String sessionKey) {
+        BrowserSession session = requireSession(sessionKey);
+        if (session == null) {
+            return error("No browser running. Use action=start first.");
+        }
+        String blocked = guardReadOrNull(session, "current_surface");
+        if (blocked != null) {
+            return blocked;
+        }
+        session.touch();
+        return JSONUtil.toJsonPrettyStr(surfaceResult(session));
+    }
+
+    private String doWaitFor(String sessionKey, String condition, String selector, String text,
+                             String value, Integer timeoutSeconds) {
+        BrowserSession session = requireSession(sessionKey);
+        if (session == null) {
+            return error("No browser running. Use action=start first.");
+        }
+        String blocked = guardReadOrNull(session, "wait_for");
+        if (blocked != null) {
+            return blocked;
+        }
+        BrowserWaitCondition wait;
+        try {
+            wait = BrowserWaitCondition.parse(condition, selector, text, value, timeoutSeconds,
+                    launcher.properties().getDefaultTimeoutSeconds());
+        } catch (IllegalArgumentException e) {
+            return error(e.getMessage());
+        }
+
+        session.touch();
+        Page page = session.page;
+        switch (wait.kind()) {
+            case SELECTOR -> page.waitForSelector(wait.target(),
+                    new Page.WaitForSelectorOptions()
+                            .setState(WaitForSelectorState.VISIBLE)
+                            .setStrict(false)
+                            .setTimeout(wait.timeoutMillis()));
+            case TEXT -> page.getByText(wait.target()).first().waitFor(
+                    new Locator.WaitForOptions()
+                            .setState(WaitForSelectorState.VISIBLE)
+                            .setTimeout(wait.timeoutMillis()));
+            case URL -> page.waitForURL(wait.target(),
+                    new Page.WaitForURLOptions().setTimeout(wait.timeoutMillis()));
+            case LOAD_STATE -> page.waitForLoadState(loadState(wait.target()),
+                    new Page.WaitForLoadStateOptions().setTimeout(wait.timeoutMillis()));
+        }
+        JSONObject result = surfaceResult(session);
+        result.set("waitedFor", wait.kind().name().toLowerCase());
+        result.set("waitTarget", wait.target());
+        result.set("timeoutMillis", wait.timeoutMillis());
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    private JSONObject surfaceResult(BrowserSession session) {
+        Page page = session.page;
+        session.refState.reconcileUrl(page.url());
+        JSONObject result = new JSONObject();
+        result.set("ok", true);
+        result.set("currentUrl", page.url());
+        result.set("currentTitle", page.title());
+        result.set("readyState", safeReadyState(page));
+        result.set("snapshotGeneration", session.refState.snapshotGeneration());
+        result.set("refStatus", session.refState.status().name().toLowerCase());
+        result.set("refsValid", session.refState.refsValid());
+        result.set("refCount", session.refState.refCount());
+        result.set("navigationEpoch", session.refState.navigationEpoch());
+        result.set("snapshotNavigationEpoch", session.refState.snapshotNavigationEpoch());
+        result.set("snapshotUrl", session.refState.snapshotUrl());
+        JSONArray console = new JSONArray();
+        try {
+            List<ConsoleMessage> messages = page.consoleMessages();
+            int start = Math.max(0, messages.size() - 5);
+            for (ConsoleMessage message : messages.subList(start, messages.size())) {
+                JSONObject item = new JSONObject();
+                item.set("type", message.type());
+                item.set("text", message.text());
+                item.set("timestamp", message.timestamp());
+                console.add(item);
+            }
+        } catch (Exception e) {
+            log.debug("[BrowserUse] consoleMessages unavailable: {}", e.getMessage());
+        }
+        result.set("recentConsoleMessages", console);
+        JSONArray errors = new JSONArray();
+        try {
+            List<String> pageErrors = page.pageErrors();
+            int start = Math.max(0, pageErrors.size() - 5);
+            for (String pageError : pageErrors.subList(start, pageErrors.size())) {
+                errors.add(pageError);
+            }
+        } catch (Exception e) {
+            log.debug("[BrowserUse] pageErrors unavailable: {}", e.getMessage());
+        }
+        result.set("recentPageErrors", errors);
+        return result;
+    }
+
+    private static String safeReadyState(Page page) {
+        try {
+            Object ready = page.evaluate("document.readyState");
+            return ready != null ? ready.toString() : "unknown";
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
+
+    private static String clippedNativeAriaSnapshot(Page page) {
+        try {
+            String snapshot = page.ariaSnapshot();
+            if (snapshot == null) {
+                return "";
+            }
+            return snapshot.length() > 4000 ? snapshot.substring(0, 4000) + "\n... [truncated]" : snapshot;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static LoadState loadState(String state) {
+        return switch (state.trim().toLowerCase()) {
+            case "load" -> LoadState.LOAD;
+            case "domcontentloaded", "dom_content_loaded" -> LoadState.DOMCONTENTLOADED;
+            case "networkidle", "network_idle" -> LoadState.NETWORKIDLE;
+            default -> throw new IllegalArgumentException("Unknown load state: " + state
+                    + ". Supported: load, domcontentloaded, networkidle");
+        };
+    }
+
+    /** Result of resolving a click/type/hover/select target: a selector, or an error to return. */
+    private record TargetResolution(String selector, String label, String error) {
+        static TargetResolution ok(String selector, String label) {
+            return new TargetResolution(selector, label, null);
+        }
+        static TargetResolution fail(String error) {
+            return new TargetResolution(null, null, error);
+        }
+    }
+
+    /**
+     * Resolve an action target to a CSS selector. A snapshot {@code ref} takes
+     * priority over an explicit CSS {@code selector}; a ref that is not part of
+     * the current snapshot is reported as stale so the caller re-snapshots
+     * instead of getting a bare element-not-found timeout.
+     */
+    private TargetResolution resolveTarget(BrowserSession session, String ref, String selector) {
+        if (ref != null && !ref.isBlank()) {
+            String r = ref.trim();
+            if (!session.refState.contains(r)) {
+                return TargetResolution.fail("ref '" + r + "' is not part of the current snapshot"
+                        + " (generation " + session.refState.snapshotGeneration() + "). The page likely changed,"
+                        + " or you have not snapshotted since it did. Call action=snapshot first,"
+                        + " then use a ref from that fresh result.");
+            }
+            String refSelector = PageSnapshotScript.selectorForRef(r);
+            PageSnapshotScript.RefFingerprint expected = session.refState.fingerprint(r);
+            if (expected != null) {
+                ElementHandle element = session.page.querySelector(refSelector);
+                if (element == null) {
+                    session.invalidateRefs();
+                    return TargetResolution.fail("ref '" + r + "' no longer exists on the page."
+                            + " Call action=snapshot again before acting.");
+                }
+                PageSnapshotScript.RefFingerprint actual = liveFingerprint(element, r);
+                if (!expected.sameCoreIdentity(actual)) {
+                    session.invalidateRefs();
+                    return TargetResolution.fail("ref '" + r + "' now points to a different element."
+                            + " Expected " + expected.role() + " '" + expected.name() + "', got "
+                            + actual.role() + " '" + actual.name() + "'. Call action=snapshot again.");
+                }
+            }
+            return TargetResolution.ok(refSelector, r);
+        }
+        if (selector != null && !selector.isBlank()) {
+            return TargetResolution.ok(selector, selector);
+        }
+        return TargetResolution.fail("Either ref (from a snapshot, e.g. ref='e4') or a CSS selector is required.");
+    }
+
+    private static PageSnapshotScript.RefFingerprint liveFingerprint(ElementHandle element, String ref) {
+        String json = (String) element.evaluate(PageSnapshotScript.REF_FINGERPRINT_JS, ref);
+        return PageSnapshotScript.RefFingerprint.fromJson(JSONUtil.parseObj(json));
+    }
+
+    private String doClick(String sessionKey, String ref, String selector) {
+        BrowserSession session = requireSession(sessionKey);
+        if (session == null) {
+            return error("No browser running. Use action=start first.");
+        }
+        TargetResolution t = resolveTarget(session, ref, selector);
+        if (t.error() != null) {
+            return error(t.error());
+        }
+
+        session.touch();
+        Page page = session.page;
+
+        String before = page.url();
+        String beforeTitle = page.title();
+        page.click(t.selector());
+        page.waitForLoadState(LoadState.DOMCONTENTLOADED);
+
+        String title = page.title();
+        String url = page.url();
+        // A navigation invalidates the snapshot references; a same-page click
+        // (toggle, expand) keeps them so the model can act on more refs.
+        session.refState.reconcileUrl(url);
+
+        log.info("[BrowserUse] Clicked: {} (page now: {})", t.label(), url);
+        broadcastBrowserEvent("click", true, url, title, null, 0);
+
+        JSONObject result = new JSONObject();
+        result.set("ok", true);
+        result.set("target", t.label());
+        result.set("currentUrl", url);
+        result.set("currentTitle", title);
+        result.set("urlChanged", !url.equals(before));
+        result.set("titleChanged", !title.equals(beforeTitle));
+        result.set("refsValid", session.refState.refsValid());
+        if (!url.equals(before)) {
+            result.set("navigated", true);
+            result.set("hint", "The page navigated — previous @eN refs are stale. Re-snapshot before acting.");
+        }
+        result.set("message", "Clicked element: " + t.label());
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    private String doType(String sessionKey, String ref, String selector, String text) {
+        if (text == null) {
+            return error("text is required for action=type");
+        }
+        BrowserSession session = requireSession(sessionKey);
+        if (session == null) {
+            return error("No browser running. Use action=start first.");
+        }
+        TargetResolution t = resolveTarget(session, ref, selector);
+        if (t.error() != null) {
+            return error(t.error());
+        }
+
+        session.touch();
+        String before = session.page.url();
+        String beforeTitle = session.page.title();
+        session.page.fill(t.selector(), text);
+        String url = session.page.url();
+        String title = session.page.title();
+        session.refState.reconcileUrl(url);
+
+        log.info("[BrowserUse] Typed into: {} ({} chars)", t.label(), text.length());
+        broadcastBrowserEvent("type", true, url, title, null, 0);
+
+        JSONObject result = new JSONObject();
+        result.set("ok", true);
+        result.set("target", t.label());
+        result.set("currentUrl", url);
+        result.set("currentTitle", title);
+        result.set("urlChanged", !url.equals(before));
+        result.set("titleChanged", !title.equals(beforeTitle));
+        result.set("refsValid", session.refState.refsValid());
+        result.set("textLength", text.length());
+        result.set("message", "Typed " + text.length() + " characters into " + t.label());
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    private String doHover(String sessionKey, String ref, String selector) {
+        BrowserSession session = requireSession(sessionKey);
+        if (session == null) {
+            return error("No browser running. Use action=start first.");
+        }
+        TargetResolution t = resolveTarget(session, ref, selector);
+        if (t.error() != null) {
+            return error(t.error());
+        }
+
+        session.touch();
+        String before = session.page.url();
+        String beforeTitle = session.page.title();
+        session.page.hover(t.selector());
+        String url = session.page.url();
+        String title = session.page.title();
+        session.refState.reconcileUrl(url);
+
+        log.info("[BrowserUse] Hovered: {}", t.label());
+        broadcastBrowserEvent("hover", true, url, title, null, 0);
+
+        JSONObject result = new JSONObject();
+        result.set("ok", true);
+        result.set("target", t.label());
+        result.set("currentUrl", url);
+        result.set("currentTitle", title);
+        result.set("urlChanged", !url.equals(before));
+        result.set("titleChanged", !title.equals(beforeTitle));
+        result.set("refsValid", session.refState.refsValid());
+        result.set("message", "Hovered element: " + t.label()
+                + ". Re-snapshot to capture any menu/tooltip it revealed.");
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    private String doSelect(String sessionKey, String ref, String selector, String value) {
+        if (value == null || value.isBlank()) {
+            return error("value is required for action=select");
+        }
+        BrowserSession session = requireSession(sessionKey);
+        if (session == null) {
+            return error("No browser running. Use action=start first.");
+        }
+        TargetResolution t = resolveTarget(session, ref, selector);
+        if (t.error() != null) {
+            return error(t.error());
+        }
+
+        session.touch();
+        String before = session.page.url();
+        String beforeTitle = session.page.title();
+        // Playwright matches by option value, label, or visible text, so a
+        // human-readable value from the model works without extra hints.
+        List<String> chosen = session.page.selectOption(t.selector(), value);
+        String url = session.page.url();
+        String title = session.page.title();
+        session.refState.reconcileUrl(url);
+
+        log.info("[BrowserUse] Selected {} in {} -> {}", value, t.label(), chosen);
+        broadcastBrowserEvent("select", true, url, title, null, 0);
+
+        JSONObject result = new JSONObject();
+        result.set("ok", true);
+        result.set("target", t.label());
+        result.set("currentUrl", url);
+        result.set("currentTitle", title);
+        result.set("urlChanged", !url.equals(before));
+        result.set("titleChanged", !title.equals(beforeTitle));
+        result.set("refsValid", session.refState.refsValid());
+        result.set("selected", chosen);
+        result.set("message", chosen.isEmpty()
+                ? "No option matched '" + value + "'. Re-snapshot and check the option labels."
+                : "Selected '" + value + "' in " + t.label());
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    /** Detects the {@code await} keyword as a whole word to decide whether eval code needs an async wrapper. */
+    private static final Pattern TOP_LEVEL_AWAIT = Pattern.compile("\\bawait\\b");
+
+    /**
+     * Playwright raises this exact message when a bare-expression eval contains a
+     * top-level {@code return}. Such snippets are safe to retry inside an async
+     * IIFE, where {@code return} surfaces the value.
+     */
+    private static boolean isIllegalReturn(PlaywrightException ex) {
+        String m = ex.getMessage();
+        return m != null && m.contains("Illegal return statement");
+    }
+
+    private String doEval(String sessionKey, String code) {
+        if (code == null || code.isBlank()) {
+            return error("code is required for action=eval");
+        }
+
+        BrowserSession session = requireSession(sessionKey);
+        if (session == null) {
+            return error("No browser running. Use action=start first.");
+        }
+
+        String blocked = guardReadOrNull(session, "eval");
+        if (blocked != null) {
+            return blocked;
+        }
+        if (launcher.properties().isSsrfCheckEnabled()) {
+            try {
+                BrowserNavigationGuard.checkEval(code,
+                        ssrfProperties.getSsrfAllowlist(),
+                        launcher.properties().isAllowPrivateNetwork());
+            } catch (SecurityException se) {
+                log.warn("[BrowserUse] Eval navigation guard rejected script: {}", se.getMessage());
+                return error(se.getMessage());
+            }
+        }
+
+        session.touch();
+        Page page = session.page;
+
+        // Playwright evaluates the supplied string as a plain expression, which
+        // rejects both top-level `await` and top-level `return` ("SyntaxError:
+        // Illegal return statement"). Snippets that use `await` are wrapped up
+        // front in an async IIFE (valid for `await` and `return` alike).
+        // A top-level `return` only fails at eval time, so we retry once wrapped
+        // rather than pre-wrapping on a naive `return` match — that would mangle
+        // bare expressions containing a nested return (e.g. arr.map(x => {
+        // return x; })) into an IIFE with no top-level return, yielding undefined.
+        String script = TOP_LEVEL_AWAIT.matcher(code).find()
+                ? "(async () => {" + code + "})()"
+                : code;
+        Object evalResult;
+        try {
+            evalResult = page.evaluate(script);
+        } catch (PlaywrightException ex) {
+            if (script.equals(code) && isIllegalReturn(ex)) {
+                log.debug("[BrowserUse] eval had a top-level return; retrying wrapped in async IIFE");
+                script = "(async () => {" + code + "})()";
+                evalResult = page.evaluate(script);
+            } else {
+                throw ex;
+            }
+        }
+        String resultStr = evalResult != null ? evalResult.toString() : "null";
+        session.refState.reconcileUrl(page.url());
+
+        if (resultStr.length() > 10_000) {
+            resultStr = resultStr.substring(0, 10_000) + "\n... [truncated]";
+        }
+
+        log.info("[BrowserUse] Eval executed ({} chars result)", resultStr.length());
+
+        JSONObject result = new JSONObject();
+        result.set("ok", true);
+        result.set("result", resultStr);
+        result.set("currentUrl", page.url());
+        result.set("refsValid", session.refState.refsValid());
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    /**
+     * CDP methods that read page/network/storage content. Even when allowlisted,
+     * these are refused by the privacy guard on a sensitive page of a
+     * user-managed browser. Entries ending in {@code .} match a whole domain.
+     */
+    private static final List<String> CDP_CONTENT_READ = List.of(
+            "Network.getResponseBody", "Network.getResponseBodyForInterception",
+            "Network.getRequestPostData", "Network.getAllCookies", "Network.getCookies",
+            "Storage.", "DOMStorage.", "IndexedDB.", "CacheStorage.",
+            "Page.captureScreenshot", "Page.captureSnapshot", "Page.printToPDF",
+            "Page.getResourceContent", "Page.getResourceTree",
+            "DOM.getOuterHTML", "DOM.getDocument", "Runtime.evaluate", "Runtime.getProperties");
+
+    private boolean isCdpMethodAllowed(String method) {
+        for (String entry : launcher.properties().getCdp().getAllowedMethods()) {
+            if (entry == null || entry.isBlank()) {
+                continue;
+            }
+            String e = entry.trim();
+            if (e.endsWith(".*")) {
+                if (method.startsWith(e.substring(0, e.length() - 1))) { // "Input." prefix
+                    return true;
+                }
+            } else if (e.equals(method)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isCdpContentReading(String method) {
+        for (String p : CDP_CONTENT_READ) {
+            if (p.endsWith(".") ? method.startsWith(p) : method.equals(p)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String doCdp(String sessionKey, String method, Map<String, Object> params) {
+        if (!launcher.properties().getCdp().isEnabled()) {
+            return error("action=cdp is disabled (newsclaw.browser.cdp.enabled=false).");
+        }
+        if (method == null || method.isBlank()) {
+            return error("method is required for action=cdp (e.g. 'Page.navigate').");
+        }
+        BrowserSession session = requireSession(sessionKey);
+        if (session == null) {
+            return error("No browser running. Use action=start first.");
+        }
+        String m = method.trim();
+        if (!isCdpMethodAllowed(m)) {
+            return error("CDP method '" + m + "' is not allowed. Allowlist: "
+                    + launcher.properties().getCdp().getAllowedMethods()
+                    + ". Add it to newsclaw.browser.cdp.allowed-methods if you trust it.");
+        }
+        if (isCdpContentReading(m)) {
+            String reason = privacyGuard.blockReason(session.isUserManagedBrowser(),
+                    session.page.url(), "cdp:" + m);
+            if (reason != null) {
+                privacyGuard.audit(ToolExecutionContext.conversationId(currentToolContext.get()),
+                        "cdp:" + m, session.page.url(), reason);
+                return error(reason);
+            }
+        }
+
+        JsonObject parsed = params == null ? null : GSON.toJsonTree(params).getAsJsonObject();
+        if (launcher.properties().isSsrfCheckEnabled()) {
+            try {
+                BrowserNavigationGuard.checkCdp(m, parsed,
+                        ssrfProperties.getSsrfAllowlist(),
+                        launcher.properties().isAllowPrivateNetwork());
+            } catch (SecurityException se) {
+                log.warn("[BrowserUse] CDP navigation guard rejected method={} params={}: {}",
+                        m, params, se.getMessage());
+                return error(se.getMessage());
+            }
+        }
+
+        session.touch();
+        // A fresh CDP session per call keeps the escape hatch stateless and avoids
+        // leaking listeners; navigation-triggering methods invalidate references.
+        CDPSession cdp = session.context.newCDPSession(session.page);
+        try {
+            JsonObject res = parsed != null ? cdp.send(m, parsed) : cdp.send(m);
+            if (m.startsWith("Page.navigate") || m.equals("Page.navigateToHistoryEntry")) {
+                session.invalidateRefs();
+            }
+            session.refState.reconcileUrl(session.page.url());
+            String out = res != null ? res.toString() : "{}";
+            if (out.length() > 10_000) {
+                out = out.substring(0, 10_000) + "\n... [truncated]";
+            }
+            log.info("[BrowserUse] CDP {} -> {} chars", m, out.length());
+            broadcastBrowserEvent("cdp", true, session.page.url(), null, null, 0);
+            JSONObject result = new JSONObject();
+            result.set("ok", true);
+            result.set("method", m);
+            result.set("result", out);
+            return JSONUtil.toJsonPrettyStr(result);
+        } finally {
+            try {
+                cdp.detach();
+            } catch (Exception ignored) {
+                // best-effort; the session is discarded either way
+            }
+        }
+    }
+
+    // ==================== CDP Helpers ====================
+
+    private boolean isPortOpen(int port) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new java.net.InetSocketAddress("127.0.0.1", port), 100);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private JSONObject probeCdpPort(int port) {
+        try {
+            String jsonUrl = "http://127.0.0.1:" + port + "/json/version";
+            String response = HttpUtil.get(jsonUrl, 2000);
+            if (response != null && response.contains("webSocketDebuggerUrl")) {
+                JSONObject version = JSONUtil.parseObj(response);
+                JSONObject target = new JSONObject();
+                target.set("port", port);
+                target.set("url", "http://127.0.0.1:" + port);
+                target.set("browser", version.getStr("Browser", "unknown"));
+                target.set("webSocketDebuggerUrl", version.getStr("webSocketDebuggerUrl", ""));
+                return target;
+            }
+        } catch (Exception e) {
+            log.debug("[BrowserUse] Port {} is not a CDP endpoint: {}", port, e.getMessage());
+        }
+        return null;
+    }
+
+    // ==================== Session Management ====================
+
+    private BrowserSession getSession(String sessionKey) {
+        BrowserSession session = sessions.get(sessionKey);
+        if (session != null && !session.isAlive()) {
+            sessions.remove(sessionKey);
+            session.close();
+            return null;
+        }
+        return session;
+    }
+
+    private BrowserSession requireSession(String sessionKey) {
+        return getSession(sessionKey);
+    }
+
+    private void scheduleIdleCheck(String sessionKey) {
+        BrowserSession session = sessions.get(sessionKey);
+        if (session == null) return;
+
+        // 取消已有的看门狗（防止 start→stop→start 导致多个定时任务累积）
+        ScheduledFuture<?> existing = session.idleWatchdog;
+        if (existing != null && !existing.isDone()) {
+            existing.cancel(false);
+        }
+
+        ScheduledFuture<?> future = scheduler.scheduleAtFixedRate(() -> {
+            BrowserSession s = sessions.get(sessionKey);
+            if (s == null) return;
+            long idleMinutes = (System.currentTimeMillis() - s.lastActivity) / 60_000;
+            if (idleMinutes >= IDLE_TIMEOUT_MINUTES) {
+                log.info("[BrowserUse] Idle timeout ({}min), stopping session: {}", idleMinutes, sessionKey);
+                try (BrowserSessionGate.Lease ignored = sessionGate.enter(sessionKey)) {
+                    BrowserSession current = sessions.get(sessionKey);
+                    if (current != null && System.currentTimeMillis() - current.lastActivity
+                            >= TimeUnit.MINUTES.toMillis(IDLE_TIMEOUT_MINUTES)) {
+                        doStop(sessionKey);
+                    }
+                }
+            }
+        }, IDLE_TIMEOUT_MINUTES, 5, TimeUnit.MINUTES);
+
+        session.idleWatchdog = future;
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        log.info("[BrowserUse] Cleaning up all browser sessions");
+        scheduler.shutdownNow();
+        sessions.forEach((key, session) -> {
+            try {
+                session.close();
+            } catch (Exception e) {
+                log.warn("[BrowserUse] Error closing session {}: {}", key, e.getMessage());
+            }
+        });
+        sessions.clear();
+
+        // Shutdown the shared Playwright Node.js process
+        synchronized (playwrightLock) {
+            if (sharedPlaywright != null) {
+                try {
+                    sharedPlaywright.close();
+                    log.info("[BrowserUse] Shared Playwright instance closed");
+                } catch (Exception e) {
+                    log.warn("[BrowserUse] Error closing Playwright: {}", e.getMessage());
+                }
+                sharedPlaywright = null;
+            }
+        }
+    }
+
+    // ==================== Helper Methods ====================
+
+    private String ok(String message) {
+        JSONObject result = new JSONObject();
+        result.set("ok", true);
+        result.set("message", message);
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    private String error(String message) {
+        JSONObject result = new JSONObject();
+        result.set("ok", false);
+        result.set("error", message);
+        return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    // ==================== Inner Class ====================
+
+    /**
+     * 浏览器会话（不持有 Playwright 实例，Playwright 由外层共享管理）
+     */
+    private static class BrowserSession {
+        final Browser browser;
+        final BrowserContext context;
+        volatile Page page;
+        final boolean headed;
+        final boolean connectedViaCdp;
+        final String cdpUrl;
+        /**
+         * Temp profile directory we created for the EXTERNAL_CDP fallback.
+         * Null when the session connected to a user-managed Chrome (CONFIG_CDP /
+         * action=connect_cdp) or used a non-CDP launch strategy.
+         */
+        final java.nio.file.Path userDataDir;
+        /**
+         * Chrome subprocess we spawned ourselves for EXTERNAL_CDP. Null otherwise.
+         * Closing the Playwright {@code Browser} only severs the CDP socket; the
+         * actual Chrome process keeps running until we destroyForcibly() it here.
+         */
+        final Process ownedProcess;
+        volatile long lastActivity;
+        /** 空闲看门狗定时任务（stop 时取消，避免泄漏） */
+        volatile ScheduledFuture<?> idleWatchdog;
+
+        /**
+         * Snapshot reference lifecycle, including navigation epochs and the
+         * fingerprints assigned by the latest snapshot.
+         */
+        final BrowserRefState refState = new BrowserRefState();
+
+        int nextSnapshotGeneration(String url, java.util.List<String> refs,
+                                   Map<String, PageSnapshotScript.RefFingerprint> refInfos) {
+            return refState.recordSnapshot(url, refs, refInfos);
+        }
+
+        /** Drop all references — the DOM they pointed at is gone (navigation). */
+        void invalidateRefs() {
+            refState.invalidate();
+        }
+
+        /**
+         * True when this session is attached to a Chrome the user runs themselves:
+         * connected over CDP and NOT spawned by us. Only these carry the user's
+         * live logins, so the privacy guard applies only here.
+         */
+        boolean isUserManagedBrowser() {
+            return connectedViaCdp && ownedProcess == null;
+        }
+
+        BrowserSession(Browser browser, BrowserContext context, Page page,
+                        boolean headed, boolean connectedViaCdp, String cdpUrl,
+                        java.nio.file.Path userDataDir, Process ownedProcess) {
+            this.browser = browser;
+            this.context = context;
+            this.page = page;
+            this.headed = headed;
+            this.connectedViaCdp = connectedViaCdp;
+            this.cdpUrl = cdpUrl;
+            this.userDataDir = userDataDir;
+            this.ownedProcess = ownedProcess;
+            this.lastActivity = System.currentTimeMillis();
+            this.refState.reconcileUrl(page.url());
+            page.onFrameNavigated(frame -> {
+                if (frame == page.mainFrame()) {
+                    refState.onMainFrameNavigated(frame.url());
+                }
+            });
+        }
+
+        void touch() {
+            this.lastActivity = System.currentTimeMillis();
+        }
+
+        boolean isAlive() {
+            return browser != null && browser.isConnected();
+        }
+
+        /**
+         * Close the session (does not touch the shared Playwright driver).
+         * <ul>
+         *   <li>User-managed CDP (ownedProcess == null): just disconnect — the user owns the Chrome process.</li>
+         *   <li>Self-spawned CDP (ownedProcess != null): disconnect, then destroyForcibly() the Chrome we spawned,
+         *       wait briefly for it to exit so Windows lockfiles are released, then deleteQuietly() the temp profile.</li>
+         *   <li>Launch mode (connectedViaCdp == false): close context + browser; Playwright handles process teardown.</li>
+         * </ul>
+         */
+        void close() {
+            if (connectedViaCdp) {
+                try {
+                    if (browser != null) browser.close();
+                } catch (Exception ignored) {}
+                if (ownedProcess != null) {
+                    try {
+                        // Snapshot descendants BEFORE killing the parent. Chrome on Windows
+                        // spawns ~6 child processes (renderer, GPU, network service, ...)
+                        // that hold open handles inside the user-data-dir. destroyForcibly()
+                        // only sends TerminateProcess to the parent; killing children must
+                        // be done separately, otherwise the temp dir cannot be deleted and
+                        // the orphaned chrome.exe instances keep running.
+                        java.util.List<ProcessHandle> children = ownedProcess.descendants()
+                                .toList();
+                        ownedProcess.destroyForcibly();
+                        for (ProcessHandle h : children) {
+                            try { h.destroyForcibly(); } catch (Exception ignored) {}
+                        }
+                        ownedProcess.waitFor(5, TimeUnit.SECONDS);
+                        for (ProcessHandle h : children) {
+                            try { h.onExit().get(2, TimeUnit.SECONDS); } catch (Exception ignored) {}
+                        }
+                    } catch (Exception ignored) {}
+                    BrowserLauncher.deleteQuietly(userDataDir);
+                }
+            } else {
+                try {
+                    if (context != null) context.close();
+                } catch (Exception ignored) {}
+                try {
+                    if (browser != null) browser.close();
+                } catch (Exception ignored) {}
+            }
+        }
+    }
+}

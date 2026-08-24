@@ -1,0 +1,11 @@
+{
+  "name": "newsclaw-plugin-hello",
+  "version": "1.0.0",
+  "type": "tool",
+  "displayName": "Hello World Plugin",
+  "description": "A sample plugin that demonstrates the NewsClaw Plugin SDK by registering a simple greeting tool.",
+  "entrypoint": "vip.newsclaw.plugin.sample.HelloPlugin",
+  "minPlatformVersion": "1.1.0",
+  "author": "NewsClaw Team",
+  "config": {}
+}

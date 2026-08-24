@@ -1,0 +1,211 @@
+package vip.newsclaw.agent.runtime;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.web.bind.annotation.*;
+import vip.newsclaw.agent.delegation.SubagentRegistry;
+import vip.newsclaw.audit.service.AuditEventService;
+import vip.newsclaw.channel.web.ChatStreamTracker;
+import vip.newsclaw.common.result.R;
+import vip.newsclaw.exception.NewsClawException;
+import vip.newsclaw.i18n.I18nService;
+import vip.newsclaw.workspace.conversation.ConversationService;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import vip.newsclaw.workspace.core.annotation.RequireGlobalAdmin;
+import vip.newsclaw.agent.runtime.dsh.DshRuntimeService;
+
+/**
+ * Admin-only live runtime surface: the workspace view of every in-flight agent
+ * turn plus the controls to friendly-stop, force-recycle, or sweep stuck
+ * runs. Distinct from {@code /api/v1/subagents/...} which is per-conversation
+ * owner-scoped.
+ */
+@Slf4j
+@Tag(name = "Agent Runtime (Live)")
+@RestController
+@RequestMapping("/api/v1/admin/agent-runtime")
+@RequiredArgsConstructor
+public class AgentRuntimeController {
+
+    private final AgentRuntimeAggregator aggregator;
+    private final ChatStreamTracker streamTracker;
+    private final SubagentRegistry subagentRegistry;
+    private final AuditEventService auditEventService;
+    private final ConversationService conversationService;
+    private final I18nService i18nService;
+    private final DshRuntimeService dshRuntimeService;
+
+    @Operation(summary = "Snapshot of every in-flight agent turn")
+    @GetMapping("/snapshot")
+    @RequireGlobalAdmin
+    public R<AgentRuntimeAggregator.RuntimeSnapshot> snapshot(
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
+            Authentication auth) {
+        requireAdmin(auth);
+        requireWorkspace(workspaceId);
+        return R.ok(aggregator.snapshot(workspaceId));
+    }
+
+    @Operation(summary = "DSH runtime availability and capability diagnostics")
+    @GetMapping("/dsh/diagnostics")
+    @RequireGlobalAdmin
+    public R<Map<String, Object>> dshDiagnostics(Authentication auth) {
+        requireAdmin(auth);
+        return R.ok(dshRuntimeService.diagnostics());
+    }
+
+    @Operation(summary = "Friendly stop — request the run to wind down at its next checkpoint")
+    @PostMapping("/runs/{conversationId}/stop")
+    @RequireGlobalAdmin
+    public R<Map<String, Object>> stopFriendly(@PathVariable String conversationId,
+                                               @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
+                                               Authentication auth) {
+        requireAdmin(auth);
+        requireRunInWorkspace(conversationId, workspaceId);
+        boolean ok = streamTracker.requestStop(conversationId);
+        recordAudit(auth, "agent-runtime.stop", conversationId, Map.of("result", ok));
+        return R.ok(Map.of("stopped", ok));
+    }
+
+    @Operation(summary = "Force recycle — dispose flux + drop RunState; use after friendly stop ignored")
+    @PostMapping("/runs/{conversationId}/recycle")
+    @RequireGlobalAdmin
+    public R<Map<String, Object>> recycle(@PathVariable String conversationId,
+                                          @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
+                                          Authentication auth) {
+        requireAdmin(auth);
+        requireRunInWorkspace(conversationId, workspaceId);
+        boolean ok = streamTracker.forceRecycle(conversationId);
+        if (ok) {
+            finalizeRecycledConversation(conversationId);
+        }
+        recordAudit(auth, "agent-runtime.recycle", conversationId, Map.of("result", ok));
+        return R.ok(Map.of("recycled", ok));
+    }
+
+    @Operation(summary = "Interrupt one sub-agent (admin override of ownership check)")
+    @PostMapping("/subagents/{subagentId}/interrupt")
+    @RequireGlobalAdmin
+    public R<Map<String, Object>> interruptSubagent(@PathVariable String subagentId,
+                                                    @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
+                                                    Authentication auth) {
+        requireAdmin(auth);
+        requireSubagentInWorkspace(subagentId, workspaceId);
+        boolean ok = subagentRegistry.interrupt(subagentId);
+        recordAudit(auth, "agent-runtime.subagent.interrupt", subagentId, Map.of("result", ok));
+        return R.ok(Map.of("interrupted", ok));
+    }
+
+    /**
+     * Bulk recycle every run that the aggregator currently flags as stuck.
+     * Returns the conversationIds that were touched so the caller can render
+     * a confirmation toast without re-fetching.
+     */
+    @Operation(summary = "Recycle every run currently flagged as stuck")
+    @PostMapping("/sweep")
+    @RequireGlobalAdmin
+    public R<Map<String, Object>> sweep(
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
+            Authentication auth) {
+        requireAdmin(auth);
+        requireWorkspace(workspaceId);
+        AgentRuntimeAggregator.RuntimeSnapshot snap = aggregator.snapshot(workspaceId);
+        List<String> ids = snap.runs().stream()
+                .filter(r -> r.stuckReason() != null)
+                .map(AgentRuntimeAggregator.RunCard::conversationId)
+                .toList();
+        int recycled = 0;
+        for (String cid : ids) {
+            if (streamTracker.forceRecycle(cid)) {
+                recycled++;
+                finalizeRecycledConversation(cid);
+            }
+        }
+        recordAudit(auth, "agent-runtime.sweep", "all",
+                Map.of("targets", ids, "recycled", recycled));
+        return R.ok(Map.of("recycled", recycled, "ids", ids));
+    }
+
+    /**
+     * Common DB-side cleanup after a successful {@code forceRecycle}:
+     * <ol>
+     *   <li>Flip {@code stream_status} off 'running' so the sidebar drops the
+     *       生成中 badge immediately. (The late doOnCancel / doOnComplete may
+     *       re-set this to 'idle' when the agent finally yields — same value,
+     *       no-op.)</li>
+     *   <li>If the conversation's last message is still a user turn — i.e.
+     *       the agent was disposed before any text streamed and the
+     *       emergencySaveCallback found nothing to persist — write a
+     *       "已被用户中止" assistant marker so the UI shows what happened
+     *       instead of a blank reply.</li>
+     * </ol>
+     */
+    private void finalizeRecycledConversation(String conversationId) {
+        try {
+            conversationService.updateStreamStatus(conversationId, "idle");
+        } catch (Exception e) {
+            log.warn("recycle: failed to reset stream_status for {}: {}",
+                    conversationId, e.getMessage());
+        }
+        try {
+            conversationService.saveStopMarkerIfDangling(
+                    conversationId, i18nService.msg("chat.stopMarker.userAborted"), "stopped");
+        } catch (Exception e) {
+            log.warn("recycle: failed to save stop marker for {}: {}",
+                    conversationId, e.getMessage());
+        }
+    }
+
+    private void requireAdmin(Authentication auth) {
+        if (auth == null) {
+            throw new NewsClawException(401, "authentication required");
+        }
+        boolean isAdmin = auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch("ROLE_ADMIN"::equals);
+        if (!isAdmin) {
+            throw new NewsClawException(403, "admin role required");
+        }
+    }
+
+    private void requireWorkspace(Long workspaceId) {
+        if (workspaceId == null) {
+            throw new NewsClawException(400, "workspace id required");
+        }
+    }
+
+    private void requireRunInWorkspace(String conversationId, Long workspaceId) {
+        requireWorkspace(workspaceId);
+        if (!aggregator.runBelongsToWorkspace(conversationId, workspaceId)) {
+            throw new NewsClawException(404, "runtime run not found in workspace");
+        }
+    }
+
+    private void requireSubagentInWorkspace(String subagentId, Long workspaceId) {
+        requireWorkspace(workspaceId);
+        if (!aggregator.subagentBelongsToWorkspace(subagentId, workspaceId)) {
+            throw new NewsClawException(404, "subagent not found in workspace");
+        }
+    }
+
+    private void recordAudit(Authentication auth, String action,
+                             String resourceId, Map<String, Object> detail) {
+        try {
+            String username = auth != null ? auth.getName() : "anonymous";
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("by", username);
+            payload.putAll(detail);
+            auditEventService.record(action, "agent-runtime", resourceId, resourceId,
+                    new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(payload));
+        } catch (Exception e) {
+            log.warn("audit serialization failed for {}: {}", action, e.getMessage());
+        }
+    }
+}

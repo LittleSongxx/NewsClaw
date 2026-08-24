@@ -1,7 +1,7 @@
 # NewsClaw
 
 <p align="center">
-  <img src="mateclaw-ui/public/logo/newsclaw-mark.svg" width="76" alt="NewsClaw mark" />
+  <img src="newsclaw-ui/public/logo/newsclaw-mark.svg" width="76" alt="NewsClaw mark" />
 </p>
 
 **An AI industry news discovery, evidence-verification, and content-operations Agent for global and Chinese AI developments.**

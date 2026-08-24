@@ -1,0 +1,19 @@
+{
+  "name": "@newsclaw/webchat",
+  "version": "1.1.0-SNAPSHOT",
+  "description": "NewsClaw WebChat embeddable widget",
+  "type": "module",
+  "main": "dist/newsclaw-webchat.umd.js",
+  "module": "dist/newsclaw-webchat.es.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && cp -r dist/ ../newsclaw-server/src/main/resources/static/webchat/",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5",
+    "typescript": "^5.8.3"
+  }
+}

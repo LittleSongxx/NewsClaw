@@ -6,7 +6,7 @@
 ./scripts/eval-ai-news-ops.sh
 ```
 
-固定样本位于 `mateclaw-server/src/test/resources/evals/ai-news/`：
+固定样本位于 `newsclaw-server/src/test/resources/evals/ai-news/`：
 
 - `verification-policy-cases.json`：官方来源优先、两个独立来源兜底、伪官方域名拦截、未解决冲突阻断。
 - `canonical-url-cases.json`：事件 URL 指纹使用的规范化语义。

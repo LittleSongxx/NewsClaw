@@ -1,0 +1,93 @@
+package vip.newsclaw.channel.feishu.cards;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import vip.newsclaw.approval.ApprovalService;
+import vip.newsclaw.approval.ApprovalWorkflowService;
+import vip.newsclaw.audit.service.AuditEventService;
+import vip.newsclaw.channel.feishu.cards.ai_news.AiNewsReviewButtonValue;
+import vip.newsclaw.channel.feishu.cards.ai_news.AiNewsReviewCardKindFactory;
+import vip.newsclaw.channel.feishu.cards.tool_guard.ToolGuardButtonValue;
+import vip.newsclaw.channel.feishu.cards.tool_guard.ToolGuardCardKindFactory;
+import vip.newsclaw.news.service.AiNewsEventService;
+import vip.newsclaw.news.service.AiNewsProductionService;
+
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+
+/**
+ * Pin the dispatcher's registration + lookup invariants.
+ */
+class FeishuCardDispatcherTest {
+
+    private FeishuCardDispatcher newDispatcher() {
+        ToolGuardCardKindFactory factory = new ToolGuardCardKindFactory(
+                mock(ApprovalService.class),
+                mock(ApprovalWorkflowService.class),
+                new ObjectMapper());
+        AiNewsReviewCardKindFactory aiNewsFactory = new AiNewsReviewCardKindFactory(
+                mock(AiNewsEventService.class), mock(AiNewsProductionService.class),
+                mock(AuditEventService.class), new ObjectMapper());
+        return new FeishuCardDispatcher(factory, aiNewsFactory);
+    }
+
+    @Test
+    @DisplayName("tool_guard kind is registered after construction")
+    void toolGuardRegistered() {
+        FeishuCardDispatcher d = newDispatcher();
+        assertTrue(d.registeredKindNames().contains(ToolGuardCardKindFactory.KIND_NAME));
+        assertTrue(d.registeredKindNames().contains(AiNewsReviewCardKindFactory.KIND_NAME));
+        assertEquals(2, d.registeredKindNames().size());
+    }
+
+    @Test
+    @DisplayName("lookupByName returns the registered kind")
+    void lookupByName() {
+        FeishuCardDispatcher d = newDispatcher();
+        Optional<FeishuCardKind<?>> opt = d.lookupByName(ToolGuardCardKindFactory.KIND_NAME);
+        assertTrue(opt.isPresent());
+        assertEquals(ToolGuardCardKindFactory.KIND_NAME, opt.get().name());
+
+        assertFalse(d.lookupByName("nonexistent").isPresent());
+        assertFalse(d.lookupByName(null).isPresent());
+        assertFalse(d.lookupByName("").isPresent());
+    }
+
+    @Test
+    @DisplayName("lookupByAction matches the prefix and ignores unknown actions")
+    void lookupByAction() {
+        FeishuCardDispatcher d = newDispatcher();
+        Optional<FeishuCardKind<?>> approve = d.lookupByAction(ToolGuardButtonValue.ACTION_APPROVE);
+        assertTrue(approve.isPresent());
+        Optional<FeishuCardKind<?>> deny = d.lookupByAction(ToolGuardButtonValue.ACTION_DENY);
+        assertTrue(deny.isPresent());
+        // Any string starting with the prefix matches
+        assertTrue(d.lookupByAction("tg_approval.future_subaction").isPresent());
+        assertTrue(d.lookupByAction(AiNewsReviewButtonValue.Action.VERIFY.wireValue()).isPresent());
+
+        assertFalse(d.lookupByAction("unknown.action").isPresent());
+        assertFalse(d.lookupByAction(null).isPresent());
+        assertFalse(d.lookupByAction("").isPresent());
+    }
+
+    @Test
+    @DisplayName("FeishuCardKind constructor rejects blank name / prefix")
+    void cardKindValidation() {
+        FeishuCardKind<Object> valid = new FeishuCardKind<>(
+                "ok", "ok.", Object.class, (n) -> java.util.Map.of(), (adapter, data) -> null);
+        assertEquals("ok", valid.name());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new FeishuCardKind<>("", "x.", Object.class,
+                        (n) -> java.util.Map.of(), (a, d) -> null));
+        assertThrows(IllegalArgumentException.class,
+                () -> new FeishuCardKind<>("ok", " ", Object.class,
+                        (n) -> java.util.Map.of(), (a, d) -> null));
+    }
+}

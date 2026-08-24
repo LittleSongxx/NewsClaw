@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>vip.mate</groupId>
-    <artifactId>mateclaw</artifactId>
+    <groupId>vip.newsclaw</groupId>
+    <artifactId>newsclaw</artifactId>
     <version>${revision}</version>
     <packaging>pom</packaging>
 
@@ -14,15 +14,15 @@
 
     <!-- Reactor modules. Keep plugin-api before consumers for predictable local builds. -->
     <modules>
-        <module>mateclaw-plugin-api</module>
-        <module>mateclaw-server</module>
-        <module>mateclaw-plugin-sample</module>
-        <module>mateclaw-plugin-search-sample</module>
-        <module>mateclaw-plugin-mem0</module>
+        <module>newsclaw-plugin-api</module>
+        <module>newsclaw-server</module>
+        <module>newsclaw-plugin-sample</module>
+        <module>newsclaw-plugin-search-sample</module>
+        <module>newsclaw-plugin-mem0</module>
     </modules>
 
     <properties>
-        <!-- MateClaw release version shared by all Maven modules. -->
+        <!-- NewsClaw release version shared by all Maven modules. -->
         <revision>2.2.0-SNAPSHOT</revision>
 
         <!-- Java -->
@@ -103,21 +103,21 @@
                 <scope>import</scope>
             </dependency>
 
-            <!-- ==================== MateClaw Modules ==================== -->
+            <!-- ==================== NewsClaw Modules ==================== -->
             <!-- Internal module dependencies share the same revision-controlled version. -->
             <dependency>
-                <groupId>vip.mate</groupId>
-                <artifactId>mateclaw-plugin-api</artifactId>
+                <groupId>vip.newsclaw</groupId>
+                <artifactId>newsclaw-plugin-api</artifactId>
                 <version>${revision}</version>
             </dependency>
             <dependency>
-                <groupId>vip.mate</groupId>
-                <artifactId>mateclaw-server</artifactId>
+                <groupId>vip.newsclaw</groupId>
+                <artifactId>newsclaw-server</artifactId>
                 <version>${revision}</version>
             </dependency>
             <dependency>
-                <groupId>vip.mate</groupId>
-                <artifactId>mateclaw-plugin-sample</artifactId>
+                <groupId>vip.newsclaw</groupId>
+                <artifactId>newsclaw-plugin-sample</artifactId>
                 <version>${revision}</version>
             </dependency>
 

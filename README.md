@@ -1,7 +1,7 @@
 # NewsClaw
 
 <p align="center">
-  <img src="mateclaw-ui/public/logo/newsclaw-mark.svg" width="76" alt="NewsClaw 标志" />
+  <img src="newsclaw-ui/public/logo/newsclaw-mark.svg" width="76" alt="NewsClaw 标志" />
 </p>
 
 <p align="center"><strong>面向全球与中国 AI 圈的动态发现、证据核验与内容运营 Agent</strong></p>
@@ -116,7 +116,7 @@ NewsClaw 没有声称接入不存在的普通创作者小红书发布 API，也�
 
 - 后端：Java 21、Spring Boot 3.5、Spring AI Alibaba、MyBatis Plus、Flyway、PostgreSQL 16。
 - Agent Runtime：StateGraph、ReAct / Plan-and-Execute、持久化 Team Run DAG、模型路由与 Provider 健康探针。
-- 事件与证据：`vip.mate.news` 领域、来源注册表、Evidence Packet、抓取记录、事件状态机、Wiki 证据页。
+- 事件与证据：`vip.newsclaw.news` 领域、来源注册表、Evidence Packet、抓取记录、事件状态机、Wiki 证据页。
 - 渠道与交付：飞书 WebSocket 长连接入站与交互卡片；内容日历；小红书预览和素材 ZIP；微信公众号历史草稿能力默认关闭。
 - 治理：workspace 隔离、RBAC、Tool Guard、人工审批、审计、Memory 门禁、Skill proposal 生命周期。
 - 前端：Vue 3、TypeScript、Vite、Element Plus。当前视觉系统以新闻编辑台为中心：中性画布、青绿操作信号、蓝色证据标识和珊瑚风险提示。
@@ -128,7 +128,7 @@ NewsClaw 没有声称接入不存在的普通创作者小红书发布 API，也�
 ```bash
 ./scripts/eval-ai-news-ops.sh
 
-cd mateclaw-ui
+cd newsclaw-ui
 corepack pnpm typecheck
 corepack pnpm build
 ```
@@ -155,15 +155,15 @@ docker compose up -d --build
 ## 仓库结构
 
 ```text
-mateclaw-server/      Spring Boot 服务与 AI 动态事件域
-mateclaw-ui/          Vue 工作台、Team Run、内容运营页面
+newsclaw-server/      Spring Boot 服务与 AI 动态事件域
+newsclaw-ui/          Vue 工作台、Team Run、内容运营页面
 docs/zh/              设计、运行与评测说明
 scripts/              确定性回归与运维脚本
 assets/readme/        作品集 README 的真实运行截图与说明图
 docker-compose.yml    PostgreSQL、SearXNG、NewsClaw 服务栈
 ```
 
-运行与部署兼容性原因，内部模块和环境变量仍保留部分 `mateclaw-*` / `MATECLAW_*` 名称；产品名称、仓库、前端可见品牌和文档均为 NewsClaw。
+运行与部署兼容性原因，内部模块和环境变量仍保留部分 `newsclaw-*` / `NEWSCLAW_*` 名称；产品名称、仓库、前端可见品牌和文档均为 NewsClaw。
 
 ## License
 

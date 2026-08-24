@@ -30,10 +30,11 @@ nbdist/
 .nb-gradle/
 
 ### frontend build artifacts ###
-# Vite's primary output goes to mateclaw-server/.../static; the only thing
+# Vite's primary output goes to newsclaw-server/.../static; the only thing
 # that lands here is rollup-plugin-visualizer's stats.html when running
 # ANALYZE=1 pnpm build.
-mateclaw-ui/dist/
+newsclaw-ui/dist/
+newsclaw-webchat/dist/
 
 ### maven ###
 target/
@@ -45,7 +46,7 @@ target/
 
 ### logs ####
 /logs/
-mateclaw-server/logs/
+newsclaw-server/logs/
 *.log
 
 ### temp ignore ###
@@ -75,14 +76,14 @@ pom.xml.versionsBackup
 .cursor
 .gstack/
 
-# mateclaw static build output (do not commit)
-mateclaw-server/src/main/resources/static/
+# newsclaw static build output (do not commit)
+newsclaw-server/src/main/resources/static/
 
 # Maven must not materialize an unresolved property as a literal directory.
 **/${project.build.directory}/
 
-# mateclaw local runtime data (H2 DB, logs, etc. - do not commit)
-mateclaw-server/data/
+# newsclaw local runtime data (H2 DB, logs, etc. - do not commit)
+newsclaw-server/data/
 .sessions/
 /data/
 
