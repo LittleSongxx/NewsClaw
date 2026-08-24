@@ -1,0 +1,28 @@
+-- V12: Wiki chunk persistence (RFC-013 minimal slice → enables RFC-011 embedding)
+CREATE TABLE IF NOT EXISTS mate_wiki_chunk (
+    id              BIGINT       NOT NULL PRIMARY KEY,
+    kb_id           BIGINT       NOT NULL,
+    raw_id          BIGINT       NOT NULL,
+    ordinal         INT          NOT NULL,
+    content         TEXT         NOT NULL,
+    char_count      INT          NOT NULL,
+    start_offset    INT          NOT NULL,
+    end_offset      INT          NOT NULL,
+    content_hash    VARCHAR(64)  NOT NULL,
+    create_time     DATETIME     NOT NULL,
+    update_time     DATETIME     NOT NULL,
+    deleted         INT          NOT NULL DEFAULT 0
+);
+
+-- MySQL lacks `CREATE INDEX IF NOT EXISTS`; use INFORMATION_SCHEMA.STATISTICS guard instead.
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mate_wiki_chunk' AND INDEX_NAME = 'idx_wiki_chunk_kb');
+SET @s := IF(@c = 0, 'CREATE INDEX idx_wiki_chunk_kb ON mate_wiki_chunk(kb_id)', 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mate_wiki_chunk' AND INDEX_NAME = 'idx_wiki_chunk_raw');
+SET @s := IF(@c = 0, 'CREATE INDEX idx_wiki_chunk_raw ON mate_wiki_chunk(raw_id)', 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mate_wiki_chunk' AND INDEX_NAME = 'idx_wiki_chunk_hash');
+SET @s := IF(@c = 0, 'CREATE INDEX idx_wiki_chunk_hash ON mate_wiki_chunk(content_hash)', 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;

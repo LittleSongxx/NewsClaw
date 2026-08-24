@@ -1,0 +1,386 @@
+# Compose project name is intentionally fixed so local volumes/networks and
+# the interview/demo commands are reproducible across checkout directories.
+name: mateclaw
+
+# ============================================================================
+#  ⚠️  DATABASE ENGINE: PostgreSQL  (was MySQL before)
+#
+#  This stack now runs on PostgreSQL 16. Switching the DB engine is a BREAKING
+#  change for existing deployments: `docker compose up -d` on a host that
+#  previously ran the MySQL stack starts a FRESH, EMPTY PostgreSQL volume
+#  (postgres_data). The old `mysql_data` volume is NOT read and the app
+#  re-seeds default data — existing data is not lost, but it is also NOT
+#  visible to the new stack.
+#
+#  Treat this as FRESH-INSTALL-ONLY. To carry data across from a MySQL
+#  deployment, dump the OLD stack BEFORE pulling this change, e.g.:
+#      docker compose exec mysql mysqldump -u"$DB_USERNAME" -p"$DB_PASSWORD" "$DB_NAME" > mateclaw-mysql.sql
+#  then load into PostgreSQL with a cross-engine tool such as pgloader —
+#  there is no automatic MySQL → PostgreSQL migration here. Alternatively,
+#  keep running MySQL by pinning your checkout to a pre-switch tag and setting
+#  SPRING_PROFILES_ACTIVE=mysql (the mysql Spring profile remains supported).
+# ============================================================================
+services:
+  # PostgreSQL 数据库
+  #
+  # ⚠️ 密码通过环境变量传入，必须从 .env 文件提供。首次部署前：
+  #   1. cp .env.example .env
+  #   2. 编辑 .env 把 DB_ADMIN_PASSWORD / DB_PASSWORD 改成强密码
+  # 未设置会直接在 `docker compose up` 时报错，避免把默认密码带到生产环境。
+  postgres:
+    image: postgres:16
+    container_name: mateclaw-postgres
+    restart: unless-stopped
+    environment:
+      # Bootstrap/superuser — owns the cluster, used only for init + admin tasks.
+      POSTGRES_DB: ${DB_NAME:-mateclaw}
+      POSTGRES_USER: ${DB_ADMIN_USERNAME:-mateclaw_admin}
+      POSTGRES_PASSWORD: ${DB_ADMIN_PASSWORD:?DB_ADMIN_PASSWORD is required in .env}
+      # Least-privilege application role created by the init script below; this
+      # is the account the server connects with (NOT a superuser).
+      APP_DB_USERNAME: ${DB_USERNAME:-mateclaw}
+      APP_DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required in .env}
+      TZ: Asia/Shanghai
+    # No host port on purpose — the DB is only reachable from the compose
+    # network. For ad-hoc inspection use `docker compose exec postgres psql`,
+    # or temporarily add:  ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Runs once on first init (empty data dir): creates the restricted app
+      # role and the mateclaw schema it owns. See docker/postgres/init/.
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_ADMIN_USERNAME:-mateclaw_admin} -d ${DB_NAME:-mateclaw}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mateclaw-net
+
+  # SearXNG 搜索引擎（keyless 搜索 provider）
+  #
+  # The custom image at docker/searxng/ bakes in settings.yml so the sidecar
+  # works out of the box (upstream image ships JSON disabled + Limiter enabled,
+  # both of which silently break mateclaw's SearXNGSearchProvider).
+  # No host bind-mount — edit docker/searxng/settings.yml and rebuild.
+  # Internal-only: the app reaches it via the compose network. To debug from
+  # the host, temporarily add:  ports: ["127.0.0.1:8088:8080"]
+  searxng:
+    build:
+      context: ./docker/searxng
+    container_name: mateclaw-searxng
+    restart: unless-stopped
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8080
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-mateclaw-dev-searxng-secret-change-me}
+      - UWSGI_WORKERS=2
+      - UWSGI_THREADS=4
+    healthcheck:
+      # Healthz needs json format, so this also doubles as an integration check.
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - mateclaw-net
+
+  # NewsClaw 后端服务
+  mateclaw-server:
+    build:
+      context: .
+      dockerfile: mateclaw-server/Dockerfile
+      args:
+        MAVEN_FLAGS: ${MAVEN_FLAGS:-}
+    container_name: mateclaw-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-mateclaw}
+      DB_USERNAME: ${DB_USERNAME:-mateclaw}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required in .env}
+      # Environment-backed runtime configuration.  Non-blank values take
+      # precedence over the corresponding database/UI value; blank values keep
+      # the existing database behavior.  Do not use env_file here: database
+      # bootstrap credentials must not be copied into the application process.
+      MATECLAW_ENV_CONFIG_ENABLED: ${MATECLAW_ENV_CONFIG_ENABLED:-true}
+      MATECLAW_SETTING_KEY: ${MATECLAW_SETTING_KEY:-}
+      MATECLAW_ENCRYPT_KEY: ${MATECLAW_ENCRYPT_KEY:?MATECLAW_ENCRYPT_KEY is required in .env}
+      # Deployment-owned primary model and ordered fallback chain. These are
+      # intentionally separate from provider credentials so a model switch
+      # never requires editing the database or rebuilding the image.
+      MATECLAW_PRIMARY_MODEL_PROVIDER: ${MATECLAW_PRIMARY_MODEL_PROVIDER:-}
+      MATECLAW_PRIMARY_MODEL: ${MATECLAW_PRIMARY_MODEL:-}
+      MATECLAW_FALLBACK_MODEL_CHAIN: ${MATECLAW_FALLBACK_MODEL_CHAIN:-}
+      MATECLAW_MODEL_CHAIN: ${MATECLAW_MODEL_CHAIN:-}
+      MATECLAW_AI_NEWS_RADAR_ENABLED: ${MATECLAW_AI_NEWS_RADAR_ENABLED:-true}
+      # Official evidence capture stays a narrow GET-only operation. Keep its
+      # deployment bounds in .env so production can tighten them without an image rebuild.
+      MATECLAW_AI_NEWS_OFFICIAL_CAPTURE_ENABLED: ${MATECLAW_AI_NEWS_OFFICIAL_CAPTURE_ENABLED:-true}
+      MATECLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_BYTES: ${MATECLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_BYTES:-524288}
+      MATECLAW_AI_NEWS_OFFICIAL_CAPTURE_TIMEOUT_SECONDS: ${MATECLAW_AI_NEWS_OFFICIAL_CAPTURE_TIMEOUT_SECONDS:-15}
+      MATECLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_REDIRECTS: ${MATECLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_REDIRECTS:-5}
+      # Spring AI Alibaba eagerly creates optional DashScope modality beans and
+      # rejects an explicitly empty key.  Compose substitutes this bootstrap
+      # sentinel only when no real key is supplied; EnvironmentConfig ignores
+      # it, so a database/UI key remains the effective runtime credential.
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-configure-in-admin-ui}
+      DASHSCOPE_BASE_URL: ${DASHSCOPE_BASE_URL:-}
+      DASHSCOPE_COMPAT_BASE_URL: ${DASHSCOPE_COMPAT_BASE_URL:-}
+      BAILIAN_API_KEY: ${BAILIAN_API_KEY:-}
+      BAILIAN_BASE_URL: ${BAILIAN_BASE_URL:-}
+      ALIYUN_BAILIAN_BASE_URL: ${ALIYUN_BAILIAN_BASE_URL:-}
+      MODELSCOPE_BASE_URL: ${MODELSCOPE_BASE_URL:-}
+      MODELSCOPE_API_KEY: ${MODELSCOPE_API_KEY:-}
+      MODELSCOPE_API_TOKEN: ${MODELSCOPE_API_TOKEN:-}
+      ALIYUN_CODINGPLAN_API_KEY: ${ALIYUN_CODINGPLAN_API_KEY:-}
+      ALIYUN_CODINGPLAN_BASE_URL: ${ALIYUN_CODINGPLAN_BASE_URL:-}
+      ALIYUN_CODINGPLAN_INTL_BASE_URL: ${ALIYUN_CODINGPLAN_INTL_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_BASE_URL: ${AZURE_OPENAI_BASE_URL:-}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+      MINIMAX_API_KEY_CN: ${MINIMAX_API_KEY_CN:-}
+      MINIMAX_API_KEY_INTL: ${MINIMAX_API_KEY_INTL:-}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      KIMI_API_KEY_CN: ${KIMI_API_KEY_CN:-}
+      KIMI_API_KEY_INTL: ${KIMI_API_KEY_INTL:-}
+      KIMI_CODE_API_KEY: ${KIMI_CODE_API_KEY:-}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GOOGLE_IMAGEN_API_KEY: ${GOOGLE_IMAGEN_API_KEY:-}
+      GEMINI_BASE_URL: ${GEMINI_BASE_URL:-}
+      GOOGLE_BASE_URL: ${GOOGLE_BASE_URL:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      GLM_API_KEY: ${GLM_API_KEY:-}
+      ZHIPU_BASE_URL: ${ZHIPU_BASE_URL:-}
+      VOLCENGINE_API_KEY: ${VOLCENGINE_API_KEY:-}
+      ARK_API_KEY: ${ARK_API_KEY:-}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-}
+      SILICONFLOW_BASE_URL_CN: ${SILICONFLOW_BASE_URL_CN:-}
+      SILICONFLOW_BASE_URL_INTL: ${SILICONFLOW_BASE_URL_INTL:-}
+      HUNYUAN_API_KEY: ${HUNYUAN_API_KEY:-}
+      HUNYUAN_BASE_URL: ${HUNYUAN_BASE_URL:-}
+      TENCENT_API_KEY: ${TENCENT_API_KEY:-}
+      TENCENTCLOUD_BASE_URL: ${TENCENTCLOUD_BASE_URL:-}
+      TENCENTCLOUD_SECRET_ID: ${TENCENTCLOUD_SECRET_ID:-}
+      TENCENTCLOUD_SECRET_KEY: ${TENCENTCLOUD_SECRET_KEY:-}
+      TENCENT_SECRET_ID: ${TENCENT_SECRET_ID:-}
+      TENCENT_SECRET_KEY: ${TENCENT_SECRET_KEY:-}
+      XIAOMI_API_KEY: ${XIAOMI_API_KEY:-}
+      XIAOMI_BASE_URL: ${XIAOMI_BASE_URL:-}
+      MIMO_API_KEY: ${MIMO_API_KEY:-}
+      MIMO_BASE_URL: ${MIMO_BASE_URL:-}
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
+      OPENCODE_BASE_URL: ${OPENCODE_BASE_URL:-}
+      MINIMAX_BASE_URL: ${MINIMAX_BASE_URL:-}
+      MINIMAX_BASE_URL_CN: ${MINIMAX_BASE_URL_CN:-}
+      MINIMAX_BASE_URL_INTL: ${MINIMAX_BASE_URL_INTL:-}
+      XAI_BASE_URL: ${XAI_BASE_URL:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-}
+      MOONSHOT_BASE_URL: ${MOONSHOT_BASE_URL:-}
+      VOLCENGINE_BASE_URL: ${VOLCENGINE_BASE_URL:-}
+      # DeepSeek Harness / GitHub source discovery
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
+      MCP_API_KEY: ${MCP_API_KEY:-}
+      DSH_JSONRPC_AGENT: ${DSH_JSONRPC_AGENT:-}
+      DSH_CORDIS_CONFIG: ${DSH_CORDIS_CONFIG:-}
+      DSH_CWD: ${DSH_CWD:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
+      DSH_MANIFEST_URL: ${DSH_MANIFEST_URL:-}
+      DSH_GITHUB_RELEASE_URL: ${DSH_GITHUB_RELEASE_URL:-}
+      DSH_INSTALL_ROOT: ${DSH_INSTALL_ROOT:-}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      SERPER_BASE_URL: ${SERPER_BASE_URL:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      TAVILY_BASE_URL: ${TAVILY_BASE_URL:-}
+      MATECLAW_SEARCH_PROVIDER: ${MATECLAW_SEARCH_PROVIDER:-}
+      MATECLAW_SEARCH_ENABLED: ${MATECLAW_SEARCH_ENABLED:-}
+      MATECLAW_SEARCH_FALLBACK_ENABLED: ${MATECLAW_SEARCH_FALLBACK_ENABLED:-}
+      MATECLAW_DUCKDUCKGO_ENABLED: ${MATECLAW_DUCKDUCKGO_ENABLED:-}
+      # Official Account draft delivery (credentials are read as system
+      # settings by GzhPublishTool and never printed in logs).
+      WEIXINOA_APP_ID: ${WEIXINOA_APP_ID:-}
+      WEIXINOA_APP_SECRET: ${WEIXINOA_APP_SECRET:-}
+      FAL_API_KEY: ${FAL_API_KEY:-}
+      KLING_ACCESS_KEY: ${KLING_ACCESS_KEY:-}
+      KLING_SECRET_KEY: ${KLING_SECRET_KEY:-}
+      RUNWAY_API_KEY: ${RUNWAY_API_KEY:-}
+      MINIMAX_REGION: ${MINIMAX_REGION:-global}
+      # Domestic IM channel credentials.  The channel row/type and enabled
+      # flag remain managed in the UI; these values override its config_json.
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
+      FEISHU_ENCRYPT_KEY: ${FEISHU_ENCRYPT_KEY:-}
+      FEISHU_VERIFICATION_TOKEN: ${FEISHU_VERIFICATION_TOKEN:-}
+      FEISHU_CONNECTION_MODE: ${FEISHU_CONNECTION_MODE:-}
+      FEISHU_DOMAIN: ${FEISHU_DOMAIN:-}
+      DINGTALK_CLIENT_ID: ${DINGTALK_CLIENT_ID:-}
+      DINGTALK_CLIENT_SECRET: ${DINGTALK_CLIENT_SECRET:-}
+      DINGTALK_ROBOT_CODE: ${DINGTALK_ROBOT_CODE:-}
+      DINGTALK_CONNECTION_MODE: ${DINGTALK_CONNECTION_MODE:-}
+      DINGTALK_MESSAGE_TYPE: ${DINGTALK_MESSAGE_TYPE:-}
+      DINGTALK_CARD_TEMPLATE_ID: ${DINGTALK_CARD_TEMPLATE_ID:-}
+      WECOM_BOT_ID: ${WECOM_BOT_ID:-}
+      WECOM_SECRET: ${WECOM_SECRET:-}
+      WECOM_BOT_SECRET: ${WECOM_BOT_SECRET:-}
+      WECOM_WELCOME_TEXT: ${WECOM_WELCOME_TEXT:-}
+      QQ_BOT_APP_ID: ${QQ_BOT_APP_ID:-}
+      QQ_BOT_CLIENT_SECRET: ${QQ_BOT_CLIENT_SECRET:-}
+      QQ_APP_ID: ${QQ_APP_ID:-}
+      QQ_CLIENT_SECRET: ${QQ_CLIENT_SECRET:-}
+      QQ_MARKDOWN_ENABLED: ${QQ_MARKDOWN_ENABLED:-}
+      QQ_MAX_RECONNECT_ATTEMPTS: ${QQ_MAX_RECONNECT_ATTEMPTS:-}
+      QQ_BIND_PORTAL_HOST: ${QQ_BIND_PORTAL_HOST:-q.qq.com}
+      WEIXIN_BOT_TOKEN: ${WEIXIN_BOT_TOKEN:-}
+      WECHAT_BOT_TOKEN: ${WECHAT_BOT_TOKEN:-}
+      WEIXIN_BASE_URL: ${WEIXIN_BASE_URL:-}
+      WECHAT_BASE_URL: ${WECHAT_BASE_URL:-}
+      # Optional SSO / OAuth settings
+      SSO_ENABLED: ${SSO_ENABLED:-}
+      SSO_LINK_ONLY: ${SSO_LINK_ONLY:-}
+      SSO_DEFAULT_ROLE: ${SSO_DEFAULT_ROLE:-}
+      SSO_FEISHU_ENABLED: ${SSO_FEISHU_ENABLED:-}
+      SSO_FEISHU_APP_ID: ${SSO_FEISHU_APP_ID:-}
+      SSO_FEISHU_APP_SECRET: ${SSO_FEISHU_APP_SECRET:-}
+      SSO_FEISHU_DOMAIN: ${SSO_FEISHU_DOMAIN:-}
+      SSO_FEISHU_REDIRECT_URI: ${SSO_FEISHU_REDIRECT_URI:-}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required in .env}
+      MATECLAW_CORS_ALLOWED_ORIGINS: ${MATECLAW_CORS_ALLOWED_ORIGINS:-}
+      MATECLAW_PUBLIC_BASE_URL: ${MATECLAW_PUBLIC_BASE_URL:-}
+      MATECLAW_OPENAPI_EXPOSE_UI: ${MATECLAW_OPENAPI_EXPOSE_UI:-false}
+      # SearXNG: tell the app where to reach the sidecar container
+      SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-http://searxng:8080}
+      # Browser automation: the runtime image (mcr.microsoft.com/playwright:*)
+      # bakes Chromium + system libs + fonts in, so the tool works out of the box.
+      # Override these if you want to attach to an external Chrome (CDP sidecar):
+      MATECLAW_BROWSER_CDP_URL: ${MATECLAW_BROWSER_CDP_URL:-}
+      MATECLAW_BROWSER_CHROME_PATH: ${MATECLAW_BROWSER_CHROME_PATH:-}
+      MATECLAW_BROWSER_CHANNEL: ${MATECLAW_BROWSER_CHANNEL:-}
+      # SSRF / TLS relaxations for isolated LAN / on-prem deployments.
+      # Both default to false (strict mode, public-internet safe).
+      # The .env file uses the PLAYWRIGHT_* prefix (component-oriented naming,
+      # not product-oriented) — here we translate to the MATECLAW_BROWSER_*
+      # container env that Spring Boot relaxed-binding maps to BrowserProperties.
+      # - PLAYWRIGHT_ALLOW_PRIVATE_NETWORK=true: allow loopback / private / link-local
+      #   addresses through the browser SSRF guard. Cloud-metadata endpoints stay
+      #   blocked. Turn on when the agent must drive http://192.168.x.x:port style
+      #   internal services and has no path to the public internet.
+      # - PLAYWRIGHT_IGNORE_HTTPS_ERRORS=true: ignore HTTPS certificate errors.
+      #   Auto-enables --ignore-certificate-errors at the Chromium command line
+      #   when ALLOW_PRIVATE_NETWORK is also true (so CDP-attached external
+      #   browsers benefit too). Leave false on internet-facing deployments.
+      MATECLAW_BROWSER_ALLOW_PRIVATE_NETWORK: ${PLAYWRIGHT_ALLOW_PRIVATE_NETWORK:-false}
+      MATECLAW_BROWSER_IGNORE_HTTPS_ERRORS: ${PLAYWRIGHT_IGNORE_HTTPS_ERRORS:-false}
+      # Playwright action / navigation timeouts (seconds). Increase for slow
+      # LAN or large-page scenarios. Defaults match Playwright's own (30s).
+      MATECLAW_BROWSER_DEFAULT_TIMEOUT_SECONDS: ${PLAYWRIGHT_DEFAULT_TIMEOUT_SECONDS:-30}
+      MATECLAW_BROWSER_DEFAULT_NAVIGATION_TIMEOUT_SECONDS: ${PLAYWRIGHT_NAVIGATION_TIMEOUT_SECONDS:-30}
+      # Hard cap on the textual snapshot returned by action=snapshot. Content
+      # beyond this length is dropped with a truncated:true flag and a hint to
+      # retry with selector. Results > framework spill threshold (~8000 chars)
+      # are further spilt to disk by ToolResultStorage.
+      MATECLAW_BROWSER_SNAPSHOT_MAX_LENGTH: ${PLAYWRIGHT_SNAPSHOT_MAX_LENGTH:-20000}
+      # OAuth 模式默认保持 auto：localhost 访问走 LOCAL，IP/域名访问走 DEVICE_CODE。
+      # 本机 Docker 若要强制使用 localhost:1455 回调，可在 .env 显式设为 local。
+      MATECLAW_OAUTH_OPENAI_DEPLOYMENT_MODE: ${MATECLAW_OAUTH_OPENAI_DEPLOYMENT_MODE:-}
+      MATECLAW_OAUTH_OPENAI_CALLBACK_BIND_HOST: ${MATECLAW_OAUTH_OPENAI_CALLBACK_BIND_HOST:-0.0.0.0}
+      # Wiki 知识库目录扫描白名单（逗号分隔，留空则禁止所有目录扫描）。
+      # 示例：MATE_WIKI_ALLOWED_SOURCE_ROOTS=/data/wiki,/opt/docs
+      # 记得同步在 volumes 里把宿主机路径挂进容器。
+      MATE_WIKI_ALLOWED_SOURCE_ROOTS: ${MATE_WIKI_ALLOWED_SOURCE_ROOTS:-}
+      # Wiki 知识源自动同步总开关（运维总闸，默认关）。AND 语义：全局开关与
+      # 每个知识库自己的「自动同步」开关都开，该库才会被定时扫描。
+      # 间隔单位毫秒，默认 5 分钟。
+      MATE_WIKI_WATCHER_ENABLED: ${MATE_WIKI_WATCHER_ENABLED:-false}
+      MATE_WIKI_WATCHER_INTERVAL_MS: ${MATE_WIKI_WATCHER_INTERVAL_MS:-300000}
+      # Skill 工作区根目录。放在 /app/data 下，让现有的 server_data 卷一并持久化
+      # 已安装的 skill、运行时积累的 LESSONS.md 以及 skill 运行产物，容器重启不丢。
+      # 内置 skill 仍由 JAR classpath 每次启动现场释放，空卷不会丢内置文件。
+      MATECLAW_SKILL_WORKSPACE_ROOT: ${MATECLAW_SKILL_WORKSPACE_ROOT:-/app/data/skills}
+      MATECLAW_SKILL_REFLECTION_ENABLED: ${MATECLAW_SKILL_REFLECTION_ENABLED:-false}
+      MATECLAW_SKILL_REFLECTION_AUTO_APPLY: ${MATECLAW_SKILL_REFLECTION_AUTO_APPLY:-false}
+      MATECLAW_SKILL_REFLECTION_TURN_INTERVAL: ${MATECLAW_SKILL_REFLECTION_TURN_INTERVAL:-8}
+      MATECLAW_SKILL_REFLECTION_MIN_ASSISTANT_TURNS: ${MATECLAW_SKILL_REFLECTION_MIN_ASSISTANT_TURNS:-2}
+      MATECLAW_SKILL_REFLECTION_MAX_MESSAGES: ${MATECLAW_SKILL_REFLECTION_MAX_MESSAGES:-24}
+      MATECLAW_SKILL_REFLECTION_COOLDOWN_MINUTES: ${MATECLAW_SKILL_REFLECTION_COOLDOWN_MINUTES:-30}
+      MATECLAW_SKILL_REFLECTION_MAX_ACTIONS: ${MATECLAW_SKILL_REFLECTION_MAX_ACTIONS:-3}
+      MATECLAW_SKILL_REFLECTION_CATALOG_BUDGET: ${MATECLAW_SKILL_REFLECTION_CATALOG_BUDGET:-8000}
+      MATECLAW_SKILL_REFLECTION_MODEL_ID: ${MATECLAW_SKILL_REFLECTION_MODEL_ID:-}
+      MATECLAW_SKILL_ROUTINE_ENABLED: ${MATECLAW_SKILL_ROUTINE_ENABLED:-false}
+      MATECLAW_SKILL_ROUTINE_AUTO_PROMOTE: ${MATECLAW_SKILL_ROUTINE_AUTO_PROMOTE:-false}
+      MATECLAW_SKILL_ROUTINE_CRON: ${MATECLAW_SKILL_ROUTINE_CRON:-0 0 3 * * *}
+      MATECLAW_SKILL_ROUTINE_LOOKBACK_DAYS: ${MATECLAW_SKILL_ROUTINE_LOOKBACK_DAYS:-30}
+      MATECLAW_SKILL_ROUTINE_SIMILARITY: ${MATECLAW_SKILL_ROUTINE_SIMILARITY:-0.62}
+      MATECLAW_SKILL_ROUTINE_MIN_OCCURRENCES: ${MATECLAW_SKILL_ROUTINE_MIN_OCCURRENCES:-3}
+      MATECLAW_SKILL_ROUTINE_MIN_DISTINCT_DAYS: ${MATECLAW_SKILL_ROUTINE_MIN_DISTINCT_DAYS:-3}
+      MATECLAW_SKILL_ROUTINE_MIN_OPENER_CHARS: ${MATECLAW_SKILL_ROUTINE_MIN_OPENER_CHARS:-8}
+      MATECLAW_SKILL_ROUTINE_MAX_OPENER_CHARS: ${MATECLAW_SKILL_ROUTINE_MAX_OPENER_CHARS:-400}
+      MATECLAW_SKILL_ROUTINE_MAX_SAMPLES: ${MATECLAW_SKILL_ROUTINE_MAX_SAMPLES:-8}
+      MATECLAW_SKILL_ROUTINE_MAX_PROMOTIONS: ${MATECLAW_SKILL_ROUTINE_MAX_PROMOTIONS:-2}
+      MATECLAW_SKILL_ROUTINE_MAX_CONVERSATIONS: ${MATECLAW_SKILL_ROUTINE_MAX_CONVERSATIONS:-1000}
+      MATECLAW_SKILL_ROUTINE_TRANSCRIPT_MESSAGES: ${MATECLAW_SKILL_ROUTINE_TRANSCRIPT_MESSAGES:-12}
+      MATECLAW_SKILL_ROUTINE_TRANSCRIPT_TRUNCATE: ${MATECLAW_SKILL_ROUTINE_TRANSCRIPT_TRUNCATE:-800}
+      MATECLAW_SKILL_ROUTINE_MODEL_ID: ${MATECLAW_SKILL_ROUTINE_MODEL_ID:-}
+      MATECLAW_SKILL_LOAD_SKILL_TOOL_ENABLED: ${MATECLAW_SKILL_LOAD_SKILL_TOOL_ENABLED:-true}
+      MATECLAW_SKILL_CURATOR_BACKUP_ENABLED: ${MATECLAW_SKILL_CURATOR_BACKUP_ENABLED:-true}
+      MATECLAW_SKILL_CURATOR_BACKUP_KEEP: ${MATECLAW_SKILL_CURATOR_BACKUP_KEEP:-5}
+      # Skill ZIP 上传/安装大小上限（MB）。解包过程整包缓存在内存里，
+      # max-total 调多大，单次安装的峰值内存就可能吃多大。
+      MATECLAW_SKILL_UPLOAD_MAX_ENTRY_SIZE_MB: ${MATECLAW_SKILL_UPLOAD_MAX_ENTRY_SIZE_MB:-1}
+      MATECLAW_SKILL_UPLOAD_MAX_TOTAL_SIZE_MB: ${MATECLAW_SKILL_UPLOAD_MAX_TOTAL_SIZE_MB:-50}
+      # Long-term Memory admission controls. These must be explicit Compose
+      # environment entries; Docker's .env file is interpolation input, not an
+      # automatic env_file for the application container.
+      MATECLAW_MEMORY_GOVERNANCE_ENABLED: ${MATECLAW_MEMORY_GOVERNANCE_ENABLED:-true}
+      MATECLAW_MEMORY_WRITE_MAX_TOKENS: ${MATECLAW_MEMORY_WRITE_MAX_TOKENS:-320}
+      MATECLAW_MEMORY_LONG_TERM_TOKEN_BUDGET: ${MATECLAW_MEMORY_LONG_TERM_TOKEN_BUDGET:-2400}
+      MATECLAW_MEMORY_REJECT_NEWS_BODY: ${MATECLAW_MEMORY_REJECT_NEWS_BODY:-true}
+      MATECLAW_MEMORY_REQUIRE_SOURCE_REF: ${MATECLAW_MEMORY_REQUIRE_SOURCE_REF:-true}
+      # pip 镜像源配置（可选）。skill 里的 Python 脚本缺包时 pip install 会走这个源。
+      # 留空则用 PyPI 默认源（pypi.org）。pip 原生读 PIP_INDEX_URL / PIP_TRUSTED_HOST
+      # 环境变量，容器内所有进程（JVM、Python 子进程、bash）自动继承，无需额外配置。
+      # HTTP 源会自动从 URL 推导 PIP_TRUSTED_HOST；自签 HTTPS 需手动填。
+      # - 互联网加速：PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+      # - 局域网私有源：PIP_INDEX_URL=http://192.168.1.100:8080/simple（trusted-host 自动推导）
+      PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+      PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+    # Chromium needs a real /dev/shm. Docker defaults to 64MB which causes
+    # SIGBUS / "Target page closed" errors under load. 2GB is the usual
+    # recommendation for Playwright / headless chrome.
+    shm_size: 2gb
+    ports:
+      - "18080:18088"   # host:container — app listens on 18088 inside the container
+      - "1455:1455"
+    volumes:
+      # server_data covers /app/data — wiki-uploads AND the skill workspace
+      # (MATECLAW_SKILL_WORKSPACE_ROOT=/app/data/skills above), so a single
+      # volume persists everything. No separate skills volume needed.
+      - server_data:/app/data
+    networks:
+      - mateclaw-net
+
+volumes:
+  postgres_data:
+  server_data:
+
+networks:
+  mateclaw-net:
+    driver: bridge

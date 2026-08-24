@@ -1,0 +1,10 @@
+## Existing Structured Memories
+{existing_memories}
+
+## Recent Conversation
+{transcript}
+
+---
+Extract any new structured memory entries from the conversation above.
+Remember: only NEW information not already captured in existing memories.
+Output a JSON array (or [] if nothing to extract).

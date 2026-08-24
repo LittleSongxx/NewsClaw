@@ -1,0 +1,9 @@
+{
+  "name": "NewsClaw",
+  "tagline": "AI News Operations Agent",
+  "team": "LittleSongxx",
+  "copyright": "Copyright © 2026 LittleSongxx",
+  "appId": "io.github.littlesongxx.newsclaw",
+  "githubUrl": "https://github.com/LittleSongxx/NewsClaw",
+  "logoFile": "newsclaw_logo_s.png"
+}

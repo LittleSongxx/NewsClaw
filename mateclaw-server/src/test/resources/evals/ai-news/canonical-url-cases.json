@@ -1,0 +1,17 @@
+[
+  {
+    "id": "host-path-fragment-normalization",
+    "input": "HTTPS://Example.COM//releases/model/?ref=home#intro",
+    "expected": "https://example.com/releases/model?ref=home"
+  },
+  {
+    "id": "keeps-query-for-evidence-auditability",
+    "input": "https://openai.com/index/model/?utm_source=radar#top",
+    "expected": "https://openai.com/index/model?utm_source=radar"
+  },
+  {
+    "id": "collapses-repeated-path-slashes",
+    "input": "http://deepseek.com//news///release/",
+    "expected": "http://deepseek.com/news/release"
+  }
+]

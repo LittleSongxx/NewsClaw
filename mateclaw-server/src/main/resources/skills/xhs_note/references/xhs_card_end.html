@@ -1,0 +1,52 @@
+<!doctype html>
+<!--
+  AI-tech editorial END / watchlist card. Vertical 3:4 (1080x1440).
+  Replace {{TITLE}}, {{CTA}}, {{TAGS}}, {{HANDLE}}.
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1080px; height: 1440px; }
+  body {
+    font-family: 'PingFang SC','Hiragino Sans GB','Microsoft YaHei',-apple-system,sans-serif;
+    background: #eef2f2; color: #101820;
+    display: flex; flex-direction: column; padding: 76px; position: relative;
+  }
+  .masthead {
+    display: flex; justify-content: space-between; padding-bottom: 24px;
+    border-bottom: 3px solid #101820; font-size: 25px; font-weight: 850;
+  }
+  .status { color: #007d69; }
+  .title { margin-top: 130px; max-width: 900px; font-size: 79px; font-weight: 900; line-height: 1.25; overflow-wrap: anywhere; }
+  .cta {
+    margin-top: 70px; padding: 34px 36px;
+    border-left: 10px solid #ff6b5e; background: #ffffff;
+    color: #27383e; font-size: 40px; font-weight: 750; line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+  .tags {
+    margin-top: 56px; color: #075ca9; font-size: 31px; font-weight: 700; line-height: 1.8;
+    overflow-wrap: anywhere;
+  }
+  .legend { display: flex; gap: 28px; margin-top: auto; margin-bottom: 96px; color: #52676e; font-size: 25px; font-weight: 700; }
+  .legend span::before { content: ''; display: inline-block; width: 15px; height: 15px; margin-right: 10px; background: #00a68a; }
+  .legend span:nth-child(2)::before { background: #2878d0; }
+  .legend span:nth-child(3)::before { background: #ff6b5e; }
+  .footer {
+    position: absolute; left: 76px; right: 76px; bottom: 62px;
+    display: flex; justify-content: space-between; padding-top: 20px;
+    border-top: 2px solid #b9c4c7; color: #60747a; font-size: 25px; font-weight: 700;
+  }
+</style>
+</head>
+<body>
+  <header class="masthead"><span>AI SIGNAL / WATCHLIST</span><span class="status">持续追踪</span></header>
+  <h1 class="title">{{TITLE}}</h1>
+  <div class="cta">{{CTA}}</div>
+  <p class="tags">{{TAGS}}</p>
+  <div class="legend"><span>官方信源</span><span>影响判断</span><span>后续观察</span></div>
+  <footer class="footer"><span>{{HANDLE}}</span><span>04</span></footer>
+</body>
+</html>

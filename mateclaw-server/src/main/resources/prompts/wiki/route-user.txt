@@ -1,0 +1,23 @@
+## 知识库处理规则
+
+{config}
+
+{document_map_section}
+
+## 已有 Wiki 页面索引（slug + 摘要）
+
+{existing_pages}
+
+## 待消化的原始材料
+
+标题：{raw_title}
+
+{raw_content}
+
+---
+
+请按 system 中规定的 JSON 格式输出**只含 metadata**的路由结果：
+- `create`：完全没有对应页面的新概念，**只给 slug + title + summary，不要写 content**
+- `update`：已有页面但需根据本材料合并更新的，**仅 slug 字符串数组**
+
+不要试图自己生成或合并页面正文 —— 那些都由独立的下阶段 LLM 调用完成。你的输出应该控制在几 KB 以内。

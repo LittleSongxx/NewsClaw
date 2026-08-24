@@ -1,0 +1,24 @@
+## 当前日期
+{today}
+
+## 现有 PROFILE.md 内容
+```
+{profile}
+```
+
+## 现有 MEMORY.md 内容
+```
+{memory}
+```
+
+## 今日 daily note ({daily_filename}) 现有内容
+```
+{daily}
+```
+
+## 对话记录
+{transcript}
+
+---
+
+请分析以上对话，判断是否有新信息需要保存到记忆文件中。严格输出 JSON 格式。

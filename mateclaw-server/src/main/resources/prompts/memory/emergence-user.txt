@@ -1,0 +1,12 @@
+## 现有 MEMORY.md 内容
+```
+{memory}
+```
+
+## 最近 {day_range} 天的 daily notes
+
+{daily_notes}
+
+---
+
+请分析以上日记内容，判断是否有信息应该提升整合到 MEMORY.md 中。严格输出 JSON 格式。

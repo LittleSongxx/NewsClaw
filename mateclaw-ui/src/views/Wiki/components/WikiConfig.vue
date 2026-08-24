@@ -1,0 +1,740 @@
+<template>
+  <div class="wiki-config">
+    <div class="config-header">
+      <h3 class="config-title">{{ t('wiki.configTitle') }}</h3>
+      <p class="config-desc">{{ t('wiki.configDesc') }}</p>
+    </div>
+
+    <!-- ① Embedding model -->
+    <div class="config-card">
+      <div class="config-card__head">
+        <div>
+          <div class="config-card__title">{{ t('wiki.configPanel.embeddingModel') }}</div>
+          <div class="config-card__hint">{{ t('wiki.configPanel.embeddingModelHint') }}</div>
+        </div>
+        <button class="btn-save" @click="saveEmbeddingBinding" :disabled="savingEmbedding">
+          {{ savingEmbedding ? t('wiki.saving') : t('common.save') }}
+        </button>
+      </div>
+      <WikiModelPicker v-model="embeddingModelId" :options="embeddingPickerOptions" :disabled="savingEmbedding" />
+    </div>
+
+    <!-- ①b Ingest mode (RFC-051 PR-1b) -->
+    <div class="config-card">
+      <div class="config-card__head">
+        <div>
+          <div class="config-card__title">{{ t('wiki.configPanel.ingestMode') }}</div>
+          <div class="config-card__hint">
+            {{ ingestMode === 'lazy'
+              ? t('wiki.configPanel.ingestModeLazyHint')
+              : t('wiki.configPanel.ingestModeEagerHint') }}
+          </div>
+        </div>
+        <button class="btn-save" @click="saveIngestMode" :disabled="savingIngestMode">
+          {{ savingIngestMode ? t('wiki.saving') : t('common.save') }}
+        </button>
+      </div>
+      <div class="ingest-mode-row">
+        <label class="ingest-mode-option" :class="{ 'ingest-mode-option--active': ingestMode === 'eager' }">
+          <input type="radio" value="eager" v-model="ingestMode" :disabled="savingIngestMode" />
+          <span class="ingest-mode-option__label">{{ t('wiki.configPanel.ingestModeEager') }}</span>
+        </label>
+        <label class="ingest-mode-option" :class="{ 'ingest-mode-option--active': ingestMode === 'lazy' }">
+          <input type="radio" value="lazy" v-model="ingestMode" :disabled="savingIngestMode" />
+          <span class="ingest-mode-option__label">{{ t('wiki.configPanel.ingestModeLazy') }}</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- ①c Entity extraction -->
+    <div class="config-card">
+      <div class="config-card__head">
+        <div>
+          <div class="config-card__title">{{ t('wiki.configPanel.entityExtraction') }}</div>
+          <div class="config-card__hint">{{ t('wiki.configPanel.entityExtractionHint') }}</div>
+        </div>
+        <button class="btn-save" @click="saveEntityExtraction" :disabled="savingEntityExtraction">
+          {{ savingEntityExtraction ? t('wiki.saving') : t('common.save') }}
+        </button>
+      </div>
+      <div class="ingest-mode-row">
+        <label class="entity-toggle">
+          <input type="checkbox" v-model="entityExtractionEnabled" :disabled="savingEntityExtraction" />
+          <span class="entity-toggle__label">{{ t('wiki.configPanel.entityExtractionEnable') }}</span>
+        </label>
+        <button
+          v-if="entityExtractionEnabled"
+          class="btn-save btn-save--ghost"
+          @click="runExtraction"
+          :disabled="extracting"
+        >
+          {{ extracting ? t('wiki.configPanel.entityExtractionRunning') : t('wiki.configPanel.entityExtractionRun') }}
+        </button>
+      </div>
+
+      <!-- Entity types to extract (whitelist). Empty = use built-in defaults. -->
+      <div v-if="entityExtractionEnabled" class="entity-types">
+        <div class="entity-types__label">{{ t('wiki.configPanel.entityTypesLabel') }}</div>
+        <el-select
+          v-model="entityTypes"
+          multiple
+          filterable
+          allow-create
+          default-first-option
+          :reserve-keyword="false"
+          size="small"
+          class="entity-types__select"
+          :placeholder="t('wiki.configPanel.entityTypesPlaceholder')"
+        >
+          <el-option v-for="opt in DEFAULT_ENTITY_TYPES" :key="opt" :label="formatEntityType(opt)" :value="opt" />
+        </el-select>
+        <div class="entity-types__hint">{{ t('wiki.configPanel.entityTypesHint') }}</div>
+      </div>
+
+      <!-- Relation schema: optional closed whitelist of (subjectType, predicate, objectType)
+           triples. Empty = open-vocabulary relations (legacy behavior). -->
+      <div v-if="entityExtractionEnabled" class="relation-schema">
+        <div class="relation-schema__label">{{ t('wiki.configPanel.relationSchemaLabel') }}</div>
+        <div class="relation-schema__hint">{{ t('wiki.configPanel.relationSchemaHint') }}</div>
+
+        <div v-for="(row, idx) in relationSchema" :key="idx" class="relation-schema__row">
+          <el-select
+            v-model="row.subjectType"
+            filterable
+            allow-create
+            default-first-option
+            size="small"
+            class="relation-schema__type"
+            :placeholder="t('wiki.configPanel.relationSchemaSubject')"
+          >
+            <el-option v-for="opt in relationSchemaTypeOptions" :key="opt" :label="formatEntityType(opt)" :value="opt" />
+          </el-select>
+          <input
+            type="text"
+            v-model.trim="row.predicate"
+            class="relation-schema__predicate"
+            :placeholder="t('wiki.configPanel.relationSchemaPredicate')"
+          />
+          <el-select
+            v-model="row.objectType"
+            filterable
+            allow-create
+            default-first-option
+            size="small"
+            class="relation-schema__type"
+            :placeholder="t('wiki.configPanel.relationSchemaObject')"
+          >
+            <el-option v-for="opt in relationSchemaTypeOptions" :key="opt" :label="formatEntityType(opt)" :value="opt" />
+          </el-select>
+          <button
+            class="relation-schema__remove"
+            @click="removeRelationSchemaRow(idx)"
+            :title="t('common.delete')"
+            :aria-label="t('common.delete')"
+          >×</button>
+        </div>
+
+        <button class="btn-save btn-save--ghost relation-schema__add" @click="addRelationSchemaRow">
+          {{ t('wiki.configPanel.relationSchemaAdd') }}
+        </button>
+      </div>
+    </div>
+
+    <!-- ② Model strategy -->
+    <div class="config-card config-card--clickable" @click="modelsOpen = true">
+      <div class="config-card__row">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        <div class="config-card__row-text">
+          <div class="config-card__title">{{ t('wiki.configPanel.modelStrategy') }}</div>
+          <div class="config-card__hint">
+            <template v-if="wikiGlobalModelId && activeStepCount > 0">Wiki 全局已设置，{{ activeStepCount }} 个步骤独立覆盖</template>
+            <template v-else-if="wikiGlobalModelId">Wiki 全局模型已设置，步骤沿用</template>
+            <template v-else-if="activeStepCount > 0">{{ activeStepCount }} 个步骤已绑定自定义模型</template>
+            <template v-else>全部步骤使用系统全局默认模型</template>
+          </div>
+        </div>
+        <div class="card-badge" :class="{ 'card-badge--active': activeStepCount > 0 || !!wikiGlobalModelId }">
+          {{ activeStepCount }} / {{ stepKeys.length }}
+        </div>
+        <svg class="card-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ③ Processing rules -->
+    <div class="config-card config-card--clickable" @click="rulesOpen = true">
+      <div class="config-card__row" style="align-items: flex-start">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-top:2px">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <div class="config-card__row-text" style="flex:1;min-width:0">
+          <div class="config-card__title">处理规则</div>
+          <div class="config-card__hint">AI 消化原始材料时遵循的质量、格式和语言规则</div>
+          <!-- Preview snippet -->
+          <div v-if="configContent.trim()" class="rules-snippet">
+            <span v-for="(line, i) in snippetLines" :key="i" class="rules-snippet__line" :class="{ 'h': line.startsWith('#') }">{{ line }}</span>
+            <span v-if="totalLines > 4" class="rules-snippet__more">+{{ totalLines - 4 }} 行</span>
+          </div>
+          <div v-else class="rules-snippet rules-snippet--empty">点击配置 →</div>
+        </div>
+        <svg class="card-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:2px">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ④ Search preview card -->
+    <div v-if="store.currentKB" class="config-card config-card--clickable" @click="searchOpen = true">
+      <div class="config-card__row">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <div class="config-card__row-text">
+          <div class="config-card__title">{{ t('wiki.configPanel.searchPreview') }}</div>
+          <div class="config-card__hint">{{ t('wiki.configPanel.searchPreviewPlaceholder') }}</div>
+        </div>
+        <svg class="card-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Modals -->
+    <WikiConfigRules
+      :open="rulesOpen"
+      :model-value="configContent"
+      :kb-name="store.currentKB?.name"
+      :saving="savingRules"
+      @close="rulesOpen = false"
+      @save="saveRules"
+    />
+
+    <WikiConfigModels
+      :open="modelsOpen"
+      :kb-name="store.currentKB?.name"
+      :saving="savingStepModels"
+      :step-keys="stepKeys"
+      :step-models="stepModels"
+      :fallback-model-ids="fallbackModelIds"
+      :providers="chatProviders"
+      :config-id-to-value="configIdToValue"
+      :value-to-config-id="valueToConfigId"
+      :config-id-to-label="configIdToLabel"
+      :wiki-global-model-id="wikiGlobalModelId"
+      @close="modelsOpen = false"
+      @save="saveStepModelsAndClose"
+      @reset="loadStepModels"
+      @add-fallback="onAddFallback"
+      @remove-fallback="(idx) => fallbackModelIds.splice(idx, 1)"
+      @update:wiki-global-model-id="wikiGlobalModelId = $event"
+    />
+
+    <WikiSearchPreview
+      v-if="store.currentKB"
+      :open="searchOpen"
+      :kb-id="store.currentKB.id"
+      :kb-name="store.currentKB?.name"
+      @close="searchOpen = false"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useWikiStore } from '@/stores/useWikiStore'
+import { wikiApi, modelApi } from '@/api/index'
+import type { ProviderInfo } from '@/types'
+import WikiSearchPreview from './WikiSearchPreview.vue'
+import WikiModelPicker, { type ModelOption } from './WikiModelPicker.vue'
+import WikiConfigRules from './WikiConfigRules.vue'
+import WikiConfigModels from './WikiConfigModels.vue'
+
+const { t, te } = useI18n()
+const store = useWikiStore()
+
+// Built-in entity types offered as suggestions; users may add custom ones.
+// Empty config falls back to the backend's default set.
+const DEFAULT_ENTITY_TYPES = ['person', 'organization', 'location', 'event', 'product', 'concept']
+
+// Localized label for an entity type in the suggestion dropdown.
+function formatEntityType(type: string): string {
+  const key = (type || '').toLowerCase()
+  if (!key) return ''
+  const i18nKey = `wiki.entityTypes.${key}`
+  if (te(i18nKey)) return `${t(i18nKey)} (${key})`
+  return key
+}
+
+// ── Rules state ──
+const configContent = ref('')
+const rulesOpen = ref(false)
+const savingRules = ref(false)
+
+const snippetLines = computed(() => configContent.value.split('\n').filter(l => l.trim()).slice(0, 4))
+const totalLines = computed(() => configContent.value.split('\n').filter(l => l.trim()).length)
+
+async function saveRules(content: string) {
+  if (!store.currentKB) return
+  savingRules.value = true
+  try {
+    await wikiApi.updateConfig(store.currentKB.id, content)
+    configContent.value = content
+    rulesOpen.value = false
+  } catch (e) {
+    console.error('[WikiConfig] Failed to save rules', e)
+  } finally {
+    savingRules.value = false
+  }
+}
+
+// ── Embedding model ──
+const embeddingModelId = ref<string>('')
+const savingEmbedding = ref(false)
+
+async function saveEmbeddingBinding() {
+  if (!store.currentKB) return
+  savingEmbedding.value = true
+  try {
+    await wikiApi.updateKB(store.currentKB.id, {
+      embeddingModelId: embeddingModelId.value === '' ? null : embeddingModelId.value,
+    })
+    const kb: any = store.currentKB
+    // Mirror the persisted value to the in-memory KB without going through
+    // Number() — Snowflake model IDs would otherwise lose their last digits
+    // (Number.MAX_SAFE_INTEGER = 2^53-1, IDs are 19 digits).
+    kb.embeddingModelId = embeddingModelId.value === '' ? null : embeddingModelId.value
+  } catch (e) {
+    console.error('[WikiConfig] Failed to save embedding binding', e)
+  } finally {
+    savingEmbedding.value = false
+  }
+}
+
+// ── Ingest mode (RFC-051 PR-1b) ──
+// eager = legacy heavy pipeline (extract → chunk → route/create/merge LLM → pages).
+// lazy  = extract → chunk → embed → completed (0 pages is success).
+const ingestMode = ref<'eager' | 'lazy'>('eager')
+const savingIngestMode = ref(false)
+
+async function saveIngestMode() {
+  if (!store.currentKB) return
+  savingIngestMode.value = true
+  try {
+    let existingConfig: any = {}
+    try {
+      if (store.currentKB.configContent) existingConfig = JSON.parse(store.currentKB.configContent)
+    } catch { /* config may be plain text rules */ }
+    existingConfig.ingestMode = ingestMode.value
+    await wikiApi.updateConfig(store.currentKB.id, JSON.stringify(existingConfig, null, 2))
+  } catch (e) {
+    console.error('[WikiConfig] Failed to save ingest mode', e)
+  } finally {
+    savingIngestMode.value = false
+  }
+}
+
+// ── Entity extraction ──
+// Opt-in named-entity knowledge graph extraction. Off by default because it
+// adds an LLM call per chunk on top of the page pipeline.
+const entityExtractionEnabled = ref(false)
+const entityTypes = ref<string[]>([])
+const savingEntityExtraction = ref(false)
+const extracting = ref(false)
+
+// Optional closed relation schema: a whitelist of (subjectType, predicate,
+// objectType) triples. Empty = open-vocabulary relations (legacy behavior).
+interface RelationSchemaRow { subjectType: string; predicate: string; objectType: string }
+const relationSchema = ref<RelationSchemaRow[]>([])
+
+// Type dropdown suggestions: whatever entity types are currently configured,
+// plus the built-in defaults, deduped.
+const relationSchemaTypeOptions = computed(() =>
+  [...new Set([...entityTypes.value, ...DEFAULT_ENTITY_TYPES])])
+
+function addRelationSchemaRow() {
+  relationSchema.value.push({ subjectType: '', predicate: '', objectType: '' })
+}
+
+function removeRelationSchemaRow(idx: number) {
+  relationSchema.value.splice(idx, 1)
+}
+
+async function saveEntityExtraction() {
+  if (!store.currentKB) return
+  savingEntityExtraction.value = true
+  try {
+    let existingConfig: any = {}
+    try {
+      if (store.currentKB.configContent) existingConfig = JSON.parse(store.currentKB.configContent)
+    } catch { /* config may be plain text rules */ }
+    existingConfig.entityExtractionEnabled = entityExtractionEnabled.value ? true : undefined
+    // Normalize to trimmed lowercase keys so they match the extractor's type
+    // normalization; empty list drops the field and uses backend defaults.
+    const cleanedTypes = entityExtractionEnabled.value
+      ? [...new Set(entityTypes.value.map(s => s.trim().toLowerCase()).filter(Boolean))]
+      : []
+    existingConfig.entityTypes = cleanedTypes.length > 0 ? cleanedTypes : undefined
+    // Only keep fully-filled rows; a row with any blank field can't match
+    // anything on the backend and would silently do nothing.
+    const cleanedRelationSchema = entityExtractionEnabled.value
+      ? relationSchema.value
+          .map(row => ({
+            subjectType: row.subjectType.trim().toLowerCase(),
+            predicate: row.predicate.trim().toLowerCase(),
+            objectType: row.objectType.trim().toLowerCase(),
+          }))
+          .filter(row => row.subjectType && row.predicate && row.objectType)
+      : []
+    existingConfig.relationSchema = cleanedRelationSchema.length > 0 ? cleanedRelationSchema : undefined
+    await wikiApi.updateConfig(store.currentKB.id, JSON.stringify(existingConfig, null, 2))
+  } catch (e) {
+    console.error('[WikiConfig] Failed to save entity extraction toggle', e)
+  } finally {
+    savingEntityExtraction.value = false
+  }
+}
+
+async function runExtraction() {
+  if (!store.currentKB) return
+  extracting.value = true
+  try {
+    // Manual trigger is a full rebuild (force): re-process every chunk so the
+    // current entity-type config takes effect even on already-extracted KBs.
+    await wikiApi.extractEntities(store.currentKB.id, true)
+  } catch (e) {
+    console.error('[WikiConfig] Failed to start entity extraction', e)
+  } finally {
+    extracting.value = false
+  }
+}
+
+// ── Model strategy ──
+const stepKeys = ['route', 'create_page', 'merge_page', 'enrich', 'summary']
+const stepModels = reactive<Record<string, string>>({})
+const fallbackModelIds = ref<string[]>([])
+const wikiGlobalModelId = ref<string>('')
+const modelsOpen = ref(false)
+const savingStepModels = ref(false)
+const searchOpen = ref(false)
+
+const activeStepCount = computed(() => stepKeys.filter(k => !!stepModels[k]).length)
+
+function loadStepModels() {
+  stepKeys.forEach(k => (stepModels[k] = ''))
+  fallbackModelIds.value = []
+  wikiGlobalModelId.value = ''
+  ingestMode.value = 'eager'
+  entityExtractionEnabled.value = false
+  entityTypes.value = []
+  relationSchema.value = []
+  if (!store.currentKB) return
+  try {
+    const cfg = store.currentKB.configContent ? JSON.parse(store.currentKB.configContent) : null
+    if (cfg?.stepModels) {
+      for (const key of stepKeys) {
+        const fullKey = `heavy_ingest.${key}`
+        if (cfg.stepModels[fullKey]) stepModels[key] = String(cfg.stepModels[fullKey])
+      }
+    }
+    if (cfg?.fallbackModelIds) fallbackModelIds.value = cfg.fallbackModelIds.map(String)
+    if (cfg?.wikiDefaultModelId) wikiGlobalModelId.value = String(cfg.wikiDefaultModelId)
+    if (cfg?.ingestMode === 'lazy') ingestMode.value = 'lazy'
+    if (cfg?.entityExtractionEnabled) entityExtractionEnabled.value = true
+    if (Array.isArray(cfg?.entityTypes)) entityTypes.value = cfg.entityTypes.map(String)
+    if (Array.isArray(cfg?.relationSchema)) {
+      relationSchema.value = cfg.relationSchema.map((row: any) => ({
+        subjectType: String(row?.subjectType ?? ''),
+        predicate: String(row?.predicate ?? ''),
+        objectType: String(row?.objectType ?? ''),
+      }))
+    }
+  } catch { /* not JSON */ }
+}
+
+async function saveStepModelsAndClose() {
+  if (!store.currentKB) return
+  savingStepModels.value = true
+  try {
+    // Keep model IDs as strings end-to-end. Snowflake IDs exceed
+    // Number.MAX_SAFE_INTEGER, so Number() / .map(Number) would silently
+    // corrupt the last few digits before serializing to configContent JSON.
+    // Backend parses configContent leniently — string-typed IDs are fine.
+    const stepMap: Record<string, string> = {}
+    for (const key of stepKeys) {
+      if (stepModels[key]) stepMap[`heavy_ingest.${key}`] = stepModels[key]
+    }
+    let existingConfig: any = {}
+    try {
+      if (store.currentKB.configContent) existingConfig = JSON.parse(store.currentKB.configContent)
+    } catch { /* not JSON */ }
+    existingConfig.stepModels = Object.keys(stepMap).length > 0 ? stepMap : undefined
+    existingConfig.fallbackModelIds = fallbackModelIds.value.length > 0
+      ? [...fallbackModelIds.value] : undefined
+    existingConfig.wikiDefaultModelId = wikiGlobalModelId.value
+      ? wikiGlobalModelId.value : undefined
+    await wikiApi.updateConfig(store.currentKB.id, JSON.stringify(existingConfig, null, 2))
+    modelsOpen.value = false
+  } catch (e) {
+    console.error('[WikiConfig] Failed to save step models', e)
+  } finally {
+    savingStepModels.value = false
+  }
+}
+
+function onAddFallback(id: string) {
+  if (id && !fallbackModelIds.value.includes(id)) fallbackModelIds.value.push(id)
+}
+
+// ── Raw model data ──
+interface RawModel { id: number | string; name: string; modelName?: string; provider?: string; enabled?: boolean }
+const chatRawModels = ref<RawModel[]>([])
+const embeddingRawModels = ref<RawModel[]>([])
+const providerNames = ref<Record<string, string>>({})
+// Tracks whether a provider has a usable API key (available = true from ProviderInfoDTO)
+const providerAvailable = ref<Record<string, boolean>>({})
+// Full provider list for ModelSelector (only available providers)
+const chatProviders = ref<ProviderInfo[]>([])
+
+async function loadProviderNames() {
+  try {
+    const res: any = await modelApi.listProviders()
+    const list: any[] = res.data || []
+    chatProviders.value = list as ProviderInfo[]
+    const nameMap: Record<string, string> = {}
+    const availMap: Record<string, boolean> = {}
+    for (const p of list) {
+      nameMap[p.id] = p.name || p.id
+      // Local providers (Ollama etc.) don't need an API key — treat as available
+      availMap[p.id] = !!(p.available || p.isLocal)
+    }
+    providerNames.value = nameMap
+    providerAvailable.value = availMap
+  } catch { /* ignore */ }
+}
+
+// ── Format bridge: numeric config ID ↔ ModelSelector's "providerId::modelId" ──
+// config ID → "providerId::modelName" (the value ModelSelector emits)
+const configIdToValue = computed(() => {
+  const map = new Map<string, string>()
+  for (const m of chatRawModels.value) {
+    const modelName = (m as any).modelName
+    if (m.provider && modelName) map.set(String(m.id), `${m.provider}::${modelName}`)
+  }
+  return map
+})
+// "providerId::modelName" → config ID
+const valueToConfigId = computed(() => {
+  const map = new Map<string, string>()
+  for (const m of chatRawModels.value) {
+    const modelName = (m as any).modelName
+    if (m.provider && modelName) map.set(`${m.provider}::${modelName}`, String(m.id))
+  }
+  return map
+})
+// Display label for a stored config ID
+function configIdToLabel(id: string): string {
+  if (!id) return ''
+  return chatRawModels.value.find(m => String(m.id) === id)?.name || id
+}
+
+async function loadChatModels() {
+  try {
+    const res: any = await modelApi.listByType('chat')
+    chatRawModels.value = ((res.data as RawModel[]) || []).filter(m => m.enabled !== false)
+  } catch (e) { console.error('[WikiConfig] Failed to load chat models', e) }
+}
+
+async function loadEmbeddingModels() {
+  try {
+    const res: any = await modelApi.listByType('embedding')
+    embeddingRawModels.value = ((res.data as RawModel[]) || []).filter(m => m.enabled !== false)
+  } catch (e) { console.error('[WikiConfig] Failed to load embedding models', e) }
+}
+
+function buildPickerOptions(models: RawModel[]): ModelOption[] {
+  return models.map(m => ({
+    id: String(m.id),
+    name: m.name,
+    modelId: (m as any).modelName,
+    providerId: m.provider,
+    providerName: m.provider ? (providerNames.value[m.provider] || m.provider) : undefined,
+    // If the provider ID is known and its availability is explicitly false, mark unavailable
+    available: m.provider ? (providerAvailable.value[m.provider] !== false) : true,
+  }))
+}
+
+const embeddingPickerOptions = computed<ModelOption[]>(() => buildPickerOptions(embeddingRawModels.value))
+
+// ── Lifecycle ──
+watch(() => store.currentKB, async () => {
+  if (!store.currentKB) return
+  try {
+    const res: any = await wikiApi.getConfig(store.currentKB.id)
+    configContent.value = res.data?.content || ''
+  } catch { /* ignore */ }
+  embeddingModelId.value = (store.currentKB as any)?.embeddingModelId
+    ? String((store.currentKB as any).embeddingModelId) : ''
+  loadStepModels()
+}, { immediate: true })
+
+loadProviderNames().then(() => {
+  loadChatModels()
+  loadEmbeddingModels()
+})
+</script>
+
+<style scoped>
+.wiki-config {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+
+.config-header { padding-bottom: 10px; border-bottom: 1px solid var(--mc-border-light); }
+.config-title { font-size: 18px; font-weight: 700; color: var(--mc-text-primary); margin: 0 0 4px; letter-spacing: -0.02em; }
+.config-desc { font-size: 13px; color: var(--mc-text-tertiary); margin: 0; line-height: 1.6; }
+
+/* Cards */
+.config-card {
+  padding: 12px 14px;
+  background: var(--mc-bg-sunken);
+  border-radius: 12px;
+  border: 1px solid var(--mc-border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.config-card--clickable { cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.config-card--clickable:hover { border-color: var(--mc-primary); background: var(--mc-bg-muted); }
+.config-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.config-card__row { display: flex; align-items: center; gap: 10px; }
+.config-card__row-text { flex: 1; min-width: 0; }
+.config-card__title { font-size: 13px; font-weight: 600; color: var(--mc-text-primary); }
+.config-card__hint { font-size: 11px; color: var(--mc-text-tertiary); margin-top: 2px; line-height: 1.4; }
+
+.card-badge {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  border: 1px solid var(--mc-border-light);
+  background: var(--mc-bg-elevated);
+  color: var(--mc-text-tertiary);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.card-badge--active { border-color: var(--mc-primary); color: var(--mc-primary); background: var(--mc-primary-bg); }
+.card-chevron { color: var(--mc-text-tertiary); flex-shrink: 0; }
+.config-card--clickable:hover .card-chevron { color: var(--mc-primary); }
+
+/* Rules snippet preview */
+.rules-snippet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 6px;
+}
+.rules-snippet__line {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: var(--mc-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+.rules-snippet__line.h { color: var(--mc-text-secondary); font-weight: 600; }
+.rules-snippet__more { font-size: 11px; color: var(--mc-text-tertiary); font-style: italic; }
+.rules-snippet--empty { font-size: 11px; color: var(--mc-primary); font-style: italic; }
+
+/* Save button */
+.btn-save {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--mc-primary);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.btn-save:hover { opacity: 0.88; }
+.btn-save:disabled { background: var(--mc-border); cursor: not-allowed; }
+.btn-save--ghost { background: transparent; color: var(--mc-primary); border: 1px solid var(--mc-primary); }
+.btn-save--ghost:disabled { background: transparent; color: var(--mc-text-tertiary); border-color: var(--mc-border); }
+
+/* Entity extraction toggle */
+.entity-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--mc-text-primary); cursor: pointer; }
+.entity-toggle__label { user-select: none; }
+
+/* Entity types editor */
+.entity-types { display: flex; flex-direction: column; gap: 6px; }
+.entity-types__label { font-size: 12px; font-weight: 600; color: var(--mc-text-secondary); }
+.entity-types__select { width: 100%; }
+.entity-types__hint { font-size: 11px; color: var(--mc-text-tertiary); line-height: 1.4; }
+
+/* Relation schema editor */
+.relation-schema { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.relation-schema__label { font-size: 12px; font-weight: 600; color: var(--mc-text-secondary); }
+.relation-schema__hint { font-size: 11px; color: var(--mc-text-tertiary); line-height: 1.4; }
+.relation-schema__row { display: flex; align-items: center; gap: 6px; }
+.relation-schema__type { flex: 1; min-width: 0; }
+.relation-schema__predicate {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--mc-text-primary);
+  background: var(--mc-bg-sunken);
+  border: 1px solid var(--mc-border);
+  border-radius: 4px;
+}
+.relation-schema__predicate:focus { outline: none; border-color: var(--mc-primary); }
+.relation-schema__remove {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--mc-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--mc-text-tertiary);
+  cursor: pointer;
+  line-height: 1;
+}
+.relation-schema__remove:hover { color: var(--mc-text-primary); border-color: var(--mc-text-tertiary); }
+.relation-schema__add { align-self: flex-start; margin-top: 2px; }
+
+/* Ingest mode radio group */
+.ingest-mode-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ingest-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--mc-border-light);
+  border-radius: 8px;
+  background: var(--mc-bg-elevated);
+  font-size: 12px;
+  color: var(--mc-text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.ingest-mode-option input { margin: 0; cursor: pointer; }
+.ingest-mode-option--active {
+  border-color: var(--mc-primary);
+  color: var(--mc-primary);
+  background: var(--mc-primary-bg);
+  font-weight: 600;
+}
+.ingest-mode-option__label { line-height: 1; }
+</style>

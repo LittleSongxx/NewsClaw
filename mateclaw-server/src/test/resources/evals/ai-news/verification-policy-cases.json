@@ -1,0 +1,69 @@
+[
+  {
+    "id": "official-openai-release",
+    "expected": "verified",
+    "conflicts": [],
+    "evidence": [
+      {
+        "tier": "official",
+        "url": "https://openai.com/index/model-release/",
+        "confidence": 0.90
+      }
+    ]
+  },
+  {
+    "id": "two-independent-media-sources",
+    "expected": "verified",
+    "conflicts": [],
+    "evidence": [
+      {
+        "tier": "media",
+        "url": "https://www.36kr.com/p/ai-model-release",
+        "confidence": 0.72
+      },
+      {
+        "tier": "media",
+        "url": "https://www.reuters.com/technology/ai-model-release/",
+        "confidence": 0.76
+      }
+    ]
+  },
+  {
+    "id": "single-media-source",
+    "expected": "blocked",
+    "conflicts": [],
+    "evidence": [
+      {
+        "tier": "media",
+        "url": "https://www.36kr.com/p/unconfirmed-rumor",
+        "confidence": 0.65
+      }
+    ]
+  },
+  {
+    "id": "spoofed-official-domain",
+    "expected": "blocked",
+    "conflicts": [],
+    "evidence": [
+      {
+        "tier": "official",
+        "url": "https://deepseek-news.example.net/model-release",
+        "confidence": 0.95
+      }
+    ]
+  },
+  {
+    "id": "unresolved-source-conflict",
+    "expected": "blocked",
+    "conflicts": [
+      "发布日期在两个来源中不一致"
+    ],
+    "evidence": [
+      {
+        "tier": "official",
+        "url": "https://www.unitree.com/news/product-update",
+        "confidence": 0.90
+      }
+    ]
+  }
+]

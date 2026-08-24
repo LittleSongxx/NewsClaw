@@ -1,0 +1,11 @@
+{
+  "name": "mateclaw-plugin-hello",
+  "version": "1.0.0",
+  "type": "tool",
+  "displayName": "Hello World Plugin",
+  "description": "A sample plugin that demonstrates the MateClaw Plugin SDK by registering a simple greeting tool.",
+  "entrypoint": "vip.mate.plugin.sample.HelloPlugin",
+  "minPlatformVersion": "1.1.0",
+  "author": "MateClaw Team",
+  "config": {}
+}

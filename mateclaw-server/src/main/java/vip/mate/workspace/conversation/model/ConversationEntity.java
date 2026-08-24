@@ -1,0 +1,103 @@
+package vip.mate.workspace.conversation.model;
+
+import com.baomidou.mybatisplus.annotation.*;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+/**
+ * 会话实体
+ *
+ * @author MateClaw Team
+ */
+@Data
+@TableName("mate_conversation")
+public class ConversationEntity {
+
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
+
+    /** 会话唯一标识（前端生成的UUID） */
+    private String conversationId;
+
+    /** 会话标题（取第一条消息前20字） */
+    private String title;
+
+    /** 关联的 Agent ID */
+    private Long agentId;
+
+    /** 创建用户 */
+    private String username;
+
+    /** 消息数量 */
+    private Integer messageCount;
+
+    /** 最后一条消息摘要 */
+    @TableField(value = "last_message", updateStrategy = FieldStrategy.ALWAYS)
+    private String lastMessage;
+
+    /** 最后活跃时间 */
+    private LocalDateTime lastActiveTime;
+
+    /** 流状态：idle（空闲）/ running（生成中） */
+    private String streamStatus;
+
+    /** 所属工作区 ID（默认 1 = default） */
+    private Long workspaceId;
+
+    /** 父会话 ID（委派场景下，子会话记录其父会话的 conversationId） */
+    private String parentConversationId;
+
+    /** Product-level conversation classification. Defaults to primary. */
+    private String conversationKind;
+
+    /** Pin flag: 0 = normal, 1 = pinned to the top of the sidebar list */
+    private Integer pinned;
+
+    /**
+     * Archive flag (webchat): 0 = active (default), 1 = archived.
+     * Archived threads stay in the DB (history preserved, still addressable
+     * by sessionId, downloadable) but are excluded from the default
+     * /sessions listing. A visitor opts into seeing them via
+     * {@code includeArchived=true}. Archive dominates pin — an archived
+     * AND pinned thread is still hidden by default.
+     */
+    private Integer archived;
+
+    /**
+     * Provider id of the model this conversation is pinned to. NULL means
+     * "inherit" — fall back to the agent's model override, then the global
+     * default. Paired with {@link #modelName}.
+     */
+    private String modelProvider;
+
+    /** Model id this conversation is pinned to. See {@link #modelProvider}. */
+    private String modelName;
+
+    /**
+     * WebChat per-thread sessionId (see V147 migration). Persisted so it can be
+     * recovered for the visitor's /sessions listing even when the conversationId
+     * hashes (long visitorId + sessionId folds into an unrecoverable hash). NULL
+     * for non-webchat rows and for a visitor's default (no-session) thread.
+     */
+    private String webchatSessionId;
+
+    /**
+     * Per-conversation progress notebook JSON (see V100 migration).
+     * <p>
+     * Map of {@code stepKey -> {label, status, note, updatedAt}}, written by
+     * the {@code progress_update} tool and rendered into the system prompt
+     * before each LLM call to survive message-window trimming. NULL means
+     * "no ledger yet" — the runtime suppresses the snapshot.
+     */
+    @TableField(value = "progress_ledger", updateStrategy = FieldStrategy.ALWAYS)
+    private String progressLedger;
+
+    @TableField(fill = FieldFill.INSERT)
+    private LocalDateTime createTime;
+
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updateTime;
+
+    private Integer deleted;
+}

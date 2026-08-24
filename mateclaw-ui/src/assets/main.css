@@ -1,0 +1,1092 @@
+@import "tailwindcss";
+
+/* ================================================================
+   CSS Variables — Light / Dark theme
+   ================================================================ */
+:root {
+  /* font system */
+  --mc-font-body: 'Inter', 'Avenir Next', 'SF Pro Display', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --mc-font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+
+  /* type scale */
+  --mc-text-xs: 11px;
+  --mc-text-sm: 13px;
+  --mc-text-base: 15px;
+  --mc-text-lg: 18px;
+  --mc-text-xl: 24px;
+  --mc-text-2xl: 32px;
+  --mc-leading-tight: 1.25;
+  --mc-leading-normal: 1.5;
+  --mc-leading-relaxed: 1.75;
+
+  /* radius system */
+  --mc-radius-sm: 6px;
+  --mc-radius-md: 12px;
+  --mc-radius-lg: 16px;
+  --mc-radius-xl: 20px;
+  --mc-radius-full: 9999px;
+
+  /* brand */
+  --mc-primary: #d96d46;
+  --mc-primary-light: #ebb08f;
+  --mc-primary-hover: #bb4f27;
+  --mc-primary-bg: #f6e2d7;
+  --mc-accent: #184a45;
+  --mc-accent-soft: #dce8e4;
+
+  /* surfaces */
+  --mc-bg: #f6f1ea;
+  --mc-bg-elevated: #ffffff;
+  --mc-bg-sunken: #ebe3db;
+  --mc-bg-muted: #f1e8df;
+  /* Hover wash for icon buttons and list rows. Consumers write
+     `background: var(--mc-bg-hover)` with no literal fallback, and an
+     undefined custom property makes the whole declaration compute to the
+     property's initial value — transparent — so a missing definition here
+     silently erases the element's background instead of leaving it alone. */
+  --mc-bg-hover: #ebe3db;
+  --mc-surface-strong: #fdfaf6;
+  --mc-surface-overlay: rgba(255, 255, 255, 0.72);
+  --mc-panel-top: rgba(255, 255, 255, 0.94);
+  --mc-panel-bottom: rgba(255, 252, 248, 0.9);
+  --mc-panel-raised: rgba(255, 255, 255, 0.86);
+
+  /* borders */
+  --mc-border: #d9cec2;
+  --mc-border-light: #ebe3db;
+  --mc-border-strong: #cdbdad;
+
+  /* text */
+  --mc-text-primary: #1d1612;
+  --mc-text-secondary: #665245;
+  --mc-text-tertiary: #9b7d6c;
+  --mc-text-inverse: #ffffff;
+
+  /* shadows */
+  --mc-shadow-soft: 0 10px 30px rgba(58, 32, 19, 0.08);
+  --mc-shadow-medium: 0 18px 48px rgba(58, 32, 19, 0.12);
+  --mc-shadow-strong: 0 24px 70px rgba(58, 32, 19, 0.16);
+  --mc-glow: radial-gradient(circle at top, rgba(217, 109, 70, 0.18), transparent 55%);
+
+  /* sidebar */
+  --mc-sidebar-bg: #ffffff;
+  --mc-sidebar-border: #DDD5CC;
+  --mc-sidebar-hover: #F5F0EB;
+  --mc-sidebar-active: #F5E4D8;
+  --mc-sidebar-text: #6B5344;
+  --mc-sidebar-text-active: #D97757;
+  --mc-sidebar-group-title: #A08070;
+  --mc-sidebar-logo-name: #1C1410;
+  --mc-sidebar-footer-bg: rgba(245, 238, 230, 0.82);
+  --mc-sidebar-floating-bg: rgba(255, 252, 248, 0.95);
+
+  /* chat */
+  --mc-chat-bg: #FAFAF8;
+  --mc-chat-header-bg: #ffffff;
+  --mc-assistant-bubble-bg: #ffffff;
+  --mc-assistant-bubble-border: #DDD5CC;
+  --mc-assistant-bubble-color: #1C1410;
+  --mc-user-bubble-bg: #D97757;
+  --mc-user-bubble-color: #ffffff;
+  --mc-input-bg: #FAFAF8;
+  --mc-input-border: #DDD5CC;
+  --mc-input-text: #1C1410;
+
+  /* code blocks — light mode: warm beige bg, dark text */
+  --mc-code-bg: #FAF6F1;
+  --mc-code-header-bg: #EFE8DE;
+  --mc-code-header-border: rgba(28, 20, 16, 0.08);
+  --mc-code-lang-color: #6B5344;
+  --mc-code-copy-color: #6B5344;
+  --mc-code-copy-hover-bg: rgba(28, 20, 16, 0.06);
+  --mc-code-copy-hover-color: #1C1410;
+  --mc-code-text: #1C1410;
+  --mc-code-shadow: rgba(0, 0, 0, 0.08);
+
+  /* inline code */
+  --mc-inline-code-bg: rgba(217, 119, 87, 0.1);
+  --mc-inline-code-color: #7B3F1E;
+
+  /* markdown */
+  --mc-table-header-bg: #F5F0EB;
+  --mc-table-border: #DDD5CC;
+  --mc-blockquote-bg: rgba(217, 119, 87, 0.05);
+  --mc-blockquote-border: #E0B8A0;
+  --mc-blockquote-color: #6B5344;
+  --mc-link-color: #C1572B;
+  --mc-hr-color: #DDD5CC;
+
+  /* misc */
+  --mc-tool-call-bg: #fef9c3;
+  --mc-tool-call-border: #fde68a;
+  --mc-tool-call-color: #92400e;
+  --mc-attachment-bg: #F5E4D8;
+  --mc-attachment-border: #E0B8A0;
+  --mc-attachment-color: #7B3F1E;
+  --mc-thinking-bg: #F5F0EB;
+  --mc-thinking-text: #5A4030;
+  --mc-mermaid-bg: #FAFAF8;
+  --mc-mermaid-border: #DDD5CC;
+  /* Code block gutter: now theme-aware along with --mc-code-bg.
+     Light mode = darker gutter on light bg; dark fork below flips it. */
+  --mc-code-line-number: rgba(28, 20, 16, 0.38);
+  --mc-thinking-hover: rgba(217, 119, 87, 0.1);
+  --mc-thinking-icon-bg: rgba(217, 119, 87, 0.12);
+  --mc-thinking-border: rgba(217, 119, 87, 0.2);
+  --mc-danger: #C0392B;
+  --mc-danger-bg: #fee2e2;
+  --mc-danger-border: #fca5a5;
+  --mc-danger-hover: #a93226;
+  --mc-success: #5A8A5A;
+  --mc-warning: #f59e0b;
+  --mc-warning-hover: #d97706;
+  --mc-info: #3b82f6;
+
+  /* scrollbar */
+  --mc-scrollbar-thumb: #C4B5A8;
+  --mc-scrollbar-thumb-hover: #A08070;
+
+  /* workflow canvas — vue-flow surfaces */
+  --mc-canvas-dot: rgba(0, 0, 0, 0.18);
+  --mc-edge: #c2b3a5;
+  --mc-edge-strong: #8a7261;
+
+  /* Element Plus light override */
+  --el-color-primary: #D97757;
+  --el-font-family: var(--mc-font-body);
+
+  color-scheme: light;
+}
+
+html.dark {
+  /* brand (lighter in dark bg context) */
+  --mc-primary: #eb8f65;
+  --mc-primary-light: #f1c3ab;
+  --mc-primary-hover: #d96d46;
+  --mc-primary-bg: rgba(224, 136, 96, 0.15);
+  --mc-accent: #5ca69d;
+  --mc-accent-soft: rgba(92, 166, 157, 0.12);
+
+  /* surfaces */
+  --mc-bg: #17110e;
+  --mc-bg-elevated: #221a16;
+  --mc-bg-sunken: #2a211c;
+  --mc-bg-muted: #201813;
+  --mc-bg-hover: #2a211c;
+  --mc-surface-strong: #2a201a;
+  --mc-surface-overlay: rgba(34, 26, 22, 0.78);
+  --mc-panel-top: rgba(36, 28, 24, 0.96);
+  --mc-panel-bottom: rgba(27, 21, 18, 0.94);
+  --mc-panel-raised: rgba(42, 32, 26, 0.9);
+
+  /* borders */
+  --mc-border: #3D3028;
+  --mc-border-light: #2E2420;
+  --mc-border-strong: #4a392f;
+
+  /* text */
+  --mc-text-primary: #F0EAE4;
+  --mc-text-secondary: #C4A898;
+  --mc-text-tertiary: #8A7060;
+  --mc-text-inverse: #1C1410;
+
+  /* shadows */
+  --mc-shadow-soft: 0 14px 32px rgba(0, 0, 0, 0.22);
+  --mc-shadow-medium: 0 20px 60px rgba(0, 0, 0, 0.28);
+  --mc-shadow-strong: 0 28px 90px rgba(0, 0, 0, 0.35);
+  --mc-glow: radial-gradient(circle at top, rgba(235, 143, 101, 0.12), transparent 55%);
+
+  /* sidebar */
+  --mc-sidebar-bg: #1A1410;
+  --mc-sidebar-border: #3D3028;
+  --mc-sidebar-hover: #2E2420;
+  --mc-sidebar-active: rgba(224, 136, 96, 0.15);
+  --mc-sidebar-text: #C4A898;
+  --mc-sidebar-text-active: #E08860;
+  --mc-sidebar-group-title: #8A7060;
+  --mc-sidebar-logo-name: #F0EAE4;
+  --mc-sidebar-footer-bg: rgba(34, 26, 22, 0.9);
+  --mc-sidebar-floating-bg: rgba(36, 28, 24, 0.96);
+
+  /* chat */
+  --mc-chat-bg: #1A1410;
+  --mc-chat-header-bg: #231C17;
+  --mc-assistant-bubble-bg: #231C17;
+  --mc-assistant-bubble-border: #3D3028;
+  --mc-assistant-bubble-color: #F0EAE4;
+  --mc-user-bubble-bg: #D97757;
+  --mc-user-bubble-color: #ffffff;
+  --mc-input-bg: #1A1410;
+  --mc-input-border: #3D3028;
+  --mc-input-text: #F0EAE4;
+
+  /* code blocks — dark mode: deep brown bg, soft text */
+  --mc-code-bg: #161210;
+  --mc-code-header-bg: #1E1814;
+  --mc-code-header-border: rgba(255, 255, 255, 0.06);
+  --mc-code-lang-color: #8A7060;
+  --mc-code-copy-color: #8A7060;
+  --mc-code-copy-hover-bg: rgba(255, 255, 255, 0.08);
+  --mc-code-copy-hover-color: #F0EAE4;
+  --mc-code-text: #abb2bf;
+  --mc-code-shadow: rgba(0, 0, 0, 0.2);
+
+  /* inline code */
+  --mc-inline-code-bg: rgba(224, 136, 96, 0.15);
+  --mc-inline-code-color: #F0C4A0;
+
+  /* markdown */
+  --mc-table-header-bg: #2E2420;
+  --mc-table-border: #3D3028;
+  --mc-blockquote-bg: rgba(224, 136, 96, 0.08);
+  --mc-blockquote-border: #D97757;
+  --mc-blockquote-color: #C4A898;
+  --mc-link-color: #E08860;
+  --mc-hr-color: #3D3028;
+
+  /* misc */
+  --mc-tool-call-bg: rgba(250, 204, 21, 0.1);
+  --mc-tool-call-border: rgba(250, 204, 21, 0.2);
+  --mc-tool-call-color: #fbbf24;
+  --mc-attachment-bg: rgba(224, 136, 96, 0.12);
+  --mc-attachment-border: rgba(224, 136, 96, 0.25);
+  --mc-attachment-color: #F0C4A0;
+  --mc-thinking-bg: #231C17;
+  --mc-thinking-text: #C4A898;
+  --mc-mermaid-bg: #1A1410;
+  --mc-mermaid-border: #3D3028;
+  --mc-code-line-number: rgba(138, 112, 96, 0.95);
+  --mc-thinking-hover: rgba(224, 136, 96, 0.1);
+  --mc-thinking-icon-bg: rgba(224, 136, 96, 0.12);
+  --mc-thinking-border: rgba(224, 136, 96, 0.2);
+  --mc-danger: #E05A4A;
+  --mc-danger-bg: rgba(224, 90, 74, 0.15);
+  --mc-danger-border: rgba(224, 90, 74, 0.4);
+  --mc-danger-hover: #c94a3a;
+  --mc-success: #7AB87A;
+  --mc-warning: #fbbf24;
+  --mc-warning-hover: #f59e0b;
+  --mc-info: #60a5fa;
+
+  /* scrollbar */
+  --mc-scrollbar-thumb: #5A4438;
+  --mc-scrollbar-thumb-hover: #7A6050;
+
+  /* workflow canvas — darker dots + softer edge color so they read on
+     the dark background without overpowering the node card. */
+  --mc-canvas-dot: rgba(255, 255, 255, 0.14);
+  --mc-edge: #5a4a3e;
+  --mc-edge-strong: #8c7361;
+
+  color-scheme: dark;
+}
+
+/* Vue Flow theme bridge — its default stylesheet ships hard-coded
+   light colors for handles / mini-map / control buttons. Map them to
+   our theme tokens so dark mode inherits cleanly.
+
+   Each selector is bumped to (0,2,0) specificity by scoping to
+   `.workflow-canvas` because vue-flow's component CSS imports inside
+   WorkflowCanvas.vue land in the bundle AFTER main.css; equal
+   specificity would lose. */
+.workflow-canvas .vue-flow__handle {
+  background: var(--mc-edge-strong, #777);
+  border-color: var(--mc-bg-elevated, #fff);
+}
+.workflow-canvas .vue-flow__edge-path {
+  stroke: var(--mc-edge, #999);
+}
+.workflow-canvas .vue-flow__edge-text {
+  fill: var(--mc-text-secondary, #555);
+  font-size: 11px;
+}
+.workflow-canvas .vue-flow__edge-textbg {
+  fill: var(--mc-bg-elevated, #fff);
+}
+.workflow-canvas .vue-flow__background {
+  background: transparent;
+}
+.workflow-canvas .vue-flow__minimap {
+  background: var(--mc-bg-sunken, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--mc-border-light, rgba(0, 0, 0, 0.08));
+  border-radius: 6px;
+}
+.workflow-canvas .vue-flow__minimap-mask {
+  fill: var(--mc-bg-muted, rgba(0, 0, 0, 0.06));
+  stroke: var(--mc-border, transparent);
+}
+.workflow-canvas .vue-flow__controls {
+  box-shadow: var(--mc-shadow-soft, 0 2px 6px rgba(0, 0, 0, 0.1));
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--mc-bg-elevated, #ffffff);
+  border: 1px solid var(--mc-border-light, rgba(0, 0, 0, 0.08));
+}
+.workflow-canvas .vue-flow__controls-button {
+  background: var(--mc-bg-elevated, #ffffff);
+  border-bottom: 1px solid var(--mc-border-light, rgba(0, 0, 0, 0.08));
+  fill: var(--mc-text-primary, #333);
+  color: var(--mc-text-primary, #333);
+}
+.workflow-canvas .vue-flow__controls-button svg {
+  fill: currentColor;
+}
+.workflow-canvas .vue-flow__controls-button:hover {
+  background: var(--mc-bg-muted, rgba(0, 0, 0, 0.05));
+}
+/* Round the bottom button so the corner doesn't show the hardcoded grey
+   border vue-flow ships with. */
+.workflow-canvas .vue-flow__controls-button:last-child {
+  border-bottom: none;
+}
+/* Selection ring matches the brand accent in both modes. */
+.workflow-canvas .vue-flow__node.selected {
+  box-shadow: 0 0 0 2px var(--mc-primary, #4084ff);
+}
+
+/* ================================================================
+   Base resets
+   ================================================================ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #app {
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--mc-font-body);
+  background-color: var(--mc-bg);
+  color: var(--mc-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "kern" on;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  background-image:
+    radial-gradient(circle at top left, rgba(217, 109, 70, 0.1), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(24, 74, 69, 0.08), transparent 24%);
+}
+
+html.dark body {
+  background-image:
+    radial-gradient(circle at top left, rgba(235, 143, 101, 0.14), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(92, 166, 157, 0.08), transparent 26%);
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.35;
+  mix-blend-mode: soft-light;
+}
+
+html.dark body::before {
+  opacity: 0.18;
+  mix-blend-mode: normal;
+}
+
+::selection {
+  background: var(--mc-primary-bg);
+  color: var(--mc-text-primary);
+}
+
+/* ================================================================
+   Scrollbar
+   ================================================================ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--mc-scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--mc-scrollbar-thumb-hover); }
+
+/* ================================================================
+   Markdown body (used in non-chat contexts)
+   ================================================================ */
+.markdown-body { line-height: 1.75; }
+
+/* Inline preview for tool-generated images (render_html_image / image gen).
+   Rendered by useMarkdownRenderer.link(); click opens full-size in a new tab. */
+.markdown-body .markdown-generated-image {
+  display: block;
+  max-width: min(560px, 100%);
+  max-height: 640px;
+  height: auto;
+  margin: 12px 0;
+  border-radius: 10px;
+  border: 1px solid var(--mc-code-header-border);
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+/* headings */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin: 20px 0 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--mc-text-primary);
+}
+.markdown-body h1 { font-size: 1.5em; }
+.markdown-body h2 { font-size: 1.3em; }
+.markdown-body h3 { font-size: 1.15em; }
+.markdown-body h4 { font-size: 1em; }
+
+/* inline code */
+.markdown-body code {
+  font-family: var(--mc-font-mono);
+  font-size: 0.875rem;
+}
+.markdown-body :not(pre) > code {
+  background: var(--mc-inline-code-bg);
+  color: var(--mc-inline-code-color);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.92em;
+}
+
+/* pre / code blocks */
+.markdown-body pre {
+  background: var(--mc-code-bg);
+  border-radius: 12px;
+  padding: 16px;
+  overflow-x: auto;
+  margin: 14px 0;
+}
+.markdown-body pre code,
+.markdown-body pre code.hljs {
+  background: none !important;
+  color: var(--mc-code-text);
+  padding: 0 !important;
+  border-radius: 0;
+  font-size: 0.875rem;
+  display: block;
+  overflow-x: auto;
+  line-height: 1.7;
+}
+
+/* code-block container (from useMarkdownRenderer)
+   ---------------------------------------------------------------
+   These rules live globally so they apply consistently to every
+   markdown-body context (chat bubbles, agent context preview, etc.)
+   and don't depend on the Vue scope hash. The ! markers on padding
+   and height defeat the global `.markdown-body pre` rule and any
+   stray <summary> browser defaults that previously inflated the
+   header to 400+px tall. */
+.markdown-body .code-block {
+  margin: 14px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--mc-code-bg);
+  border: 1px solid var(--mc-code-header-border);
+}
+.markdown-body .code-block__header {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px !important;
+  margin: 0 !important;
+  /* Hard cap — earlier versions (auto / min-height: 0) were being inflated
+     by the SVG inside the copy button rendering at its UA-default 300×150
+     when DOMPurify normalised attributes. Fixed height + overflow:hidden
+     defeats that regardless of child sizing. */
+  height: 38px !important;
+  min-height: 38px !important;
+  max-height: 38px !important;
+  line-height: 1 !important;
+  font-size: 12px !important;
+  background: var(--mc-code-header-bg);
+  border-bottom: 1px solid var(--mc-code-header-border);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+/* Defence in depth: pin the icon to its declared 14×14 even if the inline
+   width/height attrs get normalised away. Without this the SVG can default
+   to 300×150, which is what was inflating the header. */
+.markdown-body .code-block__header svg {
+  width: 14px !important;
+  height: 14px !important;
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
+}
+.markdown-body .code-block__header > * {
+  flex-shrink: 0;
+  min-width: 0;
+}
+.markdown-body .code-block__lang {
+  font-size: 12px;
+  color: var(--mc-code-lang-color);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.markdown-body .code-block__lines {
+  /* Hidden by default — only shown for collapsed details (rule below). */
+  display: none;
+}
+.markdown-body .code-block__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--mc-code-copy-color);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.markdown-body .code-block__copy:hover {
+  background: var(--mc-code-copy-hover-bg);
+  color: var(--mc-code-copy-hover-color);
+}
+/* Kill the GLOBAL .markdown-body pre padding (16px) and margin (14px) — those
+   are what created the visible "tall header" gap between summary and code. */
+.markdown-body .code-block pre {
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+.markdown-body .code-block pre code,
+.markdown-body .code-block pre code.hljs {
+  background: transparent !important;
+  padding: 0 !important;
+  color: var(--mc-code-text);
+  display: block;
+  line-height: 1.55;
+}
+/* Line-numbered gutter via CSS counter */
+.markdown-body .code-block ol.hljs-lines {
+  counter-reset: ln;
+  padding: 12px 0;
+  margin: 0;
+  list-style: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+.markdown-body .code-block ol.hljs-lines > li {
+  counter-increment: ln;
+  display: block;
+  padding: 0 16px 0 4em;
+  position: relative;
+  white-space: pre;
+  min-height: 1.55em;
+  line-height: 1.55;
+}
+.markdown-body .code-block ol.hljs-lines > li::before {
+  content: counter(ln);
+  position: absolute;
+  left: 0;
+  width: 3em;
+  text-align: right;
+  color: var(--mc-code-line-number);
+  user-select: none;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+/* <details>/<summary> reset — strip browser-default marker spacing that
+   pushed the header sky-high. */
+.markdown-body details.code-block--collapsible > summary {
+  display: block;
+  list-style: none;
+  cursor: pointer;
+}
+.markdown-body details.code-block--collapsible > summary::-webkit-details-marker,
+.markdown-body details.code-block--collapsible > summary::marker {
+  display: none;
+  content: '';
+}
+/* Show the line-count badge only when the block is collapsed. */
+.markdown-body details.code-block--collapsible:not([open]) .code-block__lines {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--mc-code-lang-color);
+  margin: 0 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--mc-code-copy-hover-bg);
+  user-select: none;
+}
+.markdown-body details.code-block--collapsible:not([open]) > pre {
+  display: none;
+}
+
+/* ECharts chart block */
+.markdown-body .echarts-block {
+  margin: 14px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 350px;
+  width: 100%;
+  background: var(--mc-bg-elevated);
+  border: 1px solid var(--mc-border-light);
+}
+.markdown-body .echarts-block.echarts-error {
+  min-height: auto;
+  padding: 16px;
+  text-align: center;
+  color: var(--mc-text-tertiary);
+  font-size: 13px;
+}
+
+/* Streaming placeholder for echarts/mermaid blocks (shown until the fenced
+   source finishes streaming, then replaced by the real chart). */
+.markdown-body .chart-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 14px 0;
+  min-height: 120px;
+  border-radius: 12px;
+  background: var(--mc-bg-elevated);
+  border: 1px solid var(--mc-border-light);
+}
+.markdown-body .chart-loading__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--mc-border, #cbd5e1);
+  animation: mc-product-pulse 1.4s ease-in-out infinite;
+}
+.markdown-body .chart-loading__dot:nth-child(2) { animation-delay: 0.2s; }
+.markdown-body .chart-loading__dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* ================================================================
+   Product cards (from ```product-cards fenced blocks — shopping /
+   price-comparison results rendered as a clickable card grid)
+   ================================================================ */
+.markdown-body .product-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+.markdown-body .product-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--mc-border-light);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--mc-bg-elevated);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.markdown-body a.product-card:hover {
+  border-color: var(--mc-primary, #4f46e5);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+/* The whole card is an <a>, so the global `.markdown-body a:hover` underline
+   would streak across every line of card text. Suppress it — hover feedback
+   comes from the lift/shadow and the name turning primary instead. */
+.markdown-body a.product-card,
+.markdown-body a.product-card:hover,
+.markdown-body a.product-card:hover * {
+  text-decoration: none;
+}
+.markdown-body a.product-card:hover .product-card__name {
+  color: var(--mc-primary, #d96d46);
+}
+.markdown-body .product-card__media {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: var(--mc-bg-subtle, #f1f5f9);
+  overflow: hidden;
+}
+.markdown-body .product-card__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.markdown-body .product-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px 12px;
+}
+.markdown-body .product-card__name {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--mc-text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.markdown-body .product-card__price {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 2px;
+}
+.markdown-body .product-card__price-now {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--mc-danger, #e11d48);
+}
+.markdown-body .product-card__price-was {
+  font-size: 12px;
+  color: var(--mc-text-tertiary);
+  text-decoration: line-through;
+}
+.markdown-body .product-card__meta {
+  font-size: 12px;
+  color: var(--mc-text-secondary);
+}
+.markdown-body .product-card__low {
+  font-size: 11px;
+  color: var(--mc-text-tertiary);
+}
+.markdown-body .product-card__advice {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--mc-text-secondary);
+  margin-top: 2px;
+}
+.markdown-body .product-card__buy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: var(--mc-primary, #d96d46);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+.markdown-body a.product-card:hover .product-card__buy {
+  background: var(--mc-primary-hover, #bb4f27);
+}
+.markdown-body .product-card__buy-arrow {
+  transition: transform 0.15s ease;
+}
+.markdown-body a.product-card:hover .product-card__buy-arrow {
+  transform: translateX(3px);
+}
+/* Streaming placeholder while the product-cards JSON is still incomplete. */
+.markdown-body .product-cards--loading {
+  display: flex;
+  gap: 6px;
+  padding: 16px 4px;
+}
+.markdown-body .product-cards__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mc-border, #cbd5e1);
+  animation: mc-product-pulse 1.4s ease-in-out infinite;
+}
+.markdown-body .product-cards__dot:nth-child(2) { animation-delay: 0.2s; }
+.markdown-body .product-cards__dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes mc-product-pulse {
+  0%, 80%, 100% { opacity: 0.3; }
+  40% { opacity: 1; }
+}
+
+/* ================================================================
+   Shared page shell
+   ================================================================ */
+.mc-page-shell {
+  height: 100%;
+  overflow-y: auto;
+  padding: 28px;
+}
+
+.mc-page-frame {
+  position: relative;
+  border: 1px solid var(--mc-border);
+  background: var(--mc-surface-overlay);
+  backdrop-filter: blur(12px) saturate(1.1);
+  border-radius: 28px;
+  box-shadow: var(--mc-shadow-soft);
+}
+
+/* While a workflow canvas is in fullscreen mode, suppress the backdrop
+   filter on every page frame. A non-`none` backdrop-filter promotes the
+   element to a containing block for position:fixed descendants, which
+   pinned the fullscreen canvas to the frame's top-left instead of the
+   viewport. The frames sit behind the fullscreen overlay anyway, so
+   the blur has no visible cost during this transient state. */
+body.workflow-canvas-fullscreen .mc-page-frame {
+  backdrop-filter: none;
+}
+body.workflow-canvas-fullscreen .mc-page-frame::before {
+  display: none;
+}
+
+.mc-page-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--mc-glow);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.mc-page-inner {
+  position: relative;
+  z-index: 1;
+  padding: 28px;
+}
+
+.mc-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+.mc-page-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--mc-bg-muted);
+  border: 1px solid var(--mc-border-light);
+  color: var(--mc-accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.mc-page-title {
+  font-size: clamp(26px, 3vw, 40px);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--mc-text-primary);
+  margin: 0 0 10px;
+}
+
+.mc-page-desc {
+  max-width: 760px;
+  color: var(--mc-text-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.mc-surface-card {
+  border: 1px solid var(--mc-border-light);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.92));
+  border-radius: var(--mc-radius-xl);
+  box-shadow: var(--mc-shadow-soft);
+  transition: box-shadow 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+html.dark .mc-surface-card {
+  background: linear-gradient(180deg, rgba(42, 32, 26, 0.86), rgba(34, 26, 22, 0.96));
+}
+
+@media (max-width: 768px) {
+  .mc-page-shell {
+    overflow-y: auto !important;
+    height: auto !important;
+    min-height: 100%;
+  }
+
+  .mc-page-frame {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto;
+  }
+
+  .mc-page-inner {
+    height: auto !important;
+    min-height: auto;
+  }
+}
+
+@media (max-width: 900px) {
+  .mc-page-shell {
+    padding: 16px;
+  }
+
+  .mc-page-inner {
+    padding: 18px;
+  }
+
+  .mc-page-frame {
+    border-radius: 20px;
+  }
+
+  .mc-page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mc-surface-card {
+    border-radius: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mc-page-shell {
+    padding: 8px;
+  }
+
+  .mc-page-inner {
+    padding: 12px;
+  }
+
+  .mc-page-frame {
+    border-radius: 14px;
+  }
+
+  .mc-page-title {
+    font-size: clamp(20px, 5vw, 28px);
+  }
+
+  .mc-surface-card {
+    border-radius: 12px;
+  }
+
+  .mc-page-header {
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+}
+
+/* highlight.js token colors — Atom One Light (works on the warm beige
+   light-mode code bg). Dark mode swaps to One Dark in the html.dark block
+   below so colours stay legible against the deep brown #161210. */
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-literal { color: #a626a4; }
+.hljs-string, .hljs-attr { color: #50a14f; }
+.hljs-number { color: #c18401; }
+.hljs-comment, .hljs-quote { color: #a0a1a7; font-style: italic; }
+.hljs-function .hljs-title, .hljs-title.function_ { color: #4078f2; }
+.hljs-type, .hljs-title.class_ { color: #c18401; }
+.hljs-variable, .hljs-template-variable { color: #e45649; }
+.hljs-tag { color: #e45649; }
+.hljs-name { color: #e45649; }
+.hljs-attribute { color: #c18401; }
+.hljs-symbol, .hljs-bullet { color: #0184bc; }
+.hljs-meta { color: #4078f2; }
+.hljs-params { color: #383a42; }
+.hljs-section { color: #e45649; font-weight: bold; }
+.hljs-addition { color: #50a14f; background: rgba(80, 161, 79, 0.1); }
+.hljs-deletion { color: #e45649; background: rgba(228, 86, 73, 0.1); }
+
+/* Dark mode: One Dark token palette */
+html.dark .hljs-keyword, html.dark .hljs-selector-tag, html.dark .hljs-built_in, html.dark .hljs-literal { color: #c678dd; }
+html.dark .hljs-string, html.dark .hljs-attr { color: #98c379; }
+html.dark .hljs-number { color: #d19a66; }
+html.dark .hljs-comment, html.dark .hljs-quote { color: #5c6370; font-style: italic; }
+html.dark .hljs-function .hljs-title, html.dark .hljs-title.function_ { color: #61afef; }
+html.dark .hljs-type, html.dark .hljs-title.class_ { color: #e5c07b; }
+html.dark .hljs-variable, html.dark .hljs-template-variable { color: #e06c75; }
+html.dark .hljs-tag { color: #e06c75; }
+html.dark .hljs-name { color: #e06c75; }
+html.dark .hljs-attribute { color: #d19a66; }
+html.dark .hljs-symbol, html.dark .hljs-bullet { color: #56b6c2; }
+html.dark .hljs-meta { color: #61afef; }
+html.dark .hljs-params { color: #abb2bf; }
+html.dark .hljs-section { color: #e06c75; font-weight: bold; }
+html.dark .hljs-addition { color: #98c379; background: rgba(152, 195, 121, 0.1); }
+html.dark .hljs-deletion { color: #e06c75; background: rgba(224, 108, 117, 0.1); }
+
+.markdown-body p { margin: 8px 0; }
+.markdown-body ul, .markdown-body ol { padding-left: 1.5rem; margin: 8px 0; }
+
+/* Compact layout for assistant delivery/results. These rules are global on
+   purpose: the rendered Markdown is injected with v-html, so component-scoped
+   selectors cannot reliably win against the shared document typography. */
+.markdown-body.compact-markdown {
+  line-height: 1.5;
+}
+.markdown-body.compact-markdown p {
+  margin: 0 0 6px !important;
+}
+.markdown-body.compact-markdown p:empty,
+.markdown-body.compact-markdown p:has(br:only-child) {
+  display: none;
+}
+.markdown-body.compact-markdown h1,
+.markdown-body.compact-markdown h2,
+.markdown-body.compact-markdown h3,
+.markdown-body.compact-markdown h4,
+.markdown-body.compact-markdown h5,
+.markdown-body.compact-markdown h6 {
+  margin: 12px 0 6px !important;
+  line-height: 1.35;
+}
+.markdown-body.compact-markdown ul,
+.markdown-body.compact-markdown ol {
+  margin: 6px 0 !important;
+}
+.markdown-body.compact-markdown li {
+  margin: 2px 0;
+  line-height: 1.5;
+}
+.markdown-body.compact-markdown li > p {
+  margin: 0 !important;
+}
+.markdown-body table {
+  border-collapse: collapse;
+  /* display:block + overflow-x:auto turns a wide table into its own horizontal
+     scroll region instead of overflowing the message bubble and getting clipped
+     by the list's overflow-x:hidden. Narrow tables still stretch to full width. */
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+.markdown-body th, .markdown-body td { border: 1px solid var(--mc-table-border); padding: 8px 12px; text-align: left; }
+.markdown-body th { background: var(--mc-table-header-bg); font-weight: 600; }
+.markdown-body blockquote {
+  border-left: 4px solid var(--mc-blockquote-border);
+  margin: 12px 0;
+  padding: 8px 16px;
+  color: var(--mc-blockquote-color);
+  background: var(--mc-blockquote-bg);
+  border-radius: 0 8px 8px 0;
+}
+.markdown-body blockquote p { margin: 4px 0; }
+.markdown-body hr { border: none; border-top: 1px solid var(--mc-hr-color); margin: 16px 0; }
+.markdown-body del { color: var(--mc-text-tertiary); }
+.markdown-body a { color: var(--mc-link-color); text-decoration: none; }
+.markdown-body a:hover { text-decoration: underline; }
+.markdown-body img { max-width: 100%; border-radius: 8px; }
+
+/* ================================================================
+   Element Plus dark mode override
+   ================================================================ */
+html.dark {
+  --el-bg-color: #231C17;
+  --el-bg-color-overlay: #2E2420;
+  --el-bg-color-page: #1A1410;
+  --el-text-color-primary: #F0EAE4;
+  --el-text-color-regular: #D0B8A8;
+  --el-text-color-secondary: #C4A898;
+  --el-text-color-placeholder: #8A7060;
+  --el-border-color: #3D3028;
+  --el-border-color-light: #2E2420;
+  --el-border-color-lighter: #261E18;
+  --el-fill-color-blank: #231C17;
+  --el-fill-color: #2E2420;
+  --el-fill-color-light: #2A211C;
+  --el-fill-color-lighter: #231C17;
+  --el-color-primary: #E08860;
+  --el-mask-color: rgba(0, 0, 0, 0.6);
+}

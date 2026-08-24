@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  AI-tech editorial COVER card. Vertical 3:4 (1080x1440).
+  Replace: {{TITLE}}, {{SUBTITLE}}, {{BADGE}}, {{FOOTER}}.
+  Wrap one short phrase in {{TITLE}} with <mark>...</mark> if emphasis is needed.
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1080px; height: 1440px; }
+  body {
+    font-family: 'PingFang SC','Hiragino Sans GB','Microsoft YaHei',-apple-system,sans-serif;
+    background: #f2f5f5;
+    color: #101820;
+    display: flex;
+    flex-direction: column;
+    padding: 76px;
+    position: relative;
+    overflow: hidden;
+  }
+  .masthead {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 26px; border-bottom: 3px solid #101820;
+  }
+  .brand { font-size: 28px; font-weight: 900; }
+  .edition { font-size: 24px; font-weight: 700; color: #567078; }
+  .signal { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; height: 12px; margin-top: 16px; }
+  .signal span:nth-child(1) { background: #00a68a; }
+  .signal span:nth-child(2) { background: #ff6b5e; }
+  .signal span:nth-child(3) { background: #2878d0; }
+  .badge {
+    align-self: flex-start; margin-top: 116px;
+    padding: 12px 18px; border: 2px solid #00a68a;
+    color: #007d69; background: #ffffff;
+    font-size: 26px; font-weight: 800;
+  }
+  .title {
+    max-width: 920px; margin-top: 40px;
+    font-size: 80px; font-weight: 900; line-height: 1.22;
+    overflow-wrap: anywhere;
+  }
+  .title mark {
+    color: inherit; background: transparent;
+    box-shadow: inset 0 -13px #8ee2d2;
+  }
+  .subtitle {
+    max-width: 900px; margin-top: 44px; padding-left: 28px;
+    border-left: 8px solid #ff6b5e;
+    color: #3e5158; font-size: 38px; font-weight: 600; line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+  .footer {
+    position: absolute; left: 76px; right: 76px; bottom: 76px;
+    display: flex; justify-content: space-between; align-items: end;
+    padding-top: 22px; border-top: 2px solid #b9c4c7;
+    color: #567078; font-size: 26px; font-weight: 650;
+  }
+  .page { color: #101820; font-size: 32px; font-weight: 900; }
+</style>
+</head>
+<body>
+  <header class="masthead"><span class="brand">AI SIGNAL</span><span class="edition">VERIFIED BRIEF</span></header>
+  <div class="signal"><span></span><span></span><span></span></div>
+  <span class="badge">{{BADGE}}</span>
+  <h1 class="title">{{TITLE}}</h1>
+  <p class="subtitle">{{SUBTITLE}}</p>
+  <footer class="footer"><span>{{FOOTER}}</span><span class="page">01</span></footer>
+</body>
+</html>

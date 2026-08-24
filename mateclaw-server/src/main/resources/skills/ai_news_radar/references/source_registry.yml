@@ -1,0 +1,144 @@
+version: 1
+scope: global-and-china
+policy:
+  official_first: true
+  media_requires_corroboration: true
+  minimum_official_sources_for_verified: 1
+  minimum_independent_sources_without_official: 2
+  conflict_status: conflicted
+official:
+  models_and_research:
+    - name: OpenAI News
+      source_key: openai
+      domains: [openai.com]
+      query_sites: ["openai.com/index"]
+    - name: Anthropic News
+      source_key: anthropic
+      domains: [anthropic.com]
+      query_sites: ["anthropic.com/news"]
+    - name: DeepSeek
+      source_key: deepseek
+      domains: [deepseek.com]
+      url_prefixes: ["https://github.com/deepseek-ai/"]
+      query_sites: ["deepseek.com", "github.com/deepseek-ai"]
+    - name: Google DeepMind
+      source_key: google-deepmind
+      domains: [deepmind.google, blog.google]
+      query_sites: ["deepmind.google/discover", "blog.google/technology/ai"]
+    - name: Meta AI
+      source_key: meta-ai
+      domains: [ai.meta.com, about.fb.com]
+      query_sites: ["ai.meta.com", "about.fb.com/news"]
+    - name: Qwen / Alibaba
+      source_key: alibaba-qwen
+      domains: [qwenlm.github.io, alibabagroup.com]
+      url_prefixes: ["https://github.com/QwenLM/"]
+      query_sites: ["qwenlm.github.io", "github.com/QwenLM"]
+    - name: Zhipu AI
+      source_key: zhipu
+      domains: [zhipuai.cn, bigmodel.cn]
+      query_sites: ["zhipuai.cn", "bigmodel.cn"]
+  china_products:
+    - name: ByteDance Seed / Volcano Engine
+      source_key: bytedance
+      domains: [seed.bytedance.com, volcengine.com]
+      query_sites: ["seed.bytedance.com", "volcengine.com/product"]
+    - name: Baidu AI
+      source_key: baidu
+      domains: [baidu.com]
+      query_sites: ["baidu.com/ai"]
+    - name: Tencent Hunyuan
+      source_key: tencent
+      domains: [hunyuan.tencent.com, tencent.com]
+      query_sites: ["hunyuan.tencent.com"]
+    - name: Huawei Ascend / Pangu
+      source_key: huawei
+      domains: [huawei.com, hiascend.com]
+      query_sites: ["huawei.com/cn", "hiascend.com"]
+    - name: Xiaomi AI
+      source_key: xiaomi
+      domains: [xiaomi.com]
+      query_sites: ["xiaomi.com"]
+  robotics:
+    - name: Unitree
+      source_key: unitree
+      domains: [unitree.com]
+      query_sites: ["unitree.com"]
+    - name: UBTECH
+      source_key: ubtech
+      domains: [ubtrobot.com]
+      query_sites: ["ubtrobot.com"]
+    - name: AgiBot
+      source_key: agibot
+      domains: [agibot.com]
+      query_sites: ["agibot.com"]
+    - name: Fourier Intelligence
+      source_key: fourier
+      domains: [fftai.com]
+      query_sites: ["fftai.com"]
+    - name: Figure
+      source_key: figure
+      domains: [figure.ai]
+      query_sites: ["figure.ai"]
+    - name: Boston Dynamics
+      source_key: boston-dynamics
+      domains: [bostondynamics.com]
+      query_sites: ["bostondynamics.com"]
+    - name: Tesla Optimus
+      source_key: tesla
+      domains: [tesla.com]
+      query_sites: ["tesla.com/AI", "tesla.com/blog"]
+    - name: NVIDIA Robotics
+      source_key: nvidia
+      domains: [developer.nvidia.com, nvidia.com]
+      query_sites: ["developer.nvidia.com/robotics"]
+  infrastructure:
+    - name: NVIDIA
+      source_key: nvidia
+      domains: [nvidia.com]
+      query_sites: ["nvidia.com/news"]
+    - name: AMD
+      source_key: amd
+      domains: [amd.com]
+      query_sites: ["amd.com/en/newsroom"]
+    - name: Ascend
+      source_key: huawei
+      domains: [hiascend.com]
+      query_sites: ["hiascend.com"]
+    - name: Cambricon
+      source_key: cambricon
+      domains: [cambricon.com]
+      query_sites: ["cambricon.com"]
+media:
+  china:
+    - name: 机器之心
+      source_key: jiqizhixin
+      domains: [jiqizhixin.com]
+    - name: 量子位
+      source_key: qbitai
+      domains: [qbitai.com]
+    - name: 36氪
+      source_key: 36kr
+      domains: [36kr.com]
+    - name: 极客公园
+      source_key: geekpark
+      domains: [geekpark.net]
+    - name: 财联社
+      source_key: cls
+      domains: [cls.cn]
+    - name: 证券时报
+      source_key: stcn
+      domains: [stcn.com]
+  global:
+    - name: Reuters
+      source_key: reuters
+      domains: [reuters.com]
+    - name: TechCrunch
+      source_key: techcrunch
+      domains: [techcrunch.com]
+    - name: The Verge
+      source_key: the-verge
+      domains: [theverge.com]
+    - name: MIT Technology Review
+      source_key: mit-technology-review
+      domains: [technologyreview.com]

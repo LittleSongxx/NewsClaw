@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 580" font-family="'Inter','SF Pro Display','Segoe UI',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f6f1ea"/>
+      <stop offset="100%" stop-color="#ebe3db"/>
+    </linearGradient>
+    <linearGradient id="primary" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d96d46"/>
+      <stop offset="100%" stop-color="#bb4f27"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e5a54"/>
+      <stop offset="100%" stop-color="#184a45"/>
+    </linearGradient>
+    <linearGradient id="warm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#fdfaf6"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#3a2013" flood-opacity="0.08"/>
+    </filter>
+    <filter id="glow">
+      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#d96d46" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <rect width="960" height="580" rx="20" fill="url(#bg)"/>
+
+  <text x="480" y="42" text-anchor="middle" font-size="22" font-weight="800" fill="#1d1612" letter-spacing="-0.5">MateClaw Business Architecture</text>
+  <text x="480" y="62" text-anchor="middle" font-size="11" fill="#9b7d6c" letter-spacing="2">AN AI OPERATING SYSTEM — THE COMPLETE PICTURE</text>
+
+  <!-- ===== Center: Agent Core ===== -->
+  <circle cx="480" cy="280" r="72" fill="url(#warm)" stroke="#d96d46" stroke-width="2" filter="url(#glow)"/>
+  <circle cx="480" cy="280" r="56" fill="#f6e2d7" stroke="#ebb08f" stroke-width="1"/>
+  <text x="480" y="268" text-anchor="middle" font-size="16" font-weight="800" fill="#d96d46">Digital Employee</text>
+  <text x="480" y="288" text-anchor="middle" font-size="11" font-weight="500" fill="#665245">Role · Goal · Backstory</text>
+  <text x="480" y="304" text-anchor="middle" font-size="9" fill="#9b7d6c">ReAct + Plan-Execute</text>
+
+  <!-- ===== Top: User Surfaces (5 items) ===== -->
+  <rect x="270" y="82" width="420" height="68" rx="14" fill="url(#warm)" stroke="#d9cec2" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="270" y="82" width="420" height="3" rx="1.5" fill="url(#primary)"/>
+  <text x="480" y="108" text-anchor="middle" font-size="13" font-weight="700" fill="#d96d46">User Surfaces</text>
+  <text x="312" y="136" text-anchor="middle" font-size="10" fill="#665245">Web Console</text>
+  <text x="396" y="136" text-anchor="middle" font-size="10" fill="#665245">Desktop</text>
+  <text x="480" y="136" text-anchor="middle" font-size="10" fill="#665245">Webchat</text>
+  <text x="564" y="136" text-anchor="middle" font-size="10" fill="#665245">IM (8)</text>
+  <text x="648" y="136" text-anchor="middle" font-size="10" fill="#665245">API</text>
+  <line x1="480" y1="150" x2="480" y2="208" stroke="#d96d46" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5"/>
+  <polygon points="475,206 480,214 485,206" fill="#d96d46" opacity="0.6"/>
+
+  <!-- ===== Left: Knowledge ===== -->
+  <rect x="40" y="210" width="200" height="140" rx="14" fill="url(#warm)" stroke="#d9cec2" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="40" y="210" width="4" height="140" rx="2" fill="url(#accent)"/>
+  <text x="140" y="240" text-anchor="middle" font-size="13" font-weight="700" fill="#184a45">Knowledge</text>
+  <text x="140" y="264" text-anchor="middle" font-size="10" fill="#665245">LLM Wiki KB</text>
+  <text x="140" y="282" text-anchor="middle" font-size="10" fill="#665245">Structured + Backlinks</text>
+  <text x="140" y="300" text-anchor="middle" font-size="10" fill="#665245">Citations + Soft Archive</text>
+  <text x="140" y="318" text-anchor="middle" font-size="10" fill="#665245">+ Transformations (1.3.0+)</text>
+  <text x="140" y="336" text-anchor="middle" font-size="9" fill="#9b7d6c">A library, not a vector store</text>
+  <line x1="240" y1="280" x2="408" y2="280" stroke="#184a45" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5"/>
+  <polygon points="406,275 414,280 406,285" fill="#184a45" opacity="0.6"/>
+
+  <!-- ===== Right Top: Tools & Skills ===== -->
+  <rect x="720" y="210" width="200" height="65" rx="14" fill="url(#warm)" stroke="#d9cec2" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="916" y="210" width="4" height="65" rx="2" fill="url(#primary)"/>
+  <text x="820" y="232" text-anchor="middle" font-size="13" font-weight="700" fill="#d96d46">Skills · MCP · ACP</text>
+  <text x="820" y="252" text-anchor="middle" font-size="10" fill="#665245">SKILL.md + LESSONS</text>
+  <text x="820" y="266" text-anchor="middle" font-size="9" fill="#9b7d6c">Even Claude Code joins as a hire</text>
+  <line x1="552" y1="242" x2="720" y2="242" stroke="#d96d46" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5"/>
+  <polygon points="554,237 546,242 554,247" fill="#d96d46" opacity="0.6"/>
+
+  <!-- ===== Right Bottom: Security & Approval ===== -->
+  <rect x="720" y="285" width="200" height="65" rx="14" fill="url(#warm)" stroke="#d9cec2" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="916" y="285" width="4" height="65" rx="2" fill="url(#accent)"/>
+  <text x="820" y="307" text-anchor="middle" font-size="13" font-weight="700" fill="#184a45">Security &amp; Approval</text>
+  <text x="820" y="327" text-anchor="middle" font-size="10" fill="#665245">Tool Guard + Approval Flow</text>
+  <text x="820" y="341" text-anchor="middle" font-size="9" fill="#9b7d6c">Agentic, not autonomous</text>
+  <line x1="552" y1="317" x2="720" y2="317" stroke="#184a45" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5"/>
+  <polygon points="554,312 546,317 554,322" fill="#184a45" opacity="0.6"/>
+
+  <!-- ===== Bottom Left: Memory · Dreaming ===== -->
+  <rect x="160" y="400" width="200" height="100" rx="14" fill="url(#warm)" stroke="#d9cec2" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="160" y="496" width="200" height="4" rx="2" fill="url(#accent)"/>
+  <text x="260" y="428" text-anchor="middle" font-size="13" font-weight="700" fill="#184a45">Memory · Dreaming</text>
+  <text x="260" y="452" text-anchor="middle" font-size="10" fill="#665245">Short-term + Extraction</text>
+  <text x="260" y="470" text-anchor="middle" font-size="10" fill="#665245">Nightly consolidation</text>
+  <text x="260" y="488" text-anchor="middle" font-size="9" fill="#9b7d6c">It works while you sleep</text>
+  <line x1="320" y1="400" x2="452" y2="340" stroke="#184a45" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.4"/>
+  <polygon points="449,336 456,342 447,344" fill="#184a45" opacity="0.5"/>
+
+  <!-- ===== Bottom Right: Multimodal ===== -->
+  <rect x="600" y="400" width="200" height="100" rx="14" fill="url(#warm)" stroke="#d9cec2" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="600" y="496" width="200" height="4" rx="2" fill="url(#primary)"/>
+  <text x="700" y="428" text-anchor="middle" font-size="13" font-weight="700" fill="#d96d46">Multimodal</text>
+  <text x="700" y="452" text-anchor="middle" font-size="10" fill="#665245">TTS · STT · Voice</text>
+  <text x="700" y="470" text-anchor="middle" font-size="10" fill="#665245">Image · Music · Video</text>
+  <text x="700" y="488" text-anchor="middle" font-size="9" fill="#9b7d6c">AI beyond text</text>
+  <line x1="640" y1="400" x2="508" y2="340" stroke="#d96d46" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.4"/>
+  <polygon points="513,344 504,342 511,336" fill="#d96d46" opacity="0.5"/>
+
+  <!-- ===== Orchestration tier: Team board + Workflow + Trigger ===== -->
+  <rect x="300" y="358" width="360" height="36" rx="10" fill="url(#primary)" filter="url(#shadow)"/>
+  <text x="480" y="376" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">Orchestration · Team Board (2.0.0+) + Workflow + Trigger</text>
+  <text x="480" y="389" text-anchor="middle" font-size="9" fill="#fde7dd">Lead decomposes → members run in parallel → approve / deliver</text>
+
+  <!-- ===== Bottom Center: Provider Pool + Failover ===== -->
+  <rect x="370" y="420" width="220" height="64" rx="12" fill="url(#accent)" filter="url(#shadow)"/>
+  <text x="480" y="442" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">Provider Pool · Failover</text>
+  <text x="480" y="460" text-anchor="middle" font-size="10" fill="#dce8e4">Cloud + Local · 14+ providers</text>
+  <text x="480" y="475" text-anchor="middle" font-size="9" fill="#dce8e4">Health Tracker · Auto-switch</text>
+  <!-- Arrow up to agent (short, stops before orchestration band) -->
+  <line x1="480" y1="420" x2="480" y2="398" stroke="#184a45" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5"/>
+  <polygon points="475,400 480,392 485,400" fill="#184a45" opacity="0.6"/>
+
+  <rect x="340" y="530" width="280" height="26" rx="13" fill="url(#primary)"/>
+  <text x="480" y="548" text-anchor="middle" font-size="11" font-weight="600" fill="#fff" letter-spacing="0.5">Mate is companion. Claw is capability.</text>
+</svg>
