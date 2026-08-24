@@ -11,7 +11,7 @@
           <div class="welcome-screen">
             <div class="welcome-logo">
               <div class="welcome-logo__glow"></div>
-              <img src="/logo/mateclaw_logo_s.png" alt="NewsClaw" class="welcome-logo__icon" />
+              <img src="/logo/newsclaw-mark.svg" alt="NewsClaw" class="welcome-logo__icon" />
             </div>
             <h2 class="welcome-title">News<span class="welcome-title-highlight">Claw</span></h2>
             <p class="welcome-subtitle">{{ subtitle }}</p>
@@ -415,11 +415,7 @@ onUnmounted(() => {
 }
 
 .welcome-logo__glow {
-  position: absolute;
-  inset: -20px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(217, 119, 87, 0.12) 0%, transparent 70%);
-  animation: logo-glow 3s ease-in-out infinite;
+  display: none;
 }
 
 @keyframes logo-glow {
@@ -433,7 +429,7 @@ onUnmounted(() => {
   height: 64px;
   object-fit: contain;
   display: block;
-  filter: drop-shadow(0 4px 12px rgba(217, 119, 87, 0.2));
+  filter: drop-shadow(0 4px 10px rgba(15, 118, 110, 0.14));
 }
 
 .welcome-title {
@@ -441,7 +437,7 @@ onUnmounted(() => {
   font-weight: 700;
   color: var(--mc-text-primary, #1e293b);
   margin: 0 0 8px;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .welcome-title-highlight {
@@ -471,7 +467,7 @@ onUnmounted(() => {
   padding: 12px 14px;
   background: var(--mc-bg-elevated, #f8fafc);
   border: 1px solid var(--mc-border, #e2e8f0);
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: 13px;
   color: var(--mc-text-primary, #1e293b);
   cursor: pointer;
@@ -480,10 +476,10 @@ onUnmounted(() => {
 }
 
 .suggestion-card:hover {
-  border-color: var(--mc-primary, #D97757);
-  background: var(--mc-primary-bg, rgba(217, 119, 87, 0.06));
+  border-color: var(--mc-primary, #0f766e);
+  background: var(--mc-primary-bg, rgba(15, 118, 110, 0.06));
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(217, 119, 87, 0.08);
+  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.10);
 }
 
 .suggestion-card__icon {
@@ -511,7 +507,7 @@ onUnmounted(() => {
 .suggestion-card:hover .suggestion-card__arrow {
   opacity: 1;
   transform: translateX(0);
-  color: var(--mc-primary, #D97757);
+  color: var(--mc-primary, #0f766e);
 }
 
 /* 加载更多 */
@@ -594,8 +590,8 @@ onUnmounted(() => {
   background: var(--mc-panel-raised, #f1f5f9);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   transform: scale(1.08);
-  color: var(--mc-primary, #D97757);
-  border-color: var(--mc-primary, #D97757);
+  color: var(--mc-primary, #0f766e);
+  border-color: var(--mc-primary, #0f766e);
 }
 
 /* Click feedback: shrink slightly on press, then spring back. */
@@ -613,8 +609,8 @@ onUnmounted(() => {
 }
 
 @keyframes dock-breathe {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(217, 119, 87, 0); }
-  50%      { box-shadow: 0 0 8px 2px rgba(217, 119, 87, 0.18); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(15, 118, 110, 0); }
+  50%      { box-shadow: 0 0 8px 2px rgba(15, 118, 110, 0.18); }
 }
 
 /* Restore as soon as the pointer approaches. */

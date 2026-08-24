@@ -61,7 +61,7 @@ const isPending = (taskId: string, action: 'retry' | 'approve') => props.pending
             :disabled="isPending(item.taskId, 'approve')"
             :aria-busy="isPending(item.taskId, 'approve')"
             @click="emit('approve-task', item.taskId)"
-          >{{ t('common.approve') }}</button>
+          >{{ t('teams.approve') }}</button>
         </div>
       </li>
     </ul>
@@ -72,15 +72,15 @@ const isPending = (taskId: string, action: 'retry' | 'approve') => props.pending
 <style scoped>
 h3 { margin: 0 0 7px; font-size: 13px; }
 ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
-li { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 9px; border-left: 3px solid #b96c08; background: #fff9ef; font-size: 12px; }
-li.is-error { border-left-color: #c13d3d; background: #fff5f5; }
+li { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 9px; border-left: 3px solid var(--mc-warning); background: var(--mc-bg-muted); font-size: 12px; }
+li.is-error { border-left-color: var(--mc-danger); background: var(--mc-danger-bg); }
 .run-attention__copy { display: grid; min-width: 0; gap: 2px; overflow-wrap: anywhere; }
 .run-attention__copy strong { text-transform: capitalize; }
 .run-attention__actions { display: flex; min-width: 0; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
 .run-attention__actions button { min-height: 28px; padding: 4px 8px; border: 1px solid var(--mc-border, #d9e1e7); border-radius: 5px; background: #fff; color: var(--mc-text-secondary, #475569); cursor: pointer; font: inherit; white-space: nowrap; }
-.run-attention__actions button.is-primary { border-color: #16835b; color: #126c4d; }
+.run-attention__actions button.is-primary { border-color: var(--mc-primary); color: var(--mc-primary); }
 .run-attention__actions button:disabled { cursor: wait; opacity: 0.6; }
-.run-attention__actions button:focus-visible { outline: 2px solid #16835b; outline-offset: 2px; }
+.run-attention__actions button:focus-visible { outline: 2px solid var(--mc-primary); outline-offset: 2px; }
 p { margin: 0; color: var(--mc-text-tertiary); font-size: 12px; }
 @media (max-width: 520px) {
   li { align-items: stretch; flex-direction: column; }

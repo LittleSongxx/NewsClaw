@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="700" viewBox="0 0 920 700" role="img" aria-labelledby="title desc">
+  <title id="title">Sanitized rendering of a real NewsClaw Feishu review card payload</title>
+  <desc id="desc">A rendered payload showing one verified event and two conflicted events from a real Feishu request on 2026-08-24.</desc>
+  <rect width="920" height="700" fill="#f3f5f7"/>
+  <rect x="116" y="44" width="688" height="612" rx="10" fill="#fff" stroke="#d7dee7"/>
+  <rect x="116" y="44" width="688" height="92" rx="10" fill="#0f766e"/>
+  <path d="M116 126h688v10H116z" fill="#0f766e"/>
+  <text x="150" y="83" fill="#fff" font-family="Inter, PingFang SC, sans-serif" font-size="22" font-weight="700">AI 动态候选复核</text>
+  <text x="150" y="112" fill="#dff5f1" font-family="Inter, PingFang SC, sans-serif" font-size="14">真实运行 Card Payload 脱敏渲染 · 2026-08-24</text>
+  <g font-family="Inter, PingFang SC, sans-serif">
+    <g transform="translate(146 166)"><rect width="628" height="128" rx="8" fill="#f8fafc" stroke="#dce4ec"/><circle cx="22" cy="24" r="7" fill="#16836d"/><text x="40" y="30" fill="#18212b" font-size="16" font-weight="700">DeepSeek 调整峰谷计费规则</text><text x="40" y="55" fill="#526171" font-size="13">官方 DeepSeek API Docs + 证券时报 · 2 条证据 · 置信度 75%</text><rect x="40" y="76" width="84" height="28" rx="5" fill="#dff5f1" stroke="#7bc9bf"/><text x="54" y="95" fill="#0f766e" font-size="13" font-weight="700">已核验</text><rect x="516" y="76" width="84" height="28" rx="5" fill="#0f766e"/><text x="527" y="95" fill="#fff" font-size="13" font-weight="700">开始 Team Run</text></g>
+    <g transform="translate(146 312)"><rect width="628" height="128" rx="8" fill="#f8fafc" stroke="#dce4ec"/><circle cx="22" cy="24" r="7" fill="#f05d4e"/><text x="40" y="30" fill="#18212b" font-size="16" font-weight="700">OpenAI ChatGPT Ads 扩展至欧洲 31 个市场</text><text x="40" y="55" fill="#526171" font-size="13">媒体线索 · 缺少官方确认 · 1 条证据 · 不可自动写成确定事实</text><rect x="40" y="76" width="72" height="28" rx="5" fill="#ffe8e5" stroke="#f6b3aa"/><text x="53" y="95" fill="#d64545" font-size="13" font-weight="700">有冲突</text><rect x="446" y="76" width="74" height="28" rx="5" fill="#fff" stroke="#d7dee7"/><text x="458" y="95" fill="#526171" font-size="13">继续跟踪</text><rect x="530" y="76" width="70" height="28" rx="5" fill="#fff" stroke="#d7dee7"/><text x="551" y="95" fill="#526171" font-size="13">忽略</text></g>
+    <g transform="translate(146 458)"><rect width="628" height="128" rx="8" fill="#f8fafc" stroke="#dce4ec"/><circle cx="22" cy="24" r="7" fill="#f05d4e"/><text x="40" y="30" fill="#18212b" font-size="16" font-weight="700">宇树科技科创板上市后连续三日市值蒸发超 900 亿元</text><text x="40" y="55" fill="#526171" font-size="13">媒体线索 · 缺少官方确认 · 1 条证据 · 进入冲突队列</text><rect x="40" y="76" width="72" height="28" rx="5" fill="#ffe8e5" stroke="#f6b3aa"/><text x="53" y="95" fill="#d64545" font-size="13" font-weight="700">有冲突</text><rect x="446" y="76" width="74" height="28" rx="5" fill="#fff" stroke="#d7dee7"/><text x="458" y="95" fill="#526171" font-size="13">继续跟踪</text><rect x="530" y="76" width="70" height="28" rx="5" fill="#fff" stroke="#d7dee7"/><text x="551" y="95" fill="#526171" font-size="13">忽略</text></g>
+  </g>
+  <text x="116" y="680" fill="#7a8998" font-family="Inter, PingFang SC, sans-serif" font-size="12">不是飞书客户端截图；渲染内容来自真实执行记录，已删除请求者与目标会话标识。</text>
+</svg>

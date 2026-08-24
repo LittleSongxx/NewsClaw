@@ -10,7 +10,7 @@
       <!-- Logo -->
       <div class="sidebar-logo">
         <div class="logo-icon">
-          <img src="/logo/mateclaw_logo_s.png" alt="NewsClaw" class="logo-img" />
+          <img src="/logo/newsclaw-mark.svg" alt="NewsClaw" class="logo-img" />
         </div>
         <transition name="fade">
           <div v-if="!effectiveCollapsed" class="logo-text">
@@ -196,7 +196,7 @@
             <line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
         </button>
-        <span class="mobile-topbar-title">Mate<span class="logo-name-highlight">Claw</span></span>
+        <span class="mobile-topbar-title">News<span class="logo-name-highlight">Claw</span></span>
       </div>
       <!-- RFC-074 PR-1 fix: include route.path in the key so two different
            keepAlive routes (e.g. /channels and /settings/models) don't collide
@@ -629,31 +629,24 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
 }
 
 .app-layout::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at top left, rgba(217, 109, 70, 0.12), transparent 22%),
-    radial-gradient(circle at bottom right, rgba(24, 74, 69, 0.08), transparent 18%);
-  pointer-events: none;
+  display: none;
 }
 
 :global(html.dark) .app-layout::before {
-  background:
-    radial-gradient(circle at top left, rgba(235, 143, 101, 0.14), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(92, 166, 157, 0.08), transparent 20%);
+  display: none;
 }
 
 /* ===== 侧边栏 ===== */
 .sidebar {
-  width: 236px;
-  min-width: 236px;
-  margin: 14px 0 14px 14px;
-  background:
-    linear-gradient(180deg, var(--mc-panel-top), var(--mc-panel-bottom));
-  border: 1px solid var(--mc-sidebar-border);
-  border-radius: 28px;
-  box-shadow: var(--mc-shadow-soft);
+  width: 244px;
+  min-width: 244px;
+  margin: 0;
+  height: 100%;
+  background: var(--mc-sidebar-bg);
+  border: 0;
+  border-right: 1px solid var(--mc-sidebar-border);
+  border-radius: 0;
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   transition: width 0.2s ease, min-width 0.2s ease;
@@ -663,53 +656,49 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
 }
 
 .sidebar.collapsed {
-  width: 74px;
-  min-width: 74px;
+  width: 68px;
+  min-width: 68px;
 }
 
 .sidebar::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--mc-glow);
-  pointer-events: none;
+  display: none;
 }
 
 .sidebar-logo {
   display: flex;
   align-items: center;
-  padding: 14px 14px 12px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--mc-border-light);
   gap: 12px;
-  min-height: 64px;
+  min-height: 68px;
 }
 
 .sidebar.collapsed .sidebar-logo {
   flex-direction: column;
   justify-content: center;
-  padding: 12px 10px;
+  padding: 12px 8px;
   gap: 6px;
-  min-height: 92px;
+  min-height: 94px;
 }
 
 .logo-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
-  background: linear-gradient(135deg, rgba(217, 109, 70, 0.18), rgba(24, 74, 69, 0.08));
-  border: 1px solid rgba(217, 109, 70, 0.14);
+  background: transparent;
+  border: 0;
 }
 
 .logo-img {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   object-fit: contain;
-  filter: drop-shadow(0 8px 18px rgba(217, 109, 70, 0.22));
+  filter: none;
 }
 
 .logo-emoji { font-size: 16px; }
@@ -722,7 +711,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   font-weight: 800;
   color: var(--mc-sidebar-logo-name);
   white-space: nowrap;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .logo-name-highlight {
@@ -747,7 +736,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 6px;
   flex-shrink: 0;
   padding: 0;
   margin-left: auto;
@@ -759,8 +748,8 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
 }
 
 .sidebar.collapsed .collapse-btn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   margin-left: 0;
   background: var(--mc-bg-sunken);
   border: 1px solid var(--mc-border-light);
@@ -776,7 +765,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
 .sidebar-nav {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0 4px;
+  padding: 10px 0 6px;
   scrollbar-width: none;
 }
 
@@ -787,7 +776,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
 .nav-group { margin-bottom: 2px; }
 
 .nav-group-title {
-  padding: 8px 18px 4px;
+  padding: 10px 16px 5px;
   font-size: 10px;
   font-weight: 600;
   color: var(--mc-sidebar-group-title);
@@ -800,12 +789,12 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 9px 12px;
   color: var(--mc-sidebar-text);
   text-decoration: none;
   font-size: 13px;
-  border-radius: 13px;
-  margin: 2px 10px;
+  border-radius: 6px;
+  margin: 2px 8px;
   transition: all 0.15s ease;
   white-space: nowrap;
   overflow: hidden;
@@ -821,7 +810,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   background: var(--mc-sidebar-active);
   color: var(--mc-sidebar-text-active);
   font-weight: 600;
-  box-shadow: inset 0 0 0 1px rgba(217, 109, 70, 0.08);
+  box-shadow: inset 3px 0 0 var(--mc-primary);
 }
 
 /* Active indicator bar removed — active state uses bg color + font weight only */
@@ -842,7 +831,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   border-top: 1px solid var(--mc-border-light);
   padding: 10px 12px 12px;
   background: var(--mc-sidebar-footer-bg);
-  backdrop-filter: blur(14px);
+  backdrop-filter: none;
   position: relative;
 }
 /* Status row: doctor health + (optional) auto-approve chip side by side, so
@@ -863,7 +852,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   padding: 8px 10px;
   border: 1px solid var(--mc-border-light);
   background: var(--mc-bg-muted);
-  border-radius: 12px;
+  border-radius: 6px;
   cursor: pointer;
   color: var(--mc-text-secondary);
   font-size: 12px;
@@ -896,7 +885,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   border: 1px solid var(--mc-danger-border, rgba(192, 57, 43, 0.4));
   background: var(--mc-danger-bg, rgba(192, 57, 43, 0.12));
   color: var(--mc-danger, #C0392B);
-  border-radius: 12px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
@@ -941,7 +930,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
 .sidebar-utility-card {
   margin-bottom: 8px;
   padding: 8px 10px;
-  border-radius: 16px;
+  border-radius: 6px;
   border: 1px solid var(--mc-border-light);
   background: color-mix(in srgb, var(--mc-sidebar-footer-bg) 74%, transparent);
 }
@@ -1002,7 +991,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   display: flex;
   gap: 2px;
   background: var(--mc-bg-muted);
-  border-radius: 14px;
+  border-radius: 6px;
   padding: 4px;
   margin-bottom: 12px;
   border: 1px solid var(--mc-border-light);
@@ -1012,7 +1001,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   margin-bottom: 0;
   padding: 2px;
   gap: 3px;
-  border-radius: 999px;
+  border-radius: 6px;
 }
 
 .language-toggle-row {
@@ -1047,7 +1036,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   width: 28px;
   height: 28px;
   padding: 0;
-  border-radius: 999px;
+  border-radius: 4px;
   flex: 0 0 auto;
 }
 
@@ -1073,7 +1062,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   justify-content: flex-start;
   width: 100%;
   padding: 10px 12px;
-  border-radius: 14px;
+  border-radius: 6px;
   border: 1px solid var(--mc-border-light);
   background: var(--mc-bg-muted);
   color: var(--mc-text-secondary);
@@ -1089,7 +1078,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
 }
 
 .language-btn.active {
-  border-color: rgba(217, 109, 70, 0.18);
+  border-color: var(--mc-primary-light);
   background: var(--mc-primary-bg);
   color: var(--mc-primary);
 }
@@ -1100,7 +1089,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--mc-panel-raised);
   color: inherit;
   font-size: 11px;
@@ -1119,7 +1108,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   min-width: 34px;
   justify-content: center;
   padding: 4px 0;
-  border-radius: 999px;
+  border-radius: 4px;
 }
 
 .language-btn--compact .language-abbr {
@@ -1133,7 +1122,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   align-items: center;
   gap: 8px;
   padding: 8px 9px;
-  border-radius: 14px;
+  border-radius: 6px;
   background: var(--mc-bg-muted);
   border: 1px solid var(--mc-border-light);
 }
@@ -1141,8 +1130,8 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
 .user-avatar {
   width: 30px;
   height: 30px;
-  background: linear-gradient(135deg, var(--mc-primary), var(--mc-accent));
-  border-radius: 12px;
+  background: var(--mc-primary);
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1201,7 +1190,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
 .footer-icon-btn {
   width: 42px;
   height: 42px;
-  border-radius: 14px;
+  border-radius: 6px;
   border: 1px solid var(--mc-border-light);
   background: var(--mc-bg-muted);
   color: var(--mc-text-secondary);
@@ -1225,7 +1214,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
 .footer-icon-btn--accent {
   color: var(--mc-primary);
   background: var(--mc-primary-bg);
-  border-color: rgba(217, 109, 70, 0.18);
+  border-color: var(--mc-primary-light);
 }
 
 .sidebar-utility-panel {
@@ -1234,14 +1223,14 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   bottom: 16px;
   width: 236px;
   padding: 14px;
-  border-radius: 22px;
+  border-radius: 8px;
   background: var(--mc-sidebar-floating-bg);
   border: 1px solid var(--mc-border);
   box-shadow: var(--mc-shadow-medium);
   display: flex;
   flex-direction: column;
   gap: 14px;
-  backdrop-filter: blur(18px);
+  backdrop-filter: none;
 }
 
 .panel-section {
@@ -1262,7 +1251,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border-radius: 14px;
+  border-radius: 6px;
   border: 1px solid var(--mc-border-light);
   background: var(--mc-bg-muted);
   color: var(--mc-text-secondary);
@@ -1280,7 +1269,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
 .panel-option-btn.active {
   background: var(--mc-primary-bg);
   color: var(--mc-primary);
-  border-color: rgba(217, 109, 70, 0.18);
+  border-color: var(--mc-primary-light);
 }
 
 .panel-option-icon {
@@ -1296,7 +1285,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   align-items: center;
   gap: 10px;
   padding: 12px;
-  border-radius: 16px;
+  border-radius: 6px;
   background: var(--mc-bg-muted);
   border: 1px solid var(--mc-border-light);
 }
@@ -1319,7 +1308,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   min-width: 0;
   position: relative;
   z-index: 1;
-  padding: 14px 14px 14px 18px;
+  padding: 0;
 }
 
 /* ===== 移动端元素（桌面端隐藏） ===== */
@@ -1347,7 +1336,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
     z-index: 1000;
     width: 260px;
     min-width: 260px;
-    margin: 10px;
+    margin: 0;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
     box-shadow: var(--mc-shadow-medium);
@@ -1379,12 +1368,13 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin: 0 0 12px;
+    margin: 0;
     padding: 12px 14px;
-    background: var(--mc-surface-overlay);
-    border: 1px solid var(--mc-border);
-    border-radius: 18px;
-    box-shadow: var(--mc-shadow-soft);
+    background: var(--mc-bg-elevated);
+    border: 0;
+    border-bottom: 1px solid var(--mc-border);
+    border-radius: 0;
+    box-shadow: none;
     flex-shrink: 0;
   }
 
@@ -1446,8 +1436,8 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
 @media (max-width: 480px) {
   .mobile-topbar {
     padding: 8px 10px;
-    margin: 0 0 8px;
-    border-radius: 12px;
+    margin: 0;
+    border-radius: 0;
     gap: 8px;
   }
 
@@ -1461,7 +1451,7 @@ watch(() => workspaceStore.currentWorkspaceId, () => {
   }
 
   .main-content {
-    padding: 8px;
+    padding: 0;
   }
 }
 </style>

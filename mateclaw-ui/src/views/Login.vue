@@ -2,7 +2,7 @@
   <div class="login-page">
     <div class="login-center">
       <div class="login-logo">
-        <img src="/logo/mateclaw_logo_s.png" alt="NewsClaw" class="logo-image" />
+        <img src="/logo/newsclaw-mark.svg" alt="NewsClaw" class="logo-image" />
         <h1 class="logo-title">News<span class="logo-title-highlight">Claw</span></h1>
       </div>
 
@@ -247,46 +247,46 @@ function cancelBind() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(160deg, #FAF5F0 0%, #F5EDE5 100%);
+  background: var(--mc-bg);
   padding: 24px;
 }
 
 :root.dark .login-page,
 html.dark .login-page {
-  background: linear-gradient(160deg, var(--mc-bg) 0%, #1A1210 100%);
+  background: var(--mc-bg);
 }
 
 .login-center {
   width: 100%;
-  max-width: 380px;
+  max-width: 400px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 40px;
-  animation: fadeUp 0.6s ease-out both;
+  gap: 32px;
+  animation: fadeUp 0.35s ease-out both;
 }
 
 /* Logo */
 .login-logo {
   text-align: center;
+  padding-bottom: 4px;
 }
 
 .logo-image {
   display: block;
-  margin: 0 auto 16px;
-  width: 100px;
-  height: 100px;
+  margin: 0 auto 14px;
+  width: 72px;
+  height: 72px;
   object-fit: contain;
-  filter: drop-shadow(0 6px 20px rgba(217, 119, 87, 0.3));
-  animation: breathe 3.5s ease-in-out infinite;
+  filter: drop-shadow(0 8px 16px rgba(15, 118, 110, 0.16));
 }
 
 .logo-title {
-  font-size: 36px;
+  font-size: 32px;
   font-weight: 800;
   color: var(--mc-text-primary);
   margin: 0;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
 }
 
 .logo-title-highlight {
@@ -298,7 +298,7 @@ html.dark .login-page {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .input-wrap {
@@ -310,8 +310,8 @@ html.dark .login-page {
 .form-input {
   width: 100%;
   padding: 14px 16px;
-  border: 1.5px solid var(--mc-border);
-  border-radius: 12px;
+  border: 1px solid var(--mc-border);
+  border-radius: 6px;
   font-size: 15px;
   color: var(--mc-text-primary);
   background: var(--mc-bg-sunken);
@@ -326,7 +326,7 @@ html.dark .login-page {
 .form-input:focus {
   border-color: var(--mc-primary);
   background: var(--mc-bg-elevated);
-  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.08);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.13);
 }
 
 .eye-btn {
@@ -353,7 +353,7 @@ html.dark .login-page {
   padding: 10px 14px;
   background: var(--mc-danger-bg);
   border: 1px solid var(--mc-danger);
-  border-radius: 10px;
+  border-radius: 6px;
   font-size: 13px;
   color: var(--mc-danger);
 }
@@ -362,10 +362,10 @@ html.dark .login-page {
 .login-btn {
   width: 100%;
   padding: 12px;
-  background: linear-gradient(135deg, var(--mc-primary), var(--mc-primary-hover));
+  background: var(--mc-primary);
   color: white;
   border: none;
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
@@ -379,7 +379,8 @@ html.dark .login-page {
 
 .login-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(217, 119, 87, 0.3);
+  background: var(--mc-primary-hover);
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.20);
 }
 
 .login-btn:disabled {
@@ -416,8 +417,8 @@ html.dark .login-page {
   padding: 11px;
   background: var(--mc-bg-elevated);
   color: var(--mc-text-primary);
-  border: 1.5px solid var(--mc-border);
-  border-radius: 12px;
+  border: 1px solid var(--mc-border);
+  border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -501,18 +502,6 @@ html.dark .login-page {
   border-radius: 4px;
   color: var(--mc-inline-code-color);
   font-size: 12px;
-}
-
-/* Breathing animation */
-@keyframes breathe {
-  0%, 100% {
-    transform: scale(1);
-    filter: drop-shadow(0 6px 20px rgba(217, 119, 87, 0.3));
-  }
-  50% {
-    transform: scale(1.06);
-    filter: drop-shadow(0 8px 28px rgba(217, 119, 87, 0.45));
-  }
 }
 
 /* Entrance animation */

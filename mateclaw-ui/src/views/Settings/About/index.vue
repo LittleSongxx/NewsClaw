@@ -2,7 +2,7 @@
   <div class="about-page">
     <!-- Hero: Logo + Identity -->
     <section class="hero">
-      <img src="/logo/mateclaw_logo_s.png" alt="NewsClaw" class="hero-logo" />
+      <img src="/logo/newsclaw-mark.svg" alt="NewsClaw" class="hero-logo" />
       <div class="hero-copy">
         <h1 class="hero-title">News<span class="hero-accent">Claw</span></h1>
         <div class="hero-version">v{{ appVersion }}</div>
@@ -81,7 +81,8 @@ const techStack = [
   padding: 28px;
   background: var(--mc-bg-elevated);
   border: 1px solid var(--mc-border);
-  border-radius: 16px;
+  border-left: 4px solid var(--mc-primary);
+  border-radius: 8px;
 }
 
 .hero-logo {
@@ -102,7 +103,7 @@ const techStack = [
   font-weight: 800;
   color: var(--mc-text-primary);
   margin: 0;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .hero-accent { color: var(--mc-primary); }
@@ -132,7 +133,7 @@ const techStack = [
   padding: 20px;
   background: var(--mc-bg-elevated);
   border: 1px solid var(--mc-border);
-  border-radius: 14px;
+  border-radius: 8px;
 }
 
 .pillar-num {
@@ -161,7 +162,7 @@ const techStack = [
   padding: 24px;
   background: var(--mc-bg-elevated);
   border: 1px solid var(--mc-border);
-  border-radius: 14px;
+  border-radius: 8px;
 }
 
 .stack-heading {
@@ -182,7 +183,7 @@ const techStack = [
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 6px;
   background: var(--mc-bg-sunken);
 }
 
