@@ -11,12 +11,13 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Scores a versioned, human-labeled AI-news evaluation dataset.
+ * Scores a versioned, labeled AI-news evaluation dataset.
  *
  * <p>The evaluator deliberately consumes gold labels and predictions rather
  * than calling a model. This keeps the measurement reproducible and lets the
- * same scorer be used by deterministic policy fixtures and sampled live Agent
- * traces. A score is only meaningful within the dataset scope recorded in its
+ * same scorer be used by deterministic policy fixtures, frozen controlled
+ * live-Agent cases, and human-reviewed sampled traces. A score is only
+ * meaningful within the label provenance and dataset scope recorded in its
  * manifest; it must not be presented as a general online accuracy claim.</p>
  */
 public final class AiNewsQualityEvaluator {
@@ -175,28 +176,28 @@ public final class AiNewsQualityEvaluator {
                 boolean actual = prediction.claimQuoteSupported();
                 claimQuoteSupported.add(expected, actual);
                 addBadcaseIfDifferent(badcases, item, "claim-quote-support", expected, actual,
-                        "human or adjudicator label for claim-to-quote support");
+                        "labeled claim-to-quote support");
             }
             if (gold.taskSucceeded() != null) {
                 boolean expected = gold.taskSucceeded();
                 boolean actual = prediction.taskSucceeded();
                 taskSuccess.add(expected, actual);
                 addBadcaseIfDifferent(badcases, item, "task-success", expected, actual,
-                        "human-adjudicated end-to-end task outcome");
+                        "labeled end-to-end task outcome");
             }
             if (gold.toolSelectionCorrect() != null) {
                 boolean expected = gold.toolSelectionCorrect();
                 boolean actual = prediction.toolSelectionCorrect();
                 toolSelectionCorrect.add(expected, actual);
                 addBadcaseIfDifferent(badcases, item, "tool-selection", expected, actual,
-                        "human-adjudicated tool choice and execution order");
+                        "labeled tool choice and execution order");
             }
             if (gold.toolParametersCorrect() != null) {
                 boolean expected = gold.toolParametersCorrect();
                 boolean actual = prediction.toolParametersCorrect();
                 toolParametersCorrect.add(expected, actual);
                 addBadcaseIfDifferent(badcases, item, "tool-parameters", expected, actual,
-                        "human-adjudicated tool argument correctness");
+                        "labeled tool argument correctness");
             }
             if (gold.humanReviewRequired() != null) {
                 boolean expected = gold.humanReviewRequired();

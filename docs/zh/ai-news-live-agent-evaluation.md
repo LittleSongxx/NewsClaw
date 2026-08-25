@@ -4,6 +4,8 @@
 
 `scripts/run-ai-news-live-agent-eval.sh` runs a frozen, synthetic 30-case benchmark through a **running** NewsClaw instance. Each case makes a real authenticated SSE request to an AI-news Agent, follows its actual model route, records the returned stream, and scores the final structured decision with deterministic labels.
 
+其中的质量分数是与**冻结合成金标**的一致性，不是人工对真实用户流量的评分。特别是同名的 `claimQuoteSupported`、`taskSuccess` 和工具指标，在这一层只能说明受控证据协议是否被遵守；真实业务质量仍须使用第三层人工标注 trace 评分。
+
 This is deliberately different from both other evidence layers:
 
 | Evidence layer | Input and executor | What it can support | What it cannot support |
@@ -53,11 +55,11 @@ target/ai-news-live-agent-evaluation/<utc-run>/
   raw/<run-id>/<case-id>.sse
 ```
 
-The quality manifest uses the same scorer as offline fixtures and human-labeled traces. The runtime manifest stores HTTP/stream completion, strict-JSON validity, deterministic task success, tool execution success, end-to-end latency, time to first visible content, tool execution time, token totals, observed provider/model route, failure reasons, and SHA-256 hashes for raw SSE/output. It does not store a JWT or login response. Raw synthetic SSE is retained under `target/` and is excluded from Git.
+The quality manifest uses the same scorer as offline fixtures and human-labeled traces, and records `labelProvenance=frozen synthetic evidence-policy labels`. The runtime manifest stores HTTP/stream completion, strict-JSON validity, deterministic controlled-protocol task success, tool execution success, end-to-end latency, time to first visible content, tool execution time, token totals, observed provider/model route, failure reasons, and SHA-256 hashes for raw SSE/output. It does not store a JWT or login response. Raw synthetic SSE is retained under `target/` and is excluded from Git.
 
 ## Metric Interpretation
 
-The quality report includes source-tier accuracy and macro-F1, verification/refusal/citation/Claim-Quote P-R-F1, human-review routing, tool selection and tool parameter correctness, per-slice metrics, and badcases. A controlled task is successful only when all of these hold:
+The quality report includes source-tier accuracy and macro-F1, verification/refusal/citation/Claim-Quote P-R-F1, human-review routing, tool selection and tool parameter correctness, per-slice metrics, and badcases. In this report these are frozen-protocol labels, not human judgments of real user tasks. A controlled task is successful only when all of these hold:
 
 1. HTTP succeeds and the SSE stream reaches `completed`.
 2. The final answer is exactly one JSON object with all required fields.

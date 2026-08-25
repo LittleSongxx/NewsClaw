@@ -103,6 +103,8 @@ final class AiNewsLiveAgentBenchmarkRunner {
         metadata.put("requestTimeoutSeconds", String.valueOf(config.timeout().toSeconds()));
         metadata.put("evaluationTree", defaultText(config.evaluationTree(), "unknown"));
         metadata.put("observedModelRoutes", observedRoutes(runs));
+        metadata.put("labelProvenance",
+                "frozen synthetic evidence-policy labels; not human ratings of production user traffic");
         metadata.put("rawTraceRetention", rawDirectory == null
                 ? "disabled" : "caller-supplied-output-directory; not repository input");
 

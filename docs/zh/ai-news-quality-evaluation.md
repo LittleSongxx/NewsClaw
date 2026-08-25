@@ -43,10 +43,10 @@ target/ai-news-policy-quality-report.md
 | `citationViolationBlocked` P/R/F1 | 未归档引用被阻断 | 防止内容生产臆造事实来源。 |
 | `canonicalDedup.pairwise` P/R/F1 | 两个候选属于同一规范事件 | 同时衡量重复抑制和错误合并。 |
 | `unresolvedConflict.blockRate` | 存在未解决冲突的样本 | 验证冲突不会静默通过核验。 |
-| `claimQuoteSupported` P/R/F1 | 人工裁定的 claim 被引用 quote 支持 | 仅由真实 trace 数据集评分，离线策略夹具不伪造此分数。 |
-| `taskSuccess` P/R/F1 | 人工裁定的任务结果成功 | 当金标要求拒绝时，正确拒绝同样是任务成功。 |
-| `toolSelectionCorrect` P/R/F1 | 工具集合和执行顺序正确 | 将规划/工具错误与检索或生成错误分开归因。 |
-| `toolParametersCorrect` P/R/F1 | 工具参数符合 schema 与业务边界 | 发现“工具选对但参数不安全或无效”的问题。 |
+| `claimQuoteSupported` P/R/F1 | claim 被引用 quote 支持 | 受控在线层只衡量与冻结合成金标的一致性；真实 claim 支持度只能由人工标注 trace 评分。 |
+| `taskSuccess` P/R/F1 | 任务结果成功 | 受控在线层是严格协议成功，真实业务层才是人工裁定任务成功；当金标要求拒绝时，正确拒绝同样是成功。 |
+| `toolSelectionCorrect` P/R/F1 | 工具集合和执行顺序正确 | 受控在线层仅覆盖冻结的只读工具契约；真实工具正确性需由抽样 trace 复核。 |
+| `toolParametersCorrect` P/R/F1 | 工具参数符合 schema 与业务边界 | 受控在线层检查冻结参数契约，真实业务场景需保留复核证据。 |
 | `humanReviewRouting` P/R/F1 | 需要人工时正确路由到人工复核 | 衡量 HITL 路由，不把所有自动化尝试都视作成功。 |
 
 二分类指标的 JSON 工件会记录 `truePositive`、`falsePositive`、`falseNegative`、`trueNegative`、准确率（`value`）、Precision、Recall 和 F1。`n/a` 表示该数据集没有该指标的标注，不会用虚假的满分补齐。

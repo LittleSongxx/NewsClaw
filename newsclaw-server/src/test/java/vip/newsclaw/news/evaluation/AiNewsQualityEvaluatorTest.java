@@ -7,6 +7,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AiNewsQualityEvaluatorTest {
 
@@ -65,6 +66,26 @@ class AiNewsQualityEvaluatorTest {
         assertEquals(1.0D, report.manifest().metrics().get("toolSelectionCorrect").f1());
         assertEquals(1.0D, report.manifest().metrics().get("toolParametersCorrect").f1());
         assertEquals(1.0D, report.manifest().metrics().get("humanReviewRouting").f1());
+    }
+
+    @Test
+    void usesLabelNeutralBadcaseDetailsUntilDatasetProvenanceIsKnown() {
+        AiNewsQualityEvaluator.QualityCase trace = new AiNewsQualityEvaluator.QualityCase(
+                "trace", Map.of(),
+                new AiNewsQualityEvaluator.GoldLabel(null, null, null, null, null, null, null,
+                        true, true, true, null),
+                new AiNewsQualityEvaluator.Prediction(null, null, null, null, null,
+                        false, false, false, null));
+
+        AiNewsQualityEvaluator.EvaluationReport report = new AiNewsQualityEvaluator().evaluate(
+                new AiNewsQualityEvaluator.QualityDataset("unit", "1", "unit-test", Map.of(),
+                        List.of(trace), List.of()), "test", "unit");
+
+        assertTrue(report.badcases().stream()
+                .anyMatch(item -> "task-success".equals(item.metric())
+                        && "labeled end-to-end task outcome".equals(item.detail())));
+        assertFalse(report.badcases().stream()
+                .anyMatch(item -> item.detail().contains("human-adjudicated")));
     }
 
     private static AiNewsQualityEvaluator.QualityCase qualityCase(String id, boolean expectedEligible,
