@@ -137,6 +137,26 @@ class AiNewsEventServiceTest {
     }
 
     @Test
+    void productionCannotBypassPendingDeterministicReviewTask() {
+        AiNewsReviewRoutingService reviewRouting = org.mockito.Mockito.mock(AiNewsReviewRoutingService.class);
+        AiNewsEventService guarded = new AiNewsEventService(eventMapper, evidenceMapper,
+                new ObjectMapper(), new AiNewsSourceRegistry(), reviewRouting);
+        AiNewsEventEntity verified = event(104L, 7L, "verified");
+        when(eventMapper.selectOne(any())).thenReturn(verified);
+        org.mockito.Mockito.doThrow(new NewsClawException(409,
+                        "事件仍有待处理的人工复核风险: UNCAPTURED_OFFICIAL_SOURCE"))
+                .when(reviewRouting).requireClearForProduction(verified);
+
+        NewsClawException rejected = assertThrows(NewsClawException.class,
+                () -> guarded.beginProduction(7L, 104L));
+
+        assertEquals(409, rejected.getCode());
+        assertEquals("verified", verified.getStatus());
+        verify(reviewRouting).requireClearForProduction(verified);
+        verify(eventMapper, never()).updateById(verified);
+    }
+
+    @Test
     void officialLabelOnUnknownDomain_doesNotBypassCorroborationRule() {
         AiNewsEventEntity event = event(105L, 7L, "candidate");
         when(eventMapper.selectOne(any())).thenReturn(event);

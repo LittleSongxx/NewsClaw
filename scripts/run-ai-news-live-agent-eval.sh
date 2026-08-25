@@ -18,12 +18,17 @@ if [[ $# -gt 2 ]]; then
   exit 2
 fi
 
-benchmark="${1:-$repo_root/newsclaw-server/src/test/resources/evals/ai-news/live-agent-evidence-v1.json}"
+benchmark="${1:-$repo_root/newsclaw-server/src/test/resources/evals/ai-news/live-agent-evidence-v2.json}"
 if [[ ! -f "$benchmark" ]]; then
   printf 'Live benchmark not found: %s\n' "$benchmark" >&2
   exit 2
 fi
 benchmark="$(cd "$(dirname "$benchmark")" && pwd)/$(basename "$benchmark")"
+response_format="${NEWSCLAW_EVAL_RESPONSE_FORMAT:-json_object}"
+if [[ "$response_format" != "text" && "$response_format" != "json_object" ]]; then
+  printf '%s\n' 'NEWSCLAW_EVAL_RESPONSE_FORMAT must be text or json_object.' >&2
+  exit 2
+fi
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 output_dir="${2:-$repo_root/target/ai-news-live-agent-evaluation/$timestamp}"
@@ -53,6 +58,7 @@ mvn -q -pl newsclaw-server -am \
   -Dai.news.live.workspace-id="${NEWSCLAW_EVAL_WORKSPACE_ID:-1}" \
   -Dai.news.live.timeout-seconds="${NEWSCLAW_EVAL_TIMEOUT_SECONDS:-240}" \
   -Dai.news.live.max-cases="${NEWSCLAW_EVAL_MAX_CASES:-0}" \
+  -Dai.news.live.response-format="$response_format" \
   -Dai.news.live.evaluation-tree="$evaluation_tree" \
   -Dai.news.live.raw-directory="$raw_directory" \
   -Dai.news.live.trace-dataset="$trace_dataset" \
@@ -71,6 +77,6 @@ if [[ -f "$quality_manifest" && -f "$runtime_manifest" ]]; then
   printf 'AI_NEWS_LIVE_AGENT_SUMMARY='
   jq -cn \
     --argjson quality "$(jq -c '{scope:.evaluationScope,dataset:(.datasetId + "@" + .datasetVersion),cases:.caseCounts.total,badcases:(.badcases|length),taskSuccess:.metrics.taskSuccess.value,verificationF1:.metrics.verificationEligible.f1,citationBlockF1:.metrics.citationViolationBlocked.f1,toolSelection:.metrics.toolSelectionCorrect.value,toolParameters:.metrics.toolParametersCorrect.value,reviewF1:.metrics.humanReviewRouting.f1,routes:.executionMetadata.observedModelRoutes,evaluationTree:.executionMetadata.evaluationTree}' "$quality_manifest")" \
-    --argjson runtime "$(jq -c '{http200:.metrics.http200Rate.value,completed:.metrics.streamCompletedRate.value,structured:.metrics.structuredResponseValidRate.value,e2eP50:.metrics.endToEndLatencyMs.p50,e2eP95:.metrics.endToEndLatencyMs.p95,ttftP50:.metrics.timeToFirstContentMs.p50,ttftP95:.metrics.timeToFirstContentMs.p95,promptTokens:.metrics.promptTokens.total,completionTokens:.metrics.completionTokens.total}' "$runtime_manifest")" \
+    --argjson runtime "$(jq -c '{http200:.metrics.http200Rate.value,completed:.metrics.streamCompletedRate.value,structured:.metrics.structuredResponseValidRate.value,jsonContractRequested:.metrics.jsonObjectContractRequestedRate.value,responseFormatAcknowledged:.metrics.responseFormatAcknowledgedRate.value,serverContractEvent:.metrics.serverContractEventRate.value,serverContractValid:.metrics.serverContractValidRate.value,contractParserAgreement:.metrics.serverContractParserAgreementRate.value,e2eP50:.metrics.endToEndLatencyMs.p50,e2eP95:.metrics.endToEndLatencyMs.p95,ttftP50:.metrics.timeToFirstContentMs.p50,ttftP95:.metrics.timeToFirstContentMs.p95,promptTokens:.metrics.promptTokens.total,completionTokens:.metrics.completionTokens.total}' "$runtime_manifest")" \
     '{quality:$quality,runtime:$runtime}'
 fi

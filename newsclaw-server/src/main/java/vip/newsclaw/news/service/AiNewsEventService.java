@@ -60,23 +60,34 @@ public class AiNewsEventService {
     private final AiNewsEvidenceMapper evidenceMapper;
     private final ObjectMapper objectMapper;
     private final AiNewsSourceRegistry sourceRegistry;
+    private final AiNewsReviewRoutingService reviewRoutingService;
 
     @Autowired
     public AiNewsEventService(AiNewsEventMapper eventMapper,
                               AiNewsEvidenceMapper evidenceMapper,
                               ObjectMapper objectMapper,
-                              AiNewsSourceRegistry sourceRegistry) {
+                              AiNewsSourceRegistry sourceRegistry,
+                              AiNewsReviewRoutingService reviewRoutingService) {
         this.eventMapper = eventMapper;
         this.evidenceMapper = evidenceMapper;
         this.objectMapper = objectMapper;
         this.sourceRegistry = sourceRegistry;
+        this.reviewRoutingService = reviewRoutingService;
+    }
+
+    /** Constructor kept for extension/test code that does not wire review routing. */
+    public AiNewsEventService(AiNewsEventMapper eventMapper,
+                              AiNewsEvidenceMapper evidenceMapper,
+                              ObjectMapper objectMapper,
+                              AiNewsSourceRegistry sourceRegistry) {
+        this(eventMapper, evidenceMapper, objectMapper, sourceRegistry, null);
     }
 
     /** Narrow constructor retained for isolated policy tests. */
     public AiNewsEventService(AiNewsEventMapper eventMapper,
                               AiNewsEvidenceMapper evidenceMapper,
                               ObjectMapper objectMapper) {
-        this(eventMapper, evidenceMapper, objectMapper, new AiNewsSourceRegistry());
+        this(eventMapper, evidenceMapper, objectMapper, new AiNewsSourceRegistry(), null);
     }
 
     /*
@@ -124,6 +135,7 @@ public class AiNewsEventService {
         IPage<AiNewsEventEntity> result = eventMapper.selectPage(
                 new Page<>(Math.max(1, page), Math.min(Math.max(1, size), 100)), query);
         populateEvidenceSummary(ws, result.getRecords());
+        populateReviewSummary(ws, result.getRecords());
         return result;
     }
 
@@ -137,6 +149,7 @@ public class AiNewsEventService {
                         .eq(AiNewsEvidenceEntity::getDeleted, 0)
                         .orderByDesc(AiNewsEvidenceEntity::getSourceTier)
                         .orderByDesc(AiNewsEvidenceEntity::getSourcePublishedAt));
+        populateReviewSummary(workspace(event.getWorkspaceId()), List.of(event));
         return new AiNewsEventDetail(event, evidence,
                 captureAttemptService == null ? List.of()
                         : captureAttemptService.list(workspace(event.getWorkspaceId()), id));
@@ -177,6 +190,12 @@ public class AiNewsEventService {
         if ("media".equalsIgnoreCase(tier)) return 1;
         if ("community".equalsIgnoreCase(tier)) return 2;
         return 3;
+    }
+
+    private void populateReviewSummary(long workspaceId, List<AiNewsEventEntity> events) {
+        if (reviewRoutingService != null) {
+            reviewRoutingService.populateProjection(workspaceId, events);
+        }
     }
 
     /**
@@ -233,7 +252,7 @@ public class AiNewsEventService {
         } else if (AiNewsEventStatus.PUBLISHED.token().equals(event.getStatus())) {
             // Published records are immutable except for additional evidence.
             appendEvidence(event, ws, incomingEvidence);
-            return event;
+            return synchronizeReviewTask(event);
         } else if (AiNewsEventStatus.ARCHIVED.token().equals(event.getStatus())) {
             throw new NewsClawException(409, "已归档事件不能重新写入，请先恢复或创建新的事件");
         }
@@ -277,7 +296,7 @@ public class AiNewsEventService {
                     Map.of("from", previousStatus == null ? "" : previousStatus,
                             "to", event.getStatus(), "reason", "evidence-or-claims-updated"));
         }
-        return event;
+        return synchronizeReviewTask(event);
     }
 
     @Transactional
@@ -292,7 +311,7 @@ public class AiNewsEventService {
             return transition(event, AiNewsEventStatus.CONFLICTED, confidence);
         }
         if (AiNewsEventStatus.VERIFIED.token().equals(event.getStatus())) {
-            return event;
+            return synchronizeReviewTask(event);
         }
         ensureVerifiable(event);
         List<AiNewsEvidenceEntity> evidence = evidenceMapper.selectList(
@@ -318,7 +337,7 @@ public class AiNewsEventService {
     @Transactional
     public AiNewsEventEntity dismiss(Long workspaceId, Long id) {
         AiNewsEventEntity event = findEvent(workspaceId, id);
-        if (AiNewsEventStatus.REJECTED.token().equals(event.getStatus())) return event;
+        if (AiNewsEventStatus.REJECTED.token().equals(event.getStatus())) return synchronizeReviewTask(event);
         ensureMutable(event);
         return transition(event, AiNewsEventStatus.REJECTED, null);
     }
@@ -340,7 +359,7 @@ public class AiNewsEventService {
         if (AiNewsEventStatus.RESEARCHING.token().equals(event.getStatus())
                 || AiNewsEventStatus.CONFLICTED.token().equals(event.getStatus())) {
             audit("ai-news.event.follow-up-requested", event, Map.of("source", "operator"));
-            return event;
+            return synchronizeReviewTask(event);
         }
         throw new NewsClawException(409, "当前事件状态不需要继续跟踪");
     }
@@ -348,9 +367,12 @@ public class AiNewsEventService {
     @Transactional
     public AiNewsEventEntity beginProduction(Long workspaceId, Long id) {
         AiNewsEventEntity event = findEvent(workspaceId, id);
-        if (AiNewsEventStatus.IN_PRODUCTION.token().equals(event.getStatus())) return event;
+        if (AiNewsEventStatus.IN_PRODUCTION.token().equals(event.getStatus())) return synchronizeReviewTask(event);
         if (!AiNewsEventStatus.VERIFIED.token().equals(event.getStatus())) {
             throw new NewsClawException(409, "只有已核验事件才能开始内容生产");
+        }
+        if (reviewRoutingService != null) {
+            reviewRoutingService.requireClearForProduction(event);
         }
         return transition(event, AiNewsEventStatus.IN_PRODUCTION, event.getConfidence());
     }
@@ -365,7 +387,7 @@ public class AiNewsEventService {
     @Transactional
     public AiNewsEventEntity markPublished(Long workspaceId, Long id) {
         AiNewsEventEntity event = findEvent(workspaceId, id);
-        if (AiNewsEventStatus.PUBLISHED.token().equals(event.getStatus())) return event;
+        if (AiNewsEventStatus.PUBLISHED.token().equals(event.getStatus())) return synchronizeReviewTask(event);
         ensureMutable(event);
         if (!AiNewsEventStatus.IN_PRODUCTION.token().equals(event.getStatus())) {
             throw new NewsClawException(409, "只有进入内容生产的事件才能标记已交付");
@@ -396,7 +418,7 @@ public class AiNewsEventService {
         event.setUpdateTime(LocalDateTime.now());
         eventMapper.updateById(event);
         audit("ai-news.event.run-linked", event, Map.of("teamRunId", runId));
-        return event;
+        return synchronizeReviewTask(event);
     }
 
     @Transactional
@@ -425,7 +447,7 @@ public class AiNewsEventService {
         eventMapper.updateById(event);
         audit("ai-news.event.content-linked", event,
                 Map.of("contentId", contentId, "platform", platform.toLowerCase(Locale.ROOT)));
-        return event;
+        return synchronizeReviewTask(event);
     }
 
     /**
@@ -453,13 +475,13 @@ public class AiNewsEventService {
         event.setUpdateTime(LocalDateTime.now());
         eventMapper.updateById(event);
         audit("ai-news.event.wiki-linked", event, Map.of("wikiPageId", wikiPageId));
-        return event;
+        return synchronizeReviewTask(event);
     }
 
     @Transactional
     public AiNewsEventEntity archive(Long workspaceId, Long id) {
         AiNewsEventEntity event = findEvent(workspaceId, id);
-        if (AiNewsEventStatus.ARCHIVED.token().equals(event.getStatus())) return event;
+        if (AiNewsEventStatus.ARCHIVED.token().equals(event.getStatus())) return synchronizeReviewTask(event);
         // Published events remain part of the editorial history and may be
         // archived after delivery without reopening verification.
         return transition(event, AiNewsEventStatus.ARCHIVED, null);
@@ -515,6 +537,7 @@ public class AiNewsEventService {
                 "evidenceId", evidence.getId() == null ? 0L : evidence.getId(),
                 "httpStatus", trace.httpStatus() == null ? 0 : trace.httpStatus(),
                 "captureMethod", trace.captureMethod() == null ? "" : trace.captureMethod()));
+        synchronizeReviewTask(event);
         return evidence;
     }
 
@@ -584,6 +607,11 @@ public class AiNewsEventService {
                     Map.of("from", previous == null ? "" : previous, "to", status.token(),
                             "confidence", event.getConfidence() == null ? 0.0D : event.getConfidence()));
         }
+        return synchronizeReviewTask(event);
+    }
+
+    private AiNewsEventEntity synchronizeReviewTask(AiNewsEventEntity event) {
+        if (reviewRoutingService != null) reviewRoutingService.sync(event);
         return event;
     }
 

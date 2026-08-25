@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /** Persisted, workspace-scoped AI industry event. JSON fields retain claims and entity labels. */
 @Data
@@ -51,6 +52,15 @@ public class AiNewsEventEntity {
     private Integer verifiedEvidenceCount;
     @TableField(exist = false)
     private String primaryEvidenceTier;
+    /** Persisted review-queue projection; no model-provided boolean controls this field. */
+    @TableField(exist = false)
+    private Boolean reviewRequired;
+    @TableField(exist = false)
+    private Long reviewTaskId;
+    @TableField(exist = false)
+    private String reviewStatus;
+    @TableField(exist = false)
+    private List<String> reviewReasons;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
     @TableField(fill = FieldFill.INSERT_UPDATE)

@@ -6,6 +6,7 @@ import vip.newsclaw.audit.service.AuditEventService;
 import vip.newsclaw.channel.feishu.cards.FeishuCardKind;
 import vip.newsclaw.news.service.AiNewsEventService;
 import vip.newsclaw.news.service.AiNewsProductionService;
+import vip.newsclaw.news.service.AiNewsReviewRoutingService;
 
 /** Spring factory for the AI-news editorial review card kind. */
 @Component
@@ -15,15 +16,18 @@ public class AiNewsReviewCardKindFactory {
 
     private final AiNewsEventService eventService;
     private final AiNewsProductionService productionService;
+    private final AiNewsReviewRoutingService reviewRoutingService;
     private final AuditEventService auditEventService;
     private final ObjectMapper objectMapper;
 
     public AiNewsReviewCardKindFactory(AiNewsEventService eventService,
                                        AiNewsProductionService productionService,
+                                       AiNewsReviewRoutingService reviewRoutingService,
                                        AuditEventService auditEventService,
                                        ObjectMapper objectMapper) {
         this.eventService = eventService;
         this.productionService = productionService;
+        this.reviewRoutingService = reviewRoutingService;
         this.auditEventService = auditEventService;
         this.objectMapper = objectMapper;
     }
@@ -34,6 +38,6 @@ public class AiNewsReviewCardKindFactory {
                 AiNewsReviewCardPayload.class,
                 new AiNewsReviewCardRenderer(buttonValue),
                 new AiNewsReviewCardHandler(buttonValue, eventService, productionService,
-                        auditEventService, objectMapper));
+                        reviewRoutingService, auditEventService, objectMapper));
     }
 }

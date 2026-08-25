@@ -19,6 +19,7 @@ import vip.newsclaw.news.model.AiNewsEventDetail;
 import vip.newsclaw.news.model.AiNewsEventEntity;
 import vip.newsclaw.news.model.AiNewsEvidenceEntity;
 import vip.newsclaw.news.service.AiNewsEventService;
+import vip.newsclaw.news.service.AiNewsReviewRoutingService;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -39,6 +40,7 @@ public class AiNewsReviewCardTool {
     private final ChannelSessionStore channelSessionStore;
     private final ChannelManager channelManager;
     private final ObjectMapper objectMapper;
+    private final AiNewsReviewRoutingService reviewRoutingService;
 
     @Tool(name = "ai_news_review_card", description = "将已经写入 ai_news_event 的候选事件发送为飞书交互复核卡。"
             + "必须直接使用 ai_news_event 返回的事件 ID，不得从自然语言猜测 ID。"
@@ -71,11 +73,14 @@ public class AiNewsReviewCardTool {
                     AiNewsEventDetail detail = eventService.get(workspaceId, id);
                     AiNewsReviewCardPayload payload = payload(detail, origin.requesterId());
                     if (feishu.sendAiNewsReviewCard(session.getTargetId(), payload)) {
+                        recordDispatch(workspaceId, id, true, null);
                         sent.add(String.valueOf(id));
                     } else {
+                        recordDispatch(workspaceId, id, false, "飞书发送失败");
                         failed.add(Map.of("eventId", String.valueOf(id), "reason", "飞书发送失败"));
                     }
                 } catch (Exception e) {
+                    recordDispatch(workspaceId, id, false, safe(e.getMessage()));
                     failed.add(Map.of("eventId", String.valueOf(id), "reason", safe(e.getMessage())));
                 }
             }
@@ -98,7 +103,9 @@ public class AiNewsReviewCardTool {
                 .orElse(null);
         return new AiNewsReviewCardPayload(event.getWorkspaceId(), requester, event.getId(),
                 event.getTitle(), event.getSummary(), event.getCategory(), event.getStatus(),
-                event.getConfidence(), evidence.size(), verified, primaryTier);
+                event.getConfidence(), evidence.size(), verified, primaryTier,
+                Boolean.TRUE.equals(event.getReviewRequired()),
+                event.getReviewReasons() == null ? List.of() : event.getReviewReasons());
     }
 
     private static int rank(String tier) {
@@ -106,6 +113,16 @@ public class AiNewsReviewCardTool {
         if ("media".equalsIgnoreCase(tier)) return 1;
         if ("community".equalsIgnoreCase(tier)) return 2;
         return 3;
+    }
+
+    private void recordDispatch(Long workspaceId, Long eventId, boolean delivered, String error) {
+        try {
+            reviewRoutingService.recordCardDispatch(workspaceId, eventId, delivered, error);
+        } catch (Exception e) {
+            // Notification delivery is already decided. Keep its user-visible
+            // outcome truthful even when the secondary audit write is down.
+            log.warn("Unable to record AI-news review card dispatch for event {}: {}", eventId, e.getMessage());
+        }
     }
 
     private static Set<Long> parseIds(String raw) {

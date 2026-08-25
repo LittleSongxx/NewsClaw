@@ -33,7 +33,8 @@ class AiNewsLiveAgentBenchmarkTest {
                 Duration.ofSeconds(longProperty("ai.news.live.timeout-seconds", 240L)),
                 intProperty("ai.news.live.max-cases", 0),
                 System.getProperty("git.commit", "unknown"),
-                System.getProperty("ai.news.live.evaluation-tree", "unknown"), rawDirectory);
+                System.getProperty("ai.news.live.evaluation-tree", "unknown"), rawDirectory,
+                System.getProperty("ai.news.live.response-format", "text"));
         AiNewsLiveAgentBenchmarkRunner.LiveEvaluationResult result =
                 AiNewsLiveAgentBenchmarkRunner.run(benchmark, config);
 

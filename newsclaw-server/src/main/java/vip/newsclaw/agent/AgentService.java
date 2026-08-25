@@ -17,6 +17,8 @@ import vip.newsclaw.agent.progress.ProgressLedgerService;
 import vip.newsclaw.agent.repository.AgentMapper;
 import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.llm.chatmodel.ThinkingLevelHolder;
+import vip.newsclaw.llm.chatmodel.StructuredOutputFormat;
+import vip.newsclaw.llm.chatmodel.StructuredOutputFormatHolder;
 import vip.newsclaw.llm.event.ModelConfigChangedEvent;
 import vip.newsclaw.memory.MemoryProperties;
 import vip.newsclaw.memory.lifecycle.MemoryLifecycleMediator;
@@ -403,9 +405,31 @@ public class AgentService {
     public Flux<StreamDelta> chatStructuredStream(Long agentId, String message, String conversationId,
                                                    String requesterId, String thinkingLevel,
                                                    ChatOrigin origin) {
+        return chatStructuredStream(agentId, message, conversationId, requesterId, thinkingLevel,
+                StructuredOutputFormat.TEXT, origin);
+    }
+
+    /**
+     * Structured stream with an explicit per-request response contract.
+     *
+     * <p>{@code JSON_OBJECT} is intentionally accepted only for the native
+     * StateGraph ReAct path. Plan/execute and external runtimes can perform
+     * intermediate prose/model calls, so silently treating their final output
+     * as a strict contract would be misleading.
+     */
+    public Flux<StreamDelta> chatStructuredStream(Long agentId, String message, String conversationId,
+                                                   String requesterId, String thinkingLevel,
+                                                   StructuredOutputFormat responseFormat,
+                                                   ChatOrigin origin) {
+        StructuredOutputFormat effectiveResponseFormat = responseFormat == null
+                ? StructuredOutputFormat.TEXT : responseFormat;
         clearAutoRecordedForNewTurn(conversationId);
         memoryRecallTracker.trackRecalls(agentId, message);
         if (isDshAgent(agentId)) {
+            if (effectiveResponseFormat.requiresJsonObject()) {
+                return Flux.error(new NewsClawException(422,
+                        "responseFormat=json_object is unavailable for this external Agent runtime"));
+            }
             AgentEntity dshAgent = getAgent(agentId);
             return withLifecycleFlux(agentId, message, conversationId,
                     (msg, convId) -> Flux.using(
@@ -416,46 +440,71 @@ public class AgentService {
                                     connection.prompt(msg)),
                             connection -> connection.close()),
                     StreamDelta::content)
-                    .doFinally(signal -> ThinkingLevelHolder.clear());
+                    .doFinally(signal -> {
+                        ThinkingLevelHolder.clear();
+                        StructuredOutputFormatHolder.clear();
+                    });
         }
         BaseAgent agent = getOrBuildAgentForConversation(agentId, conversationId);
-
-        // 设置请求级思考深度（通过 ThreadLocal 传递到 StateGraph 执行）
-        if (thinkingLevel != null && !thinkingLevel.isBlank()) {
-            ThinkingLevelHolder.set(thinkingLevel);
-        } else {
-            // 尝试从 Agent 默认配置读取
-            AgentEntity entity = getAgent(agentId);
-            if (entity != null && entity.getDefaultThinkingLevel() != null) {
-                ThinkingLevelHolder.set(entity.getDefaultThinkingLevel());
-            } else {
-                ThinkingLevelHolder.clear();
-            }
+        if (effectiveResponseFormat.requiresJsonObject()
+                && !(agent instanceof vip.newsclaw.agent.graph.StateGraphReActAgent)) {
+            return Flux.error(new NewsClawException(422,
+                    "responseFormat=json_object currently requires a native ReAct Agent"));
         }
 
         ChatOrigin captured = origin != null ? origin : ChatOrigin.EMPTY;
         if (agent instanceof StructuredStreamCapable capable) {
             return Flux.defer(() -> {
                         ChatOriginHolder.set(captured);
+                        configureThinkingLevel(agentId, thinkingLevel);
+                        StructuredOutputFormatHolder.set(effectiveResponseFormat);
                         return withLifecycleFlux(agentId, message, conversationId,
                                 (msg, convId) -> capable.chatStructuredStream(msg, convId,
                                                 requesterId != null ? requesterId : "")
-                                        .doFinally(signal -> ThinkingLevelHolder.clear()),
+                                        .doFinally(signal -> {
+                                            ThinkingLevelHolder.clear();
+                                            StructuredOutputFormatHolder.clear();
+                                        }),
                                 StreamDelta::content);
                     })
-                    .doFinally(signal -> ChatOriginHolder.clear());
+                    .doFinally(signal -> {
+                        ChatOriginHolder.clear();
+                        ThinkingLevelHolder.clear();
+                        StructuredOutputFormatHolder.clear();
+                    });
         }
 
         // 降级：不支持结构化流的 Agent，包装为纯内容流
-        ThinkingLevelHolder.clear();
+        if (effectiveResponseFormat.requiresJsonObject()) {
+            return Flux.error(new NewsClawException(422,
+                    "responseFormat=json_object requires a structured native Agent stream"));
+        }
         return Flux.defer(() -> {
                     ChatOriginHolder.set(captured);
+                    configureThinkingLevel(agentId, thinkingLevel);
                     return withLifecycleFlux(agentId, message, conversationId,
                             (msg, convId) -> agent.chatStream(msg, convId)
                                     .map(chunk -> new StreamDelta(chunk, null)),
                             StreamDelta::content);
                 })
-                .doFinally(signal -> ChatOriginHolder.clear());
+                .doFinally(signal -> {
+                    ChatOriginHolder.clear();
+                    ThinkingLevelHolder.clear();
+                    StructuredOutputFormatHolder.clear();
+                });
+    }
+
+    private void configureThinkingLevel(Long agentId, String thinkingLevel) {
+        if (thinkingLevel != null && !thinkingLevel.isBlank()) {
+            ThinkingLevelHolder.set(thinkingLevel);
+            return;
+        }
+        AgentEntity entity = getAgent(agentId);
+        if (entity != null && entity.getDefaultThinkingLevel() != null) {
+            ThinkingLevelHolder.set(entity.getDefaultThinkingLevel());
+        } else {
+            ThinkingLevelHolder.clear();
+        }
     }
 
     public String execute(Long agentId, String goal, String conversationId) {

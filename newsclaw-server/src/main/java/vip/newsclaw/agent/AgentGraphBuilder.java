@@ -1038,6 +1038,8 @@ public class AgentGraphBuilder {
                     streamingHelper, conversationWindowManager, streamTracker,
                     configuredMaxOutputTokens, wikiContextService,
                     skillCatalogRenderer, toolDisclosureService, progressLedgerService);
+            reasoningNode.setNativeJsonObjectResponseFormatSupported(
+                    supportsNativeJsonObjectResponseFormat(primaryModelConfig, chatModel));
             reasoningNode.setPrefixBudgetPlan(prefixBudgetPlan);
             reasoningNode.setAutoDemotedTools(autoDemotedTools);
             // C4: wire the environment-notification registry so ReasoningNode
@@ -1244,6 +1246,25 @@ public class AgentGraphBuilder {
                     .build());
         } catch (Exception e) {
             throw new NewsClawException("err.agent.graph_compile_failed", "StateGraph v2 编译失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * JSON-object mode is an explicit OpenAI-compatible wire contract. Do not
+     * infer it from a model name: an Anthropic/DashScope/Gemini adapter can
+     * share a name family while using a different request schema.
+     */
+    private boolean supportsNativeJsonObjectResponseFormat(ModelConfigEntity model, ChatModel chatModel) {
+        if (model == null) {
+            return chatModel instanceof org.springframework.ai.openai.OpenAiChatModel;
+        }
+        try {
+            ModelProviderEntity provider = modelProviderService.getProviderConfig(model.getProvider());
+            return ModelProtocol.fromChatModel(provider.getChatModel()) == ModelProtocol.OPENAI_COMPATIBLE;
+        } catch (Exception e) {
+            log.debug("Unable to resolve JSON-object capability for model {}/{}: {}",
+                    model.getProvider(), model.getModelName(), e.getMessage());
+            return false;
         }
     }
 

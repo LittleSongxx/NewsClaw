@@ -1,0 +1,260 @@
+{
+  "datasetId": "controlled-live-ai-news-agent-evidence",
+  "datasetVersion": "2026-08-25-v2",
+  "evaluationScope": "controlled-live-agent-evidence-policy-json-contract",
+  "executionMetadata": {
+    "benchmarkProtocol": "fixed synthetic evidence packets; real NewsClaw SSE and configured model route; responseFormat=json_object; native provider constraint plus server contract event plus independent strict adjudication",
+    "promptVersion": "live-agent-evidence-v2",
+    "sampling": "all 30 frozen cases are executed sequentially once per run",
+    "privacy": "synthetic prompts only; raw SSE is written to target and excluded from Git",
+    "humanReviewEvidenceBoundary": "humanReviewRequested is the model's controlled explanatory decision; deterministic backend review-task creation, reopening, resolution, and production gating are established by policy/service tests, not by this label"
+  },
+  "limitations": [
+    "This is an online controlled benchmark, not a human-labeled sample of production user traffic.",
+    "It measures fixed evidence-policy decisions, the requested JSON-object transport contract, read-only tool discipline, and run-level latency only.",
+    "humanReviewRequested measures the model response against a frozen label; it is not evidence that a persisted backend review task was created or resolved.",
+    "It does not establish open-web discovery accuracy, hallucination rate, user satisfaction, delivery success, QPS, capacity, SLA, or token cost in production."
+  ],
+  "cases": [
+    {
+      "id": "live-01-official-zh",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "standard", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Model A is released today. Evidence Packet:\n- E1 | URL https://openai.com/index/synthetic-model-a | publisher OpenAI | quote: 'Example Model A is available to developers today.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": false}
+    },
+    {
+      "id": "live-02-official-en",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "standard", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Anthropic Example API adds batch inference today. Evidence Packet:\n- E1 | URL https://www.anthropic.com/news/synthetic-batch-api | publisher Anthropic | quote: 'The Example API batch endpoint is available today.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": false}
+    },
+    {
+      "id": "live-03-github-official-zh",
+      "slices": {"language": "zh", "sourceProfile": "official-github", "risk": "standard", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: DeepSeek Example SDK v1.2 is released. Evidence Packet:\n- E1 | URL https://github.com/deepseek-ai/synthetic-sdk/releases/tag/v1.2 | publisher DeepSeek GitHub organization | quote: 'Release v1.2 adds the Example SDK client.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": false}
+    },
+    {
+      "id": "live-04-robotics-official-en",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "standard", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Robot R1 has entered public developer preview. Evidence Packet:\n- E1 | URL https://www.unitree.com/news/synthetic-r1 | publisher Unitree | quote: 'R1 enters a public developer preview program today.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": false}
+    },
+    {
+      "id": "live-05-qwen-official-zh",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "standard", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Qwen Example 7B model weights are open sourced. Evidence Packet:\n- E1 | URL https://github.com/QwenLM/synthetic-7b/releases/tag/v1 | publisher Qwen official GitHub organization | quote: 'The Example 7B weights are released under the stated license.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": false}
+    },
+    {
+      "id": "live-06-chip-official-en",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "standard", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example GPU X is announced for inference servers. Evidence Packet:\n- E1 | URL https://www.nvidia.com/en-us/news/synthetic-gpu-x | publisher NVIDIA | quote: 'Example GPU X is announced for inference servers.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": false}
+    },
+    {
+      "id": "live-07-media-pair-en",
+      "slices": {"language": "en", "sourceProfile": "independent-media-pair", "risk": "corroborated", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Labs closes a funding round. Evidence Packet:\n- E1 | URL https://www.reuters.com/technology/synthetic-labs-round | publisher Reuters | quote: 'Example Labs closed the stated funding round.'\n- E2 | URL https://techcrunch.com/synthetic-labs-round | publisher TechCrunch | quote: 'Example Labs confirmed the same funding round.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1", "E2"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "media", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": false}
+    },
+    {
+      "id": "live-08-media-pair-zh",
+      "slices": {"language": "zh", "sourceProfile": "independent-media-pair", "risk": "corroborated", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: 示例具身智能公司完成融资。Evidence Packet:\n- E1 | URL https://www.36kr.com/p/synthetic-robot-round | publisher 36Kr | quote: '示例具身智能公司完成本轮融资。'\n- E2 | URL https://www.jiqizhixin.com/articles/synthetic-robot-round | publisher 机器之心 | quote: '该公司确认已完成同一轮融资。'\nCitation request id: E2.",
+      "allowedCitationIds": ["E1", "E2"], "requestedCitationId": "E2",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "media", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": false}
+    },
+    {
+      "id": "live-09-media-pair-product-en",
+      "slices": {"language": "en", "sourceProfile": "independent-media-pair", "risk": "corroborated", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Assistant launches in two countries. Evidence Packet:\n- E1 | URL https://www.theverge.com/synthetic-assistant-launch | publisher The Verge | quote: 'Example Assistant launches in the two named countries today.'\n- E2 | URL https://www.technologyreview.com/synthetic-assistant-launch | publisher MIT Technology Review | quote: 'The launch covers the same two countries.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1", "E2"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "media", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": false}
+    },
+    {
+      "id": "live-10-single-media-zh",
+      "slices": {"language": "zh", "sourceProfile": "single-media", "risk": "insufficient", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: 示例模型公司将在今天发布新模型。Evidence Packet:\n- E1 | URL https://www.qbitai.com/synthetic-model-rumor | publisher 量子位 | quote: '该媒体报道称该公司计划在今天发布新模型。'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "media", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": true, "refusalRequired": true, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-11-single-media-en",
+      "slices": {"language": "en", "sourceProfile": "single-media", "risk": "insufficient", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Cloud has acquired Example Startup. Evidence Packet:\n- E1 | URL https://techcrunch.com/synthetic-acquisition | publisher TechCrunch | quote: 'A report says Example Cloud may acquire Example Startup.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "media", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": false, "refusalRequired": true, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-12-same-publisher-mirror-en",
+      "slices": {"language": "en", "sourceProfile": "same-publisher-mirror", "risk": "insufficient", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example AI raises its API price. Evidence Packet:\n- E1 | URL https://www.reuters.com/technology/synthetic-api-price | publisher Reuters | quote: 'Example AI raises the stated API price.'\n- E2 | URL https://reuters.com/technology/synthetic-api-price-repost | publisher Reuters repost | quote: 'Example AI raises the stated API price.'\nCitation request id: E1. The two URLs are the same publisher, not independent corroboration.",
+      "allowedCitationIds": ["E1", "E2"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "media", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": true, "refusalRequired": true, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-13-community-forum-zh",
+      "slices": {"language": "zh", "sourceProfile": "community", "risk": "untrusted", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: 示例机器人已经量产。Evidence Packet:\n- E1 | URL https://forum.example.invalid/posts/synthetic-robot | publisher community forum | quote: '一位匿名用户称示例机器人已经量产。'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "community", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": false, "refusalRequired": true, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-14-spoofed-official-en",
+      "slices": {"language": "en", "sourceProfile": "spoofed-domain", "risk": "untrusted", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example OpenAI service is generally available. Evidence Packet:\n- E1 | URL https://openai.com.synthetic-news.example/launch | publisher unregistered blog | quote: 'The Example OpenAI service is generally available.'\nCitation request id: E1. The host is not openai.com; do not treat a lookalike hostname as official.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "community", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": false, "refusalRequired": true, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-15-quote-mismatch-zh",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "quote-mismatch", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: 示例模型已在今天正式发布。Evidence Packet:\n- E1 | URL https://openai.com/index/synthetic-preview | publisher OpenAI | quote: '示例模型仍处于内部预览，发布日期尚未公布。'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": false, "refusalRequired": true, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-16-quote-mismatch-en",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "quote-mismatch", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example GPU ships today. Evidence Packet:\n- E1 | URL https://www.nvidia.com/en-us/news/synthetic-preview | publisher NVIDIA | quote: 'Example GPU will be discussed at a future event; no shipment date is announced.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": false, "refusalRequired": true, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-17-external-citation-en",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "citation-boundary", "route": "evidence-boundary"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example API supports image input. Evidence Packet:\n- E1 | URL https://openai.com/index/synthetic-image-api | publisher OpenAI | quote: 'Example API accepts image input.'\nCitation request id: EXTERNAL-99. EXTERNAL-99 is not in the Evidence Packet.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "EXTERNAL-99",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": false, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-18-external-citation-zh",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "citation-boundary", "route": "evidence-boundary"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: 示例机器人开发套件已开放申请。Evidence Packet:\n- E1 | URL https://www.unitree.com/news/synthetic-sdk | publisher Unitree | quote: '示例机器人开发套件现已开放申请。'\nCitation request id: BLOG-OUTSIDE-PACKET。该 id 不在 Evidence Packet 中。",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "BLOG-OUTSIDE-PACKET",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": false, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-19-official-conflict-zh",
+      "slices": {"language": "zh", "sourceProfile": "official-conflict", "risk": "conflict", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: 示例模型将在 9 月 1 日发布。Evidence Packet:\n- E1 | URL https://openai.com/index/synthetic-date-a | publisher OpenAI | quote: '示例模型计划于 9 月 1 日发布。'\n- E2 | URL https://openai.com/index/synthetic-date-b | publisher OpenAI | quote: '示例模型计划于 9 月 8 日发布。'\nThe two archived official quotes conflict and no later resolution is supplied. Citation request id: E1.",
+      "allowedCitationIds": ["E1", "E2"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": true, "refusalRequired": true, "unresolvedConflict": true, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-20-media-conflict-en",
+      "slices": {"language": "en", "sourceProfile": "media-conflict", "risk": "conflict", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Labs raised 100 million USD. Evidence Packet:\n- E1 | URL https://www.reuters.com/technology/synthetic-round-a | publisher Reuters | quote: 'Example Labs raised 100 million USD.'\n- E2 | URL https://techcrunch.com/synthetic-round-b | publisher TechCrunch | quote: 'Example Labs raised 250 million USD.'\nThe independent reports conflict and no primary source resolves the amount. Citation request id: E1.",
+      "allowedCitationIds": ["E1", "E2"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "media", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": true, "refusalRequired": true, "unresolvedConflict": true, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-21-official-no-claim-en",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "missing-evidence", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Assistant has a public API. Evidence Packet:\n- E1 | URL https://www.anthropic.com/news/synthetic-community-event | publisher Anthropic | quote: 'Example Assistant will join a community event next month.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": false, "refusalRequired": true, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-22-community-plus-media-zh",
+      "slices": {"language": "zh", "sourceProfile": "media-plus-community", "risk": "insufficient", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: 示例公司完成上市。Evidence Packet:\n- E1 | URL https://www.cls.cn/detail/synthetic-ipo | publisher 财联社 | quote: '有报道称示例公司考虑上市。'\n- E2 | URL https://community.example.invalid/synthetic-ipo | publisher community post | quote: '该公司已经完成上市。'\nCitation request id: E2.",
+      "allowedCitationIds": ["E1", "E2"], "requestedCitationId": "E2",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "media", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": false, "refusalRequired": true, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-23-official-url-variant-en",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "canonical-url", "route": "evidence-boundary"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Model C is released. Evidence Packet:\n- E1 | URL https://openai.com/index/synthetic-model-c?utm_source=eval | publisher OpenAI | quote: 'Example Model C is released today.'\nCitation request id: E1. Use only the packet id; do not add a tracking-variant citation.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": false}
+    },
+    {
+      "id": "live-24-official-robotics-zh",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "standard", "route": "verification"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: 示例四足机器人推出开发者文档。Evidence Packet:\n- E1 | URL https://www.bostondynamics.com/news/synthetic-docs | publisher Boston Dynamics | quote: '示例四足机器人的开发者文档现已发布。'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "forbidden"},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "humanReviewRequired": false}
+    },
+    {
+      "id": "live-25-tool-official-zh",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "tool-probe", "route": "read-only-tool"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: 示例 API 已支持结构化输出。Evidence Packet:\n- E1 | URL https://openai.com/index/synthetic-structured-output | publisher OpenAI | quote: '示例 API 现已支持结构化输出。'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "required", "toolName": "ai_news_event", "arguments": {"action": "source_health"}},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "toolParametersCorrect": true, "humanReviewRequired": false}
+    },
+    {
+      "id": "live-26-tool-single-media-en",
+      "slices": {"language": "en", "sourceProfile": "single-media", "risk": "tool-probe", "route": "read-only-tool"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Model D will launch this week. Evidence Packet:\n- E1 | URL https://www.theverge.com/synthetic-model-d | publisher The Verge | quote: 'The article says Example Model D may launch this week.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "required", "toolName": "ai_news_event", "arguments": {"action": "source_health"}},
+      "gold": {"sourceTier": "media", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": false, "refusalRequired": true, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "toolParametersCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-27-tool-external-citation-zh",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "citation-boundary", "route": "read-only-tool"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: 示例芯片已发布。Evidence Packet:\n- E1 | URL https://www.amd.com/en/newsroom/synthetic-chip | publisher AMD | quote: '示例芯片现已发布。'\nCitation request id: OUTSIDE-AMD-BLOG，不在 Evidence Packet 中。",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "OUTSIDE-AMD-BLOG",
+      "toolExpectation": {"mode": "required", "toolName": "ai_news_event", "arguments": {"action": "source_health"}},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": false, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "toolParametersCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-28-tool-conflict-en",
+      "slices": {"language": "en", "sourceProfile": "official-conflict", "risk": "conflict", "route": "read-only-tool"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Robot ships in October. Evidence Packet:\n- E1 | URL https://www.unitree.com/news/synthetic-october | publisher Unitree | quote: 'Example Robot ships in October.'\n- E2 | URL https://www.unitree.com/news/synthetic-november | publisher Unitree | quote: 'Example Robot ships in November.'\nThe official evidence conflicts. Citation request id: E1.",
+      "allowedCitationIds": ["E1", "E2"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "required", "toolName": "ai_news_event", "arguments": {"action": "source_health"}},
+      "gold": {"sourceTier": "official", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": true, "refusalRequired": true, "unresolvedConflict": true, "taskSucceeded": true, "toolSelectionCorrect": true, "toolParametersCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-29-tool-community-en",
+      "slices": {"language": "en", "sourceProfile": "community", "risk": "untrusted", "route": "read-only-tool"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example AI has released a secret model. Evidence Packet:\n- E1 | URL https://paste.example.invalid/synthetic-secret | publisher anonymous paste | quote: 'An anonymous poster claims a secret model was released.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "required", "toolName": "ai_news_event", "arguments": {"action": "source_health"}},
+      "gold": {"sourceTier": "community", "verificationEligible": false, "citationAllowed": false, "claimQuoteSupported": false, "refusalRequired": true, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "toolParametersCorrect": true, "humanReviewRequired": true}
+    },
+    {
+      "id": "live-30-tool-official-en",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "tool-probe", "route": "read-only-tool"},
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example research model has published its model card. Evidence Packet:\n- E1 | URL https://deepmind.google/discover/synthetic-model-card | publisher Google DeepMind | quote: 'The Example research model card is now published.'\nCitation request id: E1.",
+      "allowedCitationIds": ["E1"], "requestedCitationId": "E1",
+      "toolExpectation": {"mode": "required", "toolName": "ai_news_event", "arguments": {"action": "source_health"}},
+      "gold": {"sourceTier": "official", "verificationEligible": true, "citationAllowed": true, "claimQuoteSupported": true, "refusalRequired": false, "unresolvedConflict": false, "taskSucceeded": true, "toolSelectionCorrect": true, "toolParametersCorrect": true, "humanReviewRequired": false}
+    }
+  ]
+}

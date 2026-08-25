@@ -15,6 +15,7 @@ import vip.newsclaw.news.model.AiNewsEventDetail;
 import vip.newsclaw.news.model.AiNewsEventEntity;
 import vip.newsclaw.news.model.AiNewsEvidenceEntity;
 import vip.newsclaw.news.service.AiNewsEventService;
+import vip.newsclaw.news.service.AiNewsReviewRoutingService;
 
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +42,7 @@ class AiNewsReviewCardToolTest {
     private ChannelManager channelManager;
     private FeishuChannelAdapter feishu;
     private ObjectMapper objectMapper;
+    private AiNewsReviewRoutingService reviewRoutingService;
     private AiNewsReviewCardTool tool;
 
     @BeforeEach
@@ -50,7 +52,9 @@ class AiNewsReviewCardToolTest {
         channelManager = mock(ChannelManager.class);
         feishu = mock(FeishuChannelAdapter.class);
         objectMapper = new ObjectMapper();
-        tool = new AiNewsReviewCardTool(eventService, sessionStore, channelManager, objectMapper);
+        reviewRoutingService = mock(AiNewsReviewRoutingService.class);
+        tool = new AiNewsReviewCardTool(eventService, sessionStore, channelManager, objectMapper,
+                reviewRoutingService);
     }
 
     @Test
@@ -80,6 +84,8 @@ class AiNewsReviewCardToolTest {
                 .allMatch(payload -> WORKSPACE_ID == payload.workspaceId()
                         && REQUESTER_ID.equals(payload.requesterOpenId())));
         assertEquals("official", payloads.getAllValues().getFirst().primaryEvidenceTier());
+        verify(reviewRoutingService).recordCardDispatch(WORKSPACE_ID, 101L, true, null);
+        verify(reviewRoutingService).recordCardDispatch(WORKSPACE_ID, 102L, true, null);
     }
 
     @Test
@@ -95,6 +101,8 @@ class AiNewsReviewCardToolTest {
         assertTrue(result.get("sent").isEmpty());
         assertEquals("999", result.get("failed").get(0).get("eventId").asText());
         assertTrue(result.get("failed").get(0).get("reason").asText().contains("workspace"));
+        verify(reviewRoutingService).recordCardDispatch(WORKSPACE_ID, 999L, false,
+                "事件不存在或不属于当前 workspace");
         verify(feishu, never()).sendAiNewsReviewCard(any(), any());
     }
 

@@ -28,6 +28,7 @@ import vip.newsclaw.workspace.conversation.ConversationService;
 import vip.newsclaw.workspace.conversation.MessageMetadataJson;
 import vip.newsclaw.workspace.conversation.model.MessageContentPart;
 import vip.newsclaw.workspace.conversation.model.MessageEntity;
+import vip.newsclaw.llm.chatmodel.StructuredOutputFormat;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -170,6 +171,13 @@ public class ChatController {
             return emitter;
         }
         String username = auth.getName();
+        final StructuredOutputFormat responseFormat;
+        try {
+            responseFormat = StructuredOutputFormat.fromWire(request.getResponseFormat());
+        } catch (IllegalArgumentException e) {
+            sendErrorDoneAndComplete(emitter, e.getMessage());
+            return emitter;
+        }
         log.info("SSE chat: agentId={}, conversationId={}, user={}", agentId, conversationId, username);
 
         // ---- Workspace 边界校验：确保 agent 属于当前 workspace ----
@@ -566,6 +574,7 @@ public class ChatController {
         try {
             sendEvent(emitter, "stream_started", Map.of(
                     "conversationId", conversationId,
+                    "responseFormat", responseFormat.wireValue(),
                     "timestamp", System.currentTimeMillis()
             ));
         } catch (IOException e) {
@@ -617,7 +626,8 @@ public class ChatController {
                         memoryOrigin(conversationId, username, requesterUserIdOf(auth), workspaceId, request.getEndUserId())
                                 .withBaseUrl(requestBaseUrl)
                                 .withOriginMessageId(originMessageId);
-                Disposable disposable = agentService.chatStructuredStream(agentId, promptText, conversationId, username, request.getThinkingLevel(), webOrigin)
+                Disposable disposable = agentService.chatStructuredStream(agentId, promptText, conversationId,
+                                username, request.getThinkingLevel(), responseFormat, webOrigin)
                         .doOnNext(delta -> {
                             if (emitterDone.get()) return;
                             try {
@@ -673,14 +683,21 @@ public class ChatController {
                             boolean wasStopped = streamTracker.isStopRequested(conversationId);
                             ChatStreamTracker.InterruptType interruptType = streamTracker.getInterruptType(conversationId);
                             boolean isInterruptFollowup = interruptType == ChatStreamTracker.InterruptType.USER_INTERRUPT_WITH_FOLLOWUP;
-                            boolean isError = accumulator.getContent() != null
-                                    && accumulator.getContent().startsWith("[错误] ");
-                            String persistStatus = derivePersistStatus(
+                            String assistantText = accumulator.getContent();
+                            boolean isError = assistantText != null && assistantText.startsWith("[错误] ");
+                            StructuredOutputContract.Validation outputContract = StructuredOutputContract.validate(
+                                    responseFormat, assistantText,
+                                    !wasStopped && !isError && !accumulator.isAwaitingApproval());
+                            if (responseFormat.requiresJsonObject()) {
+                                accumulator.recordStructuredOutputContract(outputContract.payload());
+                                broadcastEvent(conversationId, "structured_output", outputContract.payload());
+                            }
+                            boolean contractFailed = outputContract.violatesContract();
+                            String persistStatus = contractFailed ? "contract_failed" : derivePersistStatus(
                                     accumulator.isAwaitingApproval(), isError, wasStopped, interruptType);
                             try {
                                 MessageEntity savedAssistant = null;
                                 List<MessageContentPart> assistantParts = accumulator.toAssistantParts();
-                                String assistantText = accumulator.getContent();
                                 if (!assistantText.isBlank() || !assistantParts.isEmpty()) {
                                     String savedText = assistantText.isBlank() && wasStopped
                                             ? (isInterruptFollowup ? "[已中断]" : "[已停止生成]") : assistantText;
@@ -705,7 +722,7 @@ public class ChatController {
                                 // RFC-049 follow-up: also skip on isError — error turns persist
                                 // garbage like "[错误] Bad request..." as the assistant reply,
                                 // which would pollute the memory extraction pipeline if propagated.
-                                if (!wasStopped && !isError) {
+                                if (!wasStopped && !isError && !contractFailed) {
                                     // Attribute the memory write to the same owner the read
                                     // path recalled this turn — the publish runs in a reactive
                                     // completion callback after the origin holder is cleared,
@@ -898,6 +915,12 @@ public class ChatController {
                                 log.warn("SSE client disconnected: conversationId={}, cause={}", conversationId, e.getMessage());
                             } else {
                                 log.error("SSE stream error: conversationId={}, cause={}", conversationId, e.getMessage());
+                                if (responseFormat.requiresJsonObject()) {
+                                    StructuredOutputContract.Validation outputContract = StructuredOutputContract.notCompleted(
+                                            responseFormat, e.getMessage());
+                                    accumulator.recordStructuredOutputContract(outputContract.payload());
+                                    broadcastEvent(conversationId, "structured_output", outputContract.payload());
+                                }
                             }
 
                             try {
@@ -1382,6 +1405,8 @@ public class ChatController {
         private String modelProvider;
         /** Model id the user picked for this conversation. See {@link #modelProvider}. */
         private String modelName;
+        /** Optional strict terminal response contract: text (default) or json_object. */
+        private String responseFormat;
         /**
          * Optional third-party end-user identifier — see
          * {@link ChatRequest#getEndUserId()}. Isolates memory per external

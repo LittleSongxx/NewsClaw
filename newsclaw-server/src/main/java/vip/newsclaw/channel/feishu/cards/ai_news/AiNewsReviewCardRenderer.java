@@ -83,6 +83,12 @@ public class AiNewsReviewCardRenderer implements FeishuCardRenderer<AiNewsReview
         if (payload.confidence() != null) {
             text.append("置信度：").append(Math.round(payload.confidence() * 100)).append("%\n");
         }
+        if (payload.reviewRequired()) {
+            String reasons = payload.reviewReasons() == null || payload.reviewReasons().isEmpty()
+                    ? "后端策略要求人工复核"
+                    : String.join("、", payload.reviewReasons());
+            text.append("复核原因：").append(markdown(reasons, 300)).append("\n");
+        }
         if (payload.summary() != null && !payload.summary().isBlank()) {
             text.append("\n").append(markdown(payload.summary(), 500)).append("\n");
         }

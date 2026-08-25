@@ -12,6 +12,7 @@ import vip.newsclaw.channel.feishu.cards.tool_guard.ToolGuardButtonValue;
 import vip.newsclaw.channel.feishu.cards.tool_guard.ToolGuardCardKindFactory;
 import vip.newsclaw.news.service.AiNewsEventService;
 import vip.newsclaw.news.service.AiNewsProductionService;
+import vip.newsclaw.news.service.AiNewsReviewRoutingService;
 
 import java.util.Optional;
 
@@ -33,7 +34,7 @@ class FeishuCardDispatcherTest {
                 new ObjectMapper());
         AiNewsReviewCardKindFactory aiNewsFactory = new AiNewsReviewCardKindFactory(
                 mock(AiNewsEventService.class), mock(AiNewsProductionService.class),
-                mock(AuditEventService.class), new ObjectMapper());
+                mock(AiNewsReviewRoutingService.class), mock(AuditEventService.class), new ObjectMapper());
         return new FeishuCardDispatcher(factory, aiNewsFactory);
     }
 

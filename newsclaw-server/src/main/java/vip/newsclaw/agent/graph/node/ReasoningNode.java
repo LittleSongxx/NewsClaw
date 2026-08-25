@@ -14,11 +14,15 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.ResponseFormat;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.util.StringUtils;
 import vip.newsclaw.agent.AgentToolSet;
 import vip.newsclaw.agent.GraphEventPublisher;
 import vip.newsclaw.llm.chatmodel.ThinkingLevelHolder;
+import vip.newsclaw.llm.chatmodel.StructuredOutputFormat;
+import vip.newsclaw.llm.chatmodel.StructuredOutputFormatHolder;
+import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.agent.graph.NodeStreamingChatHelper;
 import vip.newsclaw.agent.context.ConversationWindowManager;
 import vip.newsclaw.agent.context.LoopBudgetConfig;
@@ -459,6 +463,8 @@ public class ReasoningNode implements NodeAction {
      * override is dropped on chat-type models that cannot honor it.
      */
     private final boolean supportsReasoningEffort;
+    /** Explicit graph-build capability, not inferred from an arbitrary ChatModel wrapper. */
+    private boolean nativeJsonObjectResponseFormatSupported;
     private final NodeStreamingChatHelper streamingHelper;
     private final ConversationWindowManager conversationWindowManager;
     private final ChatStreamTracker streamTracker;
@@ -658,6 +664,7 @@ public class ReasoningNode implements NodeAction {
         this.toolDisclosureService = toolDisclosureService;
         this.reasoningEffort = reasoningEffort;
         this.supportsReasoningEffort = supportsReasoningEffort;
+        this.nativeJsonObjectResponseFormatSupported = chatModel instanceof org.springframework.ai.openai.OpenAiChatModel;
         this.streamingHelper = streamingHelper;
         this.conversationWindowManager = conversationWindowManager;
         this.streamTracker = streamTracker;
@@ -714,6 +721,7 @@ public class ReasoningNode implements NodeAction {
         this.toolDisclosureService = null;
         this.reasoningEffort = null;
         this.supportsReasoningEffort = false;
+        this.nativeJsonObjectResponseFormatSupported = chatModel instanceof org.springframework.ai.openai.OpenAiChatModel;
         this.streamingHelper = null;
         this.conversationWindowManager = null;
         this.streamTracker = null;
@@ -721,6 +729,11 @@ public class ReasoningNode implements NodeAction {
         this.wikiContextService = null;
         this.skillCatalogRenderer = null;
         this.progressLedgerService = null;
+    }
+
+    /** Set by {@code AgentGraphBuilder} from the selected provider protocol. */
+    public void setNativeJsonObjectResponseFormatSupported(boolean supported) {
+        this.nativeJsonObjectResponseFormatSupported = supported;
     }
 
     @Override
@@ -1602,9 +1615,14 @@ public class ReasoningNode implements NodeAction {
      * - AnthropicChatModel → AnthropicChatOptions（支持 extended thinking）
      * - 其他（OpenAI/DashScope）→ OpenAiChatOptions（支持 reasoningEffort）
      */
-    private ChatOptions buildChatOptions(String effectiveReasoning, List<ToolCallback> activeCallbacks) {
+    ChatOptions buildChatOptions(String effectiveReasoning, List<ToolCallback> activeCallbacks) {
+        StructuredOutputFormat responseFormat = StructuredOutputFormatHolder.get();
         // Anthropic 协议模型（AnthropicChatModel）：MiniMax 也用此协议但不支持 thinking
         if (chatModel instanceof org.springframework.ai.anthropic.AnthropicChatModel anthropicModel) {
+            if (responseFormat.requiresJsonObject()) {
+                throw new NewsClawException(422,
+                        "responseFormat=json_object is unsupported by the selected Anthropic protocol model");
+            }
             org.springframework.ai.anthropic.AnthropicChatOptions.Builder builder =
                     org.springframework.ai.anthropic.AnthropicChatOptions.builder()
                     .toolCallbacks(activeCallbacks)
@@ -1654,6 +1672,13 @@ public class ReasoningNode implements NodeAction {
         OpenAiChatOptions.Builder oaiBuilder = OpenAiChatOptions.builder()
                 .toolCallbacks(activeCallbacks)
                 .maxTokens(effectiveMaxTokens);
+        if (responseFormat.requiresJsonObject()) {
+            if (!nativeJsonObjectResponseFormatSupported) {
+                throw new NewsClawException(422,
+                        "responseFormat=json_object is unsupported by the selected model protocol");
+            }
+            oaiBuilder.responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_OBJECT, null));
+        }
         if (StringUtils.hasText(effectiveReasoning)) {
             oaiBuilder.reasoningEffort(effectiveReasoning);
         }

@@ -12,6 +12,24 @@
 
 受控在线基准的执行、工件、指标和简历边界见 [受控在线 Agent 评测](ai-news-live-agent-evaluation.md)。
 
+已测得的两轮受控在线基线及其 SHA-256 可复核摘要见[基线归档](evidence/ai-news-controlled-live-baseline-20260825.md)。其中的冻结合成标签不会被表述为生产用户流量的人类评分。
+
+## P0 契约与人工复核闭环证据
+
+受控在线 v2 默认请求 `responseFormat=json_object`，同时保留三类证据：`stream_started` 的格式确认、`structured_output` 的服务端严格校验，以及 runner 独立严格解析结果。服务端拒绝 Markdown fence、数组、前后缀和 trailing token；不支持 JSON Object 原生约束的 Agent 路径显式失败，默认 `text` 客户端保持兼容。在线结果只能说明这次真实模型/SSE 路径遵守了固定输出协议。
+
+人工复核闭环不依赖模型自报。`AiNewsReviewPolicy` 只读取事件、证据和抓取审计，通过策略版本与风险指纹创建、保持、关闭或重新打开持久化任务；`AiNewsReviewRoutingService` 要求显式操作者和复核结论，并在开始生产前重新计算风险。飞书卡片只是通知 transport，发送失败不会删除待办，Agent 的核验动作也不能自动清空待办。
+
+这部分证据分别由以下测试承担：
+
+| 证据 | 聚焦测试 |
+| --- | --- |
+| JSON Object 解析、SSE 事件和模型请求选项 | `StructuredOutputFormatTest`、`StructuredOutputContractTest`、`ReasoningNodeStructuredOutputTest`、`AiNewsLiveAgentBenchmarkRunnerTest` |
+| 风险原因、指纹稳定性、解决后保持及风险变化重开 | `AiNewsReviewPolicyTest`、`AiNewsReviewRoutingServiceTest` |
+| `verified` 之后仍受复核任务约束的生产门禁 | `AiNewsEventServiceTest` |
+| 身份绑定卡片操作和发送审计 | `AiNewsReviewCardHandlerTest`、`AiNewsReviewCardToolTest`、`FeishuCardDispatcherTest` |
+| H2 空库迁移到复核队列表 | `AiNewsMigrationSmokeTest` |
+
 ## 离线策略基准
 
 执行：
@@ -47,7 +65,7 @@ target/ai-news-policy-quality-report.md
 | `taskSuccess` P/R/F1 | 任务结果成功 | 受控在线层是严格协议成功，真实业务层才是人工裁定任务成功；当金标要求拒绝时，正确拒绝同样是成功。 |
 | `toolSelectionCorrect` P/R/F1 | 工具集合和执行顺序正确 | 受控在线层仅覆盖冻结的只读工具契约；真实工具正确性需由抽样 trace 复核。 |
 | `toolParametersCorrect` P/R/F1 | 工具参数符合 schema 与业务边界 | 受控在线层检查冻结参数契约，真实业务场景需保留复核证据。 |
-| `humanReviewRouting` P/R/F1 | 需要人工时正确路由到人工复核 | 衡量 HITL 路由，不把所有自动化尝试都视作成功。 |
+| `humanReviewRouting` P/R/F1 | 需要人工时给出正确的模型解释性决策 | 受控在线层不等同于持久化后端路由；真实任务创建、重开、解决和生产门禁由确定性策略测试单独证明。 |
 
 二分类指标的 JSON 工件会记录 `truePositive`、`falsePositive`、`falseNegative`、`trueNegative`、准确率（`value`）、Precision、Recall 和 F1。`n/a` 表示该数据集没有该指标的标注，不会用虚假的满分补齐。
 

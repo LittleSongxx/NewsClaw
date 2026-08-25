@@ -3,6 +3,7 @@ package vip.newsclaw.news.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,12 +15,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /** Persists every official-source capture outcome in an independent transaction. */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiNewsCaptureAttemptService {
 
     private final AiNewsCaptureAttemptMapper mapper;
     private final ObjectMapper objectMapper;
+    private final AiNewsReviewRoutingService reviewRoutingService;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AiNewsCaptureAttemptEntity record(Long workspaceId, Long eventId,
@@ -42,6 +45,13 @@ public class AiNewsCaptureAttemptService {
         row.setUpdateTime(now);
         row.setDeleted(0);
         mapper.insert(row);
+        try {
+            reviewRoutingService.sync(workspaceId, eventId);
+        } catch (Exception e) {
+            // Capture audit remains durable even if a second queue write is unavailable.
+            // beginProduction re-evaluates the policy before it can proceed.
+            log.warn("AI-news review routing after capture attempt failed for event {}: {}", eventId, e.getMessage());
+        }
         return row;
     }
 

@@ -1,5 +1,7 @@
 package vip.newsclaw.channel.feishu.cards.ai_news;
 
+import java.util.List;
+
 /** Immutable, bounded projection rendered into one event-review card. */
 public record AiNewsReviewCardPayload(
         Long workspaceId,
@@ -12,6 +14,8 @@ public record AiNewsReviewCardPayload(
         Double confidence,
         int evidenceCount,
         int verifiedEvidenceCount,
-        String primaryEvidenceTier
+        String primaryEvidenceTier,
+        boolean reviewRequired,
+        List<String> reviewReasons
 ) {
 }

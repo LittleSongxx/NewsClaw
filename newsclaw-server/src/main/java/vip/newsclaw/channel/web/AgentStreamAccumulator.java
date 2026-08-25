@@ -111,6 +111,8 @@ public final class AgentStreamAccumulator {
      * which sidecar (if any) was invoked.
      */
     private Map<String, Object> routingDecision = null;
+    /** Terminal result for an opt-in JSON response contract, persisted for audit/debugging. */
+    private Map<String, Object> structuredOutputContract = null;
 
     public AgentStreamAccumulator(ObjectMapper objectMapper, Sink sink) {
         this.objectMapper = objectMapper;
@@ -452,6 +454,10 @@ public final class AgentStreamAccumulator {
     public String getFinishReason() { return finishReason; }
     public boolean segmentsEmpty() { return segments.isEmpty(); }
 
+    public synchronized void recordStructuredOutputContract(Map<String, Object> result) {
+        structuredOutputContract = result == null ? null : new LinkedHashMap<>(result);
+    }
+
     public synchronized List<MessageContentPart> toAssistantParts() {
         List<MessageContentPart> parts = new ArrayList<>();
         if (!getContent().isBlank()) {
@@ -563,6 +569,9 @@ public final class AgentStreamAccumulator {
             }
             if (routingDecision != null && !routingDecision.isEmpty()) {
                 metadata.put("routing", routingDecision);
+            }
+            if (structuredOutputContract != null && !structuredOutputContract.isEmpty()) {
+                metadata.put("structuredOutput", structuredOutputContract);
             }
             return objectMapper.writeValueAsString(metadata);
         } catch (Exception e) {

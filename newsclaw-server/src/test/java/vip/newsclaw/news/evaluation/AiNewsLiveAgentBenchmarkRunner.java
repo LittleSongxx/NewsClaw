@@ -79,9 +79,10 @@ final class AiNewsLiveAgentBenchmarkRunner {
             String conversationId = runId + "-" + benchmarkCase.id();
             CaseRun run;
             try {
-                run = client.execute(token, config.workspaceId(), config.agentId(), conversationId, benchmarkCase);
+                run = client.execute(token, config.workspaceId(), config.agentId(), conversationId,
+                        benchmarkCase, config.responseFormat());
             } catch (Exception e) {
-                run = CaseRun.transportFailure(benchmarkCase.id(), conversationId, e);
+                run = CaseRun.transportFailure(benchmarkCase.id(), conversationId, config.responseFormat(), e);
             }
             run = annotateFailures(benchmarkCase, run);
             if (rawDirectory != null && run.rawSse() != null && !run.rawSse().isBlank()) {
@@ -101,6 +102,7 @@ final class AiNewsLiveAgentBenchmarkRunner {
         metadata.put("workspaceId", String.valueOf(config.workspaceId()));
         metadata.put("requestedCases", String.valueOf(selectedCases.size()));
         metadata.put("requestTimeoutSeconds", String.valueOf(config.timeout().toSeconds()));
+        metadata.put("requestedResponseFormat", config.responseFormat());
         metadata.put("evaluationTree", defaultText(config.evaluationTree(), "unknown"));
         metadata.put("observedModelRoutes", observedRoutes(runs));
         metadata.put("labelProvenance",
@@ -133,7 +135,9 @@ final class AiNewsLiveAgentBenchmarkRunner {
         boolean labelsMatch = labelsMatch(benchmarkCase, output);
         boolean citationsMatch = citationsMatch(benchmarkCase, output);
         boolean transportCompleted = run.httpStatus() == 200 && "completed".equalsIgnoreCase(run.streamStatus());
-        boolean taskSucceeded = transportCompleted && output.valid() && labelsMatch && citationsMatch
+        boolean taskSucceeded = transportCompleted && run.responseFormatAcknowledged()
+                && run.serverContractSatisfied()
+                && output.valid() && labelsMatch && citationsMatch
                 && tools.selectionCorrect() && tools.parametersCorrect() && tools.executionSucceeded();
         AiNewsQualityEvaluator.Prediction prediction = new AiNewsQualityEvaluator.Prediction(
                 output.sourceTier(), output.verificationEligible(), output.citationAllowed(),
@@ -154,6 +158,31 @@ final class AiNewsLiveAgentBenchmarkRunner {
         }
         if (!output.valid()) {
             reasons.addAll(output.validationFailures().stream().map(item -> "response-format: " + item).toList());
+        }
+        if (run.jsonContractRequested()) {
+            if (!"json_object".equalsIgnoreCase(run.observedResponseFormat())) {
+                reasons.add("server did not acknowledge responseFormat=json_object in stream_started");
+            }
+            StructuredContractResult contract = run.structuredOutputContract();
+            if (contract == null || !contract.present()) {
+                reasons.add("server emitted no structured_output contract event");
+            } else {
+                if (!"json_object".equalsIgnoreCase(contract.requestedFormat())) {
+                    reasons.add("server contract event reported requestedFormat="
+                            + emptyAs(contract.requestedFormat(), "missing"));
+                }
+                if (!Boolean.TRUE.equals(contract.terminalAnswerReached())) {
+                    reasons.add("server contract event did not reach a terminal assistant answer");
+                }
+                if (!Boolean.TRUE.equals(contract.valid()) || !"valid".equalsIgnoreCase(contract.status())) {
+                    reasons.add("server structured-output contract status was "
+                            + emptyAs(contract.status(), "missing") + ": "
+                            + emptyAs(contract.failureReason(), "no reason reported"));
+                }
+                if (Boolean.TRUE.equals(contract.valid()) != output.valid()) {
+                    reasons.add("server contract result disagreed with independent strict parser");
+                }
+            }
         }
         if (!labelsMatch(benchmarkCase, output)) reasons.add("policy labels did not match frozen gold");
         if (!citationsMatch(benchmarkCase, output)) reasons.add("citation ids or citation decision violated task contract");
@@ -303,10 +332,28 @@ final class AiNewsLiveAgentBenchmarkRunner {
                 .mapToLong(Long::longValue).sum();
         long reasoningTokens = runs.stream().map(CaseRun::reasoningTokens).filter(Objects::nonNull)
                 .mapToLong(Long::longValue).sum();
+        long jsonRequested = runs.stream().filter(CaseRun::jsonContractRequested).count();
+        long formatAcknowledged = runs.stream().filter(CaseRun::jsonContractRequested)
+                .filter(run -> "json_object".equalsIgnoreCase(run.observedResponseFormat())).count();
+        long contractEvents = runs.stream().filter(CaseRun::jsonContractRequested)
+                .filter(run -> run.structuredOutputContract() != null
+                        && run.structuredOutputContract().present()).count();
+        long contractValid = runs.stream().filter(CaseRun::jsonContractRequested)
+                .filter(CaseRun::serverContractSatisfied).count();
+        long contractParserAgreement = runs.stream().filter(CaseRun::jsonContractRequested)
+                .filter(run -> run.structuredOutputContract() != null
+                        && run.structuredOutputContract().present()
+                        && Boolean.TRUE.equals(run.structuredOutputContract().valid())
+                        == parseDecision(run.assistantContent()).valid()).count();
         Map<String, RuntimeMetric> metrics = new LinkedHashMap<>();
         metrics.put("http200Rate", RuntimeMetric.rate(runs.size(), httpSuccess));
         metrics.put("streamCompletedRate", RuntimeMetric.rate(runs.size(), completed));
         metrics.put("structuredResponseValidRate", RuntimeMetric.rate(runs.size(), validStructured));
+        metrics.put("jsonObjectContractRequestedRate", RuntimeMetric.rate(runs.size(), jsonRequested));
+        metrics.put("responseFormatAcknowledgedRate", RuntimeMetric.rate(jsonRequested, formatAcknowledged));
+        metrics.put("serverContractEventRate", RuntimeMetric.rate(jsonRequested, contractEvents));
+        metrics.put("serverContractValidRate", RuntimeMetric.rate(jsonRequested, contractValid));
+        metrics.put("serverContractParserAgreementRate", RuntimeMetric.rate(jsonRequested, contractParserAgreement));
         metrics.put("taskSuccessRate", RuntimeMetric.rate(runs.size(), taskSuccess));
         metrics.put("toolExecutionSuccessRate", RuntimeMetric.rate(toolCalls, toolSucceeded));
         metrics.put("endToEndLatencyMs", RuntimeMetric.percentiles(elapsed));
@@ -320,9 +367,11 @@ final class AiNewsLiveAgentBenchmarkRunner {
                 run.httpStatus(), run.streamStatus(), run.elapsedMs(), run.timeToFirstContentMs(),
                 run.toolExecutionMs(), run.promptTokens(), run.completionTokens(), run.reasoningTokens(),
                 run.runtimeProvider(), run.runtimeModel(), run.toolCalls().stream().map(ToolCall::summary).toList(),
-                run.rawTracePath(), run.rawTraceSha256(), sha256(run.assistantContent()), run.failureReasons()))
+                run.rawTracePath(), run.rawTraceSha256(), sha256(run.assistantContent()),
+                run.requestedResponseFormat(), run.observedResponseFormat(), run.structuredOutputContract(),
+                run.failureReasons()))
                 .toList();
-        return new LiveRuntimeManifest("1.0", benchmark.evaluationScope(), benchmark.datasetId(),
+        return new LiveRuntimeManifest("2.0", benchmark.evaluationScope(), benchmark.datasetId(),
                 benchmark.datasetVersion(), Instant.now().toString(), config.gitCommit(), runId,
                 config.agentId(), config.workspaceId(), metrics, cases, benchmark.limitations());
     }
@@ -476,12 +525,17 @@ final class AiNewsLiveAgentBenchmarkRunner {
     }
 
     record LiveConfig(String baseUrl, String username, String password, long agentId, long workspaceId,
-                      Duration timeout, int maxCases, String gitCommit, String evaluationTree, Path rawDirectory) {
+                      Duration timeout, int maxCases, String gitCommit, String evaluationTree, Path rawDirectory,
+                      String responseFormat) {
         LiveConfig {
             if (blank(baseUrl) || blank(username) || blank(password) || agentId <= 0 || workspaceId <= 0) {
                 throw new IllegalArgumentException("live evaluation requires base URL, credentials, agent, and workspace");
             }
             timeout = timeout == null || timeout.isNegative() || timeout.isZero() ? Duration.ofMinutes(4) : timeout;
+            responseFormat = blank(responseFormat) ? "text" : responseFormat.trim().toLowerCase(Locale.ROOT);
+            if (!("text".equals(responseFormat) || "json_object".equals(responseFormat))) {
+                throw new IllegalArgumentException("live evaluation response format must be text or json_object");
+            }
         }
     }
 
@@ -566,31 +620,56 @@ final class AiNewsLiveAgentBenchmarkRunner {
                    Long elapsedMs, Long timeToFirstContentMs, Long toolExecutionMs, Long promptTokens,
                    Long completionTokens, Long reasoningTokens, String runtimeProvider, String runtimeModel,
                    String assistantContent, List<ToolCall> toolCalls, String rawSse, String rawTracePath,
-                   String rawTraceSha256, List<String> failureReasons) {
+                   String rawTraceSha256, String requestedResponseFormat, String observedResponseFormat,
+                   StructuredContractResult structuredOutputContract, List<String> failureReasons) {
         CaseRun {
             streamStatus = streamStatus == null ? "" : streamStatus;
             assistantContent = assistantContent == null ? "" : assistantContent;
             toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
+            requestedResponseFormat = blank(requestedResponseFormat) ? "text" : requestedResponseFormat;
+            observedResponseFormat = observedResponseFormat == null ? "" : observedResponseFormat;
             failureReasons = failureReasons == null ? List.of() : List.copyOf(failureReasons);
         }
 
-        static CaseRun transportFailure(String caseId, String conversationId, Exception e) {
+        static CaseRun transportFailure(String caseId, String conversationId,
+                                        String requestedResponseFormat, Exception e) {
             return new CaseRun(caseId, conversationId, 0, "transport_error", null, null, null,
                     null, null, null, null, null, "", List.of(), "", null, null,
+                    requestedResponseFormat, "", null,
                     List.of("transport: " + conciseMessage(e)));
         }
 
         CaseRun withRawTrace(String path, String hash) {
             return new CaseRun(caseId, conversationId, httpStatus, streamStatus, elapsedMs, timeToFirstContentMs,
                     toolExecutionMs, promptTokens, completionTokens, reasoningTokens, runtimeProvider, runtimeModel,
-                    assistantContent, toolCalls, rawSse, path, hash, failureReasons);
+                    assistantContent, toolCalls, rawSse, path, hash, requestedResponseFormat,
+                    observedResponseFormat, structuredOutputContract, failureReasons);
         }
 
         CaseRun withFailureReasons(List<String> reasons) {
             return new CaseRun(caseId, conversationId, httpStatus, streamStatus, elapsedMs, timeToFirstContentMs,
                     toolExecutionMs, promptTokens, completionTokens, reasoningTokens, runtimeProvider, runtimeModel,
-                    assistantContent, toolCalls, rawSse, rawTracePath, rawTraceSha256,
+                    assistantContent, toolCalls, rawSse, rawTracePath, rawTraceSha256, requestedResponseFormat,
+                    observedResponseFormat, structuredOutputContract,
                     List.copyOf(new LinkedHashSet<>(reasons)));
+        }
+
+        boolean jsonContractRequested() {
+            return "json_object".equalsIgnoreCase(requestedResponseFormat);
+        }
+
+        boolean responseFormatAcknowledged() {
+            return !jsonContractRequested()
+                    || "json_object".equalsIgnoreCase(observedResponseFormat);
+        }
+
+        boolean serverContractSatisfied() {
+            return !jsonContractRequested() || (structuredOutputContract != null
+                    && structuredOutputContract.present()
+                    && "json_object".equalsIgnoreCase(structuredOutputContract.requestedFormat())
+                    && Boolean.TRUE.equals(structuredOutputContract.valid())
+                    && Boolean.TRUE.equals(structuredOutputContract.terminalAnswerReached())
+                    && "valid".equalsIgnoreCase(structuredOutputContract.status()));
         }
     }
 
@@ -621,10 +700,25 @@ final class AiNewsLiveAgentBenchmarkRunner {
                        Long elapsedMs, Long timeToFirstContentMs, Long toolExecutionMs, Long promptTokens,
                        Long completionTokens, Long reasoningTokens, String runtimeProvider, String runtimeModel,
                        List<ToolCallSummary> toolCalls, String rawTracePath, String rawTraceSha256,
-                       String outputSha256, List<String> failureReasons) {
+                       String outputSha256, String requestedResponseFormat, String observedResponseFormat,
+                       StructuredContractResult structuredOutputContract, List<String> failureReasons) {
         RuntimeCase {
             toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
             failureReasons = failureReasons == null ? List.of() : List.copyOf(failureReasons);
+        }
+    }
+
+    record StructuredContractResult(String requestedFormat, String enforcement, String status,
+                                    Boolean valid, Boolean terminalAnswerReached, String failureReason) {
+        StructuredContractResult {
+            requestedFormat = requestedFormat == null ? "" : requestedFormat;
+            enforcement = enforcement == null ? "" : enforcement;
+            status = status == null ? "" : status;
+            failureReason = failureReason == null ? "" : failureReason;
+        }
+
+        boolean present() {
+            return !status.isBlank();
         }
     }
 
@@ -678,11 +772,12 @@ final class AiNewsLiveAgentBenchmarkRunner {
         }
 
         private CaseRun execute(String token, long workspaceId, long agentId, String conversationId,
-                                LiveBenchmarkCase benchmarkCase) throws Exception {
+                                LiveBenchmarkCase benchmarkCase, String responseFormat) throws Exception {
             String requestBody = JSON.writeValueAsString(Map.of(
                     "agentId", agentId,
                     "conversationId", conversationId,
-                    "message", renderPrompt(benchmarkCase)));
+                    "message", renderPrompt(benchmarkCase),
+                    "responseFormat", responseFormat));
             long start = System.nanoTime();
             HttpResponse<InputStream> response = client.send(HttpRequest.newBuilder(endpoint("/api/v1/chat/stream"))
                     .header("Authorization", "Bearer " + token)
@@ -694,7 +789,8 @@ final class AiNewsLiveAgentBenchmarkRunner {
             try (InputStream body = response.body()) {
                 SseCapture capture = readSse(body, start);
                 long elapsed = Duration.ofNanos(System.nanoTime() - start).toMillis();
-                return capture.toCaseRun(benchmarkCase.id(), conversationId, response.statusCode(), elapsed);
+                return capture.toCaseRun(benchmarkCase.id(), conversationId, response.statusCode(), elapsed,
+                        responseFormat);
             }
         }
 
@@ -748,6 +844,8 @@ final class AiNewsLiveAgentBenchmarkRunner {
             Long reasoningTokens = null;
             Long toolExecutionMs = null;
             Long firstContentMs = null;
+            String observedResponseFormat = "";
+            StructuredContractResult structuredOutputContract = null;
             String line;
             while ((line = reader.readLine()) != null) {
                 raw.append(line).append('\n');
@@ -763,6 +861,12 @@ final class AiNewsLiveAgentBenchmarkRunner {
                         if (outcome.completionTokens() != null) completionTokens = outcome.completionTokens();
                         if (outcome.reasoningTokens() != null) reasoningTokens = outcome.reasoningTokens();
                         if (outcome.toolExecutionMs() != null) toolExecutionMs = outcome.toolExecutionMs();
+                        if (outcome.observedResponseFormat() != null) {
+                            observedResponseFormat = outcome.observedResponseFormat();
+                        }
+                        if (outcome.structuredOutputContract() != null) {
+                            structuredOutputContract = outcome.structuredOutputContract();
+                        }
                     }
                     event = new MutableSseEvent();
                     continue;
@@ -784,11 +888,18 @@ final class AiNewsLiveAgentBenchmarkRunner {
                 if (outcome.completionTokens() != null) completionTokens = outcome.completionTokens();
                 if (outcome.reasoningTokens() != null) reasoningTokens = outcome.reasoningTokens();
                 if (outcome.toolExecutionMs() != null) toolExecutionMs = outcome.toolExecutionMs();
+                if (outcome.observedResponseFormat() != null) {
+                    observedResponseFormat = outcome.observedResponseFormat();
+                }
+                if (outcome.structuredOutputContract() != null) {
+                    structuredOutputContract = outcome.structuredOutputContract();
+                }
             }
             if (streamStatus.isBlank()) failures.add("SSE stream had no done event");
             return new SseCapture(raw.toString(), answer.toString(), toolCalls.values().stream()
                     .map(MutableToolCall::toImmutable).toList(), streamStatus, provider, model,
-                    promptTokens, completionTokens, reasoningTokens, toolExecutionMs, firstContentMs, failures);
+                    promptTokens, completionTokens, reasoningTokens, toolExecutionMs, firstContentMs,
+                    observedResponseFormat, structuredOutputContract, failures);
         }
     }
 
@@ -824,10 +935,25 @@ final class AiNewsLiveAgentBenchmarkRunner {
             String status = payload.path("status").asText("");
             return new SseEventResult(firstContentMs, status, payload.path("runtimeProvider").asText(null),
                     payload.path("runtimeModel").asText(null), optionalLong(payload, "promptTokens"),
-                    optionalLong(payload, "completionTokens"), optionalLong(payload, "reasoningTokens"), null);
+                    optionalLong(payload, "completionTokens"), optionalLong(payload, "reasoningTokens"), null,
+                    null, null);
         } else if ("perf_summary".equals(name) && "tool_execution".equals(payload.path("phase").asText())) {
             return new SseEventResult(firstContentMs, null, null, null, null, null, null,
-                    optionalLong(payload, "tool_exec_ms"));
+                    optionalLong(payload, "tool_exec_ms"), null, null);
+        } else if ("stream_started".equals(name)) {
+            return new SseEventResult(firstContentMs, null, null, null, null, null, null,
+                    null, payload.path("responseFormat").asText(""), null);
+        } else if ("structured_output".equals(name)) {
+            StructuredContractResult contract = new StructuredContractResult(
+                    payload.path("requestedFormat").asText(""),
+                    payload.path("enforcement").asText(""),
+                    payload.path("status").asText(""),
+                    payload.path("valid").isBoolean() ? payload.path("valid").booleanValue() : null,
+                    payload.path("terminalAnswerReached").isBoolean()
+                            ? payload.path("terminalAnswerReached").booleanValue() : null,
+                    payload.path("failureReason").asText(""));
+            return new SseEventResult(firstContentMs, null, null, null, null, null, null,
+                    null, null, contract);
         } else if ("error".equals(name)) {
             failures.add("SSE error: " + payload.path("message").asText("unknown"));
         }
@@ -875,9 +1001,11 @@ final class AiNewsLiveAgentBenchmarkRunner {
 
     private record SseEventResult(Long firstContentMs, String streamStatus, String provider, String model,
                                   Long promptTokens, Long completionTokens, Long reasoningTokens,
-                                  Long toolExecutionMs) {
+                                  Long toolExecutionMs, String observedResponseFormat,
+                                  StructuredContractResult structuredOutputContract) {
         private static SseEventResult empty(Long firstContentMs) {
-            return new SseEventResult(firstContentMs, null, null, null, null, null, null, null);
+            return new SseEventResult(firstContentMs, null, null, null, null, null, null, null,
+                    null, null);
         }
     }
 
@@ -887,16 +1015,19 @@ final class AiNewsLiveAgentBenchmarkRunner {
     record SseCapture(String rawSse, String assistantContent, List<ToolCall> toolCalls, String streamStatus,
                       String runtimeProvider, String runtimeModel, Long promptTokens, Long completionTokens,
                       Long reasoningTokens, Long toolExecutionMs, Long timeToFirstContentMs,
+                      String observedResponseFormat, StructuredContractResult structuredOutputContract,
                       List<String> failureReasons) {
         SseCapture {
             toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
             failureReasons = failureReasons == null ? List.of() : List.copyOf(failureReasons);
         }
 
-        CaseRun toCaseRun(String caseId, String conversationId, int httpStatus, long elapsedMs) {
+        CaseRun toCaseRun(String caseId, String conversationId, int httpStatus, long elapsedMs,
+                          String requestedResponseFormat) {
             return new CaseRun(caseId, conversationId, httpStatus, streamStatus, elapsedMs, timeToFirstContentMs,
                     toolExecutionMs, promptTokens, completionTokens, reasoningTokens, runtimeProvider, runtimeModel,
-                    assistantContent, toolCalls, rawSse, null, null, failureReasons);
+                    assistantContent, toolCalls, rawSse, null, null, requestedResponseFormat,
+                    observedResponseFormat, structuredOutputContract, failureReasons);
         }
     }
 }

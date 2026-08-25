@@ -15,6 +15,7 @@ import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.news.model.AiNewsEventEntity;
 import vip.newsclaw.news.service.AiNewsEventService;
 import vip.newsclaw.news.service.AiNewsProductionService;
+import vip.newsclaw.news.service.AiNewsReviewRoutingService;
 
 import java.util.Map;
 import java.util.Objects;
@@ -26,17 +27,20 @@ public class AiNewsReviewCardHandler implements FeishuCardHandler {
     private final AiNewsReviewButtonValue buttonValue;
     private final AiNewsEventService eventService;
     private final AiNewsProductionService productionService;
+    private final AiNewsReviewRoutingService reviewRoutingService;
     private final AuditEventService auditEventService;
     private final ObjectMapper objectMapper;
 
     public AiNewsReviewCardHandler(AiNewsReviewButtonValue buttonValue,
                                    AiNewsEventService eventService,
                                    AiNewsProductionService productionService,
+                                   AiNewsReviewRoutingService reviewRoutingService,
                                    AuditEventService auditEventService,
                                    ObjectMapper objectMapper) {
         this.buttonValue = buttonValue;
         this.eventService = eventService;
         this.productionService = productionService;
+        this.reviewRoutingService = reviewRoutingService;
         this.auditEventService = auditEventService;
         this.objectMapper = objectMapper;
     }
@@ -65,7 +69,7 @@ public class AiNewsReviewCardHandler implements FeishuCardHandler {
         }
 
         try {
-            AiNewsEventEntity result = execute(decoded);
+            AiNewsEventEntity result = execute(decoded, clicker);
             audit(decoded, clicker, "succeeded", null);
             return resolved(decoded.action(), result);
         } catch (NewsClawException e) {
@@ -79,14 +83,23 @@ public class AiNewsReviewCardHandler implements FeishuCardHandler {
         }
     }
 
-    private AiNewsEventEntity execute(AiNewsReviewButtonValue.Decoded decoded) {
+    private AiNewsEventEntity execute(AiNewsReviewButtonValue.Decoded decoded, String clicker) {
         Long ws = decoded.workspaceId();
         Long id = decoded.eventId();
         // Resolve first so every action gets the same workspace/deleted guard.
         eventService.findEvent(ws, id);
         return switch (decoded.action()) {
             case CONTINUE -> eventService.continueResearch(ws, id);
-            case VERIFY -> eventService.verify(ws, id, null, null);
+            case VERIFY -> {
+                AiNewsEventEntity verified = eventService.verify(ws, id, null, null);
+                // This is an authenticated, requester-bound human action. A
+                // generic Agent tool call to mark_verified cannot clear the
+                // queue because only this explicit interactive path records
+                // an operator attestation.
+                reviewRoutingService.resolveIfPending(ws, id, clicker,
+                        "Feishu AI 动态复核卡：核验通过");
+                yield verified;
+            }
             case CONFLICT -> eventService.verify(ws, id, "conflicted", null);
             case DISMISS -> eventService.dismiss(ws, id);
             case START_RUN -> {

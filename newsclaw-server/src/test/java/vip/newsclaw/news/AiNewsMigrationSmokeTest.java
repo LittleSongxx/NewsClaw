@@ -44,7 +44,7 @@ class AiNewsMigrationSmokeTest {
                 .load();
         flyway.migrate();
 
-        assertEquals("201", flyway.info().current().getVersion().getVersion());
+        assertEquals("202", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(url, "sa", "");
              Statement statement = connection.createStatement()) {
             assertEquals(1L, scalar(statement,
@@ -53,6 +53,9 @@ class AiNewsMigrationSmokeTest {
             assertEquals(1L, scalar(statement,
                     "SELECT COUNT(*) FROM information_schema.tables "
                             + "WHERE table_name='mate_ai_news_feedback'"));
+            assertEquals(1L, scalar(statement,
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                            + "WHERE table_name='mate_ai_news_review_task'"));
             assertEquals(1L, scalar(statement,
                     "SELECT COUNT(*) FROM mate_tool WHERE id=1000000646 "
                             + "AND name='ai_news_review_card' AND enabled=TRUE"));

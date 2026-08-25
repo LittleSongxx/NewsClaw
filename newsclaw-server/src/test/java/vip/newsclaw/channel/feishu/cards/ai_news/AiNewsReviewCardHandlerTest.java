@@ -12,6 +12,7 @@ import vip.newsclaw.channel.model.ChannelEntity;
 import vip.newsclaw.news.model.AiNewsEventEntity;
 import vip.newsclaw.news.service.AiNewsEventService;
 import vip.newsclaw.news.service.AiNewsProductionService;
+import vip.newsclaw.news.service.AiNewsReviewRoutingService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -26,6 +27,7 @@ class AiNewsReviewCardHandlerTest {
 
     private AiNewsEventService eventService;
     private AiNewsProductionService productionService;
+    private AiNewsReviewRoutingService reviewRoutingService;
     private FeishuChannelAdapter adapter;
     private AiNewsReviewButtonValue codec;
     private AiNewsReviewCardHandler handler;
@@ -35,13 +37,14 @@ class AiNewsReviewCardHandlerTest {
         ObjectMapper objectMapper = new ObjectMapper();
         eventService = mock(AiNewsEventService.class);
         productionService = mock(AiNewsProductionService.class);
+        reviewRoutingService = mock(AiNewsReviewRoutingService.class);
         adapter = mock(FeishuChannelAdapter.class);
         ChannelEntity channel = new ChannelEntity();
         channel.setWorkspaceId(7L);
         when(adapter.getChannelEntity()).thenReturn(channel);
         codec = new AiNewsReviewButtonValue(objectMapper);
         handler = new AiNewsReviewCardHandler(codec, eventService, productionService,
-                mock(AuditEventService.class), objectMapper);
+                reviewRoutingService, mock(AuditEventService.class), objectMapper);
     }
 
     @Test
@@ -62,6 +65,8 @@ class AiNewsReviewCardHandlerTest {
         var response = handler.handle(adapter, data(AiNewsReviewButtonValue.Action.VERIFY, "ou_requester"));
 
         verify(eventService).verify(7L, 101L, null, null);
+        verify(reviewRoutingService).resolveIfPending(7L, 101L, "ou_requester",
+                "Feishu AI 动态复核卡：核验通过");
         assertNotNull(response.getCard());
         assertEquals("info", response.getToast().getType());
     }

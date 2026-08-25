@@ -46,6 +46,6 @@ class AiNewsReviewCardRendererTest {
     private static AiNewsReviewCardPayload payload(String status) {
         return new AiNewsReviewCardPayload(7L, "ou_requester", 101L,
                 "OpenAI 发布模型", "摘要", "model", status, 0.82D,
-                2, "verified".equals(status) ? 2 : 0, "official");
+                2, "verified".equals(status) ? 2 : 0, "official", false, List.of());
     }
 }

@@ -16,6 +16,12 @@ This is deliberately different from both other evidence layers:
 
 The controlled benchmark uses 24 no-tool cases and 6 required read-only `ai_news_event(action=source_health)` probes. It never asks the Agent to write an event, create a Wiki page/content, send a channel message, request approval, or publish externally. The 30 fixed cases cover Chinese and English, official sources, official GitHub prefixes, independent media corroboration, single media, community/lookalike sources, quote mismatch, unarchived citations, unresolved conflict, and tool parameters.
 
+已完成的两轮受控运行、工件哈希、badcase 根因和证据边界见[2026-08-25 受控在线基线归档](evidence/ai-news-controlled-live-baseline-20260825.md)。该归档保留 P0 改造前的真实对照结果，后续协议升级会使用新的版本和目录。
+
+默认的 v2 协议发送 `responseFormat=json_object`。原生 OpenAI-compatible ReAct 路径把 JSON Object 约束传给模型提供方，Web 层再对最终 assistant 文本执行严格 JSON Object 校验；`stream_started` 会确认实际请求格式，`structured_output` 会报告服务端校验状态。runner 还使用独立的严格解析器检查 Markdown fence、非对象、缺字段和 trailing token，并记录服务端与 runner 是否一致。Plan Execute、外部 Agent runtime 或不支持该能力的协议会显式失败，不会静默退回文本。旧客户端不传该字段时仍保持 `text` 行为。
+
+`humanReviewRequested` 在本基准中只是模型对冻结场景的解释性决策。持久化复核任务的创建、风险变化后重开、显式人工解决和生产门禁由确定性后端策略与服务测试证明，不能用该模型字段或飞书发卡成功率替代。
+
 ## Run It
 
 The runner intentionally receives credentials only through environment variables. It does not put passwords on a Maven command line, in an artifact, or in Git.
@@ -36,6 +42,7 @@ To select the Agent id from a local deployment, authenticate normally and inspec
 | `NEWSCLAW_EVAL_WORKSPACE_ID` | `1` | Workspace header used for the benchmark conversations. |
 | `NEWSCLAW_EVAL_TIMEOUT_SECONDS` | `240` | Per-stream timeout. |
 | `NEWSCLAW_EVAL_MAX_CASES` | `0` | `0` means all 30 cases; a positive number is only a smoke run. |
+| `NEWSCLAW_EVAL_RESPONSE_FORMAT` | `json_object` | Use `text` only for an explicit backward-compatibility comparison. |
 
 An optional first argument replaces the benchmark JSON. An optional second argument replaces the output directory:
 
@@ -47,25 +54,26 @@ The runner writes these untracked artifacts:
 
 ```text
 target/ai-news-live-agent-evaluation/<utc-run>/
-  live-agent-evidence-v1.traces.json
-  live-agent-evidence-v1.quality-manifest.json
-  live-agent-evidence-v1.quality-report.md
-  live-agent-evidence-v1.runtime-manifest.json
-  live-agent-evidence-v1.runtime-report.md
+  live-agent-evidence-v2.traces.json
+  live-agent-evidence-v2.quality-manifest.json
+  live-agent-evidence-v2.quality-report.md
+  live-agent-evidence-v2.runtime-manifest.json
+  live-agent-evidence-v2.runtime-report.md
   raw/<run-id>/<case-id>.sse
 ```
 
-The quality manifest uses the same scorer as offline fixtures and human-labeled traces, and records `labelProvenance=frozen synthetic evidence-policy labels`. The runtime manifest stores HTTP/stream completion, strict-JSON validity, deterministic controlled-protocol task success, tool execution success, end-to-end latency, time to first visible content, tool execution time, token totals, observed provider/model route, failure reasons, and SHA-256 hashes for raw SSE/output. It does not store a JWT or login response. Raw synthetic SSE is retained under `target/` and is excluded from Git.
+The quality manifest uses the same scorer as offline fixtures and human-labeled traces, and records `labelProvenance=frozen synthetic evidence-policy labels`. The v2 runtime manifest stores the requested and observed response format, server contract payload, server/independent-parser agreement, HTTP/stream completion, strict-JSON validity, deterministic controlled-protocol task success, tool execution success, end-to-end latency, time to first visible content, tool execution time, token totals, observed provider/model route, failure reasons, and SHA-256 hashes for raw SSE/output. It does not store a JWT or login response. Raw synthetic SSE is retained under `target/` and is excluded from Git.
 
 ## Metric Interpretation
 
 The quality report includes source-tier accuracy and macro-F1, verification/refusal/citation/Claim-Quote P-R-F1, human-review routing, tool selection and tool parameter correctness, per-slice metrics, and badcases. In this report these are frozen-protocol labels, not human judgments of real user tasks. A controlled task is successful only when all of these hold:
 
 1. HTTP succeeds and the SSE stream reaches `completed`.
-2. The final answer is exactly one JSON object with all required fields.
-3. Every predicted policy field matches the frozen label.
-4. Citation ids obey the Evidence Packet boundary.
-5. The required tool/no-tool expectation and required tool outcome are correct.
+2. The server acknowledges `json_object`, emits a valid `structured_output` result, and the independent parser agrees.
+3. The final answer is exactly one JSON object with all required fields.
+4. Every predicted policy field matches the frozen label.
+5. Citation ids obey the Evidence Packet boundary.
+6. The required tool/no-tool expectation and required tool outcome are correct.
 
 The runtime report uses nearest-rank P50/P95 over this one **sequential** run. It is useful to show route-level observability and regression direction, but it is not a QPS benchmark, capacity test, SLA, latency promise, production cost figure, or statistically representative traffic measurement.
 
