@@ -10,7 +10,7 @@
 
 第一类无需凭证和网络，结果只能证明确定性策略正确性，不能表述成线上发现准确率、模型幻觉率或内容质量。第二类是受控在线基准，不使用真实用户数据，也不执行写入或发布动作；v3 可以证明真实 Agent 调用链上的固定证据决策、声明式工具编排、执行器行为和本次运行时延，但其工具分数不能表述成模型自主选择准确率，也不能表述成开放网络发现准确率、QPS 或 SLA。第三类只有在数据集记录了明确的采样窗口、模型/Prompt/Skill 版本、复核协议和原始 trace 留存位置后，才可作为真实业务质量证据。
 
-受控在线基准的执行、工件、指标和简历边界见 [受控在线 Agent 评测](ai-news-live-agent-evaluation.md)。
+受控在线基准的执行、工件、指标和简历边界见 [受控在线 Agent 评测](ai-news-live-agent-evaluation.md)，现有结果、优化提交链和工件保留规则统一收录在[质量证据索引](evidence/README.md)。
 
 P0 改造前的两轮受控在线基线及其 SHA-256 摘要见[基线归档](evidence/ai-news-controlled-live-baseline-20260825.md)；改造后 30 条完整 v3 结果、Provider 调查、badcase 和哈希见[v3 证据归档](evidence/ai-news-controlled-live-v3-20260825.md)。其中的冻结合成标签都不会被表述为生产用户流量的人类评分。
 

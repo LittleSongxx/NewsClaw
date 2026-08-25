@@ -15,23 +15,6 @@
     "completedCases": 30,
     "protocol": "fixed synthetic evidence packets; real authenticated NewsClaw SSE and configured model route; responseFormat=json_object; exact-function/none tool policy; server contract event plus independent strict adjudication"
   },
-  "deterministicRegression": {
-    "command": "./scripts/eval-ai-news-ops.sh",
-    "tests": 122,
-    "failures": 0,
-    "errors": 0,
-    "skipped": 0,
-    "offlinePolicyBenchmark": {
-      "dataset": "ai-news-evidence-policy@2026.08.25-v1",
-      "cases": 30,
-      "badcases": 0,
-      "verificationF1": 1.0,
-      "properRefusalF1": 1.0
-    },
-    "focusedContractTestClasses": 16,
-    "focusedContractSuiteExitCode": 0,
-    "interpretation": "deterministic policy and contract regression only; not live model quality"
-  },
   "quality": {
     "taskSuccess": {
       "correct": 26,

@@ -20,20 +20,7 @@
 | 请求契约 | `responseFormat=json_object`；`toolChoice=none|function:ai_news_event` |
 | 原始数据 | 合成 Prompt；30 份原始 SSE 仅本地留存 |
 
-## 互补的确定性门禁
-
-在线结果之外，`./scripts/eval-ai-news-ops.sh` 重跑了来源、核验、拒绝、引用、事件状态机、工具执行、Memory/Skill 治理、幂等任务和路由 trace 等确定性回归：
-
-| 项目 | 结果 |
-| --- | ---: |
-| 测试 | 122 |
-| Failures / Errors / Skipped | 0 / 0 / 0 |
-| 离线策略样本 | 30 |
-| 离线策略 badcase | 0 |
-| 离线核验 F1 | 1.0000 |
-| 离线拒绝 F1 | 1.0000 |
-
-另外单独执行了本轮提交直接涉及的 16 个测试类，覆盖 `toolChoice`、百炼强制工具兼容、JSON 契约、两阶段终态、工具桥接归一化、复核卡与复核策略、Agent 工具绑定和全量迁移，命令退出码为 0。这一层证明确定性策略和代码契约没有回归，不能替代下面的真实模型质量结果。
+代码测试和构建结果只作为变更合入的基本条件，不列入本报告的质量指标或优化成果。离线策略、受控在线和人工标注 trace 的证据分层见[质量评测说明](../ai-news-quality-evaluation.md)。
 
 ## 协议与执行证据
 
