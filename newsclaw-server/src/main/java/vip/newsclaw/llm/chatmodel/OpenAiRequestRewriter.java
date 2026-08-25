@@ -678,6 +678,64 @@ final class OpenAiRequestRewriter {
     }
 
     /**
+     * Bailian's Qwen OpenAI-compatible route rejects {@code required} and exact
+     * function choices while thinking mode is enabled. Disable thinking only for
+     * those forced-tool requests. {@code auto}, {@code none}, other providers,
+     * and non-Qwen Bailian models retain their configured behavior.
+     *
+     * <p>The Agent graph applies the JSON response format only on the later
+     * post-tool terminal call, so this first-stage compatibility rewrite does
+     * not weaken the caller's final structured-output contract.
+     */
+    static OpenAiApi.ChatCompletionRequest disableBailianQwenThinkingForForcedToolChoice(
+            OpenAiApi.ChatCompletionRequest request, ModelProviderEntity provider) {
+        if (!isBailianQwen(request, provider) || !isForcedToolChoice(request.toolChoice())) {
+            return request;
+        }
+        Map<String, Object> extraBody = request.extraBody() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(request.extraBody());
+        if (Boolean.FALSE.equals(extraBody.get("enable_thinking"))) {
+            return request;
+        }
+        extraBody.put("enable_thinking", false);
+        return new OpenAiApi.ChatCompletionRequest(
+                request.messages(), request.model(), request.store(), request.metadata(),
+                request.frequencyPenalty(), request.logitBias(), request.logprobs(),
+                request.topLogprobs(), request.maxTokens(), request.maxCompletionTokens(),
+                request.n(), request.outputModalities(), request.audioParameters(),
+                request.presencePenalty(), request.responseFormat(), request.seed(),
+                request.serviceTier(), request.stop(), request.stream(), request.streamOptions(),
+                request.temperature(), request.topP(), request.tools(), request.toolChoice(),
+                request.parallelToolCalls(), request.user(), request.reasoningEffort(),
+                request.webSearchOptions(), request.verbosity(), request.promptCacheKey(),
+                request.safetyIdentifier(), extraBody
+        );
+    }
+
+    private static boolean isBailianQwen(OpenAiApi.ChatCompletionRequest request,
+                                          ModelProviderEntity provider) {
+        if (provider == null || provider.getProviderId() == null || request.model() == null) {
+            return false;
+        }
+        String providerId = provider.getProviderId().trim().toLowerCase(java.util.Locale.ROOT);
+        String model = request.model().trim().toLowerCase(java.util.Locale.ROOT);
+        return ("bailian".equals(providerId) || "bailian-team".equals(providerId))
+                && model.startsWith("qwen");
+    }
+
+    private static boolean isForcedToolChoice(Object toolChoice) {
+        if (toolChoice == null) return false;
+        if (toolChoice instanceof String value) {
+            return "required".equalsIgnoreCase(value.trim());
+        }
+        // Spring AI represents an exact function choice as a structured object
+        // (currently a map); any non-string value reaching this narrow path is
+        // therefore the exact-function form produced by ToolChoicePolicy.
+        return true;
+    }
+
+    /**
      * Convert video content blocks that Spring AI mis-serializes as
      * {@code image_url} into {@code video_url} format.
      *

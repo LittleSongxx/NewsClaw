@@ -29,6 +29,7 @@ import vip.newsclaw.workspace.conversation.MessageMetadataJson;
 import vip.newsclaw.workspace.conversation.model.MessageContentPart;
 import vip.newsclaw.workspace.conversation.model.MessageEntity;
 import vip.newsclaw.llm.chatmodel.StructuredOutputFormat;
+import vip.newsclaw.llm.chatmodel.ToolChoicePolicy;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -172,8 +173,10 @@ public class ChatController {
         }
         String username = auth.getName();
         final StructuredOutputFormat responseFormat;
+        final ToolChoicePolicy toolChoice;
         try {
             responseFormat = StructuredOutputFormat.fromWire(request.getResponseFormat());
+            toolChoice = ToolChoicePolicy.fromWire(request.getToolChoice());
         } catch (IllegalArgumentException e) {
             sendErrorDoneAndComplete(emitter, e.getMessage());
             return emitter;
@@ -575,6 +578,7 @@ public class ChatController {
             sendEvent(emitter, "stream_started", Map.of(
                     "conversationId", conversationId,
                     "responseFormat", responseFormat.wireValue(),
+                    "toolChoice", toolChoice.wireValue(),
                     "timestamp", System.currentTimeMillis()
             ));
         } catch (IOException e) {
@@ -626,8 +630,11 @@ public class ChatController {
                         memoryOrigin(conversationId, username, requesterUserIdOf(auth), workspaceId, request.getEndUserId())
                                 .withBaseUrl(requestBaseUrl)
                                 .withOriginMessageId(originMessageId);
-                Disposable disposable = agentService.chatStructuredStream(agentId, promptText, conversationId,
+                Disposable disposable = (toolChoice.isAuto()
+                        ? agentService.chatStructuredStream(agentId, promptText, conversationId,
                                 username, request.getThinkingLevel(), responseFormat, webOrigin)
+                        : agentService.chatStructuredStream(agentId, promptText, conversationId,
+                                username, request.getThinkingLevel(), responseFormat, toolChoice, webOrigin))
                         .doOnNext(delta -> {
                             if (emitterDone.get()) return;
                             try {
@@ -1407,6 +1414,13 @@ public class ChatController {
         private String modelName;
         /** Optional strict terminal response contract: text (default) or json_object. */
         private String responseFormat;
+        /**
+         * Optional provider tool-selection contract: {@code auto} (default),
+         * {@code none}, {@code required}, or {@code function:<exact-tool-name>}.
+         * The requested function must still be in this Agent's active scope and
+         * remains subject to Tool Guard and approval policies.
+         */
+        private String toolChoice;
         /**
          * Optional third-party end-user identifier — see
          * {@link ChatRequest#getEndUserId()}. Isolates memory per external

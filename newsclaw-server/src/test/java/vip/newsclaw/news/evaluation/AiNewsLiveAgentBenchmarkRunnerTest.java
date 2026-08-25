@@ -17,7 +17,7 @@ class AiNewsLiveAgentBenchmarkRunnerTest {
     void parsesDeduplicatedToolCallsAndRuntimeMetadataFromSse() throws Exception {
         String sse = """
                 event:stream_started
-                data:{\"responseFormat\":\"json_object\"}
+                data:{\"responseFormat\":\"json_object\",\"toolChoice\":\"function:ai_news_event\"}
 
                 event:tool_call_started
                 data:{\"toolCallId\":\"call-1\",\"toolName\":\"ai_news_event\",\"arguments\":\"{\\\"action\\\":\\\"source_health\\\"}\"}
@@ -53,6 +53,7 @@ class AiNewsLiveAgentBenchmarkRunnerTest {
         assertEquals("qwen3.7-plus", capture.runtimeModel());
         assertEquals(7L, capture.toolExecutionMs());
         assertEquals("json_object", capture.observedResponseFormat());
+        assertEquals("function:ai_news_event", capture.observedToolChoice());
         assertTrue(capture.structuredOutputContract().present());
         assertTrue(capture.structuredOutputContract().valid());
         assertEquals("valid", capture.structuredOutputContract().status());
@@ -85,7 +86,7 @@ class AiNewsLiveAgentBenchmarkRunnerTest {
     void evaluatesRequiredReadOnlyToolArgumentsExactly() throws Exception {
         String sse = """
                 event:stream_started
-                data:{\"responseFormat\":\"json_object\"}
+                data:{\"responseFormat\":\"json_object\",\"toolChoice\":\"function:ai_news_event\"}
 
                 event:tool_call_started
                 data:{\"toolCallId\":\"call-1\",\"toolName\":\"ai_news_event\",\"arguments\":\"{\\\"action\\\":\\\"source_health\\\"}\"}
@@ -113,11 +114,12 @@ class AiNewsLiveAgentBenchmarkRunnerTest {
                         false, false, true, true, true, false));
 
         AiNewsLiveAgentBenchmarkRunner.CaseRun run = capture.toCaseRun(
-                "tool-probe", "conv", 200, 12, "json_object");
+                "tool-probe", "conv", 200, 12, "json_object", "function:ai_news_event");
         AiNewsQualityEvaluator.QualityCase scored = AiNewsLiveAgentBenchmarkRunner.toQualityCase(caseSpec, run);
 
         assertTrue(run.jsonContractRequested());
         assertEquals("json_object", run.observedResponseFormat());
+        assertTrue(run.toolChoiceAcknowledged());
         assertTrue(run.serverContractSatisfied());
         assertEquals(AiNewsLiveAgentBenchmarkRunner.parseDecision(run.assistantContent()).valid(),
                 run.structuredOutputContract().valid());
@@ -126,12 +128,14 @@ class AiNewsLiveAgentBenchmarkRunnerTest {
         assertTrue(scored.prediction().taskSucceeded());
 
         String withoutAcknowledgement = sse.replace(
-                "event:stream_started\ndata:{\"responseFormat\":\"json_object\"}\n\n", "");
+                "event:stream_started\ndata:{\"responseFormat\":\"json_object\",\"toolChoice\":\"function:ai_news_event\"}\n\n", "");
         AiNewsLiveAgentBenchmarkRunner.CaseRun unacknowledged = AiNewsLiveAgentBenchmarkRunner.readSse(
                         new ByteArrayInputStream(withoutAcknowledgement.getBytes(StandardCharsets.UTF_8)),
                         System.nanoTime())
-                .toCaseRun("tool-probe", "conv-unacknowledged", 200, 12, "json_object");
+                .toCaseRun("tool-probe", "conv-unacknowledged", 200, 12, "json_object",
+                        "function:ai_news_event");
         assertFalse(unacknowledged.responseFormatAcknowledged());
+        assertFalse(unacknowledged.toolChoiceAcknowledged());
         assertFalse(AiNewsLiveAgentBenchmarkRunner.toQualityCase(caseSpec, unacknowledged)
                 .prediction().taskSucceeded());
 
@@ -144,5 +148,28 @@ class AiNewsLiveAgentBenchmarkRunnerTest {
         assertFalse(nonTerminal.serverContractSatisfied());
         assertFalse(AiNewsLiveAgentBenchmarkRunner.toQualityCase(caseSpec, nonTerminal)
                 .prediction().taskSucceeded());
+    }
+
+    @Test
+    void v3ToolChoicePolicyIsReportedAsEnforcedOrchestration() {
+        AiNewsLiveAgentBenchmarkRunner.ToolExpectation required =
+                new AiNewsLiveAgentBenchmarkRunner.ToolExpectation("required", "ai_news_event",
+                        Map.of("action", "source_health"));
+        AiNewsLiveAgentBenchmarkRunner.ToolExpectation forbidden =
+                new AiNewsLiveAgentBenchmarkRunner.ToolExpectation("forbidden", null, Map.of());
+        AiNewsQualityEvaluator.GoldLabel gold = new AiNewsQualityEvaluator.GoldLabel(
+                "official", true, true, true, null, false, false, true, true, true, false);
+        AiNewsLiveAgentBenchmarkRunner.LiveBenchmarkCase requiredCase =
+                new AiNewsLiveAgentBenchmarkRunner.LiveBenchmarkCase("required", Map.of(), "synthetic",
+                        List.of("E1"), "E1", required, gold);
+        AiNewsLiveAgentBenchmarkRunner.LiveBenchmarkCase forbiddenCase =
+                new AiNewsLiveAgentBenchmarkRunner.LiveBenchmarkCase("forbidden", Map.of(), "synthetic",
+                        List.of("E1"), "E1", forbidden, gold);
+
+        assertEquals("function:ai_news_event", AiNewsLiveAgentBenchmarkRunner.requestedToolChoice(
+                requiredCase, "exact-function-for-required-and-none-for-forbidden"));
+        assertEquals("none", AiNewsLiveAgentBenchmarkRunner.requestedToolChoice(
+                forbiddenCase, "exact-function-for-required-and-none-for-forbidden"));
+        assertEquals("auto", AiNewsLiveAgentBenchmarkRunner.requestedToolChoice(requiredCase, "auto"));
     }
 }

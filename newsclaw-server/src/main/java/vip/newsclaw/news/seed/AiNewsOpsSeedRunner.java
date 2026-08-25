@@ -7,6 +7,8 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import vip.newsclaw.agent.binding.model.AgentToolBinding;
+import vip.newsclaw.agent.binding.repository.AgentToolBindingMapper;
 import vip.newsclaw.agent.model.AgentEntity;
 import vip.newsclaw.agent.repository.AgentMapper;
 import vip.newsclaw.channel.model.ChannelEntity;
@@ -56,8 +58,11 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
      */
     private static final Set<String> DOMESTIC_IM_TYPES = Set.of(
             "feishu", "dingtalk", "wecom", "weixin", "qq");
+    private static final List<String> LEAD_REQUIRED_TOOLS = List.of(
+            "ai_news_event", "ai_news_review_card", "TeamTasksTool", "ChannelMessageTool");
 
     private final AgentMapper agentMapper;
+    private final AgentToolBindingMapper agentToolBindingMapper;
     private final ChannelMapper channelMapper;
     private final ChannelSessionMapper channelSessionMapper;
     private final AgentTeamMapper teamMapper;
@@ -68,6 +73,7 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
 
     @Autowired
     public AiNewsOpsSeedRunner(AgentMapper agentMapper,
+                               AgentToolBindingMapper agentToolBindingMapper,
                                ChannelMapper channelMapper,
                                ChannelSessionMapper channelSessionMapper,
                                AgentTeamMapper teamMapper,
@@ -76,6 +82,7 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
                                SkillMapper skillMapper,
                                ToolMapper toolMapper) {
         this.agentMapper = agentMapper;
+        this.agentToolBindingMapper = agentToolBindingMapper;
         this.channelMapper = channelMapper;
         this.channelSessionMapper = channelSessionMapper;
         this.teamMapper = teamMapper;
@@ -83,6 +90,19 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
         this.cronJobMapper = cronJobMapper;
         this.skillMapper = skillMapper;
         this.toolMapper = toolMapper;
+    }
+
+    /** Source-compatible constructor used by callers without tool binding support. */
+    public AiNewsOpsSeedRunner(AgentMapper agentMapper,
+                               ChannelMapper channelMapper,
+                               ChannelSessionMapper channelSessionMapper,
+                               AgentTeamMapper teamMapper,
+                               TeamService teamService,
+                               CronJobMapper cronJobMapper,
+                               SkillMapper skillMapper,
+                               ToolMapper toolMapper) {
+        this(agentMapper, null, channelMapper, channelSessionMapper, teamMapper, teamService,
+                cronJobMapper, skillMapper, toolMapper);
     }
 
     /** Source-compatible constructor used by older tests and embedders. */
@@ -93,7 +113,7 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
                                CronJobMapper cronJobMapper,
                                SkillMapper skillMapper,
                                ToolMapper toolMapper) {
-        this(agentMapper, channelMapper, null, teamMapper, teamService,
+        this(agentMapper, null, channelMapper, null, teamMapper, teamService,
                 cronJobMapper, skillMapper, toolMapper);
     }
 
@@ -102,6 +122,7 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
         try {
             disableUnrelatedProductSurface();
             List<AgentEntity> agents = ensureAgents();
+            ensureLeadToolScope(agents.getFirst());
             ChannelEntity notificationChannel = resolveNotificationChannel(agents.get(0).getId());
             ensureTeam(agents);
             ensureCronJobs(agents.get(0).getId(), notificationChannel);
@@ -111,6 +132,37 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
             // start and the next boot can retry the idempotent seed.
             log.warn("[AiNewsOps] vertical seed skipped: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Upgrade the legacy unscoped lead to the smallest tool surface required
+     * by its scheduled and interactive workflows. Any existing row means an
+     * operator has already made an explicit choice, so the seed leaves the
+     * entire binding set untouched.
+     */
+    private void ensureLeadToolScope(AgentEntity lead) {
+        if (agentToolBindingMapper == null || lead == null || lead.getId() == null) {
+            return;
+        }
+        List<AgentToolBinding> existing = agentToolBindingMapper.selectList(
+                Wrappers.<AgentToolBinding>lambdaQuery()
+                        .eq(AgentToolBinding::getAgentId, lead.getId()));
+        if (existing != null && !existing.isEmpty()) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        for (String toolName : LEAD_REQUIRED_TOOLS) {
+            AgentToolBinding binding = new AgentToolBinding();
+            binding.setAgentId(lead.getId());
+            binding.setToolName(toolName);
+            binding.setEnabled(true);
+            binding.setCreateTime(now);
+            binding.setUpdateTime(now);
+            binding.setDeleted(0);
+            agentToolBindingMapper.insert(binding);
+        }
+        log.info("[AiNewsOps] scoped lead agent {} to {} required tools",
+                lead.getId(), LEAD_REQUIRED_TOOLS.size());
     }
 
     /**

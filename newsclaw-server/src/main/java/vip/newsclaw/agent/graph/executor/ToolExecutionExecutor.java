@@ -84,6 +84,16 @@ public class ToolExecutionExecutor {
      */
     static final int MAX_TOOL_CALLS_PER_RESPONSE = 16;
 
+    /**
+     * The AI-news event tool is a deliberately narrow compatibility target for
+     * an observed OpenAI-compatible model emission. Some model responses name
+     * this direct function correctly, but put the progressive {@code tool_call}
+     * envelope inside its arguments. Keep the compatibility rule scoped to this
+     * read-only/domain tool instead of making arbitrary tool arguments
+     * rewriteable.
+     */
+    private static final String AI_NEWS_EVENT_TOOL = "ai_news_event";
+
     private static final Set<String> DEFAULT_UNSAFE_TOOLS = Set.of(
             "browser_use", "BrowserUseTool", "write_file", "edit_file", "load_skill"
     );
@@ -568,6 +578,25 @@ public class ToolExecutionExecutor {
                 }
                 toolCall = unwrap.toolCall();
                 log.info("[ToolExecutor] Progressive bridge unwrapped tool_call -> {}", toolCall.name());
+            }
+            // OpenAI-compatible Qwen routing has been observed to select the
+            // direct ai_news_event function but serialize the bridge envelope
+            // as its argument object. Normalize only the exact, two-field
+            // envelope before JSON validation / Guard / audit so every policy
+            // layer sees the actual action instead of {toolName, arguments}.
+            BridgeUnwrap aiNewsEnvelope = unwrapAiNewsEventDirectEnvelope(toolCall);
+            if (aiNewsEnvelope.error() != null) {
+                String toolName = resolveToolName(toolCall.name());
+                events.add(GraphEventPublisher.toolStart(toolCall.id(), toolName, toolCall.arguments()));
+                events.add(GraphEventPublisher.toolComplete(
+                        toolCall.id(), toolName, aiNewsEnvelope.error(), false));
+                allResponses.add(new ToolResponseMessage.ToolResponse(
+                        toolCall.id(), responseName, aiNewsEnvelope.error()));
+                continue;
+            }
+            if (aiNewsEnvelope.toolCall() != toolCall) {
+                toolCall = aiNewsEnvelope.toolCall();
+                log.info("[ToolExecutor] Normalized direct ai_news_event bridge envelope");
             }
             // Resolve LLM-emitted name to canonical BEFORE guard / lookup so a
             // mangled name (Read_File, web_search_tool, BrowserUseTool) can't
@@ -1725,6 +1754,97 @@ public class ToolExecutionExecutor {
                     bridgeCall.id(), bridgeCall.type(), targetName, targetArguments));
         } catch (Exception e) {
             return BridgeUnwrap.error("Error: invalid tool_call envelope: " + normalizeToolExecutionError(e));
+        }
+    }
+
+    /**
+     * Strictly unwraps the one malformed direct-call shape observed from the
+     * AI-news evaluation route:
+     * <pre>
+     * {"toolName":"ai_news_event","arguments":"{\\"action\\":\\"source_health\\"}"}
+     * </pre>
+     *
+     * <p>The check intentionally does not create a generic argument-rewrite
+     * mechanism. It runs only after the outer function has already resolved to
+     * {@value #AI_NEWS_EVENT_TOOL}, requires exactly the two bridge fields,
+     * requires the nested payload to be a JSON object, and keeps the call on
+     * the same target. A malformed lookalike is rejected before the Guard or
+     * callback run, so it cannot smuggle an argument payload to another tool.
+     */
+    private BridgeUnwrap unwrapAiNewsEventDirectEnvelope(AssistantMessage.ToolCall directCall) {
+        if (!AI_NEWS_EVENT_TOOL.equals(resolveToolName(directCall.name()))) {
+            return BridgeUnwrap.success(directCall);
+        }
+        final com.fasterxml.jackson.databind.JsonNode envelope;
+        try {
+            envelope = OBJECT_MAPPER.readTree(directCall.arguments());
+        } catch (Exception ignored) {
+            // This was not a valid outer JSON object at all. Preserve the
+            // established common JSON-validation receipt below rather than
+            // incorrectly labeling every malformed direct call as an envelope.
+            return BridgeUnwrap.success(directCall);
+        }
+        try {
+            if (envelope == null || !envelope.isObject()) {
+                return BridgeUnwrap.success(directCall);
+            }
+
+            boolean hasToolName = envelope.has("toolName");
+            boolean hasArguments = envelope.has("arguments");
+            // A normal ai_news_event call has fields such as action/sourceUrl
+            // and must remain untouched. Once either bridge field appears,
+            // however, treat it as a bridge candidate and reject incomplete or
+            // expanded variants rather than silently accepting extra data.
+            if (!hasToolName && !hasArguments) {
+                return BridgeUnwrap.success(directCall);
+            }
+            if (!hasToolName || !hasArguments || envelope.size() != 2) {
+                return BridgeUnwrap.error("Error: ai_news_event bridge compatibility envelope must contain only "
+                        + "toolName and arguments.");
+            }
+
+            String targetName = textField(envelope, "toolName");
+            if (!AI_NEWS_EVENT_TOOL.equals(resolveToolName(targetName))) {
+                return BridgeUnwrap.error("Error: ai_news_event bridge compatibility envelope must target ai_news_event.");
+            }
+
+            var nestedArguments = envelope.get("arguments");
+            String normalizedArguments;
+            if (nestedArguments == null || nestedArguments.isNull()) {
+                return BridgeUnwrap.error("Error: ai_news_event bridge compatibility envelope requires JSON arguments.");
+            }
+            if (nestedArguments.isTextual()) {
+                normalizedArguments = nestedArguments.asText();
+                if (normalizedArguments.isBlank()) {
+                    return BridgeUnwrap.error("Error: ai_news_event bridge compatibility envelope requires JSON arguments.");
+                }
+                var parsed = OBJECT_MAPPER.readTree(normalizedArguments);
+                if (parsed == null || !parsed.isObject()) {
+                    return BridgeUnwrap.error("Error: ai_news_event bridge compatibility arguments must be a JSON object.");
+                }
+            } else if (nestedArguments.isObject()) {
+                normalizedArguments = OBJECT_MAPPER.writeValueAsString(nestedArguments);
+            } else {
+                return BridgeUnwrap.error("Error: ai_news_event bridge compatibility arguments must be a JSON object.");
+            }
+
+            ToolCallback target = toolCallbackMap.get(AI_NEWS_EVENT_TOOL);
+            if (target == null) {
+                // The outer name only resolves when it is in the scoped map;
+                // retain a defensive failure in case a custom callback map is
+                // mutated between resolution and this validation.
+                return BridgeUnwrap.error("Error: ai_news_event is not available to this agent.");
+            }
+            String missing = missingRequiredArguments(target, normalizedArguments);
+            if (missing != null) {
+                return BridgeUnwrap.error("Error: Missing required arguments for '" + AI_NEWS_EVENT_TOOL
+                        + "': " + missing + ".");
+            }
+            return BridgeUnwrap.success(new AssistantMessage.ToolCall(
+                    directCall.id(), directCall.type(), AI_NEWS_EVENT_TOOL, normalizedArguments));
+        } catch (Exception e) {
+            return BridgeUnwrap.error("Error: invalid ai_news_event bridge compatibility envelope: "
+                    + normalizeToolExecutionError(e));
         }
     }
 

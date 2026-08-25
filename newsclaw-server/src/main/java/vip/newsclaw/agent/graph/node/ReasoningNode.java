@@ -22,6 +22,8 @@ import vip.newsclaw.agent.GraphEventPublisher;
 import vip.newsclaw.llm.chatmodel.ThinkingLevelHolder;
 import vip.newsclaw.llm.chatmodel.StructuredOutputFormat;
 import vip.newsclaw.llm.chatmodel.StructuredOutputFormatHolder;
+import vip.newsclaw.llm.chatmodel.ToolChoiceHolder;
+import vip.newsclaw.llm.chatmodel.ToolChoicePolicy;
 import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.agent.graph.NodeStreamingChatHelper;
 import vip.newsclaw.agent.context.ConversationWindowManager;
@@ -978,7 +980,8 @@ public class ReasoningNode implements NodeAction {
                 : toolCallbacks;
         activeCallbacks = filterLongFormArtifactTools(accessor.userMessage(), activeCallbacks);
 
-        ChatOptions options = buildChatOptions(effectiveReasoning, activeCallbacks);
+        ChatOptions options = buildChatOptions(effectiveReasoning, activeCallbacks,
+                lastTurnIsToolResponse(promptMessages));
 
         Prompt prompt = new Prompt(promptMessages, options);
 
@@ -1616,12 +1619,29 @@ public class ReasoningNode implements NodeAction {
      * - 其他（OpenAI/DashScope）→ OpenAiChatOptions（支持 reasoningEffort）
      */
     ChatOptions buildChatOptions(String effectiveReasoning, List<ToolCallback> activeCallbacks) {
+        return buildChatOptions(effectiveReasoning, activeCallbacks, false);
+    }
+
+    /**
+     * Build options for one step of a multi-iteration Agent turn. A caller that
+     * requires a tool gets a two-stage contract: force exactly one initial tool
+     * step, then disable further tools while applying the terminal structured
+     * output contract to the post-tool answer. This avoids both repeated forced
+     * calls and provider conflicts between exact tool choice and JSON mode.
+     */
+    ChatOptions buildChatOptions(String effectiveReasoning, List<ToolCallback> activeCallbacks,
+                                 boolean afterToolResult) {
         StructuredOutputFormat responseFormat = StructuredOutputFormatHolder.get();
+        ToolChoicePolicy toolChoice = ToolChoiceHolder.get();
         // Anthropic 协议模型（AnthropicChatModel）：MiniMax 也用此协议但不支持 thinking
         if (chatModel instanceof org.springframework.ai.anthropic.AnthropicChatModel anthropicModel) {
             if (responseFormat.requiresJsonObject()) {
                 throw new NewsClawException(422,
                         "responseFormat=json_object is unsupported by the selected Anthropic protocol model");
+            }
+            if (toolChoice.isExplicit()) {
+                throw new NewsClawException(422,
+                        "toolChoice is unsupported by the selected Anthropic protocol model");
             }
             org.springframework.ai.anthropic.AnthropicChatOptions.Builder builder =
                     org.springframework.ai.anthropic.AnthropicChatOptions.builder()
@@ -1669,14 +1689,29 @@ public class ReasoningNode implements NodeAction {
                     effectiveMaxTokens, DASHSCOPE_MAX_OUTPUT_TOKENS);
             effectiveMaxTokens = DASHSCOPE_MAX_OUTPUT_TOKENS;
         }
+        // Validate the turn-level contract before a forced initial tool can run.
+        // The response format is applied only on the later terminal stage, but
+        // protocol incompatibility must still fail before any tool side effect.
+        if (responseFormat.requiresJsonObject() && !nativeJsonObjectResponseFormatSupported) {
+            throw new NewsClawException(422,
+                    "responseFormat=json_object is unsupported by the selected model protocol");
+        }
         OpenAiChatOptions.Builder oaiBuilder = OpenAiChatOptions.builder()
                 .toolCallbacks(activeCallbacks)
                 .maxTokens(effectiveMaxTokens);
-        if (responseFormat.requiresJsonObject()) {
-            if (!nativeJsonObjectResponseFormatSupported) {
-                throw new NewsClawException(422,
-                        "responseFormat=json_object is unsupported by the selected model protocol");
-            }
+        boolean terminalStage = toolChoice.requiresInitialToolCall() && afterToolResult;
+        Object providerToolChoice = terminalStage
+                ? org.springframework.ai.openai.api.OpenAiApi.ChatCompletionRequest.ToolChoiceBuilder.NONE
+                : toolChoice.toOpenAiToolChoice(activeCallbacks.stream()
+                        .map(callback -> callback.getToolDefinition().name())
+                        .filter(Objects::nonNull)
+                        .toList());
+        if (providerToolChoice != null) {
+            oaiBuilder.toolChoice(providerToolChoice);
+        }
+        boolean structuredTerminalCall = responseFormat.requiresJsonObject()
+                && (!toolChoice.requiresInitialToolCall() || terminalStage);
+        if (structuredTerminalCall) {
             oaiBuilder.responseFormat(new ResponseFormat(ResponseFormat.Type.JSON_OBJECT, null));
         }
         if (StringUtils.hasText(effectiveReasoning)) {

@@ -149,6 +149,12 @@ public class DefaultToolDisclosureService implements ToolDisclosureService {
      */
     @Override
     public Set<String> computeAutoDemotions(AgentToolSet baseSet, Integer budgetTokens) {
+        return computeAutoDemotions(baseSet, budgetTokens, Set.of());
+    }
+
+    @Override
+    public Set<String> computeAutoDemotions(AgentToolSet baseSet, Integer budgetTokens,
+                                            Set<String> priorityTools) {
         if (legacyMode() || baseSet == null || budgetTokens == null
                 || budgetTokens <= 0 || budgetTokens == Integer.MAX_VALUE) {
             return Set.of();
@@ -159,9 +165,12 @@ public class DefaultToolDisclosureService implements ToolDisclosureService {
             return Set.of();
         }
         Snapshot snap = snapshot();
+        Set<String> prioritized = priorityTools == null ? Set.of() : priorityTools;
         List<ToolCallback> candidates = core.stream()
                 .filter(cb -> isDemotable(cb.getToolDefinition().name(), snap))
-                .sorted(demotionOrder())
+                .sorted(Comparator
+                        .comparing((ToolCallback cb) -> prioritized.contains(cb.getToolDefinition().name()))
+                        .thenComparing(demotionOrder()))
                 .toList();
         Set<String> demoted = new LinkedHashSet<>();
         int remainingTokens = coreTokens;

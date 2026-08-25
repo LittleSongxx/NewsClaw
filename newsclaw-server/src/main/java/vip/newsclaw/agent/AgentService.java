@@ -19,6 +19,8 @@ import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.llm.chatmodel.ThinkingLevelHolder;
 import vip.newsclaw.llm.chatmodel.StructuredOutputFormat;
 import vip.newsclaw.llm.chatmodel.StructuredOutputFormatHolder;
+import vip.newsclaw.llm.chatmodel.ToolChoiceHolder;
+import vip.newsclaw.llm.chatmodel.ToolChoicePolicy;
 import vip.newsclaw.llm.event.ModelConfigChangedEvent;
 import vip.newsclaw.memory.MemoryProperties;
 import vip.newsclaw.memory.lifecycle.MemoryLifecycleMediator;
@@ -421,14 +423,31 @@ public class AgentService {
                                                    String requesterId, String thinkingLevel,
                                                    StructuredOutputFormat responseFormat,
                                                    ChatOrigin origin) {
+        return chatStructuredStream(agentId, message, conversationId, requesterId, thinkingLevel,
+                responseFormat, ToolChoicePolicy.AUTO, origin);
+    }
+
+    /**
+     * Structured stream with explicit response and tool-selection contracts.
+     * The tool policy is validated against the Agent's active callback set by
+     * {@link vip.newsclaw.agent.graph.node.ReasoningNode}.
+     */
+    public Flux<StreamDelta> chatStructuredStream(Long agentId, String message, String conversationId,
+                                                   String requesterId, String thinkingLevel,
+                                                   StructuredOutputFormat responseFormat,
+                                                   ToolChoicePolicy toolChoice,
+                                                   ChatOrigin origin) {
         StructuredOutputFormat effectiveResponseFormat = responseFormat == null
                 ? StructuredOutputFormat.TEXT : responseFormat;
+        ToolChoicePolicy effectiveToolChoice = toolChoice == null ? ToolChoicePolicy.AUTO : toolChoice;
         clearAutoRecordedForNewTurn(conversationId);
         memoryRecallTracker.trackRecalls(agentId, message);
         if (isDshAgent(agentId)) {
-            if (effectiveResponseFormat.requiresJsonObject()) {
+            if (effectiveResponseFormat.requiresJsonObject() || effectiveToolChoice.isExplicit()) {
                 return Flux.error(new NewsClawException(422,
-                        "responseFormat=json_object is unavailable for this external Agent runtime"));
+                        effectiveResponseFormat.requiresJsonObject()
+                                ? "responseFormat=json_object is unavailable for this external Agent runtime"
+                                : "toolChoice is unavailable for this external Agent runtime"));
             }
             AgentEntity dshAgent = getAgent(agentId);
             return withLifecycleFlux(agentId, message, conversationId,
@@ -443,13 +462,16 @@ public class AgentService {
                     .doFinally(signal -> {
                         ThinkingLevelHolder.clear();
                         StructuredOutputFormatHolder.clear();
+                        ToolChoiceHolder.clear();
                     });
         }
         BaseAgent agent = getOrBuildAgentForConversation(agentId, conversationId);
-        if (effectiveResponseFormat.requiresJsonObject()
+        if ((effectiveResponseFormat.requiresJsonObject() || effectiveToolChoice.isExplicit())
                 && !(agent instanceof vip.newsclaw.agent.graph.StateGraphReActAgent)) {
             return Flux.error(new NewsClawException(422,
-                    "responseFormat=json_object currently requires a native ReAct Agent"));
+                    effectiveResponseFormat.requiresJsonObject()
+                            ? "responseFormat=json_object currently requires a native ReAct Agent"
+                            : "toolChoice currently requires a native ReAct Agent"));
         }
 
         ChatOrigin captured = origin != null ? origin : ChatOrigin.EMPTY;
@@ -458,12 +480,14 @@ public class AgentService {
                         ChatOriginHolder.set(captured);
                         configureThinkingLevel(agentId, thinkingLevel);
                         StructuredOutputFormatHolder.set(effectiveResponseFormat);
+                        ToolChoiceHolder.set(effectiveToolChoice);
                         return withLifecycleFlux(agentId, message, conversationId,
                                 (msg, convId) -> capable.chatStructuredStream(msg, convId,
                                                 requesterId != null ? requesterId : "")
                                         .doFinally(signal -> {
                                             ThinkingLevelHolder.clear();
                                             StructuredOutputFormatHolder.clear();
+                                            ToolChoiceHolder.clear();
                                         }),
                                 StreamDelta::content);
                     })
@@ -471,13 +495,16 @@ public class AgentService {
                         ChatOriginHolder.clear();
                         ThinkingLevelHolder.clear();
                         StructuredOutputFormatHolder.clear();
+                        ToolChoiceHolder.clear();
                     });
         }
 
         // 降级：不支持结构化流的 Agent，包装为纯内容流
-        if (effectiveResponseFormat.requiresJsonObject()) {
+        if (effectiveResponseFormat.requiresJsonObject() || effectiveToolChoice.isExplicit()) {
             return Flux.error(new NewsClawException(422,
-                    "responseFormat=json_object requires a structured native Agent stream"));
+                    effectiveResponseFormat.requiresJsonObject()
+                            ? "responseFormat=json_object requires a structured native Agent stream"
+                            : "toolChoice requires a structured native Agent stream"));
         }
         return Flux.defer(() -> {
                     ChatOriginHolder.set(captured);
@@ -491,6 +518,7 @@ public class AgentService {
                     ChatOriginHolder.clear();
                     ThinkingLevelHolder.clear();
                     StructuredOutputFormatHolder.clear();
+                    ToolChoiceHolder.clear();
                 });
     }
 

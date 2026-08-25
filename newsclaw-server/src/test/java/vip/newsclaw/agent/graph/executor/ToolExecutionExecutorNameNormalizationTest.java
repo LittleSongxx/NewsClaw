@@ -205,4 +205,84 @@ class ToolExecutionExecutorNameNormalizationTest {
         assertTrue(result.responses().get(0).responseData().contains("query"));
         verify(target, never()).call(anyString(), any());
     }
+
+    @Test
+    @DisplayName("ai_news_event direct-call bridge envelope is normalized before guard and execution")
+    void aiNewsDirectBridgeEnvelope_normalizesBeforeGuardAndExecution() {
+        ToolCallback target = callbackNamed("ai_news_event");
+        when(target.getToolDefinition().inputSchema()).thenReturn(
+                "{\"type\":\"object\",\"required\":[\"action\"],\"properties\":{\"action\":{\"type\":\"string\"}}}");
+        AtomicReference<String> guardedName = new AtomicReference<>();
+        AtomicReference<String> guardedArguments = new AtomicReference<>();
+        ToolGuard guard = (name, arguments) -> {
+            guardedName.set(name);
+            guardedArguments.set(arguments);
+            return ToolGuardResult.allow();
+        };
+        ToolExecutionExecutor executor = new ToolExecutionExecutor(
+                AgentToolSet.fromCallbacks(List.of(), List.of(target)), guard, null, null);
+
+        var result = executor.execute(List.of(new AssistantMessage.ToolCall(
+                        "ai-news-bridge-1", "function", "ai_news_event",
+                        "{\"toolName\":\"ai_news_event\",\"arguments\":\"{\\\"action\\\":\\\"source_health\\\"}\"}")),
+                "conv", "agent", false, "user", null);
+
+        assertEquals("ai_news_event", guardedName.get());
+        assertEquals("{\"action\":\"source_health\"}", guardedArguments.get(),
+                "Guard must receive the domain action, never the bridge envelope");
+        assertEquals("ok:ai_news_event", result.responses().get(0).responseData());
+        verify(target).call(eq("{\"action\":\"source_health\"}"), any(ToolContext.class));
+
+        var start = result.events().stream()
+                .filter(event -> vip.newsclaw.agent.GraphEventPublisher.EVENT_TOOL_START.equals(event.type()))
+                .findFirst().orElseThrow();
+        assertEquals("ai_news_event", start.data().get("toolName"));
+        assertEquals("{\"action\":\"source_health\"}", start.data().get("arguments"),
+                "SSE/audit events must preserve the normalized parameters");
+    }
+
+    @Test
+    @DisplayName("ai_news_event compatibility envelope cannot retarget another tool")
+    void aiNewsDirectBridgeEnvelope_rejectsForeignTarget() {
+        ToolCallback target = callbackNamed("ai_news_event");
+        ToolExecutionExecutor executor = newExecutor(target);
+
+        var result = executor.execute(List.of(new AssistantMessage.ToolCall(
+                        "ai-news-bridge-foreign", "function", "ai_news_event",
+                        "{\"toolName\":\"ChannelMessageTool\",\"arguments\":\"{}\"}")),
+                "conv", "agent", false, "user", null);
+
+        assertTrue(result.responses().get(0).responseData().contains("must target ai_news_event"));
+        verify(target, never()).call(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("ai_news_event compatibility envelope rejects extra fields instead of rewriting them")
+    void aiNewsDirectBridgeEnvelope_rejectsExtraFields() {
+        ToolCallback target = callbackNamed("ai_news_event");
+        ToolExecutionExecutor executor = newExecutor(target);
+
+        var result = executor.execute(List.of(new AssistantMessage.ToolCall(
+                        "ai-news-bridge-extra", "function", "ai_news_event",
+                        "{\"toolName\":\"ai_news_event\",\"arguments\":\"{\\\"action\\\":\\\"source_health\\\"}\",\"extra\":\"not-allowed\"}")),
+                "conv", "agent", false, "user", null);
+
+        assertTrue(result.responses().get(0).responseData().contains("must contain only toolName and arguments"));
+        verify(target, never()).call(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("ai_news_event compatibility envelope rejects malformed nested JSON")
+    void aiNewsDirectBridgeEnvelope_rejectsMalformedNestedJson() {
+        ToolCallback target = callbackNamed("ai_news_event");
+        ToolExecutionExecutor executor = newExecutor(target);
+
+        var result = executor.execute(List.of(new AssistantMessage.ToolCall(
+                        "ai-news-bridge-bad-json", "function", "ai_news_event",
+                        "{\"toolName\":\"ai_news_event\",\"arguments\":\"{not-json}\"}")),
+                "conv", "agent", false, "user", null);
+
+        assertTrue(result.responses().get(0).responseData().contains("invalid ai_news_event bridge compatibility envelope"));
+        verify(target, never()).call(anyString(), any());
+    }
 }

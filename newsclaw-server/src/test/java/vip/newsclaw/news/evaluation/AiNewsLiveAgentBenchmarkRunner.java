@@ -66,6 +66,8 @@ final class AiNewsLiveAgentBenchmarkRunner {
         List<LiveBenchmarkCase> selectedCases = benchmark.cases().subList(0, maxCases);
         LiveApiClient client = new LiveApiClient(config.baseUrl(), config.timeout());
         String token = client.login(config.username(), config.password());
+        String promptVersion = benchmark.executionMetadata().getOrDefault("promptVersion", "live-agent-evidence-v1");
+        String toolChoicePolicy = benchmark.executionMetadata().getOrDefault("toolChoicePolicy", "auto");
         String runId = "live-" + DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
                 .withZone(java.time.ZoneOffset.UTC).format(Instant.now()) + "-"
                 + UUID.randomUUID().toString().substring(0, 8);
@@ -77,12 +79,14 @@ final class AiNewsLiveAgentBenchmarkRunner {
         for (int index = 0; index < selectedCases.size(); index++) {
             LiveBenchmarkCase benchmarkCase = selectedCases.get(index);
             String conversationId = runId + "-" + benchmarkCase.id();
+            String requestedToolChoice = requestedToolChoice(benchmarkCase, toolChoicePolicy);
             CaseRun run;
             try {
                 run = client.execute(token, config.workspaceId(), config.agentId(), conversationId,
-                        benchmarkCase, config.responseFormat());
+                        benchmarkCase, config.responseFormat(), promptVersion, requestedToolChoice);
             } catch (Exception e) {
-                run = CaseRun.transportFailure(benchmarkCase.id(), conversationId, config.responseFormat(), e);
+                run = CaseRun.transportFailure(benchmarkCase.id(), conversationId,
+                        config.responseFormat(), requestedToolChoice, e);
             }
             run = annotateFailures(benchmarkCase, run);
             if (rawDirectory != null && run.rawSse() != null && !run.rawSse().isBlank()) {
@@ -103,6 +107,7 @@ final class AiNewsLiveAgentBenchmarkRunner {
         metadata.put("requestedCases", String.valueOf(selectedCases.size()));
         metadata.put("requestTimeoutSeconds", String.valueOf(config.timeout().toSeconds()));
         metadata.put("requestedResponseFormat", config.responseFormat());
+        metadata.put("toolChoicePolicy", toolChoicePolicy);
         metadata.put("evaluationTree", defaultText(config.evaluationTree(), "unknown"));
         metadata.put("observedModelRoutes", observedRoutes(runs));
         metadata.put("labelProvenance",
@@ -136,6 +141,7 @@ final class AiNewsLiveAgentBenchmarkRunner {
         boolean citationsMatch = citationsMatch(benchmarkCase, output);
         boolean transportCompleted = run.httpStatus() == 200 && "completed".equalsIgnoreCase(run.streamStatus());
         boolean taskSucceeded = transportCompleted && run.responseFormatAcknowledged()
+                && run.toolChoiceAcknowledged()
                 && run.serverContractSatisfied()
                 && output.valid() && labelsMatch && citationsMatch
                 && tools.selectionCorrect() && tools.parametersCorrect() && tools.executionSucceeded();
@@ -183,6 +189,10 @@ final class AiNewsLiveAgentBenchmarkRunner {
                     reasons.add("server contract result disagreed with independent strict parser");
                 }
             }
+        }
+        if (!run.toolChoiceAcknowledged()) {
+            reasons.add("server did not acknowledge requested toolChoice=" + run.requestedToolChoice()
+                    + " in stream_started");
         }
         if (!labelsMatch(benchmarkCase, output)) reasons.add("policy labels did not match frozen gold");
         if (!citationsMatch(benchmarkCase, output)) reasons.add("citation ids or citation decision violated task contract");
@@ -335,6 +345,10 @@ final class AiNewsLiveAgentBenchmarkRunner {
         long jsonRequested = runs.stream().filter(CaseRun::jsonContractRequested).count();
         long formatAcknowledged = runs.stream().filter(CaseRun::jsonContractRequested)
                 .filter(run -> "json_object".equalsIgnoreCase(run.observedResponseFormat())).count();
+        long explicitToolChoice = runs.stream().filter(run -> !"auto".equalsIgnoreCase(run.requestedToolChoice())).count();
+        long toolChoiceAcknowledged = runs.stream()
+                .filter(run -> !"auto".equalsIgnoreCase(run.requestedToolChoice()))
+                .filter(CaseRun::toolChoiceAcknowledged).count();
         long contractEvents = runs.stream().filter(CaseRun::jsonContractRequested)
                 .filter(run -> run.structuredOutputContract() != null
                         && run.structuredOutputContract().present()).count();
@@ -351,6 +365,8 @@ final class AiNewsLiveAgentBenchmarkRunner {
         metrics.put("structuredResponseValidRate", RuntimeMetric.rate(runs.size(), validStructured));
         metrics.put("jsonObjectContractRequestedRate", RuntimeMetric.rate(runs.size(), jsonRequested));
         metrics.put("responseFormatAcknowledgedRate", RuntimeMetric.rate(jsonRequested, formatAcknowledged));
+        metrics.put("toolChoiceAcknowledgedRate",
+                RuntimeMetric.rate(explicitToolChoice, toolChoiceAcknowledged));
         metrics.put("serverContractEventRate", RuntimeMetric.rate(jsonRequested, contractEvents));
         metrics.put("serverContractValidRate", RuntimeMetric.rate(jsonRequested, contractValid));
         metrics.put("serverContractParserAgreementRate", RuntimeMetric.rate(jsonRequested, contractParserAgreement));
@@ -368,10 +384,11 @@ final class AiNewsLiveAgentBenchmarkRunner {
                 run.toolExecutionMs(), run.promptTokens(), run.completionTokens(), run.reasoningTokens(),
                 run.runtimeProvider(), run.runtimeModel(), run.toolCalls().stream().map(ToolCall::summary).toList(),
                 run.rawTracePath(), run.rawTraceSha256(), sha256(run.assistantContent()),
-                run.requestedResponseFormat(), run.observedResponseFormat(), run.structuredOutputContract(),
+                run.requestedResponseFormat(), run.observedResponseFormat(),
+                run.requestedToolChoice(), run.observedToolChoice(), run.structuredOutputContract(),
                 run.failureReasons()))
                 .toList();
-        return new LiveRuntimeManifest("2.0", benchmark.evaluationScope(), benchmark.datasetId(),
+        return new LiveRuntimeManifest("2.1", benchmark.evaluationScope(), benchmark.datasetId(),
                 benchmark.datasetVersion(), Instant.now().toString(), config.gitCommit(), runId,
                 config.agentId(), config.workspaceId(), metrics, cases, benchmark.limitations());
     }
@@ -401,19 +418,22 @@ final class AiNewsLiveAgentBenchmarkRunner {
                     .append(metric.total() == null ? "n/a" : metric.total()).append(" |\n");
         });
         out.append("\n## Per-case Execution\n\n");
-        out.append("| Case | HTTP | Stream | E2E ms | TTFT ms | Tools | Route | Notes |\n");
-        out.append("| --- | ---: | --- | ---: | ---: | ---: | --- | --- |\n");
+        out.append("| Case | HTTP | Stream | E2E ms | TTFT ms | Tools | Tool Choice | Route | Notes |\n");
+        out.append("| --- | ---: | --- | ---: | ---: | ---: | --- | --- | --- |\n");
         manifest.cases().stream().sorted(Comparator.comparing(RuntimeCase::caseId)).forEach(item -> out
                 .append("| `").append(item.caseId()).append("` | ").append(item.httpStatus())
                 .append(" | `").append(emptyAs(item.streamStatus(), "unknown")).append("` | ")
                 .append(valueOrNa(item.elapsedMs())).append(" | ").append(valueOrNa(item.timeToFirstContentMs()))
                 .append(" | ").append(item.toolCalls().size()).append(" | `")
+                .append(emptyAs(item.requestedToolChoice(), "auto")).append(" -> ")
+                .append(emptyAs(item.observedToolChoice(), "missing")).append("` | `")
                 .append(emptyAs(item.runtimeProvider(), "unknown")).append(" / ")
                 .append(emptyAs(item.runtimeModel(), "unknown")).append("` | ")
                 .append(escape(String.join("; ", item.failureReasons()))).append(" |\n"));
         out.append("\n## Boundaries\n\n");
         out.append("- This is a sequential, controlled online Agent benchmark. P50/P95 describe this run only; they are not QPS, capacity, SLA, or production traffic claims.\n");
         out.append("- The benchmark uses synthetic frozen evidence packets and read-only tool probes. It does not measure open-web discovery accuracy, user satisfaction, delivery success, or production cost.\n");
+        out.append("- When execution metadata requests an exact function toolChoice, the tool metrics measure provider-enforced orchestration plus executor behavior; they are not autonomous model tool-selection scores.\n");
         out.append("- Raw SSE files are retained under the caller-selected output directory and are excluded from Git.\n");
         for (String limitation : manifest.limitations()) out.append("- ").append(limitation).append("\n");
         return out.toString();
@@ -621,6 +641,7 @@ final class AiNewsLiveAgentBenchmarkRunner {
                    Long completionTokens, Long reasoningTokens, String runtimeProvider, String runtimeModel,
                    String assistantContent, List<ToolCall> toolCalls, String rawSse, String rawTracePath,
                    String rawTraceSha256, String requestedResponseFormat, String observedResponseFormat,
+                   String requestedToolChoice, String observedToolChoice,
                    StructuredContractResult structuredOutputContract, List<String> failureReasons) {
         CaseRun {
             streamStatus = streamStatus == null ? "" : streamStatus;
@@ -628,14 +649,16 @@ final class AiNewsLiveAgentBenchmarkRunner {
             toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
             requestedResponseFormat = blank(requestedResponseFormat) ? "text" : requestedResponseFormat;
             observedResponseFormat = observedResponseFormat == null ? "" : observedResponseFormat;
+            requestedToolChoice = blank(requestedToolChoice) ? "auto" : requestedToolChoice;
+            observedToolChoice = observedToolChoice == null ? "" : observedToolChoice;
             failureReasons = failureReasons == null ? List.of() : List.copyOf(failureReasons);
         }
 
         static CaseRun transportFailure(String caseId, String conversationId,
-                                        String requestedResponseFormat, Exception e) {
+                                        String requestedResponseFormat, String requestedToolChoice, Exception e) {
             return new CaseRun(caseId, conversationId, 0, "transport_error", null, null, null,
                     null, null, null, null, null, "", List.of(), "", null, null,
-                    requestedResponseFormat, "", null,
+                    requestedResponseFormat, "", requestedToolChoice, "", null,
                     List.of("transport: " + conciseMessage(e)));
         }
 
@@ -643,14 +666,15 @@ final class AiNewsLiveAgentBenchmarkRunner {
             return new CaseRun(caseId, conversationId, httpStatus, streamStatus, elapsedMs, timeToFirstContentMs,
                     toolExecutionMs, promptTokens, completionTokens, reasoningTokens, runtimeProvider, runtimeModel,
                     assistantContent, toolCalls, rawSse, path, hash, requestedResponseFormat,
-                    observedResponseFormat, structuredOutputContract, failureReasons);
+                    observedResponseFormat, requestedToolChoice, observedToolChoice,
+                    structuredOutputContract, failureReasons);
         }
 
         CaseRun withFailureReasons(List<String> reasons) {
             return new CaseRun(caseId, conversationId, httpStatus, streamStatus, elapsedMs, timeToFirstContentMs,
                     toolExecutionMs, promptTokens, completionTokens, reasoningTokens, runtimeProvider, runtimeModel,
                     assistantContent, toolCalls, rawSse, rawTracePath, rawTraceSha256, requestedResponseFormat,
-                    observedResponseFormat, structuredOutputContract,
+                    observedResponseFormat, requestedToolChoice, observedToolChoice, structuredOutputContract,
                     List.copyOf(new LinkedHashSet<>(reasons)));
         }
 
@@ -661,6 +685,11 @@ final class AiNewsLiveAgentBenchmarkRunner {
         boolean responseFormatAcknowledged() {
             return !jsonContractRequested()
                     || "json_object".equalsIgnoreCase(observedResponseFormat);
+        }
+
+        boolean toolChoiceAcknowledged() {
+            return "auto".equalsIgnoreCase(requestedToolChoice)
+                    || requestedToolChoice.equalsIgnoreCase(observedToolChoice);
         }
 
         boolean serverContractSatisfied() {
@@ -701,6 +730,7 @@ final class AiNewsLiveAgentBenchmarkRunner {
                        Long completionTokens, Long reasoningTokens, String runtimeProvider, String runtimeModel,
                        List<ToolCallSummary> toolCalls, String rawTracePath, String rawTraceSha256,
                        String outputSha256, String requestedResponseFormat, String observedResponseFormat,
+                       String requestedToolChoice, String observedToolChoice,
                        StructuredContractResult structuredOutputContract, List<String> failureReasons) {
         RuntimeCase {
             toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
@@ -772,12 +802,14 @@ final class AiNewsLiveAgentBenchmarkRunner {
         }
 
         private CaseRun execute(String token, long workspaceId, long agentId, String conversationId,
-                                LiveBenchmarkCase benchmarkCase, String responseFormat) throws Exception {
+                                LiveBenchmarkCase benchmarkCase, String responseFormat,
+                                String promptVersion, String toolChoice) throws Exception {
             String requestBody = JSON.writeValueAsString(Map.of(
                     "agentId", agentId,
                     "conversationId", conversationId,
-                    "message", renderPrompt(benchmarkCase),
-                    "responseFormat", responseFormat));
+                    "message", renderPrompt(benchmarkCase, promptVersion),
+                    "responseFormat", responseFormat,
+                    "toolChoice", toolChoice));
             long start = System.nanoTime();
             HttpResponse<InputStream> response = client.send(HttpRequest.newBuilder(endpoint("/api/v1/chat/stream"))
                     .header("Authorization", "Bearer " + token)
@@ -790,7 +822,7 @@ final class AiNewsLiveAgentBenchmarkRunner {
                 SseCapture capture = readSse(body, start);
                 long elapsed = Duration.ofNanos(System.nanoTime() - start).toMillis();
                 return capture.toCaseRun(benchmarkCase.id(), conversationId, response.statusCode(), elapsed,
-                        responseFormat);
+                        responseFormat, toolChoice);
             }
         }
 
@@ -799,20 +831,82 @@ final class AiNewsLiveAgentBenchmarkRunner {
         }
     }
 
-    private static String renderPrompt(LiveBenchmarkCase item) {
+    /**
+     * v3 optionally exercises NewsClaw's explicit, caller-declared tool
+     * contract. This is intentionally distinct from autonomous tool choice:
+     * the metadata and reports retain the policy so the result cannot be
+     * misrepresented as a model independently selecting a tool.
+     */
+    static String requestedToolChoice(LiveBenchmarkCase item, String policy) {
+        if (!"exact-function-for-required-and-none-for-forbidden".equalsIgnoreCase(defaultText(policy, "auto"))) {
+            return "auto";
+        }
+        if (item.toolExpectation().forbidsTools()) {
+            return "none";
+        }
+        String toolName = item.toolExpectation().toolName();
+        if (blank(toolName)) {
+            throw new IllegalArgumentException("required tool benchmark case must declare toolName");
+        }
+        return "function:" + toolName;
+    }
+
+    static String renderPrompt(LiveBenchmarkCase item) {
+        return renderPrompt(item, "live-agent-evidence-v2");
+    }
+
+    static String renderPrompt(LiveBenchmarkCase item, String promptVersion) {
         String toolInstruction = item.toolExpectation().forbidsTools()
                 ? "Do not call any tool. Do not search, write an event, create a Wiki page, create content, "
                 + "send a message, request approval, or cause any external side effect."
-                : "Before returning JSON, call exactly one tool: `" + item.toolExpectation().toolName()
-                + "` with exactly these JSON arguments: " + compactJson(item.toolExpectation().arguments())
-                + ". Do not call any other tool. This required probe is read-only; do not write, publish, "
-                + "send messages, create Wiki/content, or request approval.";
+                : "Your next assistant action MUST be exactly one direct call to the function `"
+                + item.toolExpectation().toolName() + "` with exactly these JSON arguments: "
+                + compactJson(item.toolExpectation().arguments())
+                + ". Do not answer, reason in visible text, or call a bridge before that tool result. "
+                + "After the successful read-only result, return the JSON object. Do not call any other tool; "
+                + "do not write, publish, send messages, create Wiki/content, or request approval.";
+        if (promptVersion != null && promptVersion.toLowerCase(Locale.ROOT).contains("v3")) {
+            return renderV3Prompt(item, toolInstruction);
+        }
         return """
                 This is a controlled NewsClaw Agent quality evaluation. Treat only the supplied evidence packet as facts.
                 Do not use background knowledge, infer unstated facts, or invent citations. Set sourceTier to the strongest source represented in the packet, independently of whether its quote proves the claim. `claimQuoteSupported` is true only when a trustworthy quote directly entails the primary claim; a hedge, anonymous assertion, lookalike domain, or unrelated quote is not support. A source is verification-eligible only when the packet contains direct official support for the claim or two independent trusted-media supports; unresolved conflicts must block verification. A citation is allowed only when verification is eligible, the requested citation id is inside the packet, and its quote supports the claim. `refusalIssued=true` means the claim must not be marked verified or sent to content production. `humanReviewRequested=true` means an operator must resolve ambiguity or conflict.
 
                 Return exactly one JSON object, with no Markdown and no other text:
                 {"sourceTier":"official|media|community","verificationEligible":true|false,"citationAllowed":true|false,"claimQuoteSupported":true|false,"refusalIssued":true|false,"humanReviewRequested":true|false,"citationIds":["evidence-id",...]}
+
+                %s
+
+                Case:
+                %s
+                """.formatted(toolInstruction, item.prompt());
+    }
+
+    private static String renderV3Prompt(LiveBenchmarkCase item, String toolInstruction) {
+        return """
+                Controlled NewsClaw AI-news evaluation. Treat ONLY the supplied Evidence Packet as facts;
+                never use background knowledge and never invent or normalize citation ids.
+
+                Emit exactly one JSON object and absolutely nothing else (no Markdown fence, prose, prefix, suffix,
+                or trailing token):
+                {"sourceTier":"official|media|community","verificationEligible":true|false,"citationAllowed":true|false,"claimQuoteSupported":true|false,"refusalIssued":true|false,"humanReviewRequested":true|false,"citationIds":["packet-id",...]}
+
+                Apply this deterministic field contract in order:
+                1. sourceTier is the strongest source represented by the packet. A lookalike/unregistered host or
+                   anonymous paste is community, never official.
+                2. claimQuoteSupported=true only if at least one trustworthy packet quote directly entails the
+                   primary claim. A hedge, meta-claim, unrelated quote, or anonymous assertion is not support.
+                   In an unresolved conflict it may still be true when a trustworthy quote supports the requested
+                   claim; the conflict affects verification, not this quote-level field.
+                3. verificationEligible=true only for direct official support OR two independent trusted-media
+                   supports, and only when there is no unresolved conflict.
+                4. citationAllowed=true only when verificationEligible=true, the requested citation id is in the
+                   packet, and that id's quote supports the claim. Otherwise it is false.
+                5. citationIds MUST be exactly [requestedCitationId] when citationAllowed=true; otherwise it MUST
+                   be []. Never cite an id outside the packet, even if another packet quote is useful.
+                6. refusalIssued MUST equal (verificationEligible=false).
+                7. humanReviewRequested MUST equal (citationAllowed=false). This covers insufficient/untrusted
+                   evidence, conflicts, missing claims, and an out-of-packet citation request.
 
                 %s
 
@@ -845,6 +939,7 @@ final class AiNewsLiveAgentBenchmarkRunner {
             Long toolExecutionMs = null;
             Long firstContentMs = null;
             String observedResponseFormat = "";
+            String observedToolChoice = "";
             StructuredContractResult structuredOutputContract = null;
             String line;
             while ((line = reader.readLine()) != null) {
@@ -863,6 +958,9 @@ final class AiNewsLiveAgentBenchmarkRunner {
                         if (outcome.toolExecutionMs() != null) toolExecutionMs = outcome.toolExecutionMs();
                         if (outcome.observedResponseFormat() != null) {
                             observedResponseFormat = outcome.observedResponseFormat();
+                        }
+                        if (outcome.observedToolChoice() != null) {
+                            observedToolChoice = outcome.observedToolChoice();
                         }
                         if (outcome.structuredOutputContract() != null) {
                             structuredOutputContract = outcome.structuredOutputContract();
@@ -891,6 +989,9 @@ final class AiNewsLiveAgentBenchmarkRunner {
                 if (outcome.observedResponseFormat() != null) {
                     observedResponseFormat = outcome.observedResponseFormat();
                 }
+                if (outcome.observedToolChoice() != null) {
+                    observedToolChoice = outcome.observedToolChoice();
+                }
                 if (outcome.structuredOutputContract() != null) {
                     structuredOutputContract = outcome.structuredOutputContract();
                 }
@@ -899,7 +1000,7 @@ final class AiNewsLiveAgentBenchmarkRunner {
             return new SseCapture(raw.toString(), answer.toString(), toolCalls.values().stream()
                     .map(MutableToolCall::toImmutable).toList(), streamStatus, provider, model,
                     promptTokens, completionTokens, reasoningTokens, toolExecutionMs, firstContentMs,
-                    observedResponseFormat, structuredOutputContract, failures);
+                    observedResponseFormat, observedToolChoice, structuredOutputContract, failures);
         }
     }
 
@@ -936,13 +1037,14 @@ final class AiNewsLiveAgentBenchmarkRunner {
             return new SseEventResult(firstContentMs, status, payload.path("runtimeProvider").asText(null),
                     payload.path("runtimeModel").asText(null), optionalLong(payload, "promptTokens"),
                     optionalLong(payload, "completionTokens"), optionalLong(payload, "reasoningTokens"), null,
-                    null, null);
+                    null, null, null);
         } else if ("perf_summary".equals(name) && "tool_execution".equals(payload.path("phase").asText())) {
             return new SseEventResult(firstContentMs, null, null, null, null, null, null,
-                    optionalLong(payload, "tool_exec_ms"), null, null);
+                    optionalLong(payload, "tool_exec_ms"), null, null, null);
         } else if ("stream_started".equals(name)) {
             return new SseEventResult(firstContentMs, null, null, null, null, null, null,
-                    null, payload.path("responseFormat").asText(""), null);
+                    null, payload.path("responseFormat").asText(""),
+                    payload.path("toolChoice").asText(""), null);
         } else if ("structured_output".equals(name)) {
             StructuredContractResult contract = new StructuredContractResult(
                     payload.path("requestedFormat").asText(""),
@@ -953,7 +1055,7 @@ final class AiNewsLiveAgentBenchmarkRunner {
                             ? payload.path("terminalAnswerReached").booleanValue() : null,
                     payload.path("failureReason").asText(""));
             return new SseEventResult(firstContentMs, null, null, null, null, null, null,
-                    null, null, contract);
+                    null, null, null, contract);
         } else if ("error".equals(name)) {
             failures.add("SSE error: " + payload.path("message").asText("unknown"));
         }
@@ -1002,10 +1104,11 @@ final class AiNewsLiveAgentBenchmarkRunner {
     private record SseEventResult(Long firstContentMs, String streamStatus, String provider, String model,
                                   Long promptTokens, Long completionTokens, Long reasoningTokens,
                                   Long toolExecutionMs, String observedResponseFormat,
+                                  String observedToolChoice,
                                   StructuredContractResult structuredOutputContract) {
         private static SseEventResult empty(Long firstContentMs) {
             return new SseEventResult(firstContentMs, null, null, null, null, null, null, null,
-                    null, null);
+                    null, null, null);
         }
     }
 
@@ -1015,7 +1118,8 @@ final class AiNewsLiveAgentBenchmarkRunner {
     record SseCapture(String rawSse, String assistantContent, List<ToolCall> toolCalls, String streamStatus,
                       String runtimeProvider, String runtimeModel, Long promptTokens, Long completionTokens,
                       Long reasoningTokens, Long toolExecutionMs, Long timeToFirstContentMs,
-                      String observedResponseFormat, StructuredContractResult structuredOutputContract,
+                      String observedResponseFormat, String observedToolChoice,
+                      StructuredContractResult structuredOutputContract,
                       List<String> failureReasons) {
         SseCapture {
             toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
@@ -1024,10 +1128,16 @@ final class AiNewsLiveAgentBenchmarkRunner {
 
         CaseRun toCaseRun(String caseId, String conversationId, int httpStatus, long elapsedMs,
                           String requestedResponseFormat) {
+            return toCaseRun(caseId, conversationId, httpStatus, elapsedMs, requestedResponseFormat, "auto");
+        }
+
+        CaseRun toCaseRun(String caseId, String conversationId, int httpStatus, long elapsedMs,
+                          String requestedResponseFormat, String requestedToolChoice) {
             return new CaseRun(caseId, conversationId, httpStatus, streamStatus, elapsedMs, timeToFirstContentMs,
                     toolExecutionMs, promptTokens, completionTokens, reasoningTokens, runtimeProvider, runtimeModel,
                     assistantContent, toolCalls, rawSse, null, null, requestedResponseFormat,
-                    observedResponseFormat, structuredOutputContract, failureReasons);
+                    observedResponseFormat, requestedToolChoice, observedToolChoice,
+                    structuredOutputContract, failureReasons);
         }
     }
 }

@@ -321,8 +321,11 @@ public class AgentGraphBuilder {
         //   (b) directly bound atomic tools (the Advanced bypass, §9.2 调整 B).
         // Three-state semantics: null = no agent-level restriction (use
         // global default); non-null (possibly empty) = explicit allowlist.
+        Set<String> directBoundTools = agentBindingService.getBoundToolNames(entity.getId());
         Set<String> boundTools = agentBindingService.getEffectiveToolNames(entity.getId());
         toolSet = toolSet.withAllowedToolsOnly(boundTools); // null = 全局默认
+        Set<String> priorityToolFunctions = directBoundTools == null
+                ? Set.of() : toolSet.functionNamesFor(directBoundTools);
 
         // Resolve the base model with the precedence: per-conversation pin >
         // per-Agent model override > global default. resolveRuntimeBaseModel
@@ -472,7 +475,7 @@ public class AgentGraphBuilder {
         Set<String> autoDemotedTools = Set.of();
         if (prefixBudgetPlan.enabled()) {
             autoDemotedTools = toolDisclosureService.computeAutoDemotions(
-                    toolSet, prefixBudgetPlan.toolSchemaBudgetTokens());
+                    toolSet, prefixBudgetPlan.toolSchemaBudgetTokens(), priorityToolFunctions);
         }
         String extensionCatalog = toolDisclosureService.renderExtensionCatalog(
                 toolSet, effectiveMaxInputTokens, autoDemotedTools);

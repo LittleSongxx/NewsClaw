@@ -140,7 +140,7 @@ corepack pnpm typecheck
 corepack pnpm build
 ```
 
-离线评测只证明状态机、去重、工作区隔离、准入闸门和页面契约等可重复规则，**不能**被表述为线上检索准确率或平台交付成功率。`eval-ai-news-quality.sh` 生成的 30 样例策略基准可作为来源、核验、拒绝、引用和去重规则的回归证据；`run-ai-news-live-agent-eval.sh` 将这 30 个冻结场景跑进真实 SSE、模型路由和只读工具链，输出结构化质量、TTFT、端到端时延、Token、路由和 badcase 工件，但它仍不是吞吐或开放网络发现指标。模型与真实 Agent 业务质量还需用脱敏、人工标注的采样 trace 评分。指标定义、工件格式和 trace 采样流程见 [AI 动态质量评测](docs/zh/ai-news-quality-evaluation.md) 与 [受控在线 Agent 评测](docs/zh/ai-news-live-agent-evaluation.md)。线上效果以事件、Wiki、Team Run、审批、飞书投递账本和小红书素材包等真实审计证据为准。
+离线评测只证明状态机、去重、工作区隔离、准入闸门和页面契约等可重复规则，**不能**被表述为线上检索准确率或平台交付成功率。`eval-ai-news-quality.sh` 生成的 30 样例策略基准可作为来源、核验、拒绝、引用和去重规则的回归证据；`run-ai-news-live-agent-eval.sh` 将这 30 个冻结场景跑进真实 SSE、模型路由和 provider 约束的只读工具链，输出结构化质量、TTFT、端到端时延、Token、路由和 badcase 工件。v3 工具指标证明声明式编排与执行器正确性，不等于模型自主选工具准确率，也不是吞吐或开放网络发现指标。模型与真实 Agent 业务质量还需用脱敏、人工标注的采样 trace 评分。指标定义、工件格式和 trace 采样流程见 [AI 动态质量评测](docs/zh/ai-news-quality-evaluation.md) 与 [受控在线 Agent 评测](docs/zh/ai-news-live-agent-evaluation.md)。线上效果以事件、Wiki、Team Run、审批、飞书投递账本和小红书素材包等真实审计证据为准。
 
 ## 最小运行方式
 

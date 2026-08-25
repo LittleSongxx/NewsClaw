@@ -9,6 +9,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import vip.newsclaw.agent.repository.AgentMapper;
+import vip.newsclaw.agent.binding.model.AgentToolBinding;
+import vip.newsclaw.agent.binding.repository.AgentToolBindingMapper;
 import vip.newsclaw.channel.model.ChannelEntity;
 import vip.newsclaw.channel.repository.ChannelMapper;
 import vip.newsclaw.cron.repository.CronJobMapper;
@@ -34,6 +36,8 @@ class AiNewsOpsSeedRunnerTest {
 
     @Mock
     private AgentMapper agentMapper;
+    @Mock
+    private AgentToolBindingMapper agentToolBindingMapper;
     @Mock
     private ChannelMapper channelMapper;
     @Mock
@@ -215,6 +219,29 @@ class AiNewsOpsSeedRunnerTest {
         invokeEnsureAgents();
 
         verify(agentMapper, never()).updateById(any(vip.newsclaw.agent.model.AgentEntity.class));
+    }
+
+    @Test
+    void scopesLeadOnlyWhenNoOperatorToolBindingExists() {
+        vip.newsclaw.agent.model.AgentEntity lead = new vip.newsclaw.agent.model.AgentEntity();
+        lead.setId(99L);
+        lead.setName("AI 动态主编");
+
+        when(agentToolBindingMapper.selectList(any())).thenReturn(List.of());
+        AiNewsOpsSeedRunner scopedRunner = new AiNewsOpsSeedRunner(agentMapper, agentToolBindingMapper,
+                channelMapper, null, teamMapper, teamService, cronJobMapper, skillMapper, toolMapper);
+
+        ReflectionTestUtils.invokeMethod(scopedRunner, "ensureLeadToolScope", lead);
+
+        verify(agentToolBindingMapper, org.mockito.Mockito.times(4)).insert(any(AgentToolBinding.class));
+
+        org.mockito.Mockito.reset(agentToolBindingMapper);
+        AgentToolBinding existing = new AgentToolBinding();
+        existing.setAgentId(99L);
+        existing.setToolName("ai_news_event");
+        when(agentToolBindingMapper.selectList(any())).thenReturn(List.of(existing));
+        ReflectionTestUtils.invokeMethod(scopedRunner, "ensureLeadToolScope", lead);
+        verify(agentToolBindingMapper, never()).insert(any(AgentToolBinding.class));
     }
 
     private void invokeEnsureDefaultFeishuChannel(Long leadAgentId) {

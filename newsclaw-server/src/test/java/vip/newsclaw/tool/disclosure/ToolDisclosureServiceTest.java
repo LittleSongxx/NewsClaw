@@ -250,6 +250,19 @@ class ToolDisclosureServiceTest {
     }
 
     @Test
+    @DisplayName("explicitly bound domain tool is demoted after ordinary tools")
+    void priorityToolsDemoteLast() {
+        var svc = service(List.of(), List.of());
+        AgentToolSet set = manyCoreSet();
+        int coreTokens = TokenEstimator.estimateToolsTokens(svc.split(set, Set.of()).activeCallbacks());
+
+        var demoted = svc.computeAutoDemotions(set, coreTokens - 1, Set.of("tool_a"));
+
+        assertEquals(Set.of("tool_b"), demoted,
+                "ordinary tools should leave the explicitly bound domain tool visible");
+    }
+
+    @Test
     @DisplayName("recently used tools demote last")
     void recencyProtectsRecentlyUsed() {
         ToolUsageRecencyTracker tracker = new ToolUsageRecencyTracker();

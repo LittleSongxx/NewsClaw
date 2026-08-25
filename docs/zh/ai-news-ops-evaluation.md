@@ -11,7 +11,7 @@
 - `verification-policy-cases.json`：官方来源优先、两个独立来源兜底、伪官方域名拦截、未解决冲突阻断。
 - `canonical-url-cases.json`：事件 URL 指纹使用的规范化语义。
 - `quality-policy-v1.json`：30 个来源、核验、拒绝、引用边界和去重场景；由 `scripts/eval-ai-news-quality.sh` 输出 Precision/Recall/F1、切片和 badcase 工件。详见 [AI 动态质量评测](ai-news-quality-evaluation.md)。
-- `live-agent-evidence-v1.json`：30 个冻结合成证据场景；由 `scripts/run-ai-news-live-agent-eval.sh` 驱动真实 SSE、模型和只读 `source_health` 工具，输出质量与运行时工件。详见 [受控在线 Agent 评测](ai-news-live-agent-evaluation.md)。
+- `live-agent-evidence-v3.json`：30 个冻结合成证据场景；由 `scripts/run-ai-news-live-agent-eval.sh` 驱动真实 SSE、模型，以及 `none/function` 约束的只读 `source_health` 工具编排，输出质量与运行时工件。详见 [受控在线 Agent 评测](ai-news-live-agent-evaluation.md)。
 
 脚本还汇总以下真实代码路径的回归测试：官方页面只读抓取、长期 Memory 写入门禁、Skill proposal-first 审批、Cron 运行幂等、外部副作用账本，以及 Qwen 主模型到 DeepSeek 备用模型的路由轨迹。
 

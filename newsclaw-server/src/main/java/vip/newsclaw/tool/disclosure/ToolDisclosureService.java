@@ -57,6 +57,19 @@ public interface ToolDisclosureService {
     }
 
     /**
+     * Budget-aware demotion with an Agent-specific priority set. Priority
+     * tools are demoted only after ordinary candidates, so a domain tool the
+     * operator explicitly bound does not disappear behind the progressive
+     * bridge merely because unrelated agent-wide primitives filled the
+     * schema budget. The hard budget still wins when the priority set itself
+     * is too large.
+     */
+    default Set<String> computeAutoDemotions(AgentToolSet baseSet, Integer budgetTokens,
+                                             Set<String> priorityTools) {
+        return computeAutoDemotions(baseSet, budgetTokens);
+    }
+
+    /**
      * Render the {@code ## Extension Tools} system-prompt segment for the
      * agent's extension tools, or an empty string when there are none / when
      * disclosure is disabled.
