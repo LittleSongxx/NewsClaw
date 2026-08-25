@@ -144,7 +144,8 @@ public class ActionNode implements NodeAction {
 
         // 委托 ToolExecutionExecutor 执行（两阶段：顺序 Guard + 分段并发执行）
         ToolExecutionExecutor.ToolExecutionResult result = executor.execute(
-                toolCalls, conversationId, agentId, isReplay, requesterId, workspaceBasePath, origin);
+                toolCalls, conversationId, agentId, isReplay, requesterId, workspaceBasePath, origin,
+                accessor.loadedSkills());
 
         ToolResponseMessage toolResponseMessage = ToolResponseMessage.builder()
                 .responses(result.responses())
@@ -188,7 +189,11 @@ public class ActionNode implements NodeAction {
 
         // Pin skills the model loaded this run so the next reasoning turn's
         // catalog ranks them first.
-        Set<String> requestedSkills = extractLoadedSkillNames(toolCalls);
+        // Only pin a skill after the executor emitted a successful completion
+        // receipt. A malformed/blocked/missing load_skill call must remain
+        // retryable; recording the model's intent alone would make the next
+        // identical call look like a duplicate and strand the run.
+        Set<String> requestedSkills = extractSuccessfullyLoadedSkillNames(toolCalls, actionLedger);
         if (!requestedSkills.isEmpty()) {
             Set<String> merged = new LinkedHashSet<>(accessor.loadedSkills());
             if (merged.addAll(requestedSkills)) {
@@ -412,13 +417,35 @@ public class ActionNode implements NodeAction {
         }
         Set<String> names = new LinkedHashSet<>();
         for (AssistantMessage.ToolCall tc : toolCalls) {
-            if (tc == null || !LOAD_SKILL_TOOL.equals(tc.name())) {
+            if (tc == null || !LOAD_SKILL_TOOL.equals(
+                    ToolExecutionExecutor.normalizeToolName(tc.name()))) {
                 continue;
             }
             String name = parseStringArg(tc.arguments(), "skillName", "skill_name", "name");
             if (name != null && !name.isBlank()) {
                 names.add(name.trim());
             }
+        }
+        return names;
+    }
+
+    static Set<String> extractSuccessfullyLoadedSkillNames(
+            List<AssistantMessage.ToolCall> toolCalls, ActionExecutionLedger executionLedger) {
+        if (executionLedger == null || executionLedger.receipts().isEmpty()
+                || toolCalls == null || toolCalls.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> names = new LinkedHashSet<>();
+        for (AssistantMessage.ToolCall tc : toolCalls) {
+            if (tc == null || !LOAD_SKILL_TOOL.equals(
+                    ToolExecutionExecutor.normalizeToolName(tc.name()))) continue;
+            ActionExecutionLedger.Receipt receipt = executionLedger.receipts().get(tc.id());
+            if (receipt == null || receipt.status() != ActionExecutionLedger.Status.SUCCEEDED
+                    || !LOAD_SKILL_TOOL.equals(receipt.toolName())) {
+                continue;
+            }
+            String name = parseStringArg(tc.arguments(), "skillName", "skill_name", "name");
+            if (name != null && !name.isBlank()) names.add(name.trim());
         }
         return names;
     }

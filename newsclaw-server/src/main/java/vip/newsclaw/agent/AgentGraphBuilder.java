@@ -1086,6 +1086,7 @@ public class AgentGraphBuilder {
                     // Summarizing
                     .addStrategy(NewsClawStateKeys.SUMMARIZED_CONTEXT, KeyStrategy.REPLACE)
                     .addStrategy(NewsClawStateKeys.FINAL_ANSWER_DRAFT, KeyStrategy.REPLACE)
+                    .addStrategy(NewsClawStateKeys.LONG_FORM_DRAFT, KeyStrategy.REPLACE)
                     .addStrategy(NewsClawStateKeys.SHOULD_SUMMARIZE, KeyStrategy.REPLACE)
                     // 终止控制
                     .addStrategy(NewsClawStateKeys.FINISH_REASON, KeyStrategy.REPLACE)

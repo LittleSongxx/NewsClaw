@@ -56,6 +56,10 @@ public class TeamDispatchService {
     /** Result summaries are capped before persisting to keep the board readable. */
     static final int MAX_RESULT_CHARS = 8000;
 
+    /** Empty/fallback member runs get one recovery attempt, not three long
+     * identical runs. Content and deliverable failures retain the normal cap. */
+    static final int MAX_RESPONSE_FAILURE_DISPATCHES = 2;
+
     private static final Pattern GENERATED_FILE_MARKDOWN_LINK = Pattern.compile(
             "\\[([^\\]\\r\\n]{1,200})]\\(((?:https?://[^/\\s)\\]]+)?/api/v1/files/generated/[A-Za-z0-9-]+)\\)");
     /** Backward-compatible matcher for package results emitted before the
@@ -183,6 +187,13 @@ public class TeamDispatchService {
             }
             dispatchedThisRound.add(assignee);
             TeamTaskEntity assigned = taskService.getTask(task.getId());
+            // assignTask clears the persisted reason for a clean running state,
+            // but the worker needs the previous failure feedback or an automatic
+            // retry would send the same prompt unchanged.
+            if (assigned != null && (assigned.getReason() == null || assigned.getReason().isBlank())
+                    && task.getReason() != null && !task.getReason().isBlank()) {
+                assigned.setReason(task.getReason());
+            }
             DISPATCH_EXECUTOR.submit(() -> runTask(teamId, assigned));
         }
     }
@@ -202,6 +213,7 @@ public class TeamDispatchService {
             conversationService.createChildConversation(childConvId, memberId, "system",
                     team == null ? null : team.getWorkspaceId(), task.getLeadConversationId(),
                     "team_worker");
+            applyModelRoutePin(task, childConvId);
             taskService.attachConversation(task.getId(), childConvId);
             // Track the child run so graph nodes honor requestStop() — without a
             // registered RunState, cancelling the task could never interrupt the
@@ -269,6 +281,36 @@ public class TeamDispatchService {
     }
 
     /**
+     * NewsClaw production tasks carry a model-route snapshot in metadata. The
+     * generic AgentService already honours a complete conversation model pin;
+     * applying it here keeps TeamDispatch domain-agnostic for ordinary tasks
+     * while allowing discovery/verification/editorial workers to use their
+     * intended lanes. Invalid or stale pins are ignored and AgentService's
+     * normal Agent/global fallback remains authoritative.
+     */
+    private void applyModelRoutePin(TeamTaskEntity task, String conversationId) {
+        if (task == null || task.getMetadata() == null || task.getMetadata().isBlank()) {
+            return;
+        }
+        try {
+            var metadata = JSONUtil.parseObj(task.getMetadata());
+            String provider = metadata.getStr("modelProvider");
+            String model = metadata.getStr("modelName");
+            if (provider == null || provider.isBlank() || model == null || model.isBlank()) {
+                return;
+            }
+            conversationService.updateConversationModel(conversationId, provider.trim(), model.trim());
+            log.info("Pinned Team task #{} worker conversation to {} / {} (role={})",
+                    task.getTaskNumber(), provider.trim(), model.trim(), metadata.getStr("modelRole"));
+        } catch (Exception e) {
+            // Metadata is untrusted task input. A malformed route must never
+            // stop a worker from executing with its normal fallback model.
+            log.warn("Team task #{} model route pin ignored: {}",
+                    task.getTaskNumber(), e.getMessage());
+        }
+    }
+
+    /**
      * Ask the member conversation executing this task to stop at the next graph
      * node boundary (cancel path). No-op when the task never dispatched or the
      * run already ended.
@@ -298,10 +340,12 @@ public class TeamDispatchService {
             String invalidReason = invalidResultReason(current, reply, attachedGeneratedFile);
             if (invalidReason != null) {
                 int attempts = current.getDispatchCount() == null ? 0 : current.getDispatchCount();
-                if (attempts < TeamTaskService.MAX_DISPATCHES
+                int maxAttempts = isResponseGenerationFailure(invalidReason)
+                        ? MAX_RESPONSE_FAILURE_DISPATCHES : TeamTaskService.MAX_DISPATCHES;
+                if (attempts < maxAttempts
                         && taskService.requeueUnusableResult(task.getId(), invalidReason)) {
                     log.warn("Team task #{} produced an unusable result on attempt {}/{}; requeued: {}",
-                            task.getTaskNumber(), attempts, TeamTaskService.MAX_DISPATCHES,
+                            task.getTaskNumber(), attempts, maxAttempts,
                             invalidReason);
                     broadcast(task, "team_task_retrying", Map.of("reason", invalidReason));
                     return;
@@ -383,6 +427,11 @@ public class TeamDispatchService {
         return null;
     }
 
+    private boolean isResponseGenerationFailure(String reason) {
+        return "member produced no result".equals(reason)
+                || "member response generation failed".equals(reason);
+    }
+
     private boolean looksLikeClarificationQuestion(String reply) {
         if (reply == null) {
             return false;
@@ -409,16 +458,26 @@ public class TeamDispatchService {
     }
 
     private boolean attachGeneratedFileDeliverable(TeamTaskEntity task, String reply) {
-        if (!requiresDeliverable(task) || reply == null || reply.isBlank()) {
+        // Any generated file is useful task evidence. The metadata flag only
+        // controls whether the task is rejected when no file is present.
+        if (reply == null || reply.isBlank()) {
             return false;
         }
         Set<String> attachedUrls = new HashSet<>();
+        for (TeamTaskService.Deliverable deliverable : taskService.listDeliverables(task)) {
+            if (deliverable != null && deliverable.url() != null) {
+                attachedUrls.add(deliverable.url().trim());
+            }
+        }
         boolean attachedAny = false;
         Matcher link = GENERATED_FILE_MARKDOWN_LINK.matcher(reply);
         while (link.find()) {
             String name = link.group(1).trim();
             String url = link.group(2).trim();
             if (!GeneratedFileCache.GENERATED_URL_PATTERN.matcher(url).matches()) {
+                continue;
+            }
+            if (attachedUrls.contains(url)) {
                 continue;
             }
             try {
@@ -489,13 +548,20 @@ public class TeamDispatchService {
     static final int MAX_LEAD_ATTACHMENT_SECTION_CHARS = 6000;
 
     /** The full instruction envelope the member receives. */
-    private String buildDispatchContent(TeamTaskEntity task) {
+    String buildDispatchContent(TeamTaskEntity task) {
         StringBuilder sb = new StringBuilder(1024);
         sb.append("[Assigned team task #").append(task.getTaskNumber())
                 .append(" (taskId: ").append(task.getId()).append(")]\n")
                 .append("Subject: ").append(task.getSubject()).append('\n');
         if (task.getDescription() != null && !task.getDescription().isBlank()) {
             sb.append("\n").append(task.getDescription()).append('\n');
+        }
+        if (task.getDispatchCount() != null && task.getDispatchCount() > 1
+                && task.getReason() != null && !task.getReason().isBlank()) {
+            sb.append("\n[Retry feedback]\n")
+                    .append("The previous attempt was rejected: ")
+                    .append(truncate(task.getReason().strip(), 500))
+                    .append(". Correct that failure in this attempt; do not repeat the same empty or fallback response.\n");
         }
         appendLeadAttachmentContext(sb, task);
         appendPrerequisiteResults(sb, task);

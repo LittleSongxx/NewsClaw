@@ -36,14 +36,18 @@ dependencies:
 
 ## 发现流程
 
-1. 优先使用 `web_search`，每个分类分别查询，使用 `freshness=day` 或 `week`、`language=zh-CN`/`en`、`site:` 限定官方域名。
-2. 对候选结果打开页面并阅读实际正文；搜索摘要不能单独作为证据。
-3. 标准化 URL（去 fragment、统一主机名和末尾斜杠），调用 `ai_news_event(action=upsert)` 写入候选事件。
-4. 每条证据必须带 `sourceUrl`、`claim`、来源等级和必要的原文摘录。不要写入无法打开或无法定位的链接。
-5. 官方来源优先；没有官方来源时，至少收集来源注册表中的两个独立可信媒体。未注册媒体只能作为线索，不贡献 `verified` 门禁。来源冲突时保留双方 claims，并让事件进入 `conflicted`。
-6. 传闻、预测和未经确认的爆料必须在摘要中标注「未证实」，不可改写成确定事实。
-7. 官方页面返回 401/403 只表示抓取被阻断，404 只表示该 URL 不存在；两者都不能改写成「官方没有发布」。此时默认继续跟踪，不能建议直接进入内容生产。
-8. 候选事件写入完成后，在当前请求来自飞书人工会话时调用 `ai_news_review_card`，直接传入 `ai_news_event` 返回的事件 ID。不得解析自然语言回复来猜事件 ID。
+1. 先调用 `ai_news_event(action=source_health)` 查看已配置来源；来源未配置或不可用时必须如实说明，不能虚构检索结果。
+2. 优先调用 `ai_news_event(action=search_sources, query=..., providerIds=..., sourceLimit=..., language=...)` 取得带 `providerId`、`sourceTier`、canonical URL、抓取时间和 HTTP 状态的候选资料。该操作只读，不会自动入库、核验或发布。
+3. 当结构化来源覆盖不足时，再使用 `web_search` 补充发现线索。每个分类分别查询，使用 `freshness=day` 或 `week`、`language=zh-CN`/`en`、`site:` 限定官方域名。
+4. 对候选结果调用 `ai_news_event(action=fetch_source, providerId=..., sourceUrl=...)` 或打开页面并阅读实际正文；搜索摘要不能单独作为证据。
+5. 标准化 URL（去 fragment、统一主机名和末尾斜杠），调用 `ai_news_event(action=upsert)` 写入候选事件。只有这一步会创建或更新事件。
+6. 每条证据必须带 `sourceUrl`、`claim`、来源等级和必要的原文摘录。不要写入无法打开或无法定位的链接。
+7. 官方来源优先；没有官方来源时，至少收集来源注册表中的两个独立可信媒体。未注册媒体只能作为线索，不贡献 `verified` 门禁。来源冲突时保留双方 claims，并让事件进入 `conflicted`。
+8. 传闻、预测和未经确认的爆料必须在摘要中标注「未证实」，不可改写成确定事实。
+9. 官方页面返回 401/403 只表示抓取被阻断，404 只表示该 URL 不存在；两者都不能改写成「官方没有发布」。此时默认继续跟踪，不能建议直接进入内容生产。
+10. 候选事件写入完成后，在当前请求来自飞书人工会话时调用 `ai_news_review_card`，直接传入 `ai_news_event` 返回的事件 ID。不得解析自然语言回复来猜事件 ID。
+
+结构化来源是配置驱动的 RSS、SearXNG 或官方 API 适配器，不是全网爬虫。`search_sources` 返回的 provenance 只表示检索路径和抓取时间，不是事实核验结论；仍需逐项建立 claim 与 quote，并通过事件状态门禁。
 
 ## 事件包要求
 

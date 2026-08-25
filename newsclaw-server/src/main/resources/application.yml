@@ -145,6 +145,23 @@ newsclaw:
     sweep-interval-ms: ${NEWSCLAW_A2A_SWEEP_INTERVAL_MS:60000}
 
   ai-news:
+    # Optional role-aware model overrides. Values use provider/model (or a
+    # model id when the provider is unambiguous); blank values use the
+    # deterministic enabled-model fallback in AiNewsModelRouter.
+    models:
+      discovery: ${NEWSCLAW_AI_NEWS_MODEL_DISCOVERY:}
+      verification: ${NEWSCLAW_AI_NEWS_MODEL_VERIFICATION:}
+      editorial: ${NEWSCLAW_AI_NEWS_MODEL_EDITORIAL:}
+      visual: ${NEWSCLAW_AI_NEWS_MODEL_VISUAL:}
+      delivery: ${NEWSCLAW_AI_NEWS_MODEL_DELIVERY:}
+    sources:
+      rss:
+        feeds: ${NEWSCLAW_AI_NEWS_RSS_FEEDS:}
+      searxng:
+        # Reuses the existing Compose SearXNG endpoint when no news-specific
+        # override is provided. Private endpoint access stays explicitly opt-in.
+        base-url: ${NEWSCLAW_AI_NEWS_SEARXNG_BASE_URL:${SEARXNG_BASE_URL:}}
+        allow-private-endpoint: ${NEWSCLAW_AI_NEWS_SEARXNG_ALLOW_PRIVATE_ENDPOINT:false}
     # Narrow, unauthenticated GET-only official-source evidence capture. Every
     # redirect is independently SSRF-checked; this never auto-verifies an event.
     official-capture:

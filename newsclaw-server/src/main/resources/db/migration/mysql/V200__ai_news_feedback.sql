@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS mate_ai_news_feedback (
+    id              BIGINT       NOT NULL PRIMARY KEY,
+    workspace_id    BIGINT       NOT NULL,
+    feedback_hash   VARCHAR(64)  NOT NULL,
+    event_id        BIGINT,
+    team_run_id     BIGINT,
+    task_id         BIGINT,
+    feedback_type   VARCHAR(64)  NOT NULL,
+    note            TEXT         NOT NULL,
+    evidence_json   MEDIUMTEXT,
+    skill_name      VARCHAR(128),
+    proposal_action VARCHAR(16),
+    proposal_id     BIGINT,
+    status          VARCHAR(32)  NOT NULL DEFAULT 'RECORDED',
+    create_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted         INT          NOT NULL DEFAULT 0,
+    UNIQUE KEY uk_ai_news_feedback_hash (workspace_id, feedback_hash, deleted),
+    KEY idx_ai_news_feedback_event (workspace_id, event_id, create_time),
+    KEY idx_ai_news_feedback_status (workspace_id, status, create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI news badcase and human feedback';

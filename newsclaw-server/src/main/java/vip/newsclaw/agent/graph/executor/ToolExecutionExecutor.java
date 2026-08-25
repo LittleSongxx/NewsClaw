@@ -23,6 +23,7 @@ import vip.newsclaw.approval.grant.AutoApproveResult;
 import vip.newsclaw.approval.grant.WorkspaceLookupCache;
 import vip.newsclaw.approval.grant.service.ApprovalGrantResolver;
 import vip.newsclaw.channel.web.ChatStreamTracker;
+import vip.newsclaw.tool.ToolInputValidationException;
 import vip.newsclaw.tool.guard.ToolExecutionGuardHelper;
 import vip.newsclaw.tool.guard.ToolGuard;
 import vip.newsclaw.tool.guard.ToolGuardResult;
@@ -84,7 +85,7 @@ public class ToolExecutionExecutor {
     static final int MAX_TOOL_CALLS_PER_RESPONSE = 16;
 
     private static final Set<String> DEFAULT_UNSAFE_TOOLS = Set.of(
-            "browser_use", "BrowserUseTool", "write_file", "edit_file"
+            "browser_use", "BrowserUseTool", "write_file", "edit_file", "load_skill"
     );
 
     /**
@@ -465,7 +466,31 @@ public class ToolExecutionExecutor {
                                         boolean isReplay, String requesterId,
                                         String workspaceBasePath,
                                         ChatOrigin origin) {
+        return execute(toolCalls, conversationId, agentId, isReplay, requesterId,
+                workspaceBasePath, origin, Set.of());
+    }
+
+    /**
+     * Execute with the set of skills already loaded in this run. Duplicate
+     * {@code load_skill} calls are answered deterministically before the
+     * parallel phase, preventing repeated reads and repeated skill pinning.
+     */
+    public ToolExecutionResult execute(List<AssistantMessage.ToolCall> toolCalls,
+                                        String conversationId, String agentId,
+                                        boolean isReplay, String requesterId,
+                                        String workspaceBasePath,
+                                        ChatOrigin origin,
+                                        Set<String> loadedSkills) {
         ChatOrigin safeOrigin = origin != null ? origin : ChatOrigin.EMPTY;
+        // Compatibility callers still pass scalar context separately. Enrich
+        // the immutable origin before callbacks are invoked so Tool Guard and
+        // workspace-aware tools always observe one consistent security scope.
+        if (safeOrigin.conversationId() == null || safeOrigin.conversationId().isBlank()) {
+            safeOrigin = safeOrigin.withConversationId(conversationId);
+        }
+        if (safeOrigin.workspaceBasePath() == null || safeOrigin.workspaceBasePath().isBlank()) {
+            safeOrigin = safeOrigin.withWorkspace(safeOrigin.workspaceId(), workspaceBasePath);
+        }
         // Reset per-turn audit dedupe state. A retried denied tool inside the
         // same turn writes a single audit row; the set is repopulated by the
         // denial branch below.
@@ -511,6 +536,12 @@ public class ToolExecutionExecutor {
         // ═══ Phase 1: 顺序 Guard + 分段 ═══
         List<PreparedToolCall> preparedCalls = new ArrayList<>();
         ApprovalBarrier barrier = null;
+        // A skill is considered loaded only after the actual callback returns a
+        // non-error observation. Do not reserve names while preparing calls:
+        // SkillLoadTool reports missing/unauthorized skills as ordinary tool
+        // text, and reserving those names would turn a retryable failure into
+        // a false "already loaded" success on the next call.
+        SkillLoadTracker skillLoadTracker = new SkillLoadTracker(loadedSkills);
 
         for (int i = 0; i < effectiveCalls.size(); i++) {
             AssistantMessage.ToolCall toolCall = effectiveCalls.get(i);
@@ -649,7 +680,7 @@ public class ToolExecutionExecutor {
             // 4. 分类: concurrencySafe
             boolean safe = isConcurrencySafe(toolName);
             preparedCalls.add(new PreparedToolCall(toolCall, responseName, callback, arguments, safe, allResponses.size(),
-                    conversationId, requesterId, workspaceBasePath, safeOrigin, rawEvidenceRef));
+                    conversationId, requesterId, workspaceBasePath, safeOrigin, rawEvidenceRef, skillLoadTracker));
             // 占位，Phase 2 填充
             allResponses.add(null);
         }
@@ -676,6 +707,24 @@ public class ToolExecutionExecutor {
                 barrier != null ? barrier.toolName : null,
                 List.copyOf(directOutputs),
                 rawEvidenceRef.get());
+    }
+
+    private static String requestedSkillName(String arguments) {
+        if (arguments == null || arguments.isBlank()) return null;
+        try {
+            var node = OBJECT_MAPPER.readTree(arguments);
+            var value = node.get("skillName");
+            if (value == null || value.isNull() || value.asText().isBlank()) {
+                value = node.get("skill_name");
+            }
+            if (value == null || value.isNull() || value.asText().isBlank()) {
+                value = node.get("name");
+            }
+            return value == null || value.isNull() || value.asText().isBlank()
+                    ? null : value.asText().trim();
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     /**
@@ -789,9 +838,12 @@ public class ToolExecutionExecutor {
             throw e;
         } catch (Exception e) {
             log.error("[ToolExecutor] Pre-approved tool {} failed: {}", toolName, e.getMessage());
-            String safeError = isReturnDirect(callback)
-                    ? "Tool execution failed (details withheld per returnDirect policy)"
-                    : "Tool execution failed: " + e.getMessage();
+            String validationError = safeInputValidationMessage(e);
+            String safeError = validationError != null
+                    ? validationError
+                    : isReturnDirect(callback)
+                            ? "Tool execution failed (details withheld per returnDirect policy)"
+                            : "Tool execution failed: " + e.getMessage();
             events.add(GraphEventPublisher.toolComplete(toolCall.id(), toolName, safeError, false));
             return new ToolResponseMessage.ToolResponse(toolCall.id(), toolName, safeError);
         } finally {
@@ -946,7 +998,13 @@ public class ToolExecutionExecutor {
     private ToolResponseMessage.ToolResponse executeSingleTool(PreparedToolCall pc,
                                                                 List<GraphEventPublisher.GraphEvent> events,
                                                                 List<DirectToolOutput> directOutputs) {
-        String toolName = pc.toolCall.name();
+        // Phase 1 resolves aliases before a call is prepared, but resolve again
+        // at the execution boundary. This keeps receipts, usage recency,
+        // progress metadata, and the skill pinning gate on the same canonical
+        // name even when a PreparedToolCall was produced by a legacy caller.
+        String toolName = resolveToolName(pc.toolCall.name());
+        String requestedSkill = "load_skill".equals(toolName)
+                ? requestedSkillName(pc.arguments) : null;
         Thread executionThread = Thread.currentThread();
         Runnable removeCancellationHook = streamTracker != null
                 ? streamTracker.registerCancellationHook(pc.conversationId, executionThread::interrupt)
@@ -961,6 +1019,22 @@ public class ToolExecutionExecutor {
             log.info("[ToolExecutor] Executing tool: {} with args: {}",
                     toolName, pc.arguments != null && pc.arguments.length() > 200
                             ? pc.arguments.substring(0, 200) + "..." : pc.arguments);
+
+            // load_skill is deliberately an unsafe (serial) tool. This lets a
+            // later call in the same model response see a successful earlier
+            // load, while a failed callback remains available for a real retry.
+            if (requestedSkill != null && pc.skillLoadTracker.isLoaded(requestedSkill)) {
+                String message = "Skill '" + requestedSkill + "' was already loaded earlier in this run. "
+                        + "Reuse the SKILL.md content already present in the conversation; "
+                        + "do not call load_skill for this skill again.";
+                events.add(GraphEventPublisher.toolComplete(pc.toolCall.id(), toolName, message, true));
+                if (streamTracker != null) {
+                    streamTracker.broadcastObject(pc.conversationId, GraphEventPublisher.EVENT_TOOL_COMPLETE,
+                            GraphEventPublisher.toolComplete(pc.toolCall.id(), toolName, message, true).data());
+                    streamTracker.updateRunningTool(pc.conversationId, null);
+                }
+                return new ToolResponseMessage.ToolResponse(pc.toolCall.id(), pc.responseName, message);
+            }
 
             // RFC-063r §2.5 / PR-1 transition window: populate BOTH the explicit
             // Spring AI ToolContext (preferred — read via ChatOrigin.from(ctx))
@@ -1019,8 +1093,17 @@ public class ToolExecutionExecutor {
                 if (streamTracker != null) {
                     streamTracker.broadcastObject(pc.conversationId,
                             GraphEventPublisher.EVENT_TOOL_DIRECT_RESULT, directEvent.data());
+                    streamTracker.broadcastObject(pc.conversationId,
+                            GraphEventPublisher.EVENT_TOOL_COMPLETE,
+                            GraphEventPublisher.toolComplete(pc.toolCall.id(), toolName,
+                                    DIRECT_TOOL_PLACEHOLDER, true).data());
                     streamTracker.updateRunningTool(pc.conversationId, null);
                 }
+                // The stream terminal marker above closes the live tool card.
+                // Do not also put a tool_complete event in the returned event
+                // list: direct results are rendered as assistant content and
+                // a second list event would create a duplicate placeholder
+                // card for callers that replay the list.
                 // Placeholder keeps the tool_call_id ↔ tool_response pairing valid
                 // for OpenAI-compatible providers, while withholding the data from
                 // any subsequent LLM round (the graph won't take a next round —
@@ -1057,10 +1140,14 @@ public class ToolExecutionExecutor {
                     result, toolName, pc.toolCall.id(), pc.conversationId, pc.workspaceBasePath);
             log.info("[ToolExecutor] Tool {} returned {} chars{}", toolName, rawLen,
                     result != null && result.length() < rawLen ? " (now " + result.length() + " after spill/truncate)" : "");
-            events.add(GraphEventPublisher.toolComplete(pc.toolCall.id(), toolName, result, true));
+            boolean succeeded = requestedSkill == null || isSuccessfulSkillLoadResult(result);
+            if (succeeded && requestedSkill != null) {
+                pc.skillLoadTracker.markLoaded(requestedSkill);
+            }
+            events.add(GraphEventPublisher.toolComplete(pc.toolCall.id(), toolName, result, succeeded));
             if (streamTracker != null) {
                 streamTracker.broadcastObject(pc.conversationId, GraphEventPublisher.EVENT_TOOL_COMPLETE,
-                        GraphEventPublisher.toolComplete(pc.toolCall.id(), toolName, result, true).data());
+                        GraphEventPublisher.toolComplete(pc.toolCall.id(), toolName, result, succeeded).data());
                 streamTracker.updateRunningTool(pc.conversationId, null);
             }
             // Append the card-rendering directive to the LLM-facing response only,
@@ -1080,9 +1167,12 @@ public class ToolExecutionExecutor {
             // or other sensitive substrings that should not enter LLM context.
             // Emit a generic placeholder instead. Full error still goes to logs
             // for operator diagnosis.
-            String reportedError = isReturnDirect(pc.callback)
-                    ? "Tool execution failed (details withheld per returnDirect policy)"
-                    : normalizeToolExecutionError(e);
+            String validationError = safeInputValidationMessage(e);
+            String reportedError = validationError != null
+                    ? validationError
+                    : isReturnDirect(pc.callback)
+                            ? "Tool execution failed (details withheld per returnDirect policy)"
+                            : normalizeToolExecutionError(e);
             events.add(GraphEventPublisher.toolComplete(pc.toolCall.id(), toolName, reportedError, false));
             if (streamTracker != null) {
                 streamTracker.broadcastObject(pc.conversationId, GraphEventPublisher.EVENT_TOOL_COMPLETE,
@@ -1100,6 +1190,10 @@ public class ToolExecutionExecutor {
                 Thread.interrupted();
             }
         }
+    }
+
+    private static boolean isSuccessfulSkillLoadResult(String result) {
+        return result != null && !result.stripLeading().toLowerCase(Locale.ROOT).startsWith("error:");
     }
 
     private void throwIfStopRequested(String conversationId) {
@@ -1304,6 +1398,18 @@ public class ToolExecutionExecutor {
         return "Tool execution failed: " + message;
     }
 
+    /** Return only explicitly safe, model-correctable validation details. */
+    private String safeInputValidationMessage(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof ToolInputValidationException validation) {
+                return "Tool input validation failed: " + validation.getMessage();
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
     /**
      * Issue #46 — when a tool callback miss happens, check whether the
      * unrecognized name actually matches an active skill. If it does, return
@@ -1340,7 +1446,12 @@ public class ToolExecutionExecutor {
         return requested;
     }
 
-    static String normalizeToolName(String name) {
+    /**
+     * Normalize a model-emitted tool name to the spelling used by the
+     * callback registry.  Nodes that consume execution receipts use the same
+     * helper so aliases such as {@code LoadSkill} cannot bypass bookkeeping.
+     */
+    public static String normalizeToolName(String name) {
         if (name == null || name.isBlank()) {
             return "";
         }
@@ -1689,8 +1800,43 @@ public class ToolExecutionExecutor {
              * <p>Atomic merge via {@code AtomicReference.accumulateAndGet}
              * because parallel batches run on {@code TOOL_EXECUTOR}.
              */
-            java.util.concurrent.atomic.AtomicReference<SourceEvidenceLedger> rawEvidenceCollector
+            java.util.concurrent.atomic.AtomicReference<SourceEvidenceLedger> rawEvidenceCollector,
+            /** Per-execute invocation tracker; records only successful skill loads. */
+            SkillLoadTracker skillLoadTracker
     ) {}
+
+    /**
+     * Tracks skill names that are already available to the current ReAct run.
+     * Names are normalized once at the boundary, so the model cannot bypass
+     * duplicate suppression by changing casing between tool calls.
+     */
+    private static final class SkillLoadTracker {
+        private final Set<String> loaded = ConcurrentHashMap.newKeySet();
+
+        SkillLoadTracker(Set<String> initiallyLoaded) {
+            if (initiallyLoaded != null) {
+                initiallyLoaded.stream().map(SkillLoadTracker::normalize)
+                        .filter(Objects::nonNull)
+                        .forEach(loaded::add);
+            }
+        }
+
+        boolean isLoaded(String skillName) {
+            String normalized = normalize(skillName);
+            return normalized != null && loaded.contains(normalized);
+        }
+
+        void markLoaded(String skillName) {
+            String normalized = normalize(skillName);
+            if (normalized != null) loaded.add(normalized);
+        }
+
+        private static String normalize(String skillName) {
+            if (skillName == null) return null;
+            String normalized = skillName.trim().toLowerCase(Locale.ROOT);
+            return normalized.isEmpty() ? null : normalized;
+        }
+    }
 
     private record BridgeUnwrap(AssistantMessage.ToolCall toolCall, String error) {
         static BridgeUnwrap success(AssistantMessage.ToolCall call) {

@@ -166,4 +166,15 @@ class StateGraphReActAgentStreamedContentDeltaTest {
         assertEquals(1, deltas.size());
         assertFalse(deltas.get(0).isEvent());
     }
+
+    @Test
+    @DisplayName("long-form accumulation suppresses intermediate stream deltas and avoids duplicate final text")
+    void longFormStreamDeduplication() {
+        assertFalse(StateGraphReActAgent.shouldEmitStreamedContent(
+                true, true, "第二段正文", "第一段正文第二段正文"));
+        assertFalse(StateGraphReActAgent.shouldEmitStreamedContent(
+                true, false, "完整答案", "完整答案"));
+        assertTrue(StateGraphReActAgent.shouldEmitStreamedContent(
+                false, false, "工具前说明", ""));
+    }
 }

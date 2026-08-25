@@ -3,6 +3,8 @@ package vip.newsclaw.agent.graph.node;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import vip.newsclaw.agent.GraphEventPublisher;
+import vip.newsclaw.agent.graph.state.ActionExecutionLedger;
 import vip.newsclaw.skill.manifest.SkillManifest;
 import vip.newsclaw.skill.runtime.model.ResolvedSkill;
 
@@ -75,6 +77,33 @@ class ActionNodeLoadSkillTest {
                 call("load_skill", "{\"skillName\":\"\"}"),
                 call("load_skill", "{\"other\":\"y\"}"));
         assertTrue(ActionNode.extractLoadedSkillNames(calls).isEmpty());
+    }
+
+    @Test
+    @DisplayName("only successful load_skill receipts pin a skill; failed calls remain retryable")
+    void successfulLoadsOnly() {
+        List<AssistantMessage.ToolCall> calls = List.of(
+                call("load_skill", "{\"skillName\":\"pdf\"}"),
+                new AssistantMessage.ToolCall("id-load_skill-2", "function", "load_skill",
+                        "{\"skillName\":\"docx\"}"));
+        ActionExecutionLedger ledger = ActionExecutionLedger.fromEvents(List.of(
+                GraphEventPublisher.toolComplete("id-load_skill", "load_skill", "loaded", true),
+                GraphEventPublisher.toolComplete("id-load_skill-2", "load_skill", "not found", false)));
+
+        assertEquals(Set.of("pdf"),
+                ActionNode.extractSuccessfullyLoadedSkillNames(calls, ledger));
+    }
+
+    @Test
+    @DisplayName("aliased LoadSkill calls match canonical successful receipts")
+    void aliasedSuccessfulLoadPinsSkill() {
+        List<AssistantMessage.ToolCall> calls = List.of(
+                call("LoadSkill", "{\"skill_name\":\"ai_news_radar\"}"));
+        ActionExecutionLedger ledger = ActionExecutionLedger.fromEvents(List.of(
+                GraphEventPublisher.toolComplete("id-LoadSkill", "load_skill", "loaded", true)));
+
+        assertEquals(Set.of("ai_news_radar"),
+                ActionNode.extractSuccessfullyLoadedSkillNames(calls, ledger));
     }
 
     @Test

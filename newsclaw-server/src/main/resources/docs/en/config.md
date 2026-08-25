@@ -49,6 +49,9 @@ NEWSCLAW_SEARCH_PROVIDER=serper
 SERPER_API_KEY=
 TAVILY_API_KEY=
 SEARXNG_BASE_URL=http://newsclaw-searxng:8080
+NEWSCLAW_AI_NEWS_RSS_FEEDS=
+NEWSCLAW_AI_NEWS_SEARXNG_BASE_URL=
+NEWSCLAW_AI_NEWS_SEARXNG_ALLOW_PRIVATE_ENDPOINT=true
 
 NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_ENABLED=true
 NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_BYTES=524288
@@ -60,6 +63,14 @@ Serper and Tavily are optional search enhancements. Without their keys,
 NewsClaw can fall back to bundled SearXNG. Official capture is a bounded GET
 operation with redirect, byte-size, and timeout checks; it never marks an event
 verified on its own.
+
+The AI-news source SPI can optionally configure RSS feeds or a dedicated
+SearXNG endpoint. `SEARXNG_BASE_URL` is the default for the news-source adapter;
+`NEWSCLAW_AI_NEWS_SEARXNG_BASE_URL` overrides it. Set
+`NEWSCLAW_AI_NEWS_SEARXNG_ALLOW_PRIVATE_ENDPOINT=true` only for a fixed,
+operator-configured Compose sidecar or controlled internal endpoint. The switch
+only permits that fixed search endpoint; result URLs and `fetch_source` remain
+under strict SSRF checks.
 
 ## Feishu and daily radar
 

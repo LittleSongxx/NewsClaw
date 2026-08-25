@@ -41,6 +41,21 @@ candidate -> researching -> verified | conflicted | rejected
 Article bodies and full evidence live in the event domain and Wiki evidence
 layer, never as long-term memory payloads.
 
+## Structured sources
+
+Agents can use `source_health`, `search_sources`, and `fetch_source` through
+`ai_news_event` to read configured RSS, SearXNG, or official-API adapters.
+Every result retains provider ID, source tier, original URL, canonical URL,
+fetch time, HTTP status, and retrieval method so its discovery path can be
+reviewed later.
+
+Those operations are read-only candidate-material entry points. They do not
+create an event, mark a source verified, or trigger publication. An Agent must
+inspect the material and explicitly `upsert` a source-supported claim and
+quote; the normal multi-source, conflict, and `verified` gates still apply.
+This is not a whole-web crawler, and an unavailable or unconfigured provider
+does not establish that no relevant news exists.
+
 ## Team Run
 
 When an operator confirms a topic in Feishu or the workbench, NewsClaw creates

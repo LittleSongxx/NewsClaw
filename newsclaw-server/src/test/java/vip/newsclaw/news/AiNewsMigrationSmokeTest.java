@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class AiNewsMigrationSmokeTest {
 
     @Test
-    void emptyH2DatabaseMigratesThroughCaptureAuditReviewCardAndRuntimeRebrand() throws Exception {
+    void emptyH2DatabaseMigratesThroughCaptureAuditReviewCardRuntimeRebrandFeedbackAndSourceTool() throws Exception {
         String url = "jdbc:h2:mem:ai_news_migration_" + UUID.randomUUID()
                 + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1";
         Flyway beforeRuntimeRebrand = Flyway.configure()
@@ -44,15 +44,21 @@ class AiNewsMigrationSmokeTest {
                 .load();
         flyway.migrate();
 
-        assertEquals("199", flyway.info().current().getVersion().getVersion());
+        assertEquals("201", flyway.info().current().getVersion().getVersion());
         try (Connection connection = DriverManager.getConnection(url, "sa", "");
              Statement statement = connection.createStatement()) {
             assertEquals(1L, scalar(statement,
                     "SELECT COUNT(*) FROM information_schema.tables "
                             + "WHERE table_name='mate_ai_news_capture_attempt'"));
             assertEquals(1L, scalar(statement,
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                            + "WHERE table_name='mate_ai_news_feedback'"));
+            assertEquals(1L, scalar(statement,
                     "SELECT COUNT(*) FROM mate_tool WHERE id=1000000646 "
                             + "AND name='ai_news_review_card' AND enabled=TRUE"));
+            assertEquals(1L, scalar(statement,
+                    "SELECT COUNT(*) FROM mate_tool WHERE id=1000000645 "
+                            + "AND description LIKE '%结构化来源发现%'"));
             assertEquals(0L, scalar(statement,
                     "SELECT COUNT(*) FROM mate_skill WHERE builtin=TRUE "
                             + "AND (author='" + legacyTitle + "' OR config_json LIKE '%" + legacyLower + "%')"));

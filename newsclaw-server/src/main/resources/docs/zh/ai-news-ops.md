@@ -33,6 +33,18 @@ candidate -> researching -> verified | conflicted | rejected
 
 新闻正文和完整引用属于事件域与 Wiki 证据层，不能直接写进长期 Memory。
 
+## 结构化来源
+
+Agent 可通过 `ai_news_event` 的 `source_health`、`search_sources` 和
+`fetch_source` 使用已配置的 RSS、SearXNG 或官方 API adapter。搜索结果统一保留
+provider ID、来源等级、原始 URL、canonical URL、抓取时间、HTTP 状态和 retrieval
+method，便于复查发现路径。
+
+这些操作是只读的候选资料入口：不会自动创建事件、不会自动把来源标为已核验，也不
+会触发任何发布。Agent 必须阅读材料后显式 `upsert`，记录被来源直接支持的 claim 和
+quote；随后仍受多源、冲突和 `verified` 门禁约束。它不是全网爬虫，未配置或不可用的
+provider 不代表不存在相关新闻。
+
 ## Team Run
 
 用户在飞书或工作台确认选题后，系统创建一个持久化 `runId`。热点发现、事实

@@ -9,6 +9,8 @@ import org.springframework.transaction.annotation.Transactional;
 import vip.newsclaw.agent.model.AgentEntity;
 import vip.newsclaw.agent.repository.AgentMapper;
 import vip.newsclaw.news.model.AiNewsEventEntity;
+import vip.newsclaw.news.model.AiNewsModelRole;
+import vip.newsclaw.news.model.AiNewsModelRoute;
 import vip.newsclaw.team.event.TeamRunDispatchCommittedIntent;
 import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.team.model.AgentTeamEntity;
@@ -52,6 +54,14 @@ public class AiNewsProductionService {
     private final TeamTaskService taskService;
     private final AiNewsEventService eventService;
     private final ApplicationEventPublisher eventPublisher;
+
+    /** Optional setter keeps narrow service tests and legacy constructors stable. */
+    private AiNewsModelRouter modelRouter;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setModelRouter(AiNewsModelRouter modelRouter) {
+        this.modelRouter = modelRouter;
+    }
 
     @Transactional
     public AiNewsEventEntity start(Long workspaceId, Long eventId) {
@@ -182,15 +192,46 @@ public class AiNewsProductionService {
      * when the editorial/visual member forgot to attach the actual generated
      * preview or material bundle.
      */
-    private static String taskMetadata(Long eventId, String role) {
+    private String taskMetadata(Long eventId, String role) {
         JSONObject metadata = new JSONObject()
                 .set("eventId", String.valueOf(eventId))
                 .set("role", role);
+        AiNewsModelRole modelRole = modelRole(role);
+        if (modelRouter != null && modelRole != null) {
+            try {
+                AiNewsModelRoute route = modelRouter.route(modelRole);
+                metadata.set("modelRole", modelRole.token())
+                        .set("modelProvider", route.provider())
+                        .set("modelName", route.modelName())
+                        .set("modelId", route.modelId())
+                        .set("modelRouteConfigured", route.configured())
+                        .set("modelRouteFallback", route.fallback())
+                        .set("modelRouteReason", route.reason());
+            } catch (Exception e) {
+                // Routing metadata is observability. A broken optional
+                // override must not prevent the durable news DAG from being
+                // created; the worker will use its normal model fallback.
+                log.warn("AI-news model route snapshot failed for role {}: {}",
+                        modelRole.token(), e.getMessage());
+            }
+        }
         if ("edit".equals(role) || "visual".equals(role)) {
             metadata.set("deliverableRequired", true)
                     .set("deliverableKind", "content-package");
         }
         return metadata.toString();
+    }
+
+    private static AiNewsModelRole modelRole(String role) {
+        if (role == null) return null;
+        return switch (role) {
+            case "discover" -> AiNewsModelRole.DISCOVERY;
+            case "verify" -> AiNewsModelRole.VERIFICATION;
+            case "edit" -> AiNewsModelRole.EDITORIAL;
+            case "visual" -> AiNewsModelRole.VISUAL;
+            case "delivery" -> AiNewsModelRole.DELIVERY;
+            default -> null;
+        };
     }
 
     private Map<String, Long> resolveMembers(AgentTeamEntity team) {

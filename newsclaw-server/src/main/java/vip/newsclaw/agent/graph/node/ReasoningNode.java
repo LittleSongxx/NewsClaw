@@ -37,6 +37,8 @@ import vip.newsclaw.team.service.TeamContextBuilder;
 
 import java.util.*;
 import java.util.concurrent.CancellationException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static vip.newsclaw.agent.graph.state.NewsClawStateKeys.*;
 
@@ -137,6 +139,32 @@ public class ReasoningNode implements NodeAction {
      */
     private static final int KEEP_RECENT_TOOL_RESPONSES = 3;
 
+    private static final int LONG_FORM_MIN_REQUEST_CHARS = 3_000;
+    private static final Pattern ARABIC_CHAR_COUNT_PATTERN = Pattern.compile(
+            "(\\d{1,3}(?:[,，]\\d{3})+|\\d+(?:\\.\\d+)?)\\s*(万|千|k|K)?\\s*(字|字符|中文字|汉字|word|words)");
+    private static final Pattern CHINESE_TEN_THOUSAND_CHARS_PATTERN = Pattern.compile(
+            "(一万|1万|十千)\\s*(字|字符|中文字|汉字)");
+    /**
+     * File tools are only appropriate when the request affirmatively asks for
+     * an artifact. A bare keyword is deliberately insufficient: requests such
+     * as "不要导出 PDF，直接回复" still belong in the chat stream.
+     */
+    private static final Pattern EXPLICIT_ARTIFACT_REQUEST_PATTERN = Pattern.compile(
+            "(?i)(?:"
+                    + "(?:生成|创建|导出|下载|保存|写入|发送|提供|给我|输出|写成|转成|转为|以)"
+                    + "\\s*(?:一份|一个|成|为)?\\s*(?:word|docx|pdf|pptx|xlsx|附件|文件|文档)"
+                    + "|(?:需要|要|给我|提供)\\s*(?:一份|一个)?\\s*(?:word|docx|pdf|pptx|xlsx)"
+                    + "(?:\\s*(?:文件|文档|附件))?"
+                    + "|(?:word|docx|pdf|pptx|xlsx)\\s*(?:文件|文档|附件|格式)?"
+                    + "\\s*(?:输出|导出|下载|生成|保存|发送)"
+                    + "|(?:markdown|\\bmd\\b)\\s*(?:文件|附件)"
+                    + ")");
+    private static final Pattern NEGATED_ARTIFACT_PREFIX_PATTERN = Pattern.compile(
+            "(?i)(?:不要|不需要|无需|不用|不必|别|禁止|不希望|不想|避免|not|without|不)\\s*$");
+    private static final List<String> ARTIFACT_DELIVERY_TOOL_PREFIXES = List.of(
+            "renderDocx", "renderPdf", "renderPptx", "renderXlsx", "send_file", "sendFile",
+            "write_file", "local_write_file", "edit_file", "local_edit_file");
+
     /** Continuation nudge appended to the prompt when the model returns an empty turn. */
     private static final String EMPTY_COMPLETION_NUDGE =
             "上一轮回复为空。如果任务尚未完成,请现在继续执行下一个具体步骤:"
@@ -233,6 +261,84 @@ public class ReasoningNode implements NodeAction {
             }
         }
         return false;
+    }
+
+    static OptionalInt requestedLongFormChars(String userMessage) {
+        if (userMessage == null || userMessage.isBlank()) return OptionalInt.empty();
+        Matcher tenThousand = CHINESE_TEN_THOUSAND_CHARS_PATTERN.matcher(userMessage);
+        if (tenThousand.find()) return OptionalInt.of(10_000);
+        Matcher matcher = ARABIC_CHAR_COUNT_PATTERN.matcher(userMessage);
+        int best = 0;
+        while (matcher.find()) {
+            String rawNumber = matcher.group(1).replace(",", "").replace("，", "");
+            double value;
+            try { value = Double.parseDouble(rawNumber); }
+            catch (NumberFormatException ignored) { continue; }
+            String unit = matcher.group(2);
+            if ("万".equals(unit)) value *= 10_000;
+            else if ("千".equals(unit) || "k".equals(unit) || "K".equals(unit)) value *= 1_000;
+            best = Math.max(best, (int) Math.round(value));
+        }
+        return best >= LONG_FORM_MIN_REQUEST_CHARS ? OptionalInt.of(best) : OptionalInt.empty();
+    }
+
+    static List<ToolCallback> filterLongFormArtifactTools(String userMessage, List<ToolCallback> callbacks) {
+        String currentRequest = currentUserRequest(userMessage);
+        if (callbacks == null || callbacks.isEmpty()
+                || requestedLongFormChars(currentRequest).isEmpty()
+                || explicitlyRequestsArtifactDelivery(currentRequest)) return callbacks;
+        return callbacks.stream().filter(callback -> {
+            String name = callback.getToolDefinition().name();
+            return ARTIFACT_DELIVERY_TOOL_PREFIXES.stream().noneMatch(name::startsWith);
+        }).toList();
+    }
+
+    static boolean hasDisallowedLongFormArtifactCall(String userMessage,
+                                                      List<AssistantMessage.ToolCall> toolCalls) {
+        String currentRequest = currentUserRequest(userMessage);
+        if (toolCalls == null || toolCalls.isEmpty()
+                || requestedLongFormChars(currentRequest).isEmpty()
+                || explicitlyRequestsArtifactDelivery(currentRequest)) return false;
+        return toolCalls.stream().anyMatch(call -> ARTIFACT_DELIVERY_TOOL_PREFIXES.stream()
+                .anyMatch(prefix -> call.name().startsWith(prefix)));
+    }
+
+    private static String currentUserRequest(String userMessage) {
+        if (userMessage == null) return "";
+        int memoryEnd = userMessage.lastIndexOf("</memory-context>");
+        return memoryEnd >= 0 ? userMessage.substring(memoryEnd + "</memory-context>".length()).trim() : userMessage;
+    }
+
+    static boolean explicitlyRequestsArtifactDelivery(String request) {
+        if (request == null || request.isBlank()) return false;
+        Matcher matcher = EXPLICIT_ARTIFACT_REQUEST_PATTERN.matcher(request);
+        while (matcher.find()) {
+            String prefix = request.substring(Math.max(0, matcher.start() - 16), matcher.start());
+            if (!NEGATED_ARTIFACT_PREFIX_PATTERN.matcher(prefix).find()) return true;
+        }
+        return false;
+    }
+
+    private static String appendLongFormChunk(String draft, String currentContent) {
+        return (draft != null ? draft : "") + (currentContent != null ? currentContent : "");
+    }
+
+    private static boolean shouldContinueLongForm(String userMessage, String longFormDraft,
+                                                  String currentContent, int iteration, int maxIterations) {
+        OptionalInt requested = requestedLongFormChars(userMessage);
+        if (requested.isEmpty() || (maxIterations > 0 && iteration + 1 >= maxIterations)) return false;
+        return appendLongFormChunk(longFormDraft, currentContent).length() < requested.getAsInt();
+    }
+
+    private static UserMessage longFormContinuationPrompt(String userMessage, String longFormDraft,
+                                                          String currentContent) {
+        int written = appendLongFormChunk(longFormDraft, currentContent).length();
+        int requested = requestedLongFormChars(userMessage).orElse(0);
+        return new UserMessage("""
+                [Runtime long-form continuation]
+                用户明确要求长篇输出，目标约 %d 字；目前累计约 %d 字，尚未达到目标。
+                请从上一段结尾自然继续写，不要重写开头，不要总结，不要说明原因，直接续写正文。
+                """.formatted(requested, written));
     }
 
     /**
@@ -857,6 +963,7 @@ public class ReasoningNode implements NodeAction {
                 ? toolDisclosureService.split(toolSet, accessor.enabledExtensionTools(), autoDemotedTools)
                         .activeCallbacks()
                 : toolCallbacks;
+        activeCallbacks = filterLongFormArtifactTools(accessor.userMessage(), activeCallbacks);
 
         ChatOptions options = buildChatOptions(effectiveReasoning, activeCallbacks);
 
@@ -1142,6 +1249,34 @@ public class ReasoningNode implements NodeAction {
         }
 
         if (result.hasToolCalls()) {
+            if (hasDisallowedLongFormArtifactCall(accessor.userMessage(), result.toolCalls())) {
+                log.warn("[ReasoningNode] Rejecting artifact tool call for plain long-form response: {}",
+                        result.toolCalls().stream().map(AssistantMessage.ToolCall::name).toList());
+                UserMessage continuation = new UserMessage("""
+                        [Runtime long-form delivery gate]
+                        The user requested the long-form text directly in chat and did not request a file,
+                        document, attachment, export, or download. Do not call rendering or file-writing tools.
+                        Continue writing the requested text directly in the response.
+                        """);
+                return reasonOutput()
+                        .continueReasoning(true)
+                        .iterationCount(accessor.iterationCount() + 1)
+                        .needsToolCall(false)
+                        .shouldSummarize(false)
+                        .toolCalls(List.of())
+                        .finalAnswer("")
+                        .clearFinishReason()
+                        .messages(List.of((Message) continuation))
+                        .currentPhase("reasoning")
+                        .streamedContent("")
+                        .streamedThinking(result.thinking())
+                        .contentStreamed(true)
+                        .thinkingStreamed(!result.thinking().isEmpty())
+                        .llmCallCount(nextLlmCallCount)
+                        .mergeUsage(state, result)
+                        .events(buildEvents(phaseEvent, iterStartEvent))
+                        .build();
+            }
             log.info("[ReasoningNode] LLM requested {} tool call(s): {}",
                     result.toolCalls().size(),
                     result.toolCalls().stream().map(AssistantMessage.ToolCall::name).toList());
@@ -1219,12 +1354,43 @@ public class ReasoningNode implements NodeAction {
                         .build();
             }
             log.info("[ReasoningNode] LLM produced final answer ({} chars)", content != null ? content.length() : 0);
+            if (shouldContinueLongForm(accessor.userMessage(), accessor.longFormDraft(), content,
+                    accessor.iterationCount(), accessor.maxIterations())) {
+                String accumulatedDraft = appendLongFormChunk(accessor.longFormDraft(), content);
+                int written = accumulatedDraft.length();
+                int requested = requestedLongFormChars(accessor.userMessage()).orElse(0);
+                log.info("[ReasoningNode] Long-form answer below requested length ({} / {} chars), continuing",
+                        written, requested);
+                return reasonOutput()
+                        .continueReasoning(true)
+                        .iterationCount(accessor.iterationCount() + 1)
+                        .needsToolCall(false)
+                        .shouldSummarize(false)
+                        .finalAnswer("")
+                        .longFormDraft(accumulatedDraft)
+                        .clearFinishReason()
+                        .messages(List.of((Message) result.assistantMessage(),
+                                longFormContinuationPrompt(accessor.userMessage(), accessor.longFormDraft(), content)))
+                        .currentPhase("reasoning")
+                        .streamedContent(content != null ? content : "")
+                        .streamedThinking(result.thinking())
+                        .contentStreamed(true)
+                        .thinkingStreamed(!result.thinking().isEmpty())
+                        .llmCallCount(nextLlmCallCount)
+                        .mergeUsage(state, result)
+                        .events(buildEvents(phaseEvent, iterStartEvent))
+                        .build();
+            }
             pushPhase(conversationId, "drafting_answer", Map.of(
                     "iteration", accessor.iterationCount(),
                     "answerChars", content != null ? content.length() : 0
             ));
+            boolean longFormRequest = requestedLongFormChars(accessor.userMessage()).isPresent();
+            String accumulatedContent = longFormRequest
+                    ? appendLongFormChunk(accessor.longFormDraft(), content)
+                    : (content != null ? content : "");
             String answerWithSources = accessor.sourceEvidenceLedger()
-                    .appendWikiSourceTable(content != null ? content : "");
+                    .appendWikiSourceTable(accumulatedContent);
             SourceEvidenceLedger.Validation validation =
                     accessor.sourceEvidenceLedger().validateAnswer(answerWithSources);
             boolean evidenceInsufficient = !validation.valid();
@@ -1251,9 +1417,9 @@ public class ReasoningNode implements NodeAction {
                     .finalThinking(result.thinking())
                     .messages(List.of((Message) result.assistantMessage()))
                     .currentPhase("reasoning")
-                    .streamedContent(evidenceInsufficient ? (content != null ? content : "") : "")
+                    .streamedContent(evidenceInsufficient ? accumulatedContent : "")
                     .finishReason(evidenceInsufficient ? FinishReason.EVIDENCE_INSUFFICIENT : FinishReason.NORMAL)
-                    .contentStreamed(!evidenceInsufficient && Objects.equals(answerWithSources, content != null ? content : ""))
+                    .contentStreamed(!evidenceInsufficient && Objects.equals(answerWithSources, accumulatedContent))
                     .thinkingStreamed(!result.thinking().isEmpty())
                     .llmCallCount(nextLlmCallCount)
                     .mergeUsage(state, result)

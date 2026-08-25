@@ -1,0 +1,92 @@
+[
+  {
+    "id": "official-release-supported",
+    "expectedDecision": "verified",
+    "expectedTier": "official",
+    "url": "https://openai.com/index/model-release/",
+    "evidenceUrls": ["https://openai.com/index/model-release/"],
+    "conflicts": [],
+    "expectConflict": false,
+    "claim": "the model release was announced",
+    "quote": "The model release was announced today.",
+    "citedUrls": ["https://openai.com/index/model-release/#details"],
+    "allowedUrls": ["https://openai.com/index/model-release/"],
+    "expectCitationAllowed": true
+  },
+  {
+    "id": "two-independent-media",
+    "expectedDecision": "verified",
+    "expectedTier": "media",
+    "url": "https://www.reuters.com/technology/ai-model-release/",
+    "evidenceUrls": [
+      "https://www.reuters.com/technology/ai-model-release/",
+      "https://www.36kr.com/p/ai-model-release"
+    ],
+    "conflicts": [],
+    "expectConflict": false,
+    "claim": "the company released a new model",
+    "quote": "The company released a new model on Tuesday.",
+    "citedUrls": ["https://www.reuters.com/technology/ai-model-release/"],
+    "allowedUrls": ["https://www.reuters.com/technology/ai-model-release/", "https://www.36kr.com/p/ai-model-release"],
+    "expectCitationAllowed": true
+  },
+  {
+    "id": "unregistered-community-lead",
+    "expectedDecision": "blocked",
+    "expectedTier": "community",
+    "url": "https://forum.example.org/posts/42",
+    "evidenceUrls": ["https://forum.example.org/posts/42"],
+    "conflicts": [],
+    "expectConflict": false,
+    "claim": "a feature is available",
+    "quote": "A feature is available according to this post.",
+    "citedUrls": ["https://forum.example.org/posts/42"],
+    "allowedUrls": ["https://forum.example.org/posts/42"],
+    "expectCitationAllowed": true
+  },
+  {
+    "id": "conflicting-official-claim",
+    "expectedDecision": "blocked",
+    "expectedTier": "official",
+    "url": "https://unitree.com/news/product-update",
+    "evidenceUrls": ["https://unitree.com/news/product-update"],
+    "conflicts": ["发布日期在两个来源中不一致"],
+    "expectConflict": true,
+    "claim": "the product update shipped",
+    "quote": "The product update shipped this month.",
+    "citedUrls": ["https://unitree.com/news/product-update"],
+    "allowedUrls": ["https://unitree.com/news/product-update"],
+    "expectCitationAllowed": true
+  },
+  {
+    "id": "cdn-is-not-factual-citation",
+    "expectedDecision": "blocked",
+    "expectedTier": "community",
+    "url": "https://forum.example.org/posts/43",
+    "evidenceUrls": ["https://forum.example.org/posts/43"],
+    "conflicts": [],
+    "expectConflict": false,
+    "claim": "the demo exists",
+    "quote": "The demo exists in the attached post.",
+    "citedUrls": ["https://cdn.example.net/generated/card.png"],
+    "allowedUrls": ["https://forum.example.org/posts/43"],
+    "expectCitationAllowed": false
+  },
+  {
+    "id": "canonical-duplicate-evidence",
+    "expectedDecision": "verified",
+    "expectedTier": "official",
+    "url": "https://openai.com//index/model-release/#top",
+    "evidenceUrls": [
+      "https://openai.com//index/model-release/#top",
+      "https://openai.com/index/model-release/"
+    ],
+    "conflicts": [],
+    "expectConflict": false,
+    "claim": "the release is public",
+    "quote": "The release is public.",
+    "citedUrls": ["https://openai.com/index/model-release/"],
+    "allowedUrls": ["https://openai.com/index/model-release/"],
+    "expectCitationAllowed": true
+  }
+]

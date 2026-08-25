@@ -45,6 +45,9 @@ NEWSCLAW_SEARCH_PROVIDER=serper
 SERPER_API_KEY=
 TAVILY_API_KEY=
 SEARXNG_BASE_URL=http://newsclaw-searxng:8080
+NEWSCLAW_AI_NEWS_RSS_FEEDS=
+NEWSCLAW_AI_NEWS_SEARXNG_BASE_URL=
+NEWSCLAW_AI_NEWS_SEARXNG_ALLOW_PRIVATE_ENDPOINT=true
 
 NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_ENABLED=true
 NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_BYTES=524288
@@ -54,6 +57,12 @@ NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_REDIRECTS=5
 
 Serper 和 Tavily 是可选搜索增强，未提供 Key 时系统可回退到 Docker 内置的 SearXNG。
 官方证据抓取只允许受限的 GET、重定向检查、字节数和超时，不会自动把事件标为已核验。
+
+AI 动态来源 SPI 可选配置 RSS 列表或独立的 SearXNG endpoint。`SEARXNG_BASE_URL`
+会作为新闻来源 adapter 的默认值；`NEWSCLAW_AI_NEWS_SEARXNG_BASE_URL` 可覆盖它。
+仅在固定、由运维配置的 Compose sidecar 或受控内网 endpoint 上把
+`NEWSCLAW_AI_NEWS_SEARXNG_ALLOW_PRIVATE_ENDPOINT` 设为 `true`。这个开关只放行
+该固定搜索 endpoint，搜索结果 URL 和 `fetch_source` 仍执行严格 SSRF 检查。
 
 ## 飞书与每日雷达
 

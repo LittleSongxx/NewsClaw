@@ -270,6 +270,9 @@ services:
       NEWSCLAW_OPENAPI_EXPOSE_UI: ${NEWSCLAW_OPENAPI_EXPOSE_UI:-false}
       # SearXNG: tell the app where to reach the sidecar container
       SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-http://newsclaw-searxng:8080}
+      # Only the operator-configured news-source sidecar gets this narrow
+      # private-network exception. Agent-provided result URLs remain strict.
+      NEWSCLAW_AI_NEWS_SEARXNG_ALLOW_PRIVATE_ENDPOINT: ${NEWSCLAW_AI_NEWS_SEARXNG_ALLOW_PRIVATE_ENDPOINT:-true}
       # Browser automation: the runtime image (mcr.microsoft.com/playwright:*)
       # bakes Chromium + system libs + fonts in, so the tool works out of the box.
       # Override these if you want to attach to an external Chrome (CDP sidecar):
