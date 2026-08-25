@@ -1,0 +1,589 @@
+{
+  "datasetId": "ai-news-evidence-policy",
+  "datasetVersion": "2026.08.25-v1",
+  "evaluationScope": "offline-deterministic-policy-regression",
+  "executionMetadata": {
+    "mode": "offline",
+    "network": "disabled",
+    "modelProvider": "not-called",
+    "labeling": "curated-policy-gold",
+    "sourceRegistry": "skills/ai_news_radar/references/source_registry.yml"
+  },
+  "limitations": [
+    "This dataset measures deterministic source, admission, citation, refusal, and canonicalization policy behavior only.",
+    "It does not measure online discovery recall, factual entailment by an LLM, hallucination rate, editorial quality, or external delivery success.",
+    "Use scripts/score-ai-news-traces.sh with human-labeled sampled traces before making model or online-quality claims."
+  ],
+  "cases": [
+    {
+      "id": "en-openai-release-primary",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "normal"},
+      "sourceUrl": "HTTPS://OpenAI.com//index/gpt-5-release/?utm_source=radar#overview",
+      "evidenceUrls": ["HTTPS://OpenAI.com//index/gpt-5-release/?utm_source=radar#overview"],
+      "conflicts": [],
+      "claim": "OpenAI announced a model release.",
+      "quote": "OpenAI announced a model release.",
+      "citedUrls": ["https://openai.com/index/gpt-5-release/?utm_source=radar#details"],
+      "allowedUrls": ["https://openai.com/index/gpt-5-release?utm_source=radar"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://openai.com/index/gpt-5-release?utm_source=radar",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-openai-release-canonical-duplicate",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "duplicate"},
+      "sourceUrl": "https://openai.com/index/gpt-5-release/?utm_source=radar",
+      "evidenceUrls": ["https://openai.com/index/gpt-5-release/?utm_source=radar"],
+      "conflicts": [],
+      "claim": "OpenAI announced a model release.",
+      "quote": "OpenAI announced a model release.",
+      "citedUrls": ["https://openai.com/index/gpt-5-release/?utm_source=radar"],
+      "allowedUrls": ["https://openai.com/index/gpt-5-release/?utm_source=radar"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://openai.com/index/gpt-5-release?utm_source=radar",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-deepseek-api-official",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "normal"},
+      "sourceUrl": "https://www.deepseek.com//news/api-update/#top",
+      "evidenceUrls": ["https://www.deepseek.com//news/api-update/#top"],
+      "conflicts": [],
+      "claim": "DeepSeek published an API update.",
+      "quote": "DeepSeek published an API update.",
+      "citedUrls": ["https://www.deepseek.com/news/api-update/"],
+      "allowedUrls": ["https://www.deepseek.com/news/api-update"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.deepseek.com/news/api-update",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-deepseek-github-official",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "normal"},
+      "sourceUrl": "https://github.com/deepseek-ai/DeepSeek-V4/releases/tag/v4",
+      "evidenceUrls": ["https://github.com/deepseek-ai/DeepSeek-V4/releases/tag/v4"],
+      "conflicts": [],
+      "claim": "DeepSeek published a release.",
+      "quote": "DeepSeek published a release.",
+      "citedUrls": ["https://github.com/deepseek-ai/DeepSeek-V4/releases/tag/v4"],
+      "allowedUrls": ["https://github.com/deepseek-ai/DeepSeek-V4/releases/tag/v4"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://github.com/deepseek-ai/DeepSeek-V4/releases/tag/v4",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-qwen-github-official",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "normal"},
+      "sourceUrl": "https://github.com/QwenLM/Qwen3/releases/tag/v3",
+      "evidenceUrls": ["https://github.com/QwenLM/Qwen3/releases/tag/v3"],
+      "conflicts": [],
+      "claim": "Qwen published a release.",
+      "quote": "Qwen published a release.",
+      "citedUrls": ["https://github.com/QwenLM/Qwen3/releases/tag/v3"],
+      "allowedUrls": ["https://github.com/QwenLM/Qwen3/releases/tag/v3"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://github.com/QwenLM/Qwen3/releases/tag/v3",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-anthropic-news-official",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "normal"},
+      "sourceUrl": "https://www.anthropic.com/news/claude-update/",
+      "evidenceUrls": ["https://www.anthropic.com/news/claude-update/"],
+      "conflicts": [],
+      "claim": "Anthropic published an update.",
+      "quote": "Anthropic published an update.",
+      "citedUrls": ["https://www.anthropic.com/news/claude-update/#source"],
+      "allowedUrls": ["https://www.anthropic.com/news/claude-update/"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.anthropic.com/news/claude-update",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-unitree-news-official",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "normal"},
+      "sourceUrl": "https://www.unitree.com/news/robot-update/",
+      "evidenceUrls": ["https://www.unitree.com/news/robot-update/"],
+      "conflicts": [],
+      "claim": "Unitree published a robot update.",
+      "quote": "Unitree published a robot update.",
+      "citedUrls": ["https://www.unitree.com/news/robot-update"],
+      "allowedUrls": ["https://www.unitree.com/news/robot-update"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.unitree.com/news/robot-update",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-nvidia-developer-official",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "normal"},
+      "sourceUrl": "https://developer.nvidia.com/blog/robotics-update/",
+      "evidenceUrls": ["https://developer.nvidia.com/blog/robotics-update/"],
+      "conflicts": [],
+      "claim": "NVIDIA published a robotics update.",
+      "quote": "NVIDIA published a robotics update.",
+      "citedUrls": ["https://developer.nvidia.com/blog/robotics-update"],
+      "allowedUrls": ["https://developer.nvidia.com/blog/robotics-update"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://developer.nvidia.com/blog/robotics-update",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-two-independent-china-media",
+      "slices": {"language": "zh", "sourceProfile": "corroborated-media", "risk": "normal"},
+      "sourceUrl": "https://www.36kr.com/p/ai-radar-1/",
+      "evidenceUrls": ["https://www.36kr.com/p/ai-radar-1/", "https://www.jiqizhixin.com/articles/ai-radar-1"],
+      "conflicts": [],
+      "claim": "Two independent outlets reported the release.",
+      "quote": "Two independent outlets reported the release.",
+      "citedUrls": ["https://www.36kr.com/p/ai-radar-1/"],
+      "allowedUrls": ["https://www.36kr.com/p/ai-radar-1/", "https://www.jiqizhixin.com/articles/ai-radar-1"],
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.36kr.com/p/ai-radar-1",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-two-independent-global-media",
+      "slices": {"language": "en", "sourceProfile": "corroborated-media", "risk": "normal"},
+      "sourceUrl": "https://www.reuters.com/technology/ai-radar-2/",
+      "evidenceUrls": ["https://www.reuters.com/technology/ai-radar-2/", "https://techcrunch.com/2026/ai-radar-2/"],
+      "conflicts": [],
+      "claim": "Two independent outlets reported the release.",
+      "quote": "Two independent outlets reported the release.",
+      "citedUrls": ["https://www.reuters.com/technology/ai-radar-2/"],
+      "allowedUrls": ["https://www.reuters.com/technology/ai-radar-2/", "https://techcrunch.com/2026/ai-radar-2/"],
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.reuters.com/technology/ai-radar-2",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-single-media-insufficient",
+      "slices": {"language": "zh", "sourceProfile": "single-media", "risk": "insufficient-evidence"},
+      "sourceUrl": "https://36kr.com/p/unconfirmed-ai-lead",
+      "evidenceUrls": ["https://36kr.com/p/unconfirmed-ai-lead"],
+      "conflicts": [],
+      "claim": "One outlet reported a lead.",
+      "quote": "One outlet reported a lead.",
+      "citedUrls": ["https://36kr.com/p/unconfirmed-ai-lead"],
+      "allowedUrls": ["https://36kr.com/p/unconfirmed-ai-lead"],
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": true,
+        "canonicalGroup": "https://36kr.com/p/unconfirmed-ai-lead",
+        "refusalRequired": true,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-single-media-insufficient",
+      "slices": {"language": "en", "sourceProfile": "single-media", "risk": "insufficient-evidence"},
+      "sourceUrl": "https://www.reuters.com/technology/unconfirmed-ai-lead",
+      "evidenceUrls": ["https://www.reuters.com/technology/unconfirmed-ai-lead"],
+      "conflicts": [],
+      "claim": "One outlet reported a lead.",
+      "quote": "One outlet reported a lead.",
+      "citedUrls": ["https://www.reuters.com/technology/unconfirmed-ai-lead"],
+      "allowedUrls": ["https://www.reuters.com/technology/unconfirmed-ai-lead"],
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.reuters.com/technology/unconfirmed-ai-lead",
+        "refusalRequired": true,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-same-publisher-repost-is-not-corroboration",
+      "slices": {"language": "en", "sourceProfile": "same-publisher", "risk": "insufficient-evidence"},
+      "sourceUrl": "https://www.reuters.com/technology/ai-lead-a",
+      "evidenceUrls": ["https://www.reuters.com/technology/ai-lead-a", "https://www.reuters.com/world/ai-lead-a-update"],
+      "conflicts": [],
+      "claim": "Two pages from one publisher reported a lead.",
+      "quote": "Two pages from one publisher reported a lead.",
+      "citedUrls": ["https://www.reuters.com/technology/ai-lead-a"],
+      "allowedUrls": ["https://www.reuters.com/technology/ai-lead-a", "https://www.reuters.com/world/ai-lead-a-update"],
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.reuters.com/technology/ai-lead-a",
+        "refusalRequired": true,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-community-lead-blocked",
+      "slices": {"language": "zh", "sourceProfile": "community", "risk": "insufficient-evidence"},
+      "sourceUrl": "https://forum.example.org/posts/ai-rumor-1",
+      "evidenceUrls": ["https://forum.example.org/posts/ai-rumor-1"],
+      "conflicts": [],
+      "claim": "A forum made an AI claim.",
+      "quote": "A forum made an AI claim.",
+      "citedUrls": ["https://forum.example.org/posts/ai-rumor-1"],
+      "allowedUrls": ["https://forum.example.org/posts/ai-rumor-1"],
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": true,
+        "canonicalGroup": "https://forum.example.org/posts/ai-rumor-1",
+        "refusalRequired": true,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-spoofed-openai-domain-blocked",
+      "slices": {"language": "en", "sourceProfile": "spoofed", "risk": "spoofed-domain"},
+      "sourceUrl": "https://openai-news.example.net/release",
+      "evidenceUrls": ["https://openai-news.example.net/release"],
+      "conflicts": [],
+      "claim": "A spoofed site made a release claim.",
+      "quote": "A spoofed site made a release claim.",
+      "citedUrls": ["https://openai-news.example.net/release"],
+      "allowedUrls": ["https://openai-news.example.net/release"],
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": true,
+        "canonicalGroup": "https://openai-news.example.net/release",
+        "refusalRequired": true,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-spoofed-deepseek-domain-blocked",
+      "slices": {"language": "zh", "sourceProfile": "spoofed", "risk": "spoofed-domain"},
+      "sourceUrl": "https://deepseek.example.net/model-release",
+      "evidenceUrls": ["https://deepseek.example.net/model-release"],
+      "conflicts": [],
+      "claim": "A spoofed site made a release claim.",
+      "quote": "A spoofed site made a release claim.",
+      "citedUrls": ["https://deepseek.example.net/model-release"],
+      "allowedUrls": ["https://deepseek.example.net/model-release"],
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": true,
+        "canonicalGroup": "https://deepseek.example.net/model-release",
+        "refusalRequired": true,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-unresolved-official-conflict-blocked",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "unresolved-conflict"},
+      "sourceUrl": "https://openai.com/index/conflicting-release",
+      "evidenceUrls": ["https://openai.com/index/conflicting-release"],
+      "conflicts": ["release dates disagree"],
+      "claim": "An official release has a date conflict.",
+      "quote": "An official release has a date conflict.",
+      "citedUrls": ["https://openai.com/index/conflicting-release"],
+      "allowedUrls": ["https://openai.com/index/conflicting-release"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": true,
+        "canonicalGroup": "https://openai.com/index/conflicting-release",
+        "refusalRequired": true,
+        "unresolvedConflict": true
+      }
+    },
+    {
+      "id": "zh-unresolved-media-conflict-blocked",
+      "slices": {"language": "zh", "sourceProfile": "corroborated-media", "risk": "unresolved-conflict"},
+      "sourceUrl": "https://www.36kr.com/p/conflicting-ai-release",
+      "evidenceUrls": ["https://www.36kr.com/p/conflicting-ai-release", "https://www.jiqizhixin.com/articles/conflicting-ai-release"],
+      "conflicts": ["launch scope disagrees"],
+      "claim": "Two media reports contain an unresolved conflict.",
+      "quote": "Two media reports contain an unresolved conflict.",
+      "citedUrls": ["https://www.36kr.com/p/conflicting-ai-release"],
+      "allowedUrls": ["https://www.36kr.com/p/conflicting-ai-release", "https://www.jiqizhixin.com/articles/conflicting-ai-release"],
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.36kr.com/p/conflicting-ai-release",
+        "refusalRequired": true,
+        "unresolvedConflict": true
+      }
+    },
+    {
+      "id": "en-citation-outside-evidence-blocked",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "citation-boundary"},
+      "sourceUrl": "https://openai.com/index/citation-boundary",
+      "evidenceUrls": ["https://openai.com/index/citation-boundary"],
+      "conflicts": [],
+      "claim": "The event has official evidence.",
+      "quote": "The event has official evidence.",
+      "citedUrls": ["https://example.com/unarchived-report"],
+      "allowedUrls": ["https://openai.com/index/citation-boundary"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "canonicalGroup": "https://openai.com/index/citation-boundary",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-citation-cdn-outside-evidence-blocked",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "citation-boundary"},
+      "sourceUrl": "https://deepseek.com/news/citation-boundary",
+      "evidenceUrls": ["https://deepseek.com/news/citation-boundary"],
+      "conflicts": [],
+      "claim": "The event has official evidence.",
+      "quote": "The event has official evidence.",
+      "citedUrls": ["https://cdn.example.net/generated-card.png"],
+      "allowedUrls": ["https://deepseek.com/news/citation-boundary"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "canonicalGroup": "https://deepseek.com/news/citation-boundary",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-citation-canonical-url-allowed",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "citation-boundary"},
+      "sourceUrl": "https://www.anthropic.com/news/citation-boundary/",
+      "evidenceUrls": ["https://www.anthropic.com/news/citation-boundary/"],
+      "conflicts": [],
+      "claim": "The event has official evidence.",
+      "quote": "The event has official evidence.",
+      "citedUrls": ["https://www.anthropic.com/news/citation-boundary/#sources"],
+      "allowedUrls": ["https://www.anthropic.com/news/citation-boundary/"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.anthropic.com/news/citation-boundary",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-canonical-path-first",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "duplicate"},
+      "sourceUrl": "https://openai.com//index/routing-note/#top",
+      "evidenceUrls": ["https://openai.com//index/routing-note/#top"],
+      "conflicts": [],
+      "claim": "OpenAI published a routing note.",
+      "quote": "OpenAI published a routing note.",
+      "citedUrls": ["https://openai.com/index/routing-note"],
+      "allowedUrls": ["https://openai.com/index/routing-note"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://openai.com/index/routing-note",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-canonical-path-second",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "duplicate"},
+      "sourceUrl": "https://openai.com/index/routing-note/",
+      "evidenceUrls": ["https://openai.com/index/routing-note/"],
+      "conflicts": [],
+      "claim": "OpenAI published a routing note.",
+      "quote": "OpenAI published a routing note.",
+      "citedUrls": ["https://openai.com/index/routing-note/"],
+      "allowedUrls": ["https://openai.com/index/routing-note/"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://openai.com/index/routing-note",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-query-variant-is-not-duplicate",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "duplicate"},
+      "sourceUrl": "https://openai.com/index/routing-note?version=2",
+      "evidenceUrls": ["https://openai.com/index/routing-note?version=2"],
+      "conflicts": [],
+      "claim": "OpenAI published a separately versioned routing note.",
+      "quote": "OpenAI published a separately versioned routing note.",
+      "citedUrls": ["https://openai.com/index/routing-note?version=2"],
+      "allowedUrls": ["https://openai.com/index/routing-note?version=2"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://openai.com/index/routing-note?version=2",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-same-publisher-36kr-is-not-corroboration",
+      "slices": {"language": "zh", "sourceProfile": "same-publisher", "risk": "insufficient-evidence"},
+      "sourceUrl": "https://www.36kr.com/p/same-publisher-lead",
+      "evidenceUrls": ["https://www.36kr.com/p/same-publisher-lead", "https://36kr.com/p/same-publisher-followup"],
+      "conflicts": [],
+      "claim": "Two pages from one publisher reported a lead.",
+      "quote": "Two pages from one publisher reported a lead.",
+      "citedUrls": ["https://www.36kr.com/p/same-publisher-lead"],
+      "allowedUrls": ["https://www.36kr.com/p/same-publisher-lead", "https://36kr.com/p/same-publisher-followup"],
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.36kr.com/p/same-publisher-lead",
+        "refusalRequired": true,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-one-trusted-plus-one-unknown-is-insufficient",
+      "slices": {"language": "en", "sourceProfile": "mixed", "risk": "insufficient-evidence"},
+      "sourceUrl": "https://www.reuters.com/technology/mixed-source-lead",
+      "evidenceUrls": ["https://www.reuters.com/technology/mixed-source-lead", "https://blog.example.org/mixed-source-lead"],
+      "conflicts": [],
+      "claim": "One trusted source and one unknown source reported a lead.",
+      "quote": "One trusted source and one unknown source reported a lead.",
+      "citedUrls": ["https://www.reuters.com/technology/mixed-source-lead"],
+      "allowedUrls": ["https://www.reuters.com/technology/mixed-source-lead", "https://blog.example.org/mixed-source-lead"],
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.reuters.com/technology/mixed-source-lead",
+        "refusalRequired": true,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-xiaomi-official",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "normal"},
+      "sourceUrl": "https://www.xiaomi.com/news/ai-product-update/",
+      "evidenceUrls": ["https://www.xiaomi.com/news/ai-product-update/"],
+      "conflicts": [],
+      "claim": "Xiaomi published an AI product update.",
+      "quote": "Xiaomi published an AI product update.",
+      "citedUrls": ["https://www.xiaomi.com/news/ai-product-update/"],
+      "allowedUrls": ["https://www.xiaomi.com/news/ai-product-update"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.xiaomi.com/news/ai-product-update",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-google-blog-official",
+      "slices": {"language": "en", "sourceProfile": "official", "risk": "normal"},
+      "sourceUrl": "https://blog.google/technology/ai/model-update/",
+      "evidenceUrls": ["https://blog.google/technology/ai/model-update/"],
+      "conflicts": [],
+      "claim": "Google published an AI model update.",
+      "quote": "Google published an AI model update.",
+      "citedUrls": ["https://blog.google/technology/ai/model-update"],
+      "allowedUrls": ["https://blog.google/technology/ai/model-update"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://blog.google/technology/ai/model-update",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "zh-baidu-official",
+      "slices": {"language": "zh", "sourceProfile": "official", "risk": "normal"},
+      "sourceUrl": "https://www.baidu.com/ai/model-update/",
+      "evidenceUrls": ["https://www.baidu.com/ai/model-update/"],
+      "conflicts": [],
+      "claim": "Baidu published an AI update.",
+      "quote": "Baidu published an AI update.",
+      "citedUrls": ["https://www.baidu.com/ai/model-update"],
+      "allowedUrls": ["https://www.baidu.com/ai/model-update"],
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "canonicalGroup": "https://www.baidu.com/ai/model-update",
+        "refusalRequired": false,
+        "unresolvedConflict": false
+      }
+    },
+    {
+      "id": "en-unregistered-press-domain-blocked",
+      "slices": {"language": "en", "sourceProfile": "community", "risk": "spoofed-domain"},
+      "sourceUrl": "https://openai-press.example.org/announcement",
+      "evidenceUrls": ["https://openai-press.example.org/announcement"],
+      "conflicts": [],
+      "claim": "An unregistered press domain made a claim.",
+      "quote": "An unregistered press domain made a claim.",
+      "citedUrls": ["https://openai-press.example.org/announcement"],
+      "allowedUrls": ["https://openai-press.example.org/announcement"],
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": true,
+        "canonicalGroup": "https://openai-press.example.org/announcement",
+        "refusalRequired": true,
+        "unresolvedConflict": false
+      }
+    }
+  ]
+}

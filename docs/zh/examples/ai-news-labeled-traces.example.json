@@ -1,0 +1,84 @@
+{
+  "datasetId": "sampled-ai-news-agent-traces",
+  "datasetVersion": "YYYY-MM-DD-v1",
+  "evaluationScope": "sampled-real-agent-traces",
+  "executionMetadata": {
+    "modelRoute": "replace-with-role-and-model-version",
+    "promptVersion": "replace-with-prompt-or-skill-version",
+    "samplingWindow": "replace-with-time-window",
+    "reviewProtocol": "two-reviewers-plus-adjudication",
+    "privacy": "source snapshots and user/channel identifiers removed"
+  },
+  "limitations": [
+    "This is a format example, not an evaluation result.",
+    "Keep immutable source snapshots and reviewer decisions outside the repository when they contain private or licensed material."
+  ],
+  "cases": [
+    {
+      "id": "trace-001",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official",
+        "scenario": "model-release",
+        "route": "verification"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "canonicalGroup": "event-canonical-key-001",
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "toolParametersCorrect": true,
+        "humanReviewRequired": true
+      },
+      "prediction": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "canonicalGroup": "event-canonical-key-001",
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "toolParametersCorrect": true,
+        "humanReviewRequested": true
+      }
+    },
+    {
+      "id": "trace-002",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "single-media",
+        "scenario": "breaking-news",
+        "route": "verification"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "canonicalGroup": "event-canonical-key-002",
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "toolParametersCorrect": true,
+        "humanReviewRequired": true
+      },
+      "prediction": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "canonicalGroup": "event-canonical-key-002",
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "toolParametersCorrect": true,
+        "humanReviewRequested": true
+      }
+    }
+  ]
+}
