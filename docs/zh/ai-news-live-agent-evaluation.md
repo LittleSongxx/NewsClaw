@@ -16,7 +16,7 @@ This is deliberately different from both other evidence layers:
 
 The controlled benchmark uses 24 no-tool cases and 6 required read-only `ai_news_event(action=source_health)` probes. In v3, no-tool cases send `toolChoice=none`; required cases send `toolChoice=function:ai_news_event`. It never asks the Agent to write an event, create a Wiki page/content, send a channel message, request approval, or publish externally. The 30 fixed cases cover Chinese and English, official sources, official GitHub prefixes, independent media corroboration, single media, community/lookalike sources, quote mismatch, unarchived citations, unresolved conflict, and tool parameters.
 
-已完成的两轮受控运行、工件哈希、badcase 根因和证据边界见[2026-08-25 受控在线基线归档](evidence/ai-news-controlled-live-baseline-20260825.md)。该归档保留 P0 改造前的真实对照结果，后续协议升级会使用新的版本和目录。
+P0 改造前的两轮真实对照见[2026-08-25 受控在线基线归档](evidence/ai-news-controlled-live-baseline-20260825.md)；改造后从干净提交重建并执行的 30 条完整结果、Provider 根因矩阵、badcase 和工件哈希见[v3 证据归档](evidence/ai-news-controlled-live-v3-20260825.md)。两个归档分别冻结各自协议和目录，后续结果不会覆盖历史数字。
 
 默认的 v3 协议发送 `responseFormat=json_object` 和显式 `toolChoice`。原生 OpenAI-compatible ReAct 路径把一次 Agent turn 分成两个受约束阶段：`required/function` 只强制首个 assistant 工具步骤；工具结果返回后，终态步骤自动切换到 `toolChoice=none` 并启用原生 JSON Object 约束。这避免重复强制工具，也兼容不能在同一 provider 请求中组合 exact-function 与 JSON mode 的路由。Web 层再对最终 assistant 文本执行严格 JSON Object 校验；`stream_started` 会确认请求格式和工具策略，`structured_output` 会报告服务端校验状态。runner 还使用独立的严格解析器检查 Markdown fence、非对象、缺字段和 trailing token，并记录服务端与 runner 是否一致。
 

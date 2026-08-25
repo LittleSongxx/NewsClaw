@@ -12,7 +12,7 @@
 
 受控在线基准的执行、工件、指标和简历边界见 [受控在线 Agent 评测](ai-news-live-agent-evaluation.md)。
 
-已测得的两轮受控在线基线及其 SHA-256 可复核摘要见[基线归档](evidence/ai-news-controlled-live-baseline-20260825.md)。其中的冻结合成标签不会被表述为生产用户流量的人类评分。
+P0 改造前的两轮受控在线基线及其 SHA-256 摘要见[基线归档](evidence/ai-news-controlled-live-baseline-20260825.md)；改造后 30 条完整 v3 结果、Provider 调查、badcase 和哈希见[v3 证据归档](evidence/ai-news-controlled-live-v3-20260825.md)。其中的冻结合成标签都不会被表述为生产用户流量的人类评分。
 
 ## P0 契约与人工复核闭环证据
 

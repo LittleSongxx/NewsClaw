@@ -1,0 +1,195 @@
+{
+  "schemaVersion": "newsclaw.ai-news-controlled-live-evidence.v1",
+  "evidenceType": "controlled-live-agent-benchmark",
+  "generatedAt": "2026-08-25T09:32:58.451402190Z",
+  "evaluation": {
+    "scope": "controlled-live-agent-evidence-policy-json-contract-v3",
+    "datasetId": "controlled-live-ai-news-agent-evidence",
+    "datasetVersion": "2026-08-25-v3",
+    "datasetSha256": "4c529ed21d6c6dff6a359b42dee8e213393bc52a5a3defd57d13bd564a830445",
+    "gitCommit": "7ed1602b",
+    "evaluationTree": "clean",
+    "runId": "live-20260825T092726Z-76ea0087",
+    "modelRoute": "bailian-team::qwen3.7-plus",
+    "requestedCases": 30,
+    "completedCases": 30,
+    "protocol": "fixed synthetic evidence packets; real authenticated NewsClaw SSE and configured model route; responseFormat=json_object; exact-function/none tool policy; server contract event plus independent strict adjudication"
+  },
+  "deterministicRegression": {
+    "command": "./scripts/eval-ai-news-ops.sh",
+    "tests": 122,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "offlinePolicyBenchmark": {
+      "dataset": "ai-news-evidence-policy@2026.08.25-v1",
+      "cases": 30,
+      "badcases": 0,
+      "verificationF1": 1.0,
+      "properRefusalF1": 1.0
+    },
+    "focusedContractTestClasses": 16,
+    "focusedContractSuiteExitCode": 0,
+    "interpretation": "deterministic policy and contract regression only; not live model quality"
+  },
+  "quality": {
+    "taskSuccess": {
+      "correct": 26,
+      "evaluated": 30,
+      "value": 0.8666666666666667
+    },
+    "sourceTierAccuracy": 0.9666666666666667,
+    "sourceTierMacroF1": 0.9327731092436974,
+    "verificationF1": 0.967741935483871,
+    "properRefusalF1": 0.9655172413793104,
+    "citationViolationBlockedF1": 1.0,
+    "claimQuoteSupportedF1": 0.9523809523809523,
+    "humanReviewRoutingF1": 1.0,
+    "toolSelectionCorrect": {
+      "correct": 30,
+      "evaluated": 30,
+      "value": 1.0
+    },
+    "toolParametersCorrect": {
+      "correct": 6,
+      "evaluated": 6,
+      "value": 1.0
+    },
+    "failedCases": 4,
+    "badcaseMetricRows": 9
+  },
+  "runtime": {
+    "http200": {
+      "successes": 30,
+      "evaluated": 30,
+      "value": 1.0
+    },
+    "streamCompleted": {
+      "successes": 30,
+      "evaluated": 30,
+      "value": 1.0
+    },
+    "structuredResponseValid": {
+      "successes": 30,
+      "evaluated": 30,
+      "value": 1.0
+    },
+    "serverContractParserAgreement": {
+      "successes": 30,
+      "evaluated": 30,
+      "value": 1.0
+    },
+    "toolChoiceAcknowledged": {
+      "successes": 30,
+      "evaluated": 30,
+      "value": 1.0
+    },
+    "toolExecutionSuccess": {
+      "successes": 6,
+      "evaluated": 6,
+      "value": 1.0
+    },
+    "endToEndLatencyMs": {
+      "p50": 10149,
+      "p95": 17295,
+      "total": 322340
+    },
+    "timeToFirstContentMs": {
+      "p50": 9152,
+      "p95": 16539,
+      "total": 298623
+    },
+    "toolExecutionMs": {
+      "p50": 0,
+      "p95": 5,
+      "total": 7,
+      "evaluated": 6
+    },
+    "tokens": {
+      "prompt": 407124,
+      "completion": 16191,
+      "reasoning": 14699
+    }
+  },
+  "orchestration": {
+    "policy": "exact-function-for-required-and-none-for-forbidden",
+    "forbiddenNoToolCases": 24,
+    "requiredReadOnlyToolCases": 6,
+    "successfulRequiredToolCases": 6,
+    "interpretation": "provider-enforced orchestration plus NewsClaw executor correctness; not autonomous model tool selection",
+    "executionSemantics": "required/function constrains exactly one initial assistant tool step; after the tool result NewsClaw switches to toolChoice=none for the terminal JSON-object answer"
+  },
+  "providerInvestigation": {
+    "defaultThinkingMode": "auto and none returned HTTP 200; required and exact-function returned HTTP 400 because forced tool choice is unsupported in thinking mode",
+    "thinkingDisabled": "required and exact-function produced ai_news_event source_health calls",
+    "combinedExactFunctionAndJson": "a direct provider request could finish without the required tool call, motivating the two-stage contract",
+    "endToEndProbe": {
+      "requestedToolChoice": "function:ai_news_event",
+      "requestedResponseFormat": "json_object",
+      "uniqueToolCallIds": 1,
+      "toolName": "ai_news_event",
+      "action": "source_health",
+      "toolExecutionSuccessful": true,
+      "structuredOutputValid": true,
+      "streamCompleted": true
+    }
+  },
+  "badcases": [
+    {
+      "caseId": "live-14-spoofed-official-en",
+      "mismatches": [
+        "claimQuoteSupported",
+        "taskSuccess"
+      ],
+      "rootCause": "the model treated exact textual entailment from an untrusted lookalike host as trustworthy claim-to-quote support"
+    },
+    {
+      "caseId": "live-22-community-plus-media-zh",
+      "mismatches": [
+        "sourceTier",
+        "taskSuccess"
+      ],
+      "rootCause": "the model selected the tier of the quote closest to the claim instead of the strongest source represented in the packet"
+    },
+    {
+      "caseId": "live-27-tool-external-citation-zh",
+      "mismatches": [
+        "properRefusal",
+        "verificationEligible",
+        "taskSuccess"
+      ],
+      "rootCause": "the model let an out-of-packet citation request change the independent verification decision for otherwise direct official evidence"
+    },
+    {
+      "caseId": "live-28-tool-conflict-en",
+      "mismatches": [
+        "claimQuoteSupported",
+        "taskSuccess"
+      ],
+      "rootCause": "the model let an unresolved conflict change the quote-level support field even though one trustworthy quote directly entailed the requested claim"
+    }
+  ],
+  "integrity": {
+    "rawTraceCount": 30,
+    "rawTraceHashMismatches": 0,
+    "rawTraceRetention": "local target directory only; raw SSE is excluded from Git",
+    "artifacts": {
+      "traceDatasetSha256": "7168fd60a7a6262d2bf0b8192e684fd34a7a3458f7555ed56f264ed56a33b83b",
+      "qualityManifestSha256": "94591b1a988bf5d45d9a4f6ec62dac5b86fc01b314c3f4ef8b438d7aea7572ac",
+      "qualityReportSha256": "e7adf845cf4ecdd61988e062900952c72b31c3f638a482835317af254b1ba20e",
+      "runtimeManifestSha256": "ac021963612559b1b394b106f942f0fa793f2d7f38a3539e31ca02041079fd20",
+      "runtimeReportSha256": "ff2a5f18f904c4e7aa569f80ab415f29bdab8c8d861151e9f47e02191f386cdc",
+      "providerThinkingMatrixSummarySha256": "9db105f9042218fddc6152083c7aa2aeaa4ab855e8dd4a4693ece6181608101d",
+      "providerThinkingOffMatrixSummarySha256": "cd0db190730bbfff2d75357cc71c3c43ff8daf0d096ad04d320a464af4ab8c6b",
+      "endToEndProbeSummarySha256": "d1853c9a85041c11de4283bf3268c71360e7ac31f8d89c7113eecb88286a912d",
+      "endToEndProbeRawSseSha256": "ab78a919f39cdb1523f016020f73e244be7cfe4712264904207c8de8ac353d69"
+    }
+  },
+  "boundaries": [
+    "Frozen synthetic evidence-policy labels are not human ratings of production user traffic.",
+    "The result does not establish open-web discovery accuracy, hallucination rate, user satisfaction, delivery success, QPS, capacity, SLA, production token cost, or production latency.",
+    "Run-level P50 and P95 describe one sequential controlled run only.",
+    "humanReviewRequested is a model decision label; persisted review tasks and production gating are evidenced by deterministic backend tests.",
+    "v3 tool metrics measure declared provider orchestration and executor behavior, not autonomous model tool selection."
+  ]
+}
