@@ -244,11 +244,26 @@ public class ProviderInitProbe {
         // RFC-074: skip rows the user hasn't opted into — no point spending
         // probe budget on disabled built-ins (Ollama / LM Studio / etc.) that
         // wouldn't show up in the dropdown anyway.
-        return providerMapper.selectList(null).stream()
+        List<ModelProviderEntity> all = providerMapper.selectList(null);
+        if (all == null) return List.of();
+        List<ModelProviderEntity> effective = all.stream()
                 .map(p -> {
-                    ModelProviderEntity effective = providerService.getProviderConfig(p.getProviderId());
-                    return effective != null ? effective : p;
+                    ModelProviderEntity configured = providerService.getProviderConfig(p.getProviderId());
+                    return configured != null ? configured : p;
                 })
+                .toList();
+        for (ModelProviderEntity provider : effective) {
+            if (!Boolean.TRUE.equals(provider.getEnabled())) {
+                pool.remove(provider.getProviderId(), AvailableProviderPool.RemovalSource.INIT_PROBE,
+                        "provider disabled");
+                probedProviderIds.add(provider.getProviderId());
+            } else if (!providerService.isProviderConfigured(provider.getProviderId())) {
+                pool.remove(provider.getProviderId(), AvailableProviderPool.RemovalSource.INIT_PROBE,
+                        "provider not configured");
+                probedProviderIds.add(provider.getProviderId());
+            }
+        }
+        return effective.stream()
                 .filter(p -> Boolean.TRUE.equals(p.getEnabled()))
                 .filter(p -> providerService.isProviderConfigured(p.getProviderId()))
                 .toList();

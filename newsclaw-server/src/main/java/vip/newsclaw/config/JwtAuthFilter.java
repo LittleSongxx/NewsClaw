@@ -15,23 +15,36 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import vip.newsclaw.auth.model.UserEntity;
 import vip.newsclaw.auth.pat.PersonalAccessTokenEntity;
 import vip.newsclaw.auth.pat.PersonalAccessTokenService;
+import vip.newsclaw.auth.pat.PersonalAccessTokenScopePolicy;
 import vip.newsclaw.auth.service.AuthService;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * JWT 认证过滤器
  * 支持两种 Token 传递方式：
  * 1. Authorization: Bearer <token>  （标准方式）
- * 2. ?token=<token>                 （SSE/EventSource 不支持自定义 Header，通过 query param 传递）
+     * 2. ?token=<token>                 （仅显式列出的 SSE/WebSocket 路径）
  *
  * @author NewsClaw Team
  */
 @Component
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
+
+    private static final List<Pattern> QUERY_TOKEN_PATHS = List.of(
+            Pattern.compile("^/api/v1/chat/stream$"),
+            Pattern.compile("^/api/v1/agents/[^/]+/chat/stream$"),
+            Pattern.compile("^/api/v1/talk/ws$"),
+            Pattern.compile("^/api/v1/desktop/ws$"),
+            Pattern.compile("^/api/v1/memory/[^/]+/dream/events$"),
+            Pattern.compile("^/api/v1/wiki/research/stream/[^/]+$"),
+            Pattern.compile("^/api/v1/wiki/knowledge-bases/[^/]+/progress$"),
+            Pattern.compile("^/api/v1/teams/[^/]+/events$")
+    );
 
     private final AuthService authService;
     /**
@@ -53,7 +66,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             // "mc_*", JWTs always start with "eyJ" (header b64). Cheap O(1) check
             // before the heavier work of parsing the token.
             if (token.startsWith(PersonalAccessTokenService.PAT_PREFIX)) {
-                authenticateWithPat(token);
+                PatOutcome outcome = authenticateWithPat(token, request);
+                if (outcome == PatOutcome.FORBIDDEN) {
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write(
+                            "{\"code\":403,\"msg\":\"PAT scope does not allow this request\",\"data\":null}");
+                    return;
+                }
             } else {
                 authenticateWithJwt(token, response);
             }
@@ -67,13 +87,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
      * the JWT path so downstream {@code @PreAuthorize} / {@code Authentication}
      * usages don't need to special-case PAT vs JWT auth.
      */
-    private void authenticateWithPat(String plaintext) {
+    private PatOutcome authenticateWithPat(String plaintext, HttpServletRequest request) {
         try {
             Optional<PersonalAccessTokenEntity> maybe = patService.findActiveByPlaintext(plaintext);
-            if (maybe.isEmpty()) return;
+            if (maybe.isEmpty()) return PatOutcome.INVALID;
             PersonalAccessTokenEntity pat = maybe.get();
             UserEntity user = authService.findById(pat.getUserId());
-            if (user == null || !Boolean.TRUE.equals(user.getEnabled())) return;
+            if (user == null || !Boolean.TRUE.equals(user.getEnabled())) return PatOutcome.INVALID;
+            if (!PersonalAccessTokenScopePolicy.allows(
+                    pat.getScopes(), request.getMethod(), request.getRequestURI())) {
+                return PatOutcome.FORBIDDEN;
+            }
 
             var auth = new UsernamePasswordAuthenticationToken(
                     user.getUsername(), null,
@@ -82,10 +106,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             auth.setDetails(user.getId());   // immutable user id for on-behalf-of forwarding
             SecurityContextHolder.getContext().setAuthentication(auth);
             patService.recordUse(pat); // debounced inside the service
+            return PatOutcome.AUTHENTICATED;
         } catch (Exception ignored) {
             // Anonymous fall-through — same behavior as JWT parse failure.
+            return PatOutcome.INVALID;
         }
     }
+
+    private enum PatOutcome { AUTHENTICATED, INVALID, FORBIDDEN }
 
     /** Original JWT auth path, factored out to keep doFilterInternal flat. */
     private void authenticateWithJwt(String token, HttpServletResponse response) {
@@ -118,7 +146,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     /**
      * 从请求中提取 Token
-     * 优先从 Authorization Header 读取，其次从 query param 读取（用于 SSE）
+     * 优先从 Authorization Header 读取；仅显式 SSE/WS 路径读取 query param。
      */
     private String extractToken(HttpServletRequest request) {
         // 1. Authorization Header
@@ -127,10 +155,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return bearer.substring(7);
         }
         // 2. Query parameter（SSE 专用）
-        String queryToken = request.getParameter("token");
-        if (StringUtils.hasText(queryToken)) {
-            return queryToken;
+        if (allowsQueryToken(request.getRequestURI())) {
+            String queryToken = request.getParameter("token");
+            if (StringUtils.hasText(queryToken)) {
+                return queryToken;
+            }
         }
         return null;
+    }
+
+    static boolean allowsQueryToken(String uri) {
+        return uri != null && QUERY_TOKEN_PATHS.stream().anyMatch(p -> p.matcher(uri).matches());
     }
 }

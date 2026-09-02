@@ -17,6 +17,7 @@ import vip.newsclaw.workflow.repository.WorkflowRunMapper;
 import vip.newsclaw.workflow.repository.WorkflowRunPauseMapper;
 import vip.newsclaw.workflow.repository.WorkflowRunStepMapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -202,5 +203,42 @@ class AwaitApprovalRuntimeTest {
         WorkflowResumer.Outcome second = resumer.resume(graph, pause.getPauseToken(),
                 WorkflowResumer.ResumeOutcome.APPROVED, null);
         assertEquals(WorkflowResumer.Outcome.Kind.ALREADY_RESOLVED, second.kind());
+    }
+
+    @Test
+    @DisplayName("Pause resume CAS admits one claimant even when callbacks race.")
+    void pauseResumeCasAdmitsOnlyOneClaimant() {
+        stubInvoker.reset();
+        stubInvoker.respond("collect", "{}");
+
+        WorkflowGraph graph = parser.parse("""
+                {
+                  "steps": [
+                    {"name":"collect","agentName":"collect","mode":{"type":"sequential"},
+                     "promptTemplate":"x","outputVar":"d","outputContentType":"json"},
+                    {"name":"approve",
+                     "mode":{"type":"await_approval","approvalKind":"k","approverChannels":["web"]}}
+                  ]
+                }
+                """);
+
+        WorkflowRunResult initial = runner.run(graph,
+                new WorkflowRunRequest(53L, 1L, 99L, "manual", Map.of()));
+        WorkflowRunPauseEntity pause = pauseMapper.selectOne(
+                new LambdaQueryWrapper<WorkflowRunPauseEntity>()
+                        .eq(WorkflowRunPauseEntity::getRunId, initial.runId()));
+        assertNotNull(pause);
+
+        LocalDateTime claimedAt = LocalDateTime.now();
+        int first = pauseMapper.claimResume(pause.getId(), pause.getPauseToken(),
+                claimedAt, "approved", null);
+        int second = pauseMapper.claimResume(pause.getId(), pause.getPauseToken(),
+                claimedAt.plusNanos(1), "approved", null);
+
+        assertEquals(1, first);
+        assertEquals(0, second);
+        WorkflowRunPauseEntity reloaded = pauseMapper.selectById(pause.getId());
+        assertNotNull(reloaded.getResumedAt());
+        assertEquals("approved", reloaded.getResumeOutcome());
     }
 }

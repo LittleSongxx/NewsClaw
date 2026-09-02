@@ -2,9 +2,11 @@ package vip.newsclaw.news.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import vip.newsclaw.news.model.AiNewsEventDetail;
 import vip.newsclaw.news.model.AiNewsEventEntity;
 import vip.newsclaw.news.model.AiNewsEvidenceEntity;
+import vip.newsclaw.news.model.AiNewsEvidenceRelation;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -35,6 +37,10 @@ public class AiNewsEvidenceBoundaryService {
 
     private final AiNewsEventService eventService;
 
+    /** Legacy/manual callers stay URL-bound; production profile enables claim-level checks. */
+    @Value("${newsclaw.ai-news.strict-evidence-boundary:false}")
+    private boolean strictEvidenceBoundary;
+
     /**
      * Validate content bound to an {@code ai-news-event-*} execution.  It must
      * only cite URLs and named official social channels that exist in the
@@ -54,6 +60,24 @@ public class AiNewsEvidenceBoundaryService {
         }
         if (verifiedEvidence.isEmpty()) {
             violations.add("事件没有已核验的归档证据");
+        }
+
+        if (strictEvidenceBoundary) {
+            // A verified flag alone is not a citation. Every supporting row must
+            // retain the narrow claim↔quote judgment and immutable capture
+            // provenance before a package can leave the server.
+            for (AiNewsEvidenceEntity item : verifiedEvidence) {
+                if (item.getId() == null || isBlank(item.getClaim()) || isBlank(item.getQuote())) {
+                    violations.add("核验证据缺少 atomic claim 或原文 quote");
+                }
+                if (!AiNewsEvidenceRelation.ENTAILS.token().equalsIgnoreCase(item.getSemanticRelation())) {
+                    violations.add("核验证据的 claim↔quote 关系不是 entails");
+                }
+                if (item.getSourceCaptureId() == null || item.getContentHash() == null
+                        || !item.getContentHash().matches("(?i)[0-9a-f]{64}")) {
+                    violations.add("核验证据缺少 server-owned capture provenance");
+                }
+            }
         }
 
         Set<String> allowedUrls = new LinkedHashSet<>();
@@ -83,6 +107,16 @@ public class AiNewsEvidenceBoundaryService {
         }
         if (!unexpectedUrls.isEmpty()) {
             violations.add("引用了未归档来源 URL：" + String.join("、", unexpectedUrls));
+        }
+
+        if (strictEvidenceBoundary && !verifiedEvidence.isEmpty()) {
+            List<String> unbound = verifiedEvidence.stream()
+                    .filter(item -> !containsEvidenceMarker(text, item))
+                    .map(item -> item.getId() == null ? "unknown" : String.valueOf(item.getId()))
+                    .toList();
+            if (!unbound.isEmpty()) {
+                violations.add("内容未绑定全部 evidence claim（缺少：" + String.join(",", unbound) + "）");
+            }
         }
 
         requireDomainWhenMentioned(text, OFFICIAL_X, Set.of("x.com", "twitter.com"), allowedDomains,
@@ -145,6 +179,30 @@ public class AiNewsEvidenceBoundaryService {
             end--;
         }
         return url.substring(0, end);
+    }
+
+    private static boolean containsEvidenceMarker(String text, AiNewsEvidenceEntity item) {
+        String normalized = text == null ? "" : text;
+        if (item == null) return false;
+        if (item.getId() != null) {
+            String id = String.valueOf(item.getId());
+            if (normalized.contains("evidence:" + id) || normalized.contains("证据:" + id)
+                    || normalized.contains("[" + id + "]")) return true;
+        }
+        String quote = item.getQuote();
+        if (quote != null) {
+            String compact = quote.trim().replaceAll("\\s+", " ");
+            if (compact.length() >= 12 && normalized.replaceAll("\\s+", " ").contains(compact)) return true;
+        }
+        String[] urls = {item.getSourceUrl(), item.getFinalUrl()};
+        for (String url : urls) {
+            if (url != null && !url.isBlank() && normalized.contains(url.trim())) return true;
+        }
+        return false;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /**

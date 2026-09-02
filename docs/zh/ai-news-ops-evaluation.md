@@ -2,6 +2,8 @@
 
 `scripts/eval-ai-news-ops.sh` 是本分支的离线、确定性回归评测入口。它不读取 `.env`，不调用真实模型、飞书、公众号或小红书，因此可以在 CI 和本地重复执行。
 
+若需要把候选-first、盲审包、Bad Case 复测和失败/安全回归一次性展示给面试官，使用 `./scripts/run-ai-news-p0-demo.sh`；该入口同样不触发外部发布，结果与边界见 [P0 求职证据闭环](evidence/ai-news-p0-job-demo.md)。
+
 ```bash
 ./scripts/eval-ai-news-ops.sh
 ```

@@ -209,13 +209,17 @@
                 <div class="setting-hint">{{ t('settings.hints.tavilyApiKey') }}</div>
               </div>
               <div class="setting-control-full">
-                <input
+                <textarea
                   v-model="tavilyApiKeyInput"
-                  type="password"
-                  class="form-input"
-                  :placeholder="settings.tavilyApiKeyMasked || t('settings.model.apiKeyInput')"
+                  class="form-input api-key-pool-input"
+                  rows="5"
+                  :placeholder="settings.tavilyApiKeyCount
+                    ? t('settings.hints.tavilyApiKeysConfigured', { count: settings.tavilyApiKeyCount })
+                    : t('settings.hints.tavilyApiKeyPlaceholder')"
                   :disabled="!settings.searchEnabled"
                   autocomplete="off"
+                  autocapitalize="off"
+                  spellcheck="false"
                 />
               </div>
             </div>
@@ -378,6 +382,7 @@ const settings = reactive<SystemSettings>({
   searchProvider: 'serper',
   searchFallbackEnabled: false,
   serperBaseUrl: 'https://google.serper.dev/search',
+  tavilyApiKeyCount: 0,
   tavilyBaseUrl: 'https://api.tavily.com/search',
   duckduckgoEnabled: true,
   searxngBaseUrl: '',
@@ -405,8 +410,8 @@ async function onSaveSettings() {
   if (serperApiKeyInput.value) {
     payload.serperApiKey = serperApiKeyInput.value
   }
-  if (tavilyApiKeyInput.value) {
-    payload.tavilyApiKey = tavilyApiKeyInput.value
+  if (tavilyApiKeyInput.value.trim()) {
+    payload.tavilyApiKey = tavilyApiKeyInput.value.trim()
   }
   if (weixinoaAppSecretInput.value) {
     payload.weixinoaAppSecret = weixinoaAppSecretInput.value
@@ -449,6 +454,7 @@ function showSavedTip(message: string) {
 .form-input { width: 100%; border: 1px solid var(--mc-border); border-radius: 10px; padding: 10px 12px; font-size: 14px; background: var(--mc-bg-sunken); color: var(--mc-text-primary); }
 .form-input:focus { outline: none; border-color: var(--mc-primary); box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.1); }
 .form-input:disabled { opacity: 0.5; cursor: not-allowed; }
+.api-key-pool-input { resize: vertical; min-height: 112px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 
 .toggle-switch { position: relative; display: inline-flex; width: 44px; height: 24px; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }

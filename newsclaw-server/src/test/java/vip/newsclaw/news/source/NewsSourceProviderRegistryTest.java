@@ -39,6 +39,15 @@ class NewsSourceProviderRegistryTest {
     }
 
     @Test
+    void providerSelectionIsCaseInsensitiveLikeEnvironmentConfiguration() {
+        NewsSourceProvider provider = provider("BoCha", query -> List.of(result("BoCha")));
+        NewsSourceProviderRegistry registry = new NewsSourceProviderRegistry(List.of(provider));
+
+        assertEquals("BoCha", registry.find("bocha").orElseThrow().providerId());
+        assertEquals(1, registry.search(new NewsSourceQuery("AI", 10), List.of("BOCHA")).size());
+    }
+
+    @Test
     void searchDeduplicatesCanonicalUrlsAndCapsAggregateResults() {
         NewsSourceProvider official = provider("official", query -> List.of(
                 result("official", "Official", "https://example.com/story?utm_source=official"),

@@ -58,7 +58,7 @@ init({ apiKey: 'your-channel-api-key', server: 'https://<你的部署地址>' })
 
 - **Base URL**:`https://<你的 NewsClaw 部署地址>/api/v1/channels/webchat`
 - **认证**:所有端点都要求请求头 `X-MC-Key: <API Key>`(从渠道编辑页拿)。
-- **会话管理端点**额外要求 `X-MC-Visitor-Token: <HMAC>`(首次 `/stream` 调用时由服务端签发并回传)。
+- **访客身份**:首次 `/stream` 或 `/sessions` 由服务端生成 `visitorId` 与 HMAC `visitorToken`,客户端必须保存;后续请求同时回传 id 与 `X-MC-Visitor-Token`。
 - **响应包装**:`R<T>` → `{"code": 200, "msg": "...", "data": T}`,非 200 视为错误。
 - **字符集**:UTF-8。SSE 流使用 `text/event-stream; charset=UTF-8`。
 
@@ -66,9 +66,9 @@ init({ apiKey: 'your-channel-api-key', server: 'https://<你的部署地址>' })
 
 | 方法 | 路径 | 鉴权 | 用途 |
 |---|---|---|---|
-| POST | `/stream` | API Key | SSE 流式对话(签发 visitorToken) |
+| POST | `/stream` | API Key;首次后加 visitorToken | SSE 流式对话 |
 | GET | `/config` | API Key | 拿渠道配置(title/placeholder/...) |
-| POST | `/sessions` | API Key | 显式创建空会话线程 |
+| POST | `/sessions` | API Key;首次后加 visitorToken | 显式创建空会话线程 |
 | GET | `/sessions` | + visitorToken | 列出会话(默认排除 archived) |
 | GET | `/sessions/page` | + visitorToken | 分页 + 关键词搜索 |
 | PUT | `/sessions/title` | + visitorToken | 重命名 |
@@ -95,11 +95,11 @@ init({ apiKey: 'your-channel-api-key', server: 'https://<你的部署地址>' })
 ## 认证流程
 
 ```text
-┌──────────┐  POST /stream {visitorId:"v1", message:"你好"}
+┌──────────┐  POST /stream {message:"你好"}
 │  客户端   │ ─────────────────────────────────────────────► ┌──────────┐
 └──────────┘                                                  │ NewsClaw │
    ▲                                                          └──────────┘
-   │  SSE meta event: {sessionId, conversationId, visitorToken}
+   │  SSE meta event: {visitorId, sessionId, conversationId, visitorToken}
    │  SSE content_delta events: {text}
    │  SSE done event
    └─────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ init({ apiKey: 'your-channel-api-key', server: 'https://<你的部署地址>' })
 └──────────┘ ◄──── 200 {code:200, data:[...]}                │
 ```
 
-`visitorToken` 默认 7 天有效;过期后通过任意 `/stream` 调用重新签发。每次 `/stream`(即便旧 token 仍有效)都会在 meta 事件里回传一个新 token,客户端应持续更新本地存储,保持常新。
+`visitorToken` 默认 7 天有效;后续 `/stream` 必须回传。正确签名的过期 token 可在 30 天续期宽限内换新;每次成功 `/stream` 都会在 meta 中返回新 token。
 
 ## 错误码
 

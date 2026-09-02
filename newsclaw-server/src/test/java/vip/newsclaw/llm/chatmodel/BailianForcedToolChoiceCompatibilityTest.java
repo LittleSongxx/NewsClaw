@@ -1,7 +1,9 @@
 package vip.newsclaw.llm.chatmodel;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.openai.api.ResponseFormat;
 import vip.newsclaw.llm.model.ModelProviderEntity;
 
 import java.util.List;
@@ -12,6 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 class BailianForcedToolChoiceCompatibilityTest {
+
+    @AfterEach
+    void clearThinkingLevel() {
+        ThinkingLevelHolder.clear();
+    }
 
     @Test
     void forcedFunctionDisablesThinkingOnlyForBailianQwen() {
@@ -45,6 +52,50 @@ class BailianForcedToolChoiceCompatibilityTest {
                 nonQwen, provider("bailian-team")));
     }
 
+    @Test
+    void requestLevelOffDisablesThinkingForAllBailianQwenToolPolicies() {
+        ThinkingLevelHolder.set("off");
+        OpenAiApi.ChatCompletionRequest none = request("qwen3.7-plus", "none",
+                Map.of("trace_marker", "preserved", "enable_thinking", true));
+
+        OpenAiApi.ChatCompletionRequest rewritten =
+                OpenAiRequestRewriter.applyBailianQwenThinkingLevel(none, provider("bailian-team"));
+
+        assertFalse((Boolean) rewritten.extraBody().get("enable_thinking"));
+        assertEquals("preserved", rewritten.extraBody().get("trace_marker"));
+    }
+
+    @Test
+    void requestLevelOverrideDoesNotChangeOtherModelsOrUnsetRequests() {
+        OpenAiApi.ChatCompletionRequest qwen = request("qwen3.7-plus", "none", null);
+        OpenAiApi.ChatCompletionRequest nonQwen = request("deepseek-v3.2", "none", null);
+
+        assertSame(qwen, OpenAiRequestRewriter.applyBailianQwenThinkingLevel(
+                qwen, provider("bailian-team")));
+        ThinkingLevelHolder.set("off");
+        assertSame(nonQwen, OpenAiRequestRewriter.applyBailianQwenThinkingLevel(
+                nonQwen, provider("bailian-team")));
+        assertSame(qwen, OpenAiRequestRewriter.applyBailianQwenThinkingLevel(
+                qwen, provider("deepseek")));
+    }
+
+    @Test
+    void structuredJsonDoesNotForceThinkingOffWithoutRequestOverride() {
+        OpenAiApi.ChatCompletionRequest request = request("qwen3.7-plus", "none",
+                new ResponseFormat(ResponseFormat.Type.JSON_OBJECT, null),
+                Map.of("trace_marker", "preserved", "enable_thinking", true));
+
+        assertSame(request, OpenAiRequestRewriter.applyBailianQwenThinkingLevel(
+                request, provider("bailian-team")));
+
+        ThinkingLevelHolder.set("off");
+        OpenAiApi.ChatCompletionRequest rewritten =
+                OpenAiRequestRewriter.applyBailianQwenThinkingLevel(request, provider("bailian-team"));
+        assertFalse((Boolean) rewritten.extraBody().get("enable_thinking"));
+        assertEquals("preserved", rewritten.extraBody().get("trace_marker"));
+        assertEquals(request.toolChoice(), rewritten.toolChoice());
+    }
+
     private static ModelProviderEntity provider(String id) {
         ModelProviderEntity provider = new ModelProviderEntity();
         provider.setProviderId(id);
@@ -53,9 +104,15 @@ class BailianForcedToolChoiceCompatibilityTest {
 
     private static OpenAiApi.ChatCompletionRequest request(String model, Object toolChoice,
                                                             Map<String, Object> extraBody) {
+        return request(model, toolChoice, null, extraBody);
+    }
+
+    private static OpenAiApi.ChatCompletionRequest request(String model, Object toolChoice,
+                                                            ResponseFormat responseFormat,
+                                                            Map<String, Object> extraBody) {
         return new OpenAiApi.ChatCompletionRequest(
                 List.of(), model, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, responseFormat, null, null,
                 null, null, null, null, null, List.of(), toolChoice, null,
                 null, null, null, null, null, null, extraBody);
     }

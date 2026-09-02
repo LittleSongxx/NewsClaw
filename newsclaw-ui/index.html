@@ -12,6 +12,15 @@
   </head>
   <body>
     <div id="app"></div>
+    <script>
+      // Anonymous visitors belong on the static portfolio. Authenticated
+      // console users keep the normal SPA entry point.
+      try {
+        if (location.pathname === '/' && !localStorage.getItem('token')) {
+          location.replace('/showcase');
+        }
+      } catch (_) { /* storage may be disabled; the SPA will show login */ }
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

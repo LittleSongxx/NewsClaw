@@ -1,0 +1,3057 @@
+{
+  "datasetId": "controlled-live-ai-news-agent-evidence-holdout-100",
+  "datasetVersion": "2026-08-26-holdout-100-v1",
+  "evaluationScope": "controlled-live-agent-evidence-policy-json-contract-holdout-100",
+  "executionMetadata": {
+    "benchmarkProtocol": "100 new synthetic evidence packets; real NewsClaw SSE and configured model route; responseFormat=json_object; provider-constrained read-only tool path; strict independent adjudication",
+    "promptVersion": "live-agent-evidence-v4-holdout",
+    "toolChoicePolicy": "exact-function-for-required-and-none-for-forbidden",
+    "toolChoiceExecutionSemantics": "required/function constrains the initial assistant action once; after the tool response NewsClaw uses toolChoice=none for terminal JSON-object generation",
+    "toolChoiceEvidenceBoundary": "required-tool metrics measure provider-enforced orchestration plus NewsClaw executor correctness, not autonomous model tool selection",
+    "sampling": "all 100 frozen candidate-holdout cases are executed sequentially once in dataset order",
+    "holdoutStatus": "new candidate holdout; labels and prompt contract must be frozen before first scored run; independent reviewer sign-off still required",
+    "caseComposition": "50 zh / 50 en; 20 required read-only tool cases; balanced direct, corroborated, insufficient, conflict, citation-boundary, and source-integrity slices",
+    "privacy": "synthetic prompts only; raw SSE is written to target and excluded from Git",
+    "humanReviewEvidenceBoundary": "humanReviewRequested is the model controlled explanatory decision; persisted review-task lifecycle remains covered by deterministic backend tests"
+  },
+  "limitations": [
+    "This is a newly authored synthetic candidate holdout, not a human-labeled sample of production user traffic.",
+    "The labels are deterministic evidence-policy adjudications and do not establish open-web discovery accuracy, hallucination rate, or user satisfaction.",
+    "The v4-holdout Prompt is frozen as a separate protocol but must not be tuned against these 100 labels after scoring begins.",
+    "Required-tool cases constrain the requested function; their tool metrics are not autonomous model tool-selection accuracy.",
+    "One sequential 100-case run is not a QPS, capacity, long-stability, SLA, cost, or Provider TTFT measurement.",
+    "A production-quality holdout claim still needs an independent reviewer, a recorded no-peeking protocol, and repeated runs with per-case flip rates."
+  ],
+  "cases": [
+    {
+      "id": "holdout-001-official-aurora-api-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "read-only-tool",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Aurora API今日向开发者开放。证据包：\n- E1 | URL https://openai.com/synthetic/aurora-api | publisher OpenAI | quote: 'Aurora API今日向开发者开放。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-002-official-aurora-api-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Aurora API is available to developers today. Evidence Packet:\n- E1 | URL https://openai.com/synthetic/aurora-api | publisher OpenAI | quote: 'Aurora API is available to developers today.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-003-official-nimbus-reasoner-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Nimbus Reasoner已开放公开测试。证据包：\n- E1 | URL https://anthropic.com/synthetic/nimbus-reasoner | publisher Anthropic | quote: 'Nimbus Reasoner已开放公开测试。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-004-official-nimbus-reasoner-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Nimbus Reasoner has entered public testing. Evidence Packet:\n- E1 | URL https://anthropic.com/synthetic/nimbus-reasoner | publisher Anthropic | quote: 'Nimbus Reasoner has entered public testing.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-005-official-cedar-vision-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "read-only-tool",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Cedar Vision已发布视觉模型卡。证据包：\n- E1 | URL https://deepmind.google/synthetic/cedar-vision | publisher Google DeepMind | quote: 'Cedar Vision已发布视觉模型卡。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-006-official-cedar-vision-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Cedar Vision has published its vision model card. Evidence Packet:\n- E1 | URL https://deepmind.google/synthetic/cedar-vision | publisher Google DeepMind | quote: 'Cedar Vision has published its vision model card.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-007-official-jade-7b-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Jade 7B已按所述许可证开放权重。证据包：\n- E1 | URL https://github.com/QwenLM/synthetic/jade-7b | publisher Qwen official GitHub | quote: 'Jade 7B已按所述许可证开放权重。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-008-official-jade-7b-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Jade 7B has released its weights under the stated license. Evidence Packet:\n- E1 | URL https://github.com/QwenLM/synthetic/jade-7b | publisher Qwen official GitHub | quote: 'Jade 7B has released its weights under the stated license.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-009-official-vector-x-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "read-only-tool",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Vector X已面向推理服务器发布。证据包：\n- E1 | URL https://nvidia.com/synthetic/vector-x | publisher NVIDIA | quote: 'Vector X已面向推理服务器发布。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-010-official-vector-x-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Vector X has been released for inference servers. Evidence Packet:\n- E1 | URL https://nvidia.com/synthetic/vector-x | publisher NVIDIA | quote: 'Vector X has been released for inference servers.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-011-official-lumen-edge-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Lumen Edge已进入开发者预览。证据包：\n- E1 | URL https://amd.com/synthetic/lumen-edge | publisher AMD | quote: 'Lumen Edge已进入开发者预览。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-012-official-lumen-edge-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Lumen Edge has entered developer preview. Evidence Packet:\n- E1 | URL https://amd.com/synthetic/lumen-edge | publisher AMD | quote: 'Lumen Edge has entered developer preview.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-013-official-rover-r2-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "read-only-tool",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Rover R2已开放开发者申请。证据包：\n- E1 | URL https://unitree.com/synthetic/rover-r2 | publisher Unitree | quote: 'Rover R2已开放开发者申请。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-014-official-rover-r2-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Rover R2 is open for developer applications. Evidence Packet:\n- E1 | URL https://unitree.com/synthetic/rover-r2 | publisher Unitree | quote: 'Rover R2 is open for developer applications.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-015-official-harbor-embed-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Harbor Embed已发布模型仓库。证据包：\n- E1 | URL https://huggingface.co/synthetic/harbor-embed | publisher Hugging Face | quote: 'Harbor Embed已发布模型仓库。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-016-official-harbor-embed-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Harbor Embed has been published in the model repository. Evidence Packet:\n- E1 | URL https://huggingface.co/synthetic/harbor-embed | publisher Hugging Face | quote: 'Harbor Embed has been published in the model repository.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-017-official-mosaic-agent-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "read-only-tool",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Mosaic Agent已提供研究预览。证据包：\n- E1 | URL https://ai.meta.com/synthetic/mosaic-agent | publisher Meta | quote: 'Mosaic Agent已提供研究预览。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-018-official-mosaic-agent-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Mosaic Agent is available as a research preview. Evidence Packet:\n- E1 | URL https://ai.meta.com/synthetic/mosaic-agent | publisher Meta | quote: 'Mosaic Agent is available as a research preview.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-019-official-sable-small-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Sable Small已发布新的小型模型。证据包：\n- E1 | URL https://mistral.ai/synthetic/sable-small | publisher Mistral | quote: 'Sable Small已发布新的小型模型。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-020-official-sable-small-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "direct-support",
+        "route": "verification",
+        "scenarioFamily": "official-direct"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Sable Small has released a new small model. Evidence Packet:\n- E1 | URL https://mistral.ai/synthetic/sable-small | publisher Mistral | quote: 'Sable Small has released a new small model.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-021-media-pair-chronos-round-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "verification",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Chronos Labs 完成 B 轮融资。证据包：\n- E1 | URL https://reuters.com/synthetic/chronos-round-1 | publisher Reuters | quote: 'Chronos Labs 完成 B 轮融资。'\n- E2 | URL https://techcrunch.com/synthetic/chronos-round-2 | publisher TechCrunch | quote: 'Chronos Labs 完成 B 轮融资。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-022-media-pair-chronos-round-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "read-only-tool",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Chronos Labs closed its Series B round. Evidence Packet:\n- E1 | URL https://reuters.com/synthetic/chronos-round-1 | publisher Reuters | quote: 'Chronos Labs closed its Series B round.'\n- E2 | URL https://techcrunch.com/synthetic/chronos-round-2 | publisher TechCrunch | quote: 'Chronos Labs closed its Series B round.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-023-media-pair-pine-robotics-deployment-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "verification",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Pine Robotics 已在两座城市部署机器人。证据包：\n- E1 | URL https://theverge.com/synthetic/pine-robotics-deployment-1 | publisher The Verge | quote: 'Pine Robotics 已在两座城市部署机器人。'\n- E2 | URL https://technologyreview.com/synthetic/pine-robotics-deployment-2 | publisher MIT Technology Review | quote: 'Pine Robotics 已在两座城市部署机器人。'\n引用请求 id：E2。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-024-media-pair-pine-robotics-deployment-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "verification",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Pine Robotics deployed robots in the two named cities. Evidence Packet:\n- E1 | URL https://theverge.com/synthetic/pine-robotics-deployment-1 | publisher The Verge | quote: 'Pine Robotics deployed robots in the two named cities.'\n- E2 | URL https://technologyreview.com/synthetic/pine-robotics-deployment-2 | publisher MIT Technology Review | quote: 'Pine Robotics deployed robots in the two named cities.'\nCitation request id: E2.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-025-media-pair-xinghe-funding-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "verification",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：星河智能完成新一轮融资。证据包：\n- E1 | URL https://36kr.com/synthetic/xinghe-funding-1 | publisher 36Kr | quote: '星河智能完成新一轮融资。'\n- E2 | URL https://jiqizhixin.com/synthetic/xinghe-funding-2 | publisher 机器之心 | quote: '星河智能完成新一轮融资。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-026-media-pair-xinghe-funding-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "read-only-tool",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Xinghe Intelligence completed a new funding round. Evidence Packet:\n- E1 | URL https://36kr.com/synthetic/xinghe-funding-1 | publisher 36Kr | quote: 'Xinghe Intelligence completed a new funding round.'\n- E2 | URL https://jiqizhixin.com/synthetic/xinghe-funding-2 | publisher 机器之心 | quote: 'Xinghe Intelligence completed a new funding round.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-027-media-pair-river-cloud-acquisition-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "verification",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：River Cloud 收购了 Example Startup。证据包：\n- E1 | URL https://bloomberg.com/synthetic/river-cloud-acquisition-1 | publisher Bloomberg | quote: 'River Cloud 收购了 Example Startup。'\n- E2 | URL https://wired.com/synthetic/river-cloud-acquisition-2 | publisher Wired | quote: 'River Cloud 收购了 Example Startup。'\n引用请求 id：E2。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-028-media-pair-river-cloud-acquisition-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "verification",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: River Cloud acquired Example Startup. Evidence Packet:\n- E1 | URL https://bloomberg.com/synthetic/river-cloud-acquisition-1 | publisher Bloomberg | quote: 'River Cloud acquired Example Startup.'\n- E2 | URL https://wired.com/synthetic/river-cloud-acquisition-2 | publisher Wired | quote: 'River Cloud acquired Example Startup.'\nCitation request id: E2.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-029-media-pair-nova-api-price-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "verification",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Nova API 下调了公开价格。证据包：\n- E1 | URL https://bloomberg.com/synthetic/nova-api-price-1 | publisher Bloomberg | quote: 'Nova API 下调了公开价格。'\n- E2 | URL https://venturebeat.com/synthetic/nova-api-price-2 | publisher VentureBeat | quote: 'Nova API 下调了公开价格。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-030-media-pair-nova-api-price-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "read-only-tool",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Nova API reduced its public price. Evidence Packet:\n- E1 | URL https://bloomberg.com/synthetic/nova-api-price-1 | publisher Bloomberg | quote: 'Nova API reduced its public price.'\n- E2 | URL https://venturebeat.com/synthetic/nova-api-price-2 | publisher VentureBeat | quote: 'Nova API reduced its public price.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-031-media-pair-atlas-mobility-preview-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "verification",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Atlas Mobility 已进入公共预览。证据包：\n- E1 | URL https://caixin.com/synthetic/atlas-mobility-preview-1 | publisher 财新 | quote: 'Atlas Mobility 已进入公共预览。'\n- E2 | URL https://36kr.com/synthetic/atlas-mobility-preview-2 | publisher 36Kr | quote: 'Atlas Mobility 已进入公共预览。'\n引用请求 id：E2。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-032-media-pair-atlas-mobility-preview-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "verification",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Atlas Mobility entered public preview. Evidence Packet:\n- E1 | URL https://caixin.com/synthetic/atlas-mobility-preview-1 | publisher 财新 | quote: 'Atlas Mobility entered public preview.'\n- E2 | URL https://36kr.com/synthetic/atlas-mobility-preview-2 | publisher 36Kr | quote: 'Atlas Mobility entered public preview.'\nCitation request id: E2.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-033-media-pair-ember-datacenter-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "verification",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Ember Data Center 启用了新的推理集群。证据包：\n- E1 | URL https://reuters.com/synthetic/ember-datacenter-1 | publisher Reuters | quote: 'Ember Data Center 启用了新的推理集群。'\n- E2 | URL https://wsj.com/synthetic/ember-datacenter-2 | publisher The Wall Street Journal | quote: 'Ember Data Center 启用了新的推理集群。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-034-media-pair-ember-datacenter-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "read-only-tool",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Ember Data Center activated a new inference cluster. Evidence Packet:\n- E1 | URL https://reuters.com/synthetic/ember-datacenter-1 | publisher Reuters | quote: 'Ember Data Center activated a new inference cluster.'\n- E2 | URL https://wsj.com/synthetic/ember-datacenter-2 | publisher The Wall Street Journal | quote: 'Ember Data Center activated a new inference cluster.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-035-media-pair-quartz-assistant-launch-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "verification",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Quartz Assistant 已在两个地区上线。证据包：\n- E1 | URL https://theverge.com/synthetic/quartz-assistant-launch-1 | publisher The Verge | quote: 'Quartz Assistant 已在两个地区上线。'\n- E2 | URL https://engadget.com/synthetic/quartz-assistant-launch-2 | publisher Engadget | quote: 'Quartz Assistant 已在两个地区上线。'\n引用请求 id：E2。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-036-media-pair-quartz-assistant-launch-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "independent-media-pair",
+        "risk": "corroborated",
+        "route": "verification",
+        "scenarioFamily": "independent-media-pair"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Quartz Assistant launched in the two named regions. Evidence Packet:\n- E1 | URL https://theverge.com/synthetic/quartz-assistant-launch-1 | publisher The Verge | quote: 'Quartz Assistant launched in the two named regions.'\n- E2 | URL https://engadget.com/synthetic/quartz-assistant-launch-2 | publisher Engadget | quote: 'Quartz Assistant launched in the two named regions.'\nCitation request id: E2.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "holdout-037-external-citation-delta-batch-export-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "out-of-packet-citation",
+        "route": "read-only-tool",
+        "scenarioFamily": "citation-boundary"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Delta API 已支持批量导出。证据包：\n- E1 | URL https://openai.com/synthetic/delta-batch-export | publisher OpenAI | quote: 'Delta API 已支持批量导出。'\n引用请求 id：OUTSIDE-DELTA-BATCH-EXPORT-ZH。该 id 不在证据包中。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "OUTSIDE-DELTA-BATCH-EXPORT-ZH",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-038-external-citation-delta-batch-export-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "out-of-packet-citation",
+        "route": "verification",
+        "scenarioFamily": "citation-boundary"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Delta API supports batch export. Evidence Packet:\n- E1 | URL https://openai.com/synthetic/delta-batch-export | publisher OpenAI | quote: 'Delta API supports batch export.'\nCitation request id: OUTSIDE-DELTA-BATCH-EXPORT-EN.This id is not in the Evidence Packet.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "OUTSIDE-DELTA-BATCH-EXPORT-EN",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-039-external-citation-ember-safety-card-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "out-of-packet-citation",
+        "route": "verification",
+        "scenarioFamily": "citation-boundary"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Ember Model 已发布安全卡片。证据包：\n- E1 | URL https://anthropic.com/synthetic/ember-safety-card | publisher Anthropic | quote: 'Ember Model 已发布安全卡片。'\n引用请求 id：OUTSIDE-EMBER-SAFETY-CARD-ZH。该 id 不在证据包中。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "OUTSIDE-EMBER-SAFETY-CARD-ZH",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-040-external-citation-ember-safety-card-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "out-of-packet-citation",
+        "route": "read-only-tool",
+        "scenarioFamily": "citation-boundary"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Ember Model has published a safety card. Evidence Packet:\n- E1 | URL https://anthropic.com/synthetic/ember-safety-card | publisher Anthropic | quote: 'Ember Model has published a safety card.'\nCitation request id: OUTSIDE-EMBER-SAFETY-CARD-EN.This id is not in the Evidence Packet.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "OUTSIDE-EMBER-SAFETY-CARD-EN",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-041-external-citation-frost-chip-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "out-of-packet-citation",
+        "route": "verification",
+        "scenarioFamily": "citation-boundary"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Frost Chip 已发布。证据包：\n- E1 | URL https://nvidia.com/synthetic/frost-chip | publisher NVIDIA | quote: 'Frost Chip 已发布。'\n引用请求 id：OUTSIDE-FROST-CHIP-ZH。该 id 不在证据包中。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "OUTSIDE-FROST-CHIP-ZH",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-042-external-citation-frost-chip-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "out-of-packet-citation",
+        "route": "verification",
+        "scenarioFamily": "citation-boundary"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Frost Chip has been released. Evidence Packet:\n- E1 | URL https://nvidia.com/synthetic/frost-chip | publisher NVIDIA | quote: 'Frost Chip has been released.'\nCitation request id: OUTSIDE-FROST-CHIP-EN.This id is not in the Evidence Packet.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "OUTSIDE-FROST-CHIP-EN",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-043-external-citation-glacier-robot-sdk-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "out-of-packet-citation",
+        "route": "verification",
+        "scenarioFamily": "citation-boundary"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Glacier Robot SDK 已开放申请。证据包：\n- E1 | URL https://unitree.com/synthetic/glacier-robot-sdk | publisher Unitree | quote: 'Glacier Robot SDK 已开放申请。'\n引用请求 id：OUTSIDE-GLACIER-ROBOT-SDK-ZH。该 id 不在证据包中。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "OUTSIDE-GLACIER-ROBOT-SDK-ZH",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-044-external-citation-glacier-robot-sdk-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "out-of-packet-citation",
+        "route": "verification",
+        "scenarioFamily": "citation-boundary"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Glacier Robot SDK is open for applications. Evidence Packet:\n- E1 | URL https://unitree.com/synthetic/glacier-robot-sdk | publisher Unitree | quote: 'Glacier Robot SDK is open for applications.'\nCitation request id: OUTSIDE-GLACIER-ROBOT-SDK-EN.This id is not in the Evidence Packet.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "OUTSIDE-GLACIER-ROBOT-SDK-EN",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-045-external-citation-spruce-embedding-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "out-of-packet-citation",
+        "route": "verification",
+        "scenarioFamily": "citation-boundary"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Spruce Embedding 已进入公开预览。证据包：\n- E1 | URL https://huggingface.co/synthetic/spruce-embedding | publisher Hugging Face | quote: 'Spruce Embedding 已进入公开预览。'\n引用请求 id：OUTSIDE-SPRUCE-EMBEDDING-ZH。该 id 不在证据包中。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "OUTSIDE-SPRUCE-EMBEDDING-ZH",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-046-external-citation-spruce-embedding-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "out-of-packet-citation",
+        "route": "verification",
+        "scenarioFamily": "citation-boundary"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Spruce Embedding entered public preview. Evidence Packet:\n- E1 | URL https://huggingface.co/synthetic/spruce-embedding | publisher Hugging Face | quote: 'Spruce Embedding entered public preview.'\nCitation request id: OUTSIDE-SPRUCE-EMBEDDING-EN.This id is not in the Evidence Packet.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "OUTSIDE-SPRUCE-EMBEDDING-EN",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-047-single-media-mariner-model-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "single-media",
+        "risk": "one-source-insufficient",
+        "route": "verification",
+        "scenarioFamily": "single-media"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Mariner Model 已于本周发布。证据包：\n- E1 | URL https://theverge.com/synthetic/mariner-model | publisher The Verge | quote: 'Mariner Model 已于本周发布。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-048-single-media-mariner-model-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "single-media",
+        "risk": "one-source-insufficient",
+        "route": "read-only-tool",
+        "scenarioFamily": "single-media"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Mariner Model launched this week. Evidence Packet:\n- E1 | URL https://theverge.com/synthetic/mariner-model | publisher The Verge | quote: 'Mariner Model launched this week.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-049-single-media-cobalt-acquisition-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "single-media",
+        "risk": "one-source-insufficient",
+        "route": "verification",
+        "scenarioFamily": "single-media"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Cobalt Cloud 收购了 Example Startup。证据包：\n- E1 | URL https://techcrunch.com/synthetic/cobalt-acquisition | publisher TechCrunch | quote: 'Cobalt Cloud 收购了 Example Startup。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-050-single-media-cobalt-acquisition-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "single-media",
+        "risk": "one-source-insufficient",
+        "route": "read-only-tool",
+        "scenarioFamily": "single-media"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Cobalt Cloud acquired Example Startup. Evidence Packet:\n- E1 | URL https://techcrunch.com/synthetic/cobalt-acquisition | publisher TechCrunch | quote: 'Cobalt Cloud acquired Example Startup.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-051-single-media-pearl-robot-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "single-media",
+        "risk": "one-source-insufficient",
+        "route": "verification",
+        "scenarioFamily": "single-media"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Pearl Robot 已经量产。证据包：\n- E1 | URL https://36kr.com/synthetic/pearl-robot | publisher 36Kr | quote: 'Pearl Robot 已经量产。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-052-single-media-pearl-robot-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "single-media",
+        "risk": "one-source-insufficient",
+        "route": "verification",
+        "scenarioFamily": "single-media"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Pearl Robot has entered mass production. Evidence Packet:\n- E1 | URL https://36kr.com/synthetic/pearl-robot | publisher 36Kr | quote: 'Pearl Robot has entered mass production.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-053-single-media-summit-api-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "single-media",
+        "risk": "one-source-insufficient",
+        "route": "verification",
+        "scenarioFamily": "single-media"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Summit API 已永久免费。证据包：\n- E1 | URL https://venturebeat.com/synthetic/summit-api | publisher VentureBeat | quote: 'Summit API 已永久免费。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-054-single-media-summit-api-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "single-media",
+        "risk": "one-source-insufficient",
+        "route": "verification",
+        "scenarioFamily": "single-media"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Summit API is permanently free. Evidence Packet:\n- E1 | URL https://venturebeat.com/synthetic/summit-api | publisher VentureBeat | quote: 'Summit API is permanently free.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-055-single-media-willow-funding-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "single-media",
+        "risk": "one-source-insufficient",
+        "route": "verification",
+        "scenarioFamily": "single-media"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Willow AI 已完成十亿美元融资。证据包：\n- E1 | URL https://bloomberg.com/synthetic/willow-funding | publisher Bloomberg | quote: 'Willow AI 已完成十亿美元融资。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-056-single-media-willow-funding-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "single-media",
+        "risk": "one-source-insufficient",
+        "route": "verification",
+        "scenarioFamily": "single-media"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Willow AI raised one billion dollars. Evidence Packet:\n- E1 | URL https://bloomberg.com/synthetic/willow-funding | publisher Bloomberg | quote: 'Willow AI raised one billion dollars.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-057-hedged-media-harbor-launch-rumor-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "single-media",
+        "risk": "hedged-quote",
+        "route": "verification",
+        "scenarioFamily": "hedged-media"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Harbor Model has launched. Evidence Packet:\n- E1 | URL https://reuters.com/synthetic/harbor-launch-rumor | publisher Reuters | quote: 'A report says Harbor Model has launched may happen soon.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-058-hedged-media-maple-preview-rumor-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "single-media",
+        "risk": "hedged-quote",
+        "route": "verification",
+        "scenarioFamily": "hedged-media"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Maple Robot 本周进入公开预览。证据包：\n- E1 | URL https://theverge.com/synthetic/maple-preview-rumor | publisher The Verge | quote: '报道声称Maple Robot 本周进入公开预览可能很快发生。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-059-hedged-media-cypress-price-rumor-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "single-media",
+        "risk": "hedged-quote",
+        "route": "verification",
+        "scenarioFamily": "hedged-media"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Cypress API reduced its price. Evidence Packet:\n- E1 | URL https://techcrunch.com/synthetic/cypress-price-rumor | publisher TechCrunch | quote: 'A report says Cypress API reduced its price may happen soon.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-060-hedged-media-linwood-acquisition-rumor-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "single-media",
+        "risk": "hedged-quote",
+        "route": "verification",
+        "scenarioFamily": "hedged-media"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Linwood Labs 已被收购。证据包：\n- E1 | URL https://wired.com/synthetic/linwood-acquisition-rumor | publisher Wired | quote: '报道声称Linwood Labs 已被收购可能很快发生。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-061-community-anonymous-model-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "community",
+        "risk": "anonymous-untrusted",
+        "route": "read-only-tool",
+        "scenarioFamily": "community"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Example Model 已发布。证据包：\n- E1 | URL https://anonymous-model.example.invalid/post/1 | publisher anonymous community post | quote: '匿名用户称Example Model 已发布。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-062-community-anonymous-model-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "community",
+        "risk": "anonymous-untrusted",
+        "route": "verification",
+        "scenarioFamily": "community"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Model was released. Evidence Packet:\n- E1 | URL https://anonymous-model.example.invalid/post/1 | publisher anonymous community post | quote: 'An anonymous poster claims Example Model was released.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-063-community-forum-robot-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "community",
+        "risk": "anonymous-untrusted",
+        "route": "read-only-tool",
+        "scenarioFamily": "community"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Example Robot 已量产。证据包：\n- E1 | URL https://forum-robot.example.invalid/post/2 | publisher anonymous community post | quote: '匿名用户称Example Robot 已量产。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-064-community-forum-robot-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "community",
+        "risk": "anonymous-untrusted",
+        "route": "verification",
+        "scenarioFamily": "community"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Robot entered mass production. Evidence Packet:\n- E1 | URL https://forum-robot.example.invalid/post/2 | publisher anonymous community post | quote: 'An anonymous poster claims Example Robot entered mass production.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-065-community-paste-api-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "community",
+        "risk": "anonymous-untrusted",
+        "route": "verification",
+        "scenarioFamily": "community"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Example API 已开放。证据包：\n- E1 | URL https://paste-api.example.invalid/post/3 | publisher anonymous community post | quote: '匿名用户称Example API 已开放。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-066-community-paste-api-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "community",
+        "risk": "anonymous-untrusted",
+        "route": "verification",
+        "scenarioFamily": "community"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example API is available. Evidence Packet:\n- E1 | URL https://paste-api.example.invalid/post/3 | publisher anonymous community post | quote: 'An anonymous poster claims Example API is available.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-067-community-social-chip-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "community",
+        "risk": "anonymous-untrusted",
+        "route": "verification",
+        "scenarioFamily": "community"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Example Chip 已出货。证据包：\n- E1 | URL https://social-chip.example.invalid/post/4 | publisher anonymous community post | quote: '匿名用户称Example Chip 已出货。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-068-community-social-chip-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "community",
+        "risk": "anonymous-untrusted",
+        "route": "verification",
+        "scenarioFamily": "community"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Chip has shipped. Evidence Packet:\n- E1 | URL https://social-chip.example.invalid/post/4 | publisher anonymous community post | quote: 'An anonymous poster claims Example Chip has shipped.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-069-community-chat-model-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "community",
+        "risk": "anonymous-untrusted",
+        "route": "verification",
+        "scenarioFamily": "community"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Example Model 已绕过审核。证据包：\n- E1 | URL https://chat-model.example.invalid/post/5 | publisher anonymous community post | quote: '匿名用户称Example Model 已绕过审核。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-070-community-chat-model-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "community",
+        "risk": "anonymous-untrusted",
+        "route": "verification",
+        "scenarioFamily": "community"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Model bypassed review. Evidence Packet:\n- E1 | URL https://chat-model.example.invalid/post/5 | publisher anonymous community post | quote: 'An anonymous poster claims Example Model bypassed review.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-071-spoofed-openai-lookalike-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "lookalike-domain",
+        "risk": "lookalike-host",
+        "route": "verification",
+        "scenarioFamily": "spoofed-domain"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example OpenAI service is generally available. Evidence Packet:\n- E1 | URL https://openai.com.synthetic.invalid/synthetic/openai-lookalike | publisher OpenAI | quote: 'Example OpenAI service is generally available.'\nCitation request id: E1.The host is not the publisher official domain.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-072-spoofed-google-lookalike-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "lookalike-domain",
+        "risk": "lookalike-host",
+        "route": "verification",
+        "scenarioFamily": "spoofed-domain"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Example Google 模型已经发布。证据包：\n- E1 | URL https://google.example.invalid/synthetic/google-lookalike | publisher Google blog | quote: 'Example Google 模型已经发布。'\n引用请求 id：E1。该主机不是官方注册域名。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-073-spoofed-nvidia-lookalike-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "lookalike-domain",
+        "risk": "lookalike-host",
+        "route": "verification",
+        "scenarioFamily": "spoofed-domain"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example NVIDIA chip has shipped. Evidence Packet:\n- E1 | URL https://nvidia-press.example.invalid/synthetic/nvidia-lookalike | publisher NVIDIA press blog | quote: 'Example NVIDIA chip has shipped.'\nCitation request id: E1.The host is not the publisher official domain.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-074-spoofed-qwen-lookalike-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "lookalike-domain",
+        "risk": "lookalike-host",
+        "route": "verification",
+        "scenarioFamily": "spoofed-domain"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Example Qwen 权重已经开放。证据包：\n- E1 | URL https://qwen.example.invalid/synthetic/qwen-lookalike | publisher Qwen fan site | quote: 'Example Qwen 权重已经开放。'\n引用请求 id：E1。该主机不是官方注册域名。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-075-quote-mismatch-aurora-delay-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "contradicting-quote",
+        "route": "verification",
+        "scenarioFamily": "quote-mismatch"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Aurora Model 已于今天发布。证据包：\n- E1 | URL https://openai.com/synthetic/aurora-delay | publisher OpenAI | quote: 'Aurora Model 仍是内部预览，尚未公布发布日期。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-076-quote-mismatch-aurora-delay-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "contradicting-quote",
+        "route": "read-only-tool",
+        "scenarioFamily": "quote-mismatch"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Aurora Model launched today. Evidence Packet:\n- E1 | URL https://openai.com/synthetic/aurora-delay | publisher OpenAI | quote: 'Aurora Model remains an internal preview and no release date has been announced.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-077-quote-mismatch-nimbus-delay-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "contradicting-quote",
+        "route": "verification",
+        "scenarioFamily": "quote-mismatch"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Nimbus API 已经开放公众访问。证据包：\n- E1 | URL https://anthropic.com/synthetic/nimbus-delay | publisher Anthropic | quote: 'Nimbus API 仍仅限受邀测试者使用。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-078-quote-mismatch-nimbus-delay-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "contradicting-quote",
+        "route": "read-only-tool",
+        "scenarioFamily": "quote-mismatch"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Nimbus API is open to the public. Evidence Packet:\n- E1 | URL https://anthropic.com/synthetic/nimbus-delay | publisher Anthropic | quote: 'Nimbus API remains limited to invited testers.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-079-quote-mismatch-rover-delay-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "contradicting-quote",
+        "route": "verification",
+        "scenarioFamily": "quote-mismatch"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Rover R3 已经开始出货。证据包：\n- E1 | URL https://unitree.com/synthetic/rover-delay | publisher Unitree | quote: 'Rover R3 仍是概念产品，没有出货时间表。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-080-quote-mismatch-rover-delay-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "contradicting-quote",
+        "route": "verification",
+        "scenarioFamily": "quote-mismatch"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Rover R3 has started shipping. Evidence Packet:\n- E1 | URL https://unitree.com/synthetic/rover-delay | publisher Unitree | quote: 'Rover R3 is a concept vehicle and has no shipping schedule.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-081-quote-mismatch-jade-delay-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "contradicting-quote",
+        "route": "verification",
+        "scenarioFamily": "quote-mismatch"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Jade 8B 权重已经开源。证据包：\n- E1 | URL https://github.com/QwenLM/synthetic/jade-delay | publisher Qwen official GitHub | quote: 'Jade 8B 权重尚未发布，仓库中只有文档。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-082-quote-mismatch-jade-delay-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "contradicting-quote",
+        "route": "verification",
+        "scenarioFamily": "quote-mismatch"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Jade 8B weights are open source. Evidence Packet:\n- E1 | URL https://github.com/QwenLM/synthetic/jade-delay | publisher Qwen official GitHub | quote: 'Jade 8B weights are not published; the repository contains only documentation.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-083-quote-mismatch-lumen-delay-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "contradicting-quote",
+        "route": "verification",
+        "scenarioFamily": "quote-mismatch"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Lumen Edge 已经在本季度上市。证据包：\n- E1 | URL https://amd.com/synthetic/lumen-delay | publisher AMD | quote: 'Lumen Edge 计划在未来季度推出，目前尚未公布上市信息。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-084-quote-mismatch-lumen-delay-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "contradicting-quote",
+        "route": "verification",
+        "scenarioFamily": "quote-mismatch"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Lumen Edge is shipping this quarter. Evidence Packet:\n- E1 | URL https://amd.com/synthetic/lumen-delay | publisher AMD | quote: 'Lumen Edge is planned for a future quarter; current availability is not announced.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-085-conflict-orion-date-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-conflict",
+        "risk": "unresolved-conflict",
+        "route": "read-only-tool",
+        "scenarioFamily": "unresolved-conflict"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Orion Model 将在十月发布。证据包：\n- E1 | URL https://openai.com/synthetic/orion-date-1 | publisher OpenAI | quote: 'Orion Model 将于十月发布。'\n- E2 | URL https://openai.com/synthetic/orion-date-2 | publisher OpenAI | quote: 'Orion Model 将于十一月发布。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-086-conflict-orion-date-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-conflict",
+        "risk": "unresolved-conflict",
+        "route": "verification",
+        "scenarioFamily": "unresolved-conflict"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Orion Model will launch in October. Evidence Packet:\n- E1 | URL https://openai.com/synthetic/orion-date-1 | publisher OpenAI | quote: 'Orion Model will launch in October.'\n- E2 | URL https://openai.com/synthetic/orion-date-2 | publisher OpenAI | quote: 'Orion Model will launch in November.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-087-conflict-cedar-license-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-conflict",
+        "risk": "unresolved-conflict",
+        "route": "read-only-tool",
+        "scenarioFamily": "unresolved-conflict"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Cedar Vision 使用 Apache 2.0 许可证。证据包：\n- E1 | URL https://deepmind.google/synthetic/cedar-license-1 | publisher Google DeepMind | quote: 'Cedar Vision 按 Apache 2.0 许可证发布。'\n- E2 | URL https://deepmind.google/synthetic/cedar-license-2 | publisher Google DeepMind | quote: 'Cedar Vision 按仅限研究的许可证发布。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-088-conflict-cedar-license-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-conflict",
+        "risk": "unresolved-conflict",
+        "route": "verification",
+        "scenarioFamily": "unresolved-conflict"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Cedar Vision uses the Apache 2.0 license. Evidence Packet:\n- E1 | URL https://deepmind.google/synthetic/cedar-license-1 | publisher Google DeepMind | quote: 'Cedar Vision is released under the Apache 2.0 license.'\n- E2 | URL https://deepmind.google/synthetic/cedar-license-2 | publisher Google DeepMind | quote: 'Cedar Vision is released under a research-only license.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-089-conflict-river-round-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "media-conflict",
+        "risk": "unresolved-conflict",
+        "route": "verification",
+        "scenarioFamily": "unresolved-conflict"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：River Labs 完成 5000 万美元融资。证据包：\n- E1 | URL https://reuters.com/synthetic/river-round-1 | publisher Reuters | quote: 'River Labs 完成 5000 万美元融资。'\n- E2 | URL https://bloomberg.com/synthetic/river-round-2 | publisher Bloomberg | quote: 'River Labs 完成 2000 万美元融资。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-090-conflict-river-round-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "media-conflict",
+        "risk": "unresolved-conflict",
+        "route": "verification",
+        "scenarioFamily": "unresolved-conflict"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: River Labs raised 50 million dollars. Evidence Packet:\n- E1 | URL https://reuters.com/synthetic/river-round-1 | publisher Reuters | quote: 'River Labs raised 50 million dollars.'\n- E2 | URL https://bloomberg.com/synthetic/river-round-2 | publisher Bloomberg | quote: 'River Labs raised 20 million dollars.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-091-conflict-pine-region-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "media-conflict",
+        "risk": "unresolved-conflict",
+        "route": "verification",
+        "scenarioFamily": "unresolved-conflict"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Pine Assistant 已在欧洲上线。证据包：\n- E1 | URL https://theverge.com/synthetic/pine-region-1 | publisher The Verge | quote: 'Pine Assistant 已在欧洲上线。'\n- E2 | URL https://engadget.com/synthetic/pine-region-2 | publisher Engadget | quote: 'Pine Assistant 只在北美上线。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-092-conflict-pine-region-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "media-conflict",
+        "risk": "unresolved-conflict",
+        "route": "verification",
+        "scenarioFamily": "unresolved-conflict"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Pine Assistant launched in Europe. Evidence Packet:\n- E1 | URL https://theverge.com/synthetic/pine-region-1 | publisher The Verge | quote: 'Pine Assistant launched in Europe.'\n- E2 | URL https://engadget.com/synthetic/pine-region-2 | publisher Engadget | quote: 'Pine Assistant launched only in North America.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-093-conflict-quartz-date-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-conflict",
+        "risk": "unresolved-conflict",
+        "route": "verification",
+        "scenarioFamily": "unresolved-conflict"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Quartz Robot 将于周五交付。证据包：\n- E1 | URL https://unitree.com/synthetic/quartz-date-1 | publisher Unitree | quote: 'Quartz Robot 将于周五交付。'\n- E2 | URL https://unitree.com/synthetic/quartz-date-2 | publisher Unitree | quote: 'Quartz Robot 将于下周一交付。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-094-conflict-quartz-date-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-conflict",
+        "risk": "unresolved-conflict",
+        "route": "verification",
+        "scenarioFamily": "unresolved-conflict"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Quartz Robot will ship on Friday. Evidence Packet:\n- E1 | URL https://unitree.com/synthetic/quartz-date-1 | publisher Unitree | quote: 'Quartz Robot will ship on Friday.'\n- E2 | URL https://unitree.com/synthetic/quartz-date-2 | publisher Unitree | quote: 'Quartz Robot will ship next Monday.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-095-mixed-media-community-claim-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "media-plus-community",
+        "risk": "one-media-plus-community",
+        "route": "read-only-tool",
+        "scenarioFamily": "mixed-source"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Example Search 已开放企业版。证据包：\n- E1 | URL https://techcrunch.com/synthetic/media-community-claim | publisher TechCrunch | quote: 'Example Search 已开放企业版。'\n- E2 | URL https://forum.example.invalid/media-community-claim | publisher anonymous forum | quote: '匿名用户也称Example Search 已开放企业版。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "holdout-096-mixed-media-community-claim-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "media-plus-community",
+        "risk": "one-media-plus-community",
+        "route": "verification",
+        "scenarioFamily": "mixed-source"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Search is available in an enterprise edition. Evidence Packet:\n- E1 | URL https://techcrunch.com/synthetic/media-community-claim | publisher TechCrunch | quote: 'Example Search is available in an enterprise edition.'\n- E2 | URL https://forum.example.invalid/media-community-claim | publisher anonymous forum | quote: 'An anonymous user also claims Example Search is available in an enterprise edition.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-097-mixed-media-community-safety-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "media-plus-community",
+        "risk": "untrusted-confirmation",
+        "route": "verification",
+        "scenarioFamily": "mixed-source"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Example Model 已通过安全审查。证据包：\n- E1 | URL https://techcrunch.com/synthetic/media-community-safety | publisher TechCrunch | quote: 'Example Model 已通过安全审查。'\n- E2 | URL https://forum.example.invalid/media-community-safety | publisher anonymous forum | quote: '匿名用户也称Example Model 已通过安全审查。'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-098-mixed-media-community-safety-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "media-plus-community",
+        "risk": "untrusted-confirmation",
+        "route": "verification",
+        "scenarioFamily": "mixed-source"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Model passed a safety review. Evidence Packet:\n- E1 | URL https://techcrunch.com/synthetic/media-community-safety | publisher TechCrunch | quote: 'Example Model passed a safety review.'\n- E2 | URL https://forum.example.invalid/media-community-safety | publisher anonymous forum | quote: 'An anonymous user also claims Example Model passed a safety review.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1",
+        "E2"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-099-missing-evidence-missing-release-date-en",
+      "slices": {
+        "language": "en",
+        "sourceProfile": "official-direct",
+        "risk": "irrelevant-evidence",
+        "route": "verification",
+        "scenarioFamily": "missing-relevant-evidence"
+      },
+      "prompt": "Synthetic scenario, not real news. Primary claim: Example Model will launch today. Evidence Packet:\n- E1 | URL https://openai.com/synthetic/missing-release-date | publisher OpenAI | quote: 'The company described its research principles; no release date was announced.'\nCitation request id: E1.",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "holdout-100-missing-evidence-missing-price-zh",
+      "slices": {
+        "language": "zh",
+        "sourceProfile": "official-direct",
+        "risk": "irrelevant-evidence",
+        "route": "verification",
+        "scenarioFamily": "missing-relevant-evidence"
+      },
+      "prompt": "Synthetic scenario, not real news. 主要声明：Example API 已经降价。证据包：\n- E1 | URL https://anthropic.com/synthetic/missing-price | publisher Anthropic | quote: 'The company described its research principles; no price change was announced.'\n引用请求 id：E1。",
+      "allowedCitationIds": [
+        "E1"
+      ],
+      "requestedCitationId": "E1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    }
+  ]
+}

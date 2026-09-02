@@ -5,8 +5,10 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.lang.Nullable;
 import vip.newsclaw.agent.context.ChatOrigin;
 import vip.newsclaw.tool.builtin.ToolExecutionContext;
+import vip.newsclaw.workspace.core.service.ChatUploadLocationResolver;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Set;
@@ -30,10 +32,9 @@ public final class WorkspacePathGuard {
 
     /**
      * Shared skill repository root, trusted in addition to the per-conversation
-     * workspace boundary. System-level skills live under this root (one
-     * subdirectory per skill) and are shared across every workspace, so the
-     * agent must be able to read and run their files even when the active
-     * workspace points elsewhere. Registered once at startup from the
+     * workspace boundary. Access is narrowed at evaluation time to
+     * {@code <root>/<currentWorkspaceId>/}; registering the repository root
+     * does not make sibling workspaces mutually visible. Registered once from the
      * {@code newsclaw.skill.workspace.root} setting. {@code null} until set
      * (then no extra root is trusted — pure workspace-only behaviour).
      */
@@ -121,9 +122,10 @@ public final class WorkspacePathGuard {
     }
 
     /** True when {@code normalized} lives under the shared skill root (if one is set). */
-    private static boolean isUnderSkillRoot(Path normalized) {
+    private static boolean isUnderSkillRoot(Path normalized, @Nullable Long workspaceId) {
         Path sr = skillRoot;
-        return sr != null && normalized.startsWith(sr);
+        return sr != null && workspaceId != null
+                && normalized.startsWith(sr.resolve(String.valueOf(workspaceId)).normalize());
     }
 
     /**
@@ -132,12 +134,14 @@ public final class WorkspacePathGuard {
      * Bundles the skill-root and trusted-root checks so every boundary check
      * site stays a single call.
      */
-    private static boolean isExempt(Path normalized) {
-        if (isUnderSkillRoot(normalized)) {
+    private static boolean isExempt(Path normalized, @Nullable Long workspaceId,
+                                    @Nullable String conversationId) {
+        if (isUnderSkillRoot(normalized, workspaceId)) {
             return true;
         }
         for (Path root : trustedRoots) {
-            if (normalized.startsWith(root)) {
+            Path conversationRoot = conversationTrustedRoot(root, conversationId);
+            if (conversationRoot != null && normalized.startsWith(conversationRoot)) {
                 return true;
             }
         }
@@ -145,17 +149,16 @@ public final class WorkspacePathGuard {
     }
 
     /** Symlink-resolved variant of {@link #isExempt}. */
-    private static boolean isExemptReal(Path realPath) {
-        if (isUnderSkillRootReal(realPath)) {
+    private static boolean isExemptReal(Path realPath, @Nullable Long workspaceId,
+                                        @Nullable String conversationId) {
+        if (isUnderSkillRootReal(realPath, workspaceId)) {
             return true;
         }
         for (Path root : trustedRoots) {
-            if (realPath.startsWith(root)) {
-                return true;
-            }
             try {
                 Path realRoot = root.toFile().exists() ? root.toRealPath() : root;
-                if (realPath.startsWith(realRoot)) {
+                Path conversationRoot = conversationTrustedRoot(realRoot, conversationId);
+                if (conversationRoot != null && realPath.startsWith(conversationRoot)) {
                     return true;
                 }
             } catch (IOException e) {
@@ -170,17 +173,24 @@ public final class WorkspacePathGuard {
      * root's real path so a path whose real location lands inside the skill
      * repository is accepted even when reached through a symlink.
      */
-    private static boolean isUnderSkillRootReal(Path realPath) {
+    private static boolean isUnderSkillRootReal(Path realPath, @Nullable Long workspaceId) {
         Path sr = skillRoot;
-        if (sr == null) {
+        if (sr == null || workspaceId == null) {
             return false;
         }
         try {
             Path realSkillRoot = sr.toFile().exists() ? sr.toRealPath() : sr;
-            return realPath.startsWith(realSkillRoot);
+            return realPath.startsWith(realSkillRoot.resolve(String.valueOf(workspaceId)).normalize());
         } catch (IOException e) {
-            return realPath.startsWith(sr);
+            return realPath.startsWith(sr.resolve(String.valueOf(workspaceId)).normalize());
         }
+    }
+
+    @Nullable
+    private static Path conversationTrustedRoot(Path root, @Nullable String conversationId) {
+        if (conversationId == null || conversationId.isBlank()) return null;
+        String safe = ChatUploadLocationResolver.sanitizeSegment(conversationId);
+        return safe.isBlank() ? null : root.resolve(safe).normalize();
     }
 
     /**
@@ -204,6 +214,9 @@ public final class WorkspacePathGuard {
      * transition window.
      */
     public static Path validatePath(String rawPath, @Nullable ToolContext ctx) {
+        ChatOrigin origin = ChatOrigin.from(ctx);
+        Long workspaceId = origin.workspaceId();
+        String conversationId = ToolExecutionContext.conversationId(ctx);
         String basePath = resolveBasePath(ctx);
         if (basePath == null || basePath.isBlank()) {
             // 未配置活动目录，不限制。此时相对路径仍按进程 CWD 解析（遗留行为）。
@@ -220,7 +233,7 @@ public final class WorkspacePathGuard {
         Path normalized = resolveAgainstRoot(rawPath, root);
 
         // 先用 normalize 检查，再尝试 toRealPath 防符号链接逃逸
-        if (!normalized.startsWith(root) && !isExempt(normalized)) {
+        if (!normalized.startsWith(root) && !isExempt(normalized, workspaceId, conversationId)) {
             throw new IllegalArgumentException(
                     "Path is outside workspace boundary: " + normalized + ", allowed root: " + root);
         }
@@ -230,7 +243,8 @@ public final class WorkspacePathGuard {
             if (normalized.toFile().exists()) {
                 Path realPath = normalized.toRealPath();
                 Path realRoot = root.toFile().exists() ? root.toRealPath() : root;
-                if (!realPath.startsWith(realRoot) && !isExemptReal(realPath)) {
+                if (!realPath.startsWith(realRoot)
+                        && !isExemptReal(realPath, workspaceId, conversationId)) {
                     throw new IllegalArgumentException(
                             "Path escapes workspace via symlink: " + realPath + ", allowed root: " + realRoot);
                 }
@@ -240,6 +254,25 @@ public final class WorkspacePathGuard {
             log.debug("[WorkspacePathGuard] 无法解析真实路径（文件可能不存在）: {}", normalized);
         }
 
+        // For a new file, the full target has no real path yet. Resolve the
+        // nearest existing ancestor so a symlinked parent cannot redirect the
+        // eventual write outside the checked boundary.
+        Path ancestor = normalized.getParent();
+        while (ancestor != null && !Files.exists(ancestor)) ancestor = ancestor.getParent();
+        if (ancestor != null) {
+            try {
+                Path realAncestor = ancestor.toRealPath();
+                Path realRoot = root.toFile().exists() ? root.toRealPath() : root;
+                if (!realAncestor.startsWith(realRoot)
+                        && !isExemptReal(realAncestor, workspaceId, conversationId)) {
+                    throw new IllegalArgumentException(
+                            "Path parent escapes workspace via symlink: " + realAncestor
+                                    + ", allowed root: " + realRoot);
+                }
+            } catch (IOException e) {
+                throw new IllegalArgumentException("Cannot resolve path parent safely: " + ancestor, e);
+            }
+        }
         return normalized;
     }
 
@@ -305,7 +338,9 @@ public final class WorkspacePathGuard {
     /** ToolContext-aware overload — see {@link #validateShellCommand(String)}. */
     public static void validateShellCommand(String command, @Nullable ToolContext ctx) {
         if (command == null || command.isEmpty()) return;
-        scanShellCommand(command, basePathToRoot(resolveBasePath(ctx)));
+        ChatOrigin origin = ChatOrigin.from(ctx);
+        scanShellCommand(command, basePathToRoot(resolveBasePath(ctx)),
+                origin.workspaceId(), ToolExecutionContext.conversationId(ctx));
     }
 
     /**
@@ -318,11 +353,18 @@ public final class WorkspacePathGuard {
      */
     @Nullable
     public static String findShellBoundaryViolation(String command, @Nullable String basePath) {
+        return findShellBoundaryViolation(command, basePath, null, null);
+    }
+
+    @Nullable
+    public static String findShellBoundaryViolation(String command, @Nullable String basePath,
+                                                    @Nullable Long workspaceId,
+                                                    @Nullable String conversationId) {
         if (command == null || command.isEmpty()) return null;
         Path root = basePathToRoot(basePath);
         if (root == null) return null;
         try {
-            scanShellCommand(command, root);
+            scanShellCommand(command, root, workspaceId, conversationId);
             return null;
         } catch (IllegalArgumentException e) {
             return e.getMessage();
@@ -336,6 +378,13 @@ public final class WorkspacePathGuard {
      */
     @Nullable
     public static String findPathBoundaryViolation(String rawPath, @Nullable String basePath) {
+        return findPathBoundaryViolation(rawPath, basePath, null, null);
+    }
+
+    @Nullable
+    public static String findPathBoundaryViolation(String rawPath, @Nullable String basePath,
+                                                   @Nullable Long workspaceId,
+                                                   @Nullable String conversationId) {
         if (rawPath == null || rawPath.isBlank()) return null;
         Path root = basePathToRoot(basePath);
         if (root == null) return null;
@@ -343,7 +392,7 @@ public final class WorkspacePathGuard {
         // issue #494), so a plain "./foo.html" stays inside the sandbox
         // regardless of the server's launch directory.
         Path normalized = resolveAgainstRoot(rawPath, root);
-        if (!normalized.startsWith(root) && !isExempt(normalized)) {
+        if (!normalized.startsWith(root) && !isExempt(normalized, workspaceId, conversationId)) {
             return "Path is outside workspace boundary: " + normalized + ", allowed root: " + root;
         }
         return null;
@@ -374,7 +423,9 @@ public final class WorkspacePathGuard {
         return defaultRoot;
     }
 
-    private static void scanShellCommand(String command, @Nullable Path root) {
+    private static void scanShellCommand(String command, @Nullable Path root,
+                                         @Nullable Long workspaceId,
+                                         @Nullable String conversationId) {
         if (root == null) return;
 
         // A delete whose target resolves to the workspace root itself is an
@@ -448,7 +499,8 @@ public final class WorkspacePathGuard {
             if (destructive && normalized.equals(root)) {
                 throw rootDeletionError(root);
             }
-            if (!normalized.startsWith(root) && !isExempt(normalized)) {
+            if (!normalized.startsWith(root)
+                    && !isExempt(normalized, workspaceId, conversationId)) {
                 throw new IllegalArgumentException(
                         "Shell command references path outside workspace boundary: "
                                 + normalized + ", allowed root: " + root);
@@ -472,7 +524,8 @@ public final class WorkspacePathGuard {
             if (destructive && resolved.equals(root)) {
                 throw rootDeletionError(root);
             }
-            if (!resolved.startsWith(root) && !isExempt(resolved)) {
+            if (!resolved.startsWith(root)
+                    && !isExempt(resolved, workspaceId, conversationId)) {
                 throw new IllegalArgumentException(
                         "Shell command uses parent-directory traversal that escapes the workspace: '"
                                 + candidate + "' would resolve to " + resolved

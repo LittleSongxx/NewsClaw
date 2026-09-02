@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import vip.newsclaw.channel.feishu.FeishuClientFactory;
 import vip.newsclaw.channel.model.ChannelEntity;
 import vip.newsclaw.channel.repository.ChannelMapper;
+import vip.newsclaw.agent.model.AgentEntity;
+import vip.newsclaw.agent.repository.AgentMapper;
 import vip.newsclaw.exception.NewsClawException;
 
 import java.security.SecureRandom;
@@ -31,6 +33,7 @@ import java.util.Map;
 public class ChannelService {
 
     private final ChannelMapper channelMapper;
+    private final AgentMapper agentMapper;
     private final ObjectMapper objectMapper;
     /**
      * Cache-eviction hook for the Feishu SDK client. {@link ObjectProvider}
@@ -120,6 +123,7 @@ public class ChannelService {
         if (channel.getEnabled() == null) {
             channel.setEnabled(false);
         }
+        validateAgentWorkspace(channel.getAgentId(), channel.getWorkspaceId());
         if ("webchat".equals(channel.getChannelType())) {
             channel.setConfigJson(enrichWebChatConfig(channel.getConfigJson(), null));
         }
@@ -133,6 +137,11 @@ public class ChannelService {
      */
     public ChannelEntity updateChannel(ChannelEntity channel) {
         ChannelEntity existing = getChannel(channel.getId());
+        if (channel.getWorkspaceId() == null || !channel.getWorkspaceId().equals(existing.getWorkspaceId())) {
+            throw new NewsClawException("err.common.wrong_workspace", 403,
+                    "渠道工作区不可变");
+        }
+        validateAgentWorkspace(channel.getAgentId(), existing.getWorkspaceId());
         if ("webchat".equals(channel.getChannelType())) {
             channel.setConfigJson(enrichWebChatConfig(channel.getConfigJson(), existing.getConfigJson()));
         }
@@ -140,6 +149,15 @@ public class ChannelService {
         invalidateChannelCaches(channel.getId(), channel.getChannelType());
         log.info("Updated channel: {}", existing.getName());
         return channel;
+    }
+
+    private void validateAgentWorkspace(Long agentId, Long workspaceId) {
+        if (agentId == null) return;
+        AgentEntity agent = agentMapper.selectById(agentId);
+        if (agent == null || workspaceId == null || !workspaceId.equals(agent.getWorkspaceId())) {
+            throw new NewsClawException("err.channel.agent_wrong_workspace", 400,
+                    "绑定 Agent 不属于当前工作区: " + agentId);
+        }
     }
 
     /**

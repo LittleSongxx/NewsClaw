@@ -3,6 +3,7 @@ package vip.newsclaw.workflow.runtime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.agent.AgentService;
+import vip.newsclaw.agent.context.ChatOrigin;
 import vip.newsclaw.agent.model.AgentEntity;
 import vip.newsclaw.agent.repository.AgentMapper;
 
@@ -30,6 +31,12 @@ public class DefaultAgentInvoker implements AgentInvoker {
     }
 
     @Override
+    public String invoke(long agentId, String prompt, String conversationId, ChatOrigin origin) {
+        return agentService.chat(agentId, prompt, conversationId,
+                origin == null ? ChatOrigin.EMPTY : origin);
+    }
+
+    @Override
     public Long resolveAgentId(long workspaceId, String agentName) {
         if (agentName == null || agentName.isBlank()) return null;
         // Workspace-scoped only — no fallback to a global lookup. The
@@ -42,6 +49,16 @@ public class DefaultAgentInvoker implements AgentInvoker {
         AgentEntity entity = agentMapper.selectOne(new LambdaQueryWrapper<AgentEntity>()
                 .eq(AgentEntity::getWorkspaceId, workspaceId)
                 .eq(AgentEntity::getName, agentName.trim())
+                .eq(AgentEntity::getEnabled, true));
+        return entity == null ? null : entity.getId();
+    }
+
+    @Override
+    public Long resolveAgentId(long workspaceId, Long agentId) {
+        if (agentId == null || agentId <= 0) return null;
+        AgentEntity entity = agentMapper.selectOne(new LambdaQueryWrapper<AgentEntity>()
+                .eq(AgentEntity::getId, agentId)
+                .eq(AgentEntity::getWorkspaceId, workspaceId)
                 .eq(AgentEntity::getEnabled, true));
         return entity == null ? null : entity.getId();
     }

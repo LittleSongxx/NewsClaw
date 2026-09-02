@@ -6,12 +6,15 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.news.model.AiNewsEvidenceEntity;
+import vip.newsclaw.news.model.AiNewsEvidenceRelation;
 import vip.newsclaw.news.model.AiNewsEventEntity;
 import vip.newsclaw.news.repository.AiNewsEvidenceMapper;
 import vip.newsclaw.news.repository.AiNewsEventMapper;
 import vip.newsclaw.news.service.AiNewsEventService;
+import vip.newsclaw.news.service.AiNewsRelationAttestation;
 
 import java.io.InputStream;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -90,7 +93,19 @@ class AiNewsOpsPolicyEvaluationTest {
         evidence.setWorkspaceId(7L);
         evidence.setSourceTier(fixture.tier());
         evidence.setSourceUrl(fixture.url());
+        evidence.setFinalUrl(fixture.url());
+        evidence.setSourcePublishedAt(LocalDateTime.of(2026, 8, 26, 4, 30));
+        evidence.setFetchedAt(LocalDateTime.of(2026, 8, 26, 5, 0));
+        evidence.setHttpStatus(200);
+        evidence.setContentHash("a".repeat(64));
+        evidence.setCaptureMethod("POLICY_FIXTURE");
         evidence.setClaim("fixture claim");
+        evidence.setQuote("fixture claim");
+        evidence.setSemanticRelation(AiNewsEvidenceRelation.ENTAILS.token());
+        evidence.setRelationConfidence(0.9D);
+        // This fixture uses claim == quote, matching the production
+        // deterministic-extractive attestation route.
+        evidence.setRelationOrigin(AiNewsRelationAttestation.DETERMINISTIC_EXTRACTIVE);
         evidence.setConfidence(fixture.confidence());
         evidence.setVerified(false);
         evidence.setDeleted(0);

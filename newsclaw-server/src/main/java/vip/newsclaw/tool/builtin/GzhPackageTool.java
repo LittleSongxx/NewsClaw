@@ -1,6 +1,5 @@
 package vip.newsclaw.tool.builtin;
 
-import cn.hutool.http.HttpUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension;
@@ -13,14 +12,15 @@ import org.jsoup.nodes.Element;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.agent.context.ChatOrigin;
 import vip.newsclaw.content.service.ContentItemService;
 import vip.newsclaw.news.service.AiNewsEvidenceBoundaryService;
 import vip.newsclaw.news.service.AiNewsEventService;
-import vip.newsclaw.tool.browser.UrlSafetyChecker;
 import vip.newsclaw.tool.document.GeneratedFileCache;
+import vip.newsclaw.tool.image.BoundedImageFetcher;
 
 import javax.imageio.ImageIO;
 import java.awt.Color;
@@ -30,6 +30,7 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -74,6 +75,9 @@ public class GzhPackageTool {
 
     private final GeneratedFileCache cache;
     private final ContentItemService contentItemService;
+
+    @Value("${newsclaw.ai-news.require-event-context:false}")
+    private boolean requireEventContext;
 
     /** Optional vertical-domain bridge; absent in minimal/library contexts. */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -127,8 +131,17 @@ public class GzhPackageTool {
         if (markdown == null || markdown.isBlank()) {
             return "Error: markdown body is required.";
         }
+        if (markdown.length() > 200_000) {
+            return "Error: markdown body exceeds the 200000-character package limit.";
+        }
 
         String resolvedEventId = resolveAiNewsEventId(eventId, ctx);
+        if (requireEventContext && (resolvedEventId == null || resolvedEventId.isBlank())) {
+            return "⛔ AI 动态内容包必须绑定 eventId；请先完成事件审核。";
+        }
+        if (requireEventContext && aiNewsEvidenceBoundaryService == null) {
+            return "⛔ AI 动态证据边界服务不可用，拒绝生成对外交付包。";
+        }
         AiNewsEvidenceBoundaryService.ValidationResult evidenceBoundary = validateEvidenceBoundary(
                 resolvedEventId, title + "\n" + markdown, ctx);
         if (evidenceBoundary != null && !evidenceBoundary.allowed()) {
@@ -183,7 +196,9 @@ public class GzhPackageTool {
                 + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
                 + "<title>" + escapeText(title.trim()) + "</title></head>"
                 + "<body style=\"margin:0;padding:20px 12px;background:#fff;\">" + container + "</body></html>";
-        String previewUrl = store(previewDoc.getBytes(StandardCharsets.UTF_8), "公众号预览.html", "text/html", ctx);
+        byte[] previewBytes = previewDoc.getBytes(StandardCharsets.UTF_8);
+        String previewUrl = store(previewBytes, "公众号预览.html", "text/html", ctx);
+        String artifactHash = sha256(previewBytes);
 
         // 3. Material bundle — zip {article.html, article.md, cover.png?}.
         String zipUrl;
@@ -221,6 +236,8 @@ public class GzhPackageTool {
         // dispatcher while remaining ordinary clickable links for users.
         out.append("🔍 在线预览（浏览器打开即渲染）：[公众号预览.html](")
                 .append(previewUrl).append(")\n");
+        out.append("🔐 审核工件 SHA-256（确认后提交 content_item_acknowledge）：")
+                .append(artifactHash).append("\n");
         if (zipUrl != null) {
             out.append("📦 素材下载（article.html + article.md + 封面，").append(coverNote)
                .append("）：[公众号素材.zip](").append(zipUrl).append(")\n");
@@ -371,7 +388,8 @@ public class GzhPackageTool {
             Matcher m = GeneratedFileCache.GENERATED_URL_PATTERN.matcher(r);
             if (m.find()) {
                 Optional<GeneratedFileCache.Entry> e = cache.getForWorkspace(m.group(1), workspaceFromContext(ctx));
-                if (e.isPresent() && isImage(e.get()) && hasBytes(e.get())) {
+                if (e.isPresent() && isImage(e.get()) && hasBytes(e.get())
+                        && e.get().bytes().length <= BoundedImageFetcher.MAX_IMAGE_BYTES) {
                     return new ResolvedCover(e.get().bytes(), cache.downloadUrl(m.group(1), ctx));
                 }
             }
@@ -382,7 +400,8 @@ public class GzhPackageTool {
                 Optional<String> healed = cache.findIdByFilename(name, "image/");
                 if (healed.isPresent()) {
                     Optional<GeneratedFileCache.Entry> e = cache.getForWorkspace(healed.get(), workspaceFromContext(ctx));
-                    if (e.isPresent() && hasBytes(e.get())) {
+                    if (e.isPresent() && hasBytes(e.get())
+                            && e.get().bytes().length <= BoundedImageFetcher.MAX_IMAGE_BYTES) {
                         log.info("[GzhPackage] cover ref '{}' healed to generated id {} by filename", r, healed.get());
                         return new ResolvedCover(e.get().bytes(), cache.downloadUrl(healed.get(), ctx));
                     }
@@ -390,11 +409,8 @@ public class GzhPackageTool {
             }
             // 3. External http(s) image — download for the bundle, keep the URL.
             if (r.startsWith("http://") || r.startsWith("https://")) {
-                UrlSafetyChecker.check(r);
-                byte[] b = HttpUtil.downloadBytes(r);
-                if (b != null && b.length > 0) {
-                    return new ResolvedCover(b, r);
-                }
+                BoundedImageFetcher.Image image = BoundedImageFetcher.http(r);
+                return new ResolvedCover(image.bytes(), r);
             }
         } catch (Exception e) {
             log.warn("[GzhPackage] cover resolve failed for '{}': {}", r, e.getMessage());
@@ -464,5 +480,16 @@ public class GzhPackageTool {
 
     private static String escapeAttr(String s) {
         return escapeText(s).replace("\"", "&quot;");
+    }
+
+    private static String sha256(byte[] bytes) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+            StringBuilder out = new StringBuilder(64);
+            for (byte value : digest) out.append(String.format("%02x", value));
+            return out.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
     }
 }

@@ -110,7 +110,8 @@ public class WorkspaceBoundaryGuardian implements ToolGuardGuardian {
         if (SHELL_TOOL_NAMES.contains(tool)) {
             String command = extractJsonParam(rawArgs, "command");
             if (command == null) command = rawArgs;
-            String violation = WorkspacePathGuard.findShellBoundaryViolation(command, basePath);
+            String violation = WorkspacePathGuard.findShellBoundaryViolation(
+                    command, basePath, context.workspaceId(), context.conversationId());
             if (violation != null) {
                 return List.of(boundaryFinding(tool, "command", command, violation));
             }
@@ -130,7 +131,8 @@ public class WorkspaceBoundaryGuardian implements ToolGuardGuardian {
             if (code == null) {
                 return List.of();
             }
-            String violation = WorkspacePathGuard.findShellBoundaryViolation(code, basePath);
+            String violation = WorkspacePathGuard.findShellBoundaryViolation(
+                    code, basePath, context.workspaceId(), context.conversationId());
             if (violation != null) {
                 return List.of(boundaryFinding(tool, "code", code, violation));
             }
@@ -140,7 +142,8 @@ public class WorkspaceBoundaryGuardian implements ToolGuardGuardian {
         String paramName = FILE_PATH_PARAMS.get(tool);
         if (paramName != null) {
             String path = extractJsonParam(rawArgs, paramName);
-            String violation = WorkspacePathGuard.findPathBoundaryViolation(path, basePath);
+            String violation = WorkspacePathGuard.findPathBoundaryViolation(
+                    path, basePath, context.workspaceId(), context.conversationId());
             if (violation != null) {
                 // Chat-upload fallback: an attachment path may sit outside the
                 // workspace root yet still be a legitimate user upload. Resolve

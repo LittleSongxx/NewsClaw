@@ -263,6 +263,18 @@ class ToolDisclosureServiceTest {
     }
 
     @Test
+    @DisplayName("explicitly bound tool is never auto-demoted, even under a tiny schema budget")
+    void priorityToolsAreHardProtected() {
+        var svc = service(List.of(), List.of());
+        var demoted = svc.computeAutoDemotions(manyCoreSet(), 1, Set.of("tool_a"));
+
+        assertFalse(demoted.contains("tool_a"),
+                "an explicit tool binding must remain in the active scope for forced calls");
+        assertTrue(demoted.contains("tool_b"));
+        assertTrue(demoted.contains("tool_c"));
+    }
+
+    @Test
     @DisplayName("recently used tools demote last")
     void recencyProtectsRecentlyUsed() {
         ToolUsageRecencyTracker tracker = new ToolUsageRecencyTracker();

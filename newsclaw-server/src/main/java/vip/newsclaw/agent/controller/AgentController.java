@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import jakarta.annotation.PreDestroy;
 import vip.newsclaw.channel.web.Utf8SseEmitter;
 import vip.newsclaw.agent.AgentService;
 import vip.newsclaw.agent.AgentState;
@@ -49,6 +50,9 @@ import java.util.concurrent.Executors;
 @RequiredArgsConstructor
 public class AgentController {
 
+    private static final int MAX_CHAT_MESSAGE_CHARS = 16_000;
+    private static final int MAX_CONVERSATION_ID_CHARS = 128;
+
     private final AgentService agentService;
     private final ConversationService conversationService;
     private final AuditEventService auditEventService;
@@ -60,6 +64,11 @@ public class AgentController {
     private final AgentGenerationService agentGenerationService;
     private final ObjectMapper objectMapper;
     private final ExecutorService sseExecutor = Executors.newCachedThreadPool();
+
+    @PreDestroy
+    void shutdownSseExecutor() {
+        sseExecutor.shutdownNow();
+    }
 
     @Operation(summary = "获取Agent列表")
     @GetMapping
@@ -79,7 +88,7 @@ public class AgentController {
     @RequireWorkspaceRole("viewer")
     public R<AgentEntity> get(@PathVariable Long id,
                               @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
-        AgentEntity agent = agentService.getAgent(id);
+        AgentEntity agent = requireAgent(id);
         verifyResourceWorkspace(agent.getWorkspaceId(), workspaceId);
         return R.ok(agent);
     }
@@ -90,7 +99,7 @@ public class AgentController {
     public R<AgentCapabilitiesVO> capabilities(
             @PathVariable Long id,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
-        AgentEntity agent = agentService.getAgent(id);
+        AgentEntity agent = requireAgent(id);
         verifyResourceWorkspace(agent.getWorkspaceId(), workspaceId);
 
         ModelConfigEntity primary;
@@ -99,6 +108,14 @@ public class AgentController {
         } catch (Exception e) {
             // No default model configured yet — return a capabilities snapshot that
             // tells the UI "we can't say anything about this agent's modalities".
+            return R.ok(AgentCapabilitiesVO.builder()
+                    .agentId(id)
+                    .modelName("")
+                    .providerId("")
+                    .modalities(List.of())
+                    .build());
+        }
+        if (primary == null) {
             return R.ok(AgentCapabilitiesVO.builder()
                     .agentId(id)
                     .modelName("")
@@ -141,6 +158,9 @@ public class AgentController {
     public R<AgentDraftVO> generate(
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
             @RequestBody GenerateRequest request) {
+        if (request == null || request.getRequirement() == null || request.getRequirement().isBlank()) {
+            return R.fail(400, "requirement is required");
+        }
         long wsId = workspaceId != null ? workspaceId : 1L;
         return R.ok(agentGenerationService.generateDraft(request.getRequirement(), wsId));
     }
@@ -152,8 +172,13 @@ public class AgentController {
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
             @RequestBody AgentEntity agent,
             Authentication auth) {
+        if (agent == null) return R.fail(400, "request body is required");
         // 始终注入 workspace_id，无 header 时使用默认
         agent.setWorkspaceId(workspaceId != null ? workspaceId : 1L);
+        if (!isSystemAdmin(auth) && agent.getWorkspaceBasePath() != null
+                && !agent.getWorkspaceBasePath().isBlank()) {
+            return R.fail(403, "Only a global administrator may set an agent workspace path");
+        }
         // RFC-077 §4.4: 记录创建者，让 member 后续可删除自建 Agent
         agent.setCreatorUserId(resolveUserId(auth));
         AgentEntity created = agentService.createAgent(agent);
@@ -165,8 +190,10 @@ public class AgentController {
     @PutMapping("/{id}")
     @RequireWorkspaceRole("member")
     public R<AgentEntity> update(@PathVariable Long id, @RequestBody Map<String, Object> body,
-                                 @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
-        AgentEntity existing = agentService.getAgent(id);
+                                 @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
+                                 Authentication auth) {
+        if (body == null) return R.fail(400, "request body is required");
+        AgentEntity existing = requireAgent(id);
         verifyResourceWorkspace(existing.getWorkspaceId(), workspaceId);
         AgentEntity agent = objectMapper.convertValue(body, AgentEntity.class);
         if (!body.containsKey("primaryKbId")) {
@@ -174,6 +201,13 @@ public class AgentController {
         }
         agent.setId(id);
         agent.setWorkspaceId(existing.getWorkspaceId()); // 不允许跨 workspace 迁移
+        // Never let a member rewrite deletion ownership or widen the filesystem
+        // root through a PUT payload. Global admins may intentionally manage
+        // these fields; everyone else keeps the persisted values.
+        if (!isSystemAdmin(auth)) {
+            agent.setCreatorUserId(existing.getCreatorUserId());
+            agent.setWorkspaceBasePath(existing.getWorkspaceBasePath());
+        }
         AgentEntity updated = agentService.updateAgent(agent);
         auditEventService.record("UPDATE", "AGENT", String.valueOf(id), updated.getName(), null);
         return R.ok(updated);
@@ -185,7 +219,7 @@ public class AgentController {
     public R<Void> delete(@PathVariable Long id,
                           @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
                           Authentication auth) {
-        AgentEntity agent = agentService.getAgent(id);
+        AgentEntity agent = requireAgent(id);
         verifyResourceWorkspace(agent.getWorkspaceId(), workspaceId);
 
         // RFC-077 §4.4: 三选一鉴权 — 系统 admin / workspace admin+ / 创建者本人
@@ -193,7 +227,7 @@ public class AgentController {
         boolean systemAdmin = isSystemAdmin(auth);
         boolean workspaceAdmin = !systemAdmin
                 && workspaceService.hasPermission(agent.getWorkspaceId(), userId, "admin");
-        boolean isCreator = userId.equals(agent.getCreatorUserId());
+        boolean isCreator = userId != null && userId.equals(agent.getCreatorUserId());
         if (!systemAdmin && !workspaceAdmin && !isCreator) {
             throw new NewsClawException("err.agent.delete_forbidden", 403,
                     "Only the creator or a workspace admin can delete this Agent");
@@ -211,11 +245,24 @@ public class AgentController {
             @PathVariable Long id,
             @RequestParam String message,
             @RequestParam(defaultValue = "default") String conversationId,
-            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
-        AgentEntity agent = agentService.getAgent(id);
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
+            Authentication auth) {
+        if (message == null || message.isBlank() || message.length() > MAX_CHAT_MESSAGE_CHARS) {
+            throw new NewsClawException("err.chat.invalid_message", 400,
+                    "message must be non-blank and at most " + MAX_CHAT_MESSAGE_CHARS + " characters");
+        }
+        if (conversationId == null || conversationId.isBlank()
+                || conversationId.length() > MAX_CONVERSATION_ID_CHARS) {
+            throw new NewsClawException("err.chat.invalid_conversation", 400,
+                    "conversationId must be non-blank and at most "
+                            + MAX_CONVERSATION_ID_CHARS + " characters");
+        }
+        AgentEntity agent = requireAgent(id);
         verifyResourceWorkspace(agent != null ? agent.getWorkspaceId() : null, workspaceId);
         verifyAgentEnabled(agent);
-        ChatOrigin origin = persistOrigin(agent, id, message, conversationId, workspaceId);
+        Long userId = resolveUserId(auth);
+        ChatOrigin origin = persistOrigin(agent, id, message, conversationId, workspaceId,
+                auth.getName(), userId);
 
         // RFC-058 PR-1: Utf8SseEmitter 显式 charset=UTF-8，防止中文 SSE 乱码
         SseEmitter emitter = new Utf8SseEmitter(5 * 60 * 1000L);
@@ -252,12 +299,17 @@ public class AgentController {
     public R<String> chat(
             @PathVariable Long id,
             @RequestBody ChatRequest request,
-            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
-        AgentEntity agent = agentService.getAgent(id);
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
+            Authentication auth) {
+        if (request == null || request.getMessage() == null || request.getMessage().isBlank()) {
+            return R.fail(400, "message is required");
+        }
+        AgentEntity agent = requireAgent(id);
         verifyResourceWorkspace(agent != null ? agent.getWorkspaceId() : null, workspaceId);
         verifyAgentEnabled(agent);
+        Long userId = resolveUserId(auth);
         ChatOrigin origin = persistOrigin(agent, id, request.getMessage(),
-                request.getConversationId(), workspaceId);
+                request.getConversationId(), workspaceId, auth.getName(), userId);
         return R.ok(agentService.chat(id, request.getMessage(), request.getConversationId(), origin));
     }
 
@@ -267,23 +319,31 @@ public class AgentController {
     public R<String> execute(
             @PathVariable Long id,
             @RequestBody ChatRequest request,
-            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
-        AgentEntity agent = agentService.getAgent(id);
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
+            Authentication auth) {
+        if (request == null || request.getMessage() == null || request.getMessage().isBlank()) {
+            return R.fail(400, "message is required");
+        }
+        AgentEntity agent = requireAgent(id);
         verifyResourceWorkspace(agent != null ? agent.getWorkspaceId() : null, workspaceId);
         verifyAgentEnabled(agent);
+        Long userId = resolveUserId(auth);
         ChatOrigin origin = persistOrigin(agent, id, request.getMessage(),
-                request.getConversationId(), workspaceId);
+                request.getConversationId(), workspaceId, auth.getName(), userId);
         return R.ok(agentService.execute(id, request.getMessage(), request.getConversationId(), origin));
     }
 
     private ChatOrigin persistOrigin(AgentEntity agent, Long agentId, String message,
-                                     String conversationId, Long requestedWorkspaceId) {
+                                     String conversationId, Long requestedWorkspaceId,
+                                     String username, Long userId) {
         Long resolvedWorkspaceId = agent != null && agent.getWorkspaceId() != null
                 ? agent.getWorkspaceId()
                 : requestedWorkspaceId != null ? requestedWorkspaceId : 1L;
+        conversationService.getOrCreateConversation(
+                conversationId, agentId, username, resolvedWorkspaceId);
         MessageEntity savedUser = conversationService.saveMessage(
                 conversationId, "user", message);
-        return ChatOrigin.web(conversationId, "anonymous", resolvedWorkspaceId, null)
+        return ChatOrigin.web(conversationId, username, resolvedWorkspaceId, null, null, userId)
                 .withAgent(agentId)
                 .withOriginMessageId(savedUser == null ? null : savedUser.getId());
     }
@@ -293,7 +353,7 @@ public class AgentController {
     @RequireWorkspaceRole("viewer")
     public R<AgentState> getState(@PathVariable Long id,
                                    @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
-        AgentEntity agent = agentService.getAgent(id);
+        AgentEntity agent = requireAgent(id);
         verifyResourceWorkspace(agent != null ? agent.getWorkspaceId() : null, workspaceId);
         return R.ok(agentService.getAgentState(id));
     }
@@ -318,6 +378,17 @@ public class AgentController {
         if (resourceWorkspaceId != null && !resourceWorkspaceId.equals(requestedWs)) {
             throw new NewsClawException("err.common.wrong_workspace", 403, "资源不属于当前工作区");
         }
+    }
+
+    private AgentEntity requireAgent(Long id) {
+        if (id == null) {
+            throw new NewsClawException("err.agent.not_found", 404, "Agent not found");
+        }
+        AgentEntity agent = agentService.getAgent(id);
+        if (agent == null) {
+            throw new NewsClawException("err.agent.not_found", 404, "Agent not found: " + id);
+        }
+        return agent;
     }
 
     /**

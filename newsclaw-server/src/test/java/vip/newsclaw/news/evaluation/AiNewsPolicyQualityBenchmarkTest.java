@@ -7,16 +7,19 @@ import org.junit.jupiter.api.Test;
 import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.news.model.AiNewsEventDetail;
 import vip.newsclaw.news.model.AiNewsEvidenceEntity;
+import vip.newsclaw.news.model.AiNewsEvidenceRelation;
 import vip.newsclaw.news.model.AiNewsEventEntity;
 import vip.newsclaw.news.repository.AiNewsEvidenceMapper;
 import vip.newsclaw.news.repository.AiNewsEventMapper;
 import vip.newsclaw.news.service.AiNewsEvidenceBoundaryService;
 import vip.newsclaw.news.service.AiNewsEventService;
+import vip.newsclaw.news.service.AiNewsRelationAttestation;
 import vip.newsclaw.news.service.AiNewsSourceRegistry;
 
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,13 +88,14 @@ class AiNewsPolicyQualityBenchmarkTest {
                                                               AiNewsPolicyEvaluator policy,
                                                               AiNewsSourceRegistry registry) {
         AiNewsQualityEvaluator.GoldLabel gold = fixture.gold();
+        boolean verificationEligible = runProductionVerification(fixture, registry);
         AiNewsQualityEvaluator.Prediction prediction = new AiNewsQualityEvaluator.Prediction(
                 policy.classify(fixture.sourceUrl()),
-                runProductionVerification(fixture, registry),
+                verificationEligible,
                 runProductionCitationBoundary(fixture, registry),
                 null,
                 AiNewsEventService.canonicalUrl(fixture.sourceUrl()),
-                null, null, null, null);
+                null, null, null, null, !verificationEligible, true);
         return new AiNewsQualityEvaluator.QualityCase(fixture.id(), fixture.slices(), gold, prediction);
     }
 
@@ -123,10 +127,25 @@ class AiNewsPolicyQualityBenchmarkTest {
         evidence.setEventId(1001L);
         evidence.setWorkspaceId(7L);
         evidence.setSourceUrl(url);
+        evidence.setFinalUrl(url);
+        evidence.setSourcePublishedAt(LocalDateTime.of(2026, 8, 26, 4, 30));
+        evidence.setFetchedAt(LocalDateTime.of(2026, 8, 26, 5, 0));
+        evidence.setHttpStatus(200);
+        evidence.setContentHash("a".repeat(64));
+        evidence.setCaptureMethod("POLICY_FIXTURE");
         evidence.setSourceTier(registry.isOfficialUrl(url) ? "official"
                 : registry.isTrustedMediaUrl(url) ? "media" : "community");
         evidence.setClaim("fixture claim");
         evidence.setQuote("fixture quote");
+        evidence.setSemanticRelation(AiNewsEvidenceRelation.ENTAILS.token());
+        evidence.setRelationConfidence(0.9D);
+        // The fixture gold relation is an adjudicated offline label. Mark it
+        // as such so this policy benchmark does not pretend a model-only
+        // relation is sufficient for the production verification boundary.
+        evidence.setRelationOrigin(AiNewsRelationAttestation.HUMAN);
+        evidence.setRelationReviewedAt(LocalDateTime.of(2026, 8, 26, 5, 5));
+        evidence.setRelationReviewedBy("POLICY_FIXTURE_REVIEWER");
+        evidence.setRelationReviewNote("Frozen benchmark adjudication");
         evidence.setConfidence(0.8D);
         evidence.setVerified(false);
         evidence.setDeleted(0);

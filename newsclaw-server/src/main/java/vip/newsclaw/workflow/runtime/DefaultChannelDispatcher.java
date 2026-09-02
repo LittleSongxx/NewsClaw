@@ -28,9 +28,11 @@ public class DefaultChannelDispatcher implements ChannelDispatcher {
         if (channelType == null || channelType.isBlank()) {
             return DispatchResult.fail("channelType is required");
         }
-        Optional<ChannelAdapter> adapterOpt = channelManager.getAdapterByType(channelType);
+        Optional<ChannelAdapter> adapterOpt =
+                channelManager.getAdapterByTypeAndWorkspace(channelType, workspaceId);
         if (adapterOpt.isEmpty()) {
-            return DispatchResult.fail("no active adapter for channel type '" + channelType + "'");
+            return DispatchResult.fail("expected exactly one active adapter for channel type '"
+                    + channelType + "' in workspace " + workspaceId);
         }
         ChannelAdapter adapter = adapterOpt.get();
         if (!adapter.isRunning()) {

@@ -51,12 +51,20 @@ public class AcpConnectionTester {
         // non-blank cwd at session/new, so the connection test must
         // also default it. The "Test" button used to fail at session/new
         // with -32602 even when the CLI itself was healthy.
-        String resolvedCwd = runtimeSupport.resolveCwd(endpoint, null);
+        String resolvedCwd;
+        try {
+            resolvedCwd = runtimeSupport.resolveCwd(endpoint, null);
+        } catch (RuntimeException e) {
+            return persistAndReturn(endpoint, result, "ERROR",
+                    "Working directory rejected: " + e.getMessage(), started);
+        }
 
         AcpStdioClient client;
         try {
             client = AcpStdioClient.spawn(objectMapper, endpoint.getCommand(),
-                    args, env, resolvedCwd);
+                    args, env, resolvedCwd,
+                    endpoint.getStdioBufferLimitBytes() != null
+                            ? endpoint.getStdioBufferLimitBytes() : 50L * 1024L * 1024L);
         } catch (Exception e) {
             return persistAndReturn(endpoint, result, "ERROR",
                     "Spawn failed: " + e.getMessage(), started);

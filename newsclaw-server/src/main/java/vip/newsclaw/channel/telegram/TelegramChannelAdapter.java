@@ -17,6 +17,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -313,7 +316,10 @@ public class TelegramChannelAdapter extends AbstractChannelAdapter {
 
     private void registerWebhookOrThrow(String webhookUrl) {
         try {
-            String jsonBody = objectMapper.writeValueAsString(Map.of("url", webhookUrl));
+            webhookUrl = scopedWebhookUrl(webhookUrl);
+            String jsonBody = objectMapper.writeValueAsString(Map.of(
+                    "url", webhookUrl,
+                    "secret_token", webhookSecret()));
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(apiBaseUrl + "/setWebhook"))
                     .header("Content-Type", "application/json")
@@ -333,6 +339,32 @@ public class TelegramChannelAdapter extends AbstractChannelAdapter {
         } catch (Exception e) {
             throw new RuntimeException("Webhook registration failed: " + e.getMessage(), e);
         }
+    }
+
+    private String scopedWebhookUrl(String webhookUrl) {
+        if (webhookUrl == null || channelEntity.getId() == null) return webhookUrl;
+        String base = webhookUrl.replaceAll("/+$", "");
+        return base.matches(".*/telegram/\\d+$")
+                ? base : base + "/" + channelEntity.getId();
+    }
+
+    /** Stable secret registered with Telegram and checked on every callback. */
+    public String webhookSecret() {
+        String configured = getConfigString("webhook_secret");
+        if (configured != null && !configured.isBlank()) return configured.trim();
+        String token = getConfigString("bot_token", "");
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(token.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+    }
+
+    public boolean acceptsWebhookSecret(String presented) {
+        if (presented == null) return false;
+        return MessageDigest.isEqual(webhookSecret().getBytes(StandardCharsets.UTF_8),
+                presented.getBytes(StandardCharsets.UTF_8));
     }
 
     /**

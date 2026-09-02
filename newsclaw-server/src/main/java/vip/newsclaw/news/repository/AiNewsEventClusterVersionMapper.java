@@ -1,0 +1,9 @@
+package vip.newsclaw.news.repository;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.ibatis.annotations.Mapper;
+import vip.newsclaw.news.model.AiNewsEventClusterVersionEntity;
+
+@Mapper
+public interface AiNewsEventClusterVersionMapper extends BaseMapper<AiNewsEventClusterVersionEntity> {
+}

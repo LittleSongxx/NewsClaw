@@ -1,9 +1,12 @@
 server:
   port: 18088
+  shutdown: graceful
   servlet:
     context-path: /
 
 spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   application:
     name: newsclaw-server
   messages:
@@ -129,8 +132,39 @@ springdoc:
   # 把单个嵌套 query 参数对象（如分页 wrapper）拍平成独立字段，减少 schema 噪音
   default-flat-param-object: true
 
+# Micrometer is the in-process metrics API. When explicitly enabled, Spring
+# Boot's managed OTLP registry exports it to an OpenTelemetry collector.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db,diskSpace
+  otlp:
+    metrics:
+      export:
+        enabled: ${NEWSCLAW_OTLP_METRICS_ENABLED:false}
+        url: ${NEWSCLAW_OTLP_METRICS_URL:http://localhost:4318/v1/metrics}
+        step: ${NEWSCLAW_OTLP_METRICS_STEP:60s}
+        connect-timeout: ${NEWSCLAW_OTLP_METRICS_CONNECT_TIMEOUT:3s}
+        read-timeout: ${NEWSCLAW_OTLP_METRICS_READ_TIMEOUT:10s}
+
 # NewsClaw 自定义配置
 newsclaw:
+  flyway:
+    # Never rewrite migration checksums or failed history rows implicitly.
+    # Set NEWSCLAW_FLYWAY_AUTO_REPAIR=true only for a reviewed, one-off
+    # recovery, then disable it again before returning to normal operation.
+    auto-repair: ${NEWSCLAW_FLYWAY_AUTO_REPAIR:false}
   a2a:
     enabled: ${NEWSCLAW_A2A_ENABLED:false}
     # Public base URL for Agent Cards. Production deployments should set this
@@ -144,7 +178,25 @@ newsclaw:
     allow-private-outbound: ${NEWSCLAW_A2A_ALLOW_PRIVATE_OUTBOUND:false}
     sweep-interval-ms: ${NEWSCLAW_A2A_SWEEP_INTERVAL_MS:60000}
 
+  webchat:
+    public-enabled: ${NEWSCLAW_WEBCHAT_PUBLIC_ENABLED:true}
+    max-concurrent-streams-per-key: ${NEWSCLAW_WEBCHAT_MAX_CONCURRENT_STREAMS_PER_KEY:4}
+    requests-per-minute-per-key: ${NEWSCLAW_WEBCHAT_REQUESTS_PER_MINUTE_PER_KEY:30}
+    max-message-chars: ${NEWSCLAW_WEBCHAT_MAX_MESSAGE_CHARS:16000}
+
+  workflow:
+    recovery:
+      # A v0 workflow cannot safely resume an arbitrary in-flight provider
+      # call after a JVM crash. Reconcile only very old rows, and fence the
+      # update so a live worker wins a race with the sweeper.
+      stale-after-minutes: ${NEWSCLAW_WORKFLOW_RECOVERY_STALE_AFTER_MINUTES:1440}
+      interval-ms: ${NEWSCLAW_WORKFLOW_RECOVERY_INTERVAL_MS:300000}
+      initial-delay-ms: ${NEWSCLAW_WORKFLOW_RECOVERY_INITIAL_DELAY_MS:120000}
+
   ai-news:
+    # Production delivery tools must carry a server-owned event context.
+    require-event-context: ${NEWSCLAW_AI_NEWS_REQUIRE_EVENT_CONTEXT:false}
+    strict-evidence-boundary: ${NEWSCLAW_AI_NEWS_STRICT_EVIDENCE_BOUNDARY:false}
     # Optional role-aware model overrides. Values use provider/model (or a
     # model id when the provider is unambiguous); blank values use the
     # deterministic enabled-model fallback in AiNewsModelRouter.
@@ -154,21 +206,123 @@ newsclaw:
       editorial: ${NEWSCLAW_AI_NEWS_MODEL_EDITORIAL:}
       visual: ${NEWSCLAW_AI_NEWS_MODEL_VISUAL:}
       delivery: ${NEWSCLAW_AI_NEWS_MODEL_DELIVERY:}
+    # Discovery is precision-gated before source capture. Parseable stale
+    # results are rejected; undated rows use bounded exploration quotas so a
+    # search index cannot fill Top-K with evergreen or repeatedly updated pages.
+    discovery:
+      # Optional comma-separated provider ids. When set, each query lane is
+      # unioned across all listed providers before deterministic fusion.
+      provider-ids: ${NEWSCLAW_AI_NEWS_DISCOVERY_PROVIDER_IDS:}
+      max-candidates-per-host: ${NEWSCLAW_AI_NEWS_DISCOVERY_MAX_CANDIDATES_PER_HOST:4}
+      max-candidates-per-story: ${NEWSCLAW_AI_NEWS_DISCOVERY_MAX_CANDIDATES_PER_STORY:2}
+      current-open-web-percent: ${NEWSCLAW_AI_NEWS_DISCOVERY_CURRENT_OPEN_WEB_PERCENT:20}
+      max-unknown-percent: ${NEWSCLAW_AI_NEWS_DISCOVERY_MAX_UNKNOWN_PERCENT:0}
+      unknown-official-percent: ${NEWSCLAW_AI_NEWS_DISCOVERY_UNKNOWN_OFFICIAL_PERCENT:20}
+      unknown-media-percent: ${NEWSCLAW_AI_NEWS_DISCOVERY_UNKNOWN_MEDIA_PERCENT:20}
+      unknown-open-web-percent: ${NEWSCLAW_AI_NEWS_DISCOVERY_UNKNOWN_OPEN_WEB_PERCENT:0}
     sources:
+      catalog:
+        # Comma/space-separated endpoint ids from the versioned source catalog.
+        # Unknown ids fail startup; catalog entries remain disabled by default.
+        enabled-endpoint-ids: ${NEWSCLAW_AI_NEWS_SOURCE_ENDPOINT_IDS:}
       rss:
+        # Comma-separated, operator-reviewed RSS/Atom endpoints. Feed metadata
+        # is fused as an untrusted zero-search-credit discovery lane. Polls use
+        # ETag/Last-Modified validators when publishers provide them.
         feeds: ${NEWSCLAW_AI_NEWS_RSS_FEEDS:}
+      news-sitemaps:
+        # Google News Sitemap or sitemap-index endpoints. Only URL entries with
+        # explicit news publication metadata become discovery candidates.
+        urls: ${NEWSCLAW_AI_NEWS_SITEMAPS:}
       searxng:
         # Reuses the existing Compose SearXNG endpoint when no news-specific
         # override is provided. Private endpoint access stays explicitly opt-in.
         base-url: ${NEWSCLAW_AI_NEWS_SEARXNG_BASE_URL:${SEARXNG_BASE_URL:}}
         allow-private-endpoint: ${NEWSCLAW_AI_NEWS_SEARXNG_ALLOW_PRIVATE_ENDPOINT:false}
-    # Narrow, unauthenticated GET-only official-source evidence capture. Every
-    # redirect is independently SSRF-checked; this never auto-verifies an event.
+    # Independent, durable polling mainline for structured sources. Discovery
+    # reads the latest persisted item versions and does not wait on publishers.
+    ingestion:
+      enabled: ${NEWSCLAW_AI_NEWS_INGESTION_ENABLED:true}
+      scan-interval-ms: ${NEWSCLAW_AI_NEWS_INGESTION_SCAN_INTERVAL_MS:60000}
+      initial-delay-ms: ${NEWSCLAW_AI_NEWS_INGESTION_INITIAL_DELAY_MS:15000}
+      on-demand-refresh-if-empty: ${NEWSCLAW_AI_NEWS_INGESTION_ON_DEMAND_REFRESH_IF_EMPTY:false}
+      max-polls-per-cycle: ${NEWSCLAW_AI_NEWS_INGESTION_MAX_POLLS_PER_CYCLE:50}
+      stale-run-minutes: ${NEWSCLAW_AI_NEWS_INGESTION_STALE_RUN_MINUTES:30}
+      candidate-lookback-days: ${NEWSCLAW_AI_NEWS_INGESTION_CANDIDATE_LOOKBACK_DAYS:31}
+    # V213 shadow mainline. Both the scan and outbound capture switches are
+    # default-off so upgrades neither activate sources nor add network traffic.
+    candidate-pipeline:
+      enabled: ${NEWSCLAW_AI_NEWS_CANDIDATE_PIPELINE_ENABLED:false}
+      capture-enabled: ${NEWSCLAW_AI_NEWS_CANDIDATE_CAPTURE_ENABLED:false}
+      scan-interval-ms: ${NEWSCLAW_AI_NEWS_CANDIDATE_SCAN_INTERVAL_MS:900000}
+      capture-interval-ms: ${NEWSCLAW_AI_NEWS_CANDIDATE_CAPTURE_INTERVAL_MS:60000}
+      initial-delay-ms: ${NEWSCLAW_AI_NEWS_CANDIDATE_INITIAL_DELAY_MS:60000}
+      default-workspace-id: ${NEWSCLAW_AI_NEWS_CANDIDATE_WORKSPACE_ID:1}
+      topic: ${NEWSCLAW_AI_NEWS_CANDIDATE_TOPIC:artificial intelligence}
+      lookback-hours: ${NEWSCLAW_AI_NEWS_CANDIDATE_LOOKBACK_HOURS:24}
+      max-candidates: ${NEWSCLAW_AI_NEWS_CANDIDATE_MAX_CANDIDATES:30}
+      max-captures-per-scan: ${NEWSCLAW_AI_NEWS_CANDIDATE_MAX_CAPTURES_PER_SCAN:10}
+      max-capture-attempts: ${NEWSCLAW_AI_NEWS_CANDIDATE_MAX_CAPTURE_ATTEMPTS:3}
+      capture-retry-minutes: ${NEWSCLAW_AI_NEWS_CANDIDATE_CAPTURE_RETRY_MINUTES:15}
+      stale-capture-minutes: ${NEWSCLAW_AI_NEWS_CANDIDATE_STALE_CAPTURE_MINUTES:30}
+      stale-run-minutes: ${NEWSCLAW_AI_NEWS_CANDIDATE_STALE_RUN_MINUTES:120}
+      retention-days: ${NEWSCLAW_AI_NEWS_CANDIDATE_RETENTION_DAYS:90}
+      capture-retention-days: ${NEWSCLAW_AI_NEWS_CAPTURE_RETENTION_DAYS:30}
+      retention-batch-size: ${NEWSCLAW_AI_NEWS_RETENTION_BATCH_SIZE:100}
+      retention-cron: ${NEWSCLAW_AI_NEWS_RETENTION_CRON:0 30 3 * * ?}
+      config-version: ${NEWSCLAW_AI_NEWS_CANDIDATE_CONFIG_VERSION:candidate-pipeline-v2-bocha}
+      china-search:
+        enabled: ${NEWSCLAW_AI_NEWS_CHINA_SEARCH_ENABLED:false}
+        # Dedicated Bocha secret: deliberately not any existing model/video key.
+        api-key: ${NEWSCLAW_AI_NEWS_CHINA_SEARCH_API_KEY:}
+        base-url: ${NEWSCLAW_AI_NEWS_CHINA_SEARCH_BASE_URL:https://api.bochaai.com/v1/web-search}
+        count: ${NEWSCLAW_AI_NEWS_CHINA_SEARCH_COUNT:20}
+        timeout-seconds: ${NEWSCLAW_AI_NEWS_CHINA_SEARCH_TIMEOUT_SECONDS:15}
+        queries:
+          - 人工智能 模型 产品 智能体 最新发布
+          - 人工智能 融资 并购 政策 监管 最新消息
+          - 人工智能 芯片 算力 安全 研究 最新进展
+    # Narrow, workspace-authenticated read-only official-source evidence capture.
+    # Every redirect is independently SSRF-checked; this never auto-verifies an event.
     official-capture:
       enabled: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_ENABLED:true}
-      max-bytes: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_BYTES:524288}
+      max-bytes: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_BYTES:1048576}
+      min-text-chars: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MIN_TEXT_CHARS:200}
+      allow-extraction-fallback: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_ALLOW_EXTRACTION_FALLBACK:false}
       timeout-seconds: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_TIMEOUT_SECONDS:15}
       max-redirects: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_REDIRECTS:5}
+      max-attempts: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_ATTEMPTS:2}
+      retry-base-delay-millis: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_RETRY_BASE_DELAY_MILLIS:250}
+      retry-max-delay-millis: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_RETRY_MAX_DELAY_MILLIS:5000}
+      reuse-ttl-minutes: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_REUSE_TTL_MINUTES:360}
+      max-captures-per-minute: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_RATE_PER_MINUTE:30}
+      max-concurrent-captures: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_CONCURRENT:2}
+      proxy-url: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_PROXY_URL:}
+    # Fetch-free main-content extraction. It is disabled for a plain standalone
+    # JAR unless the operator supplies an endpoint; Compose enables and requires
+    # the pinned Trafilatura adapter.
+    content-extraction:
+      enabled: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_ENABLED:false}
+      required: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_REQUIRED:true}
+      endpoint: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_ENDPOINT:http://localhost:8090}
+      expected-name: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_EXPECTED_NAME:trafilatura}
+      expected-version: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_EXPECTED_VERSION:2.2.0}
+      expected-config-hash: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_EXPECTED_CONFIG_HASH:0235b7bf49c3c80ea6a52aee9f413fa2d4e4e1f5196af87278c48e558c7d0400}
+      timeout-millis: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_TIMEOUT_MILLIS:5000}
+      max-request-bytes: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_REQUEST_BYTES:1048576}
+      max-response-bytes: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_RESPONSE_BYTES:1572864}
+    # TDT-style bounded online event identity. Exact/strong matches may link
+    # automatically; borderline matches remain separate until an operator
+    # resolves the durable review proposal. Every version stores this config's
+    # effective SHA-256 so threshold changes never rewrite history.
+    clustering:
+      enabled: ${NEWSCLAW_AI_NEWS_CLUSTERING_ENABLED:true}
+      max-candidates: ${NEWSCLAW_AI_NEWS_CLUSTERING_MAX_CANDIDATES:300}
+      max-candidate-age-hours: ${NEWSCLAW_AI_NEWS_CLUSTERING_MAX_CANDIDATE_AGE_HOURS:168}
+      min-title-blocking-similarity: ${NEWSCLAW_AI_NEWS_CLUSTERING_MIN_TITLE_BLOCKING_SIMILARITY:0.12}
+      auto-link-threshold: ${NEWSCLAW_AI_NEWS_CLUSTERING_AUTO_LINK_THRESHOLD:0.80}
+      review-threshold: ${NEWSCLAW_AI_NEWS_CLUSTERING_REVIEW_THRESHOLD:0.62}
+      min-auto-title-similarity: ${NEWSCLAW_AI_NEWS_CLUSTERING_MIN_AUTO_TITLE_SIMILARITY:0.45}
 
   # DeepSeek Harness runtime. The executable and Cordis composition are kept
   # outside the Spring classpath and can be supplied by environment variables.
@@ -278,12 +432,19 @@ newsclaw:
     # 生产数据库 profile（mysql/kingbase/postgres）默认覆盖为 false。
     expose-ui: ${NEWSCLAW_OPENAPI_EXPOSE_UI:true}
   jwt:
-    secret: ${JWT_SECRET:NewsClaw-JWT-Secret-Key-2024-Please-Change-In-Production}
+    secret: ${JWT_SECRET:}
     expiration: 86400000
   datasource:
     # Shared AES key for datasource passwords and skill secrets. Keep it in
     # .env so a container restart does not make stored credentials unreadable.
-    encrypt-key: ${NEWSCLAW_ENCRYPT_KEY:NewsClaw@2024Key!}
+    encrypt-key: ${NEWSCLAW_ENCRYPT_KEY:}
+  setting:
+    key: ${NEWSCLAW_SETTING_KEY:}
+  setup:
+    # Desktop/dev may explicitly opt into the first-run splash endpoint.
+    allow-anonymous: ${NEWSCLAW_SETUP_ALLOW_ANONYMOUS:true}
+  bootstrap:
+    password: ${NEWSCLAW_BOOTSTRAP_PASSWORD:}
   sso:
     # 全局开关（默认关闭，不影响现有部署）
     enabled: ${SSO_ENABLED:false}
@@ -304,6 +465,10 @@ newsclaw:
   mcp:
     enabled: true
   tools:
+    screenshot:
+      enabled: ${NEWSCLAW_SCREENSHOT_ENABLED:false}
+    external-publish:
+      enabled: ${NEWSCLAW_EXTERNAL_PUBLISH_ENABLED:false}
     disclosure:
       # progressive: deferred schemas stay behind tool_search/tool_describe and
       #   execute through tool_call in the same action round. enable_tool remains
@@ -474,6 +639,7 @@ newsclaw:
       enabled: true              # 每次派发写 mate_hook_run
       retain-days: 7
   security:
+    production-mode: ${NEWSCLAW_PRODUCTION_MODE:false}
     # Hosts/IPs/CIDR blocks allowed through the SSRF guards (browser, hooks, image
     # download) even though they are loopback/private/link-local/metadata. Each
     # entry is a literal hostname, a literal IP, or an IPv4 CIDR block. Keep narrow.
@@ -527,6 +693,8 @@ newsclaw:
     max-parallel-phase-b-pages: 3       # RFC-012 follow-up #3：单 chunk 内 phase B 阶段并行处理的 page 数
     auto-process-on-upload: true        # 上传原始材料后是否自动触发 AI 消化
     upload-dir: ./data/wiki-uploads     # 上传文件存储目录
+    upload-orphan-ttl-hours: 24         # DB写入前崩溃留下的托管文件清理TTL
+    lint-job-ttl-hours: 24               # 内存中的死链扫描 job 保留时间
     max-scan-files: 500                 # 目录扫描最大文件数
     max-scan-file-size: 52428800        # 扫描时跳过大于此大小的文件（字节，默认 50MB）
   # Dream v2 feature flags — production defaults after GA validation
@@ -561,6 +729,8 @@ newsclaw:
     # Always-on file ceilings — deterministic backstop so PROFILE.md / MEMORY.md (LLM-rewritten) cannot grow per-turn context without bound
     profile-max-chars: 4000                            # PROFILE.md hard cap; truncates at a section boundary if the rewrite overruns; 0 = unlimited
     memory-md-max-chars: 8000                          # MEMORY.md hard cap; 0 = unlimited
+    owner-block-max-chars: 12000                       # total per-owner builtin memory injected per turn
+    owner-daily-max-files: 7                           # only newest daily ledgers stay always-on
     # Long-term memory admission: records a versioned ledger before each
     # durable write, requires a source pointer, bounds token growth, and keeps
     # AI-news article/evidence bodies in the event/Wiki evidence domain.
@@ -569,3 +739,4 @@ newsclaw:
     long-term-token-budget: ${NEWSCLAW_MEMORY_LONG_TERM_TOKEN_BUDGET:2400}
     reject-news-body: ${NEWSCLAW_MEMORY_REJECT_NEWS_BODY:true}
     require-source-ref: ${NEWSCLAW_MEMORY_REQUIRE_SOURCE_REF:true}
+    governance-pending-ttl-minutes: ${NEWSCLAW_MEMORY_GOVERNANCE_PENDING_TTL_MINUTES:30}

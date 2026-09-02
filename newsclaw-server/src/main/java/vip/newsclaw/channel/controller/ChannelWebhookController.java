@@ -2,9 +2,14 @@ package vip.newsclaw.channel.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.*;
 import vip.newsclaw.channel.ChannelAdapter;
 import vip.newsclaw.channel.ChannelManager;
@@ -23,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.List;
 
 /**
  * 渠道 Webhook 回调接口
@@ -45,25 +51,39 @@ public class ChannelWebhookController {
     private final ChannelManager channelManager;
     private final FeishuAppRegistrationService feishuAppRegistrationService;
     private final DingTalkAppRegistrationService dingTalkAppRegistrationService;
+    private final ObjectMapper objectMapper;
 
     @Operation(summary = "钉钉消息回调")
-    @PostMapping("/dingtalk")
-    public ResponseEntity<Map<String, Object>> dingtalkWebhook(@RequestBody Map<String, Object> payload) {
+    @PostMapping({"/dingtalk", "/dingtalk/{channelId}"})
+    public ResponseEntity<Map<String, Object>> dingtalkWebhook(
+            @PathVariable(required = false) Long channelId,
+            @RequestHeader(value = "timestamp", required = false) String timestamp,
+            @RequestHeader(value = "sign", required = false) String signature,
+            @RequestParam(value = "timestamp", required = false) String timestampParam,
+            @RequestParam(value = "sign", required = false) String signatureParam,
+            @RequestBody Map<String, Object> payload) {
         log.debug("[webhook] DingTalk callback received");
-        Optional<ChannelAdapter> adapter = channelManager.getAdapterByType("dingtalk");
-        if (adapter.isPresent() && adapter.get() instanceof DingTalkChannelAdapter dingtalk) {
+        String effectiveTimestamp = timestamp != null ? timestamp : timestampParam;
+        String effectiveSignature = signature != null ? signature : signatureParam;
+        DingTalkChannelAdapter dingtalk = candidates("dingtalk", channelId).stream()
+                .filter(DingTalkChannelAdapter.class::isInstance)
+                .map(DingTalkChannelAdapter.class::cast)
+                .filter(adapter -> adapter.acceptsWebhook(effectiveTimestamp, effectiveSignature))
+                .findFirst().orElse(null);
+        if (dingtalk != null) {
             dingtalk.handleWebhook(payload);
             return ResponseEntity.ok(Map.of("status", "ok"));
         }
-        log.warn("[webhook] DingTalk channel not active, ignoring callback");
-        return ResponseEntity.ok(Map.of("status", "channel_not_active"));
+        log.warn("[webhook] DingTalk callback rejected: no matching signed channel");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("status", "invalid_signature"));
     }
 
     // ==================== 钉钉一键应用注册（OAuth Device Flow） ====================
 
     @Operation(summary = "启动钉钉扫码注册应用流程")
     @PostMapping("/dingtalk/register/begin")
-    public ResponseEntity<Map<String, Object>> dingtalkRegisterBegin() {
+    public ResponseEntity<Map<String, Object>> dingtalkRegisterBegin(Authentication auth) {
+        requireAdmin(auth);
         try {
             DingTalkAppRegistrationService.RegistrationSession session = dingTalkAppRegistrationService.begin();
             return ResponseEntity.ok(Map.of("session_id", session.sessionId));
@@ -76,7 +96,9 @@ public class ChannelWebhookController {
 
     @Operation(summary = "查询钉钉扫码注册状态")
     @GetMapping("/dingtalk/register/status")
-    public ResponseEntity<Map<String, Object>> dingtalkRegisterStatus(@RequestParam("session") String sessionId) {
+    public ResponseEntity<Map<String, Object>> dingtalkRegisterStatus(
+            @RequestParam("session") String sessionId, Authentication auth) {
+        requireAdmin(auth);
         DingTalkAppRegistrationService.RegistrationSession session = dingTalkAppRegistrationService.getSession(sessionId);
         if (session == null) {
             return ResponseEntity.ok(Map.of("status", "expired", "error", "session not found or expired"));
@@ -111,22 +133,20 @@ public class ChannelWebhookController {
     }
 
     @Operation(summary = "飞书消息回调")
-    @PostMapping("/feishu")
-    public ResponseEntity<Map<String, Object>> feishuWebhook(@RequestBody Map<String, Object> payload) {
+    @PostMapping({"/feishu", "/feishu/{channelId}"})
+    public ResponseEntity<Map<String, Object>> feishuWebhook(
+            @PathVariable(required = false) Long channelId,
+            @RequestBody Map<String, Object> payload) {
         log.debug("[webhook] Feishu callback received");
-        Optional<ChannelAdapter> adapter = channelManager.getAdapterByType("feishu");
-        if (adapter.isPresent() && adapter.get() instanceof FeishuChannelAdapter feishu) {
-            Map<String, Object> result = feishu.handleWebhook(payload);
+        for (ChannelAdapter candidate : candidates("feishu", channelId)) {
+            if (!(candidate instanceof FeishuChannelAdapter feishu)) continue;
+            Map<String, Object> verified = feishu.verifyAndDecodeWebhook(payload);
+            if (verified == null) continue;
+            Map<String, Object> result = feishu.handleWebhook(verified);
             return ResponseEntity.ok(result);
         }
-        // 即使渠道未激活，也需要响应 URL 验证
-        String type = (String) payload.get("type");
-        if ("url_verification".equals(type)) {
-            String challenge = (String) payload.get("challenge");
-            return ResponseEntity.ok(Map.of("challenge", challenge != null ? challenge : ""));
-        }
-        log.warn("[webhook] Feishu channel not active, ignoring callback");
-        return ResponseEntity.ok(Map.of("code", 0));
+        log.warn("[webhook] Feishu callback rejected: no matching verified app");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("code", 401));
     }
 
     // ==================== 飞书一键应用注册（oapi-sdk 2.6+） ====================
@@ -134,7 +154,9 @@ public class ChannelWebhookController {
     @Operation(summary = "启动飞书扫码注册应用流程")
     @PostMapping("/feishu/register/begin")
     public ResponseEntity<Map<String, Object>> feishuRegisterBegin(
-            @RequestParam(value = "domain", defaultValue = "feishu") String domain) {
+            @RequestParam(value = "domain", defaultValue = "feishu") String domain,
+            Authentication auth) {
+        requireAdmin(auth);
         try {
             String sessionId = feishuAppRegistrationService.begin(domain);
             return ResponseEntity.ok(Map.of("session_id", sessionId));
@@ -147,7 +169,9 @@ public class ChannelWebhookController {
 
     @Operation(summary = "查询飞书扫码注册状态")
     @GetMapping("/feishu/register/status")
-    public ResponseEntity<Map<String, Object>> feishuRegisterStatus(@RequestParam("session") String sessionId) {
+    public ResponseEntity<Map<String, Object>> feishuRegisterStatus(
+            @RequestParam("session") String sessionId, Authentication auth) {
+        requireAdmin(auth);
         FeishuAppRegistrationService.RegistrationSession session = feishuAppRegistrationService.getSession(sessionId);
         if (session == null) {
             return ResponseEntity.ok(Map.of("status", "expired", "error", "session not found or expired"));
@@ -186,14 +210,22 @@ public class ChannelWebhookController {
     }
 
     @Operation(summary = "Telegram 消息回调")
-    @PostMapping("/telegram")
-    public ResponseEntity<String> telegramWebhook(@RequestBody Map<String, Object> payload) {
+    @PostMapping({"/telegram", "/telegram/{channelId}"})
+    public ResponseEntity<String> telegramWebhook(
+            @PathVariable(required = false) Long channelId,
+            @RequestHeader(value = "X-Telegram-Bot-Api-Secret-Token", required = false) String secret,
+            @RequestBody Map<String, Object> payload) {
         log.debug("[webhook] Telegram callback received");
-        Optional<ChannelAdapter> adapter = channelManager.getAdapterByType("telegram");
-        if (adapter.isPresent() && adapter.get() instanceof TelegramChannelAdapter telegram) {
+        TelegramChannelAdapter telegram = candidates("telegram", channelId).stream()
+                .filter(TelegramChannelAdapter.class::isInstance)
+                .map(TelegramChannelAdapter.class::cast)
+                .filter(adapter -> adapter.acceptsWebhookSecret(secret))
+                .findFirst().orElse(null);
+        if (telegram != null) {
             telegram.handleWebhook(payload);
         } else {
-            log.warn("[webhook] Telegram channel not active, ignoring callback");
+            log.warn("[webhook] Telegram callback rejected: no matching secret/channel");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("invalid webhook secret");
         }
         return ResponseEntity.ok("ok");
     }
@@ -225,20 +257,33 @@ public class ChannelWebhookController {
     }
 
     @Operation(summary = "Slack Events API 回调")
-    @PostMapping("/slack")
-    public ResponseEntity<Map<String, Object>> slackWebhook(@RequestBody Map<String, Object> payload) {
+    @PostMapping({"/slack", "/slack/{channelId}"})
+    public ResponseEntity<Map<String, Object>> slackWebhook(
+            @PathVariable(required = false) Long channelId,
+            @RequestHeader(value = "X-Slack-Request-Timestamp", required = false) String timestamp,
+            @RequestHeader(value = "X-Slack-Signature", required = false) String signature,
+            @RequestBody String rawBody) {
         log.debug("[webhook] Slack callback received");
+        Map<String, Object> payload;
+        try {
+            payload = objectMapper.readValue(rawBody, new TypeReference<>() {});
+        } catch (Exception invalid) {
+            return ResponseEntity.badRequest().body(Map.of("status", "invalid_json"));
+        }
+        vip.newsclaw.channel.slack.SlackChannelAdapter slack = candidates("slack", channelId).stream()
+                .filter(vip.newsclaw.channel.slack.SlackChannelAdapter.class::isInstance)
+                .map(vip.newsclaw.channel.slack.SlackChannelAdapter.class::cast)
+                .filter(adapter -> adapter.acceptsWebhook(rawBody, timestamp, signature))
+                .findFirst().orElse(null);
+        if (slack == null) {
+            log.warn("[webhook] Slack callback rejected: no matching signed channel");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("status", "invalid_signature"));
+        }
         // URL Verification challenge
         if ("url_verification".equals(payload.get("type"))) {
             return ResponseEntity.ok(Map.of("challenge", payload.getOrDefault("challenge", "")));
         }
-        Optional<ChannelAdapter> adapter = channelManager.getAdapterByType("slack");
-        if (adapter.isPresent() && adapter.get() instanceof vip.newsclaw.channel.slack.SlackChannelAdapter slack) {
-            Map<String, Object> result = slack.handleWebhook(payload);
-            return ResponseEntity.ok(result);
-        }
-        log.warn("[webhook] Slack channel not active, ignoring callback");
-        return ResponseEntity.ok(Map.of("status", "channel_not_active"));
+        return ResponseEntity.ok(slack.handleWebhook(payload));
     }
 
     // ==================== 微信 iLink Bot ====================
@@ -262,7 +307,8 @@ public class ChannelWebhookController {
 
     @Operation(summary = "获取微信登录二维码")
     @GetMapping("/weixin/qrcode")
-    public ResponseEntity<Map<String, Object>> weixinQrcode() {
+    public ResponseEntity<Map<String, Object>> weixinQrcode(Authentication auth) {
+        requireAdmin(auth);
         try {
             ILinkClient client = createWeixinClient();
             Map<String, Object> apiResult = client.getBotQrcode();
@@ -298,7 +344,9 @@ public class ChannelWebhookController {
 
     @Operation(summary = "查询微信二维码扫码状态")
     @GetMapping("/weixin/qrcode/status")
-    public ResponseEntity<Map<String, Object>> weixinQrcodeStatus(@RequestParam String qrcode) {
+    public ResponseEntity<Map<String, Object>> weixinQrcodeStatus(
+            @RequestParam String qrcode, Authentication auth) {
+        requireAdmin(auth);
         try {
             ILinkClient client = createWeixinClient();
             Map<String, Object> apiResult = client.getQrcodeStatus(qrcode);
@@ -318,7 +366,26 @@ public class ChannelWebhookController {
 
     @Operation(summary = "获取渠道运行状态")
     @GetMapping("/status")
-    public ResponseEntity<Map<String, Object>> status() {
+    public ResponseEntity<Map<String, Object>> status(Authentication auth) {
+        requireAdmin(auth);
         return ResponseEntity.ok(channelManager.getStatus());
+    }
+
+    private List<ChannelAdapter> candidates(String type, Long channelId) {
+        if (channelId == null) return channelManager.getAdaptersByType(type);
+        ChannelAdapter adapter = channelManager.getAdapter(channelId).orElse(null);
+        return adapter != null && type.equals(adapter.getChannelType()) ? List.of(adapter) : List.of();
+    }
+
+    /** The whole controller path is permitAll for platform callbacks, so the
+     * human registration helpers enforce their own JWT admin gate. */
+    private void requireAdmin(Authentication auth) {
+        boolean admin = auth != null && auth.isAuthenticated()
+                && auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!admin) {
+            throw new ResponseStatusException(auth == null
+                    ? HttpStatus.UNAUTHORIZED : HttpStatus.FORBIDDEN);
+        }
     }
 }

@@ -109,6 +109,13 @@ public class WikiProcessingJobService {
         return job;
     }
 
+    public void updateCurrentModel(Long jobId, Long modelId) {
+        jobMapper.update(null,
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<WikiProcessingJobEntity>()
+                        .eq(WikiProcessingJobEntity::getId, jobId)
+                        .set(WikiProcessingJobEntity::getCurrentModelId, modelId));
+    }
+
     public void recordHardError(Long jobId, String errorCode, String errorMessage) {
         WikiProcessingJobEntity job = jobMapper.selectById(jobId);
         if (job == null) return;

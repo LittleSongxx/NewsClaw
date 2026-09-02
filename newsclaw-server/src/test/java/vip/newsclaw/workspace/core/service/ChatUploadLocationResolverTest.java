@@ -219,6 +219,8 @@ class ChatUploadLocationResolverTest {
                 .isEqualTo("2055137662148763649");
         assertThat(ChatUploadLocationResolver.sanitizeSegment("conv-abc_1.2"))
                 .isEqualTo("conv-abc_1.2");
+        assertThat(ChatUploadLocationResolver.sanitizeSegment(".")).isEqualTo("_");
+        assertThat(ChatUploadLocationResolver.sanitizeSegment("..")).isEqualTo("__");
         assertThat(ChatUploadLocationResolver.sanitizeSegment(null)).isEmpty();
     }
 
@@ -265,6 +267,22 @@ class ChatUploadLocationResolverTest {
         List<Path> dirs = r.resolveCandidateConversationDirs("plainconv");
 
         assertThat(dirs).containsExactly(tempDir.toAbsolutePath().normalize().resolve("plainconv"));
+    }
+
+    @Test
+    @DisplayName("candidate conversation dirs: traversal raw id never escapes an upload root")
+    void candidateConversationDirsRejectTraversalRawId() {
+        String conversationId = "../../outside";
+        stubConversation(conversationId, null, null);
+        when(workspaceService.getById(anyLong())).thenReturn(workspace(1L, null));
+
+        ChatUploadLocationResolver r = resolver(tempDir);
+        Path root = tempDir.toAbsolutePath().normalize();
+        List<Path> dirs = r.resolveCandidateConversationDirs(conversationId);
+
+        assertThat(dirs).containsExactly(root.resolve(ChatUploadLocationResolver.sanitizeSegment(conversationId)));
+        assertThat(dirs).allMatch(path -> root.equals(path.getParent()));
+        assertThat(r.isSafeConversationDir(conversationId, root.resolve("../outside"))).isFalse();
     }
 
     // ==================== date folders ====================

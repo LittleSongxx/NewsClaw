@@ -15,8 +15,8 @@ spring:
     # `Data truncation: Incorrect string value` errors on emoji/CJK ext.
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:newsclaw}?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&connectTimeout=10000&socketTimeout=30000
     driver-class-name: com.mysql.cj.jdbc.Driver
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:newsclaw123}
+    username: ${DB_USERNAME:}
+    password: ${DB_PASSWORD:}
 
   flyway:
     locations:
@@ -39,6 +39,28 @@ spring:
 #   NEWSCLAW_WIKI_WATCHER_ENABLED=true
 #   NEWSCLAW_WIKI_WATCHER_INTERVAL_MS=300000   # scan interval, default 5 min
 newsclaw:
+  webchat:
+    public-enabled: ${NEWSCLAW_WEBCHAT_PUBLIC_ENABLED:false}
+  ai-news:
+    require-event-context: ${NEWSCLAW_AI_NEWS_REQUIRE_EVENT_CONTEXT:true}
+    strict-evidence-boundary: ${NEWSCLAW_AI_NEWS_STRICT_EVIDENCE_BOUNDARY:true}
+  security:
+    production-mode: ${NEWSCLAW_PRODUCTION_MODE:true}
+  setup:
+    allow-anonymous: ${NEWSCLAW_SETUP_ALLOW_ANONYMOUS:false}
+  tools:
+    screenshot:
+      enabled: false
+    external-publish:
+      enabled: false
+  mcp:
+    enabled: false
+  plugin:
+    enabled: false
+  sso:
+    enabled: false
+    feishu:
+      enabled: false
   wiki:
     require-allowed-roots: true
     allowed-source-roots: ${NEWSCLAW_WIKI_ALLOWED_SOURCE_ROOTS:}

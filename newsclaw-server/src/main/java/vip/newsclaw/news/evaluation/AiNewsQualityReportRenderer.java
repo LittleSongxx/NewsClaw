@@ -30,8 +30,8 @@ public final class AiNewsQualityReportRenderer {
         }
 
         out.append("## Metrics\n\n");
-        out.append("| Metric | N | Value | Precision | Recall | F1 |\n");
-        out.append("| --- | ---: | ---: | ---: | ---: | ---: |\n");
+        out.append("| Metric | N | Invalid | Value (Wilson 95% CI) | Precision | Recall | F1 | Warnings |\n");
+        out.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n");
         manifest.metrics().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> appendMetric(out, entry.getKey(), entry.getValue()));
@@ -39,17 +39,19 @@ public final class AiNewsQualityReportRenderer {
 
         if (!manifest.slices().isEmpty()) {
             out.append("## Slice Coverage\n\n");
-            out.append("| Slice | Cases | Verification F1 | Refusal F1 | Citation-block F1 |\n");
-            out.append("| --- | ---: | ---: | ---: | ---: |\n");
+            out.append("| Slice | Cases | Task pass rate | Verification accuracy | Refusal accuracy | Citation-block accuracy | Warnings |\n");
+            out.append("| --- | ---: | ---: | ---: | ---: | ---: | --- |\n");
             manifest.slices().entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())
                     .forEach(entry -> {
                         Map<String, AiNewsQualityEvaluator.MetricSummary> metrics = entry.getValue().metrics();
                         out.append("| `").append(entry.getKey()).append("` | ")
                                 .append(entry.getValue().cases()).append(" | ")
-                                .append(format(metrics.get("verificationEligible").f1())).append(" | ")
-                                .append(format(metrics.get("properRefusal").f1())).append(" | ")
-                                .append(format(metrics.get("citationViolationBlocked").f1())).append(" |\n");
+                                .append(formatWithInterval(metrics.get("taskSuccess"))).append(" | ")
+                                .append(formatWithInterval(metrics.get("verificationEligible"))).append(" | ")
+                                .append(formatWithInterval(metrics.get("properRefusal"))).append(" | ")
+                                .append(formatWithInterval(metrics.get("citationViolationBlocked"))).append(" | ")
+                                .append(escape(String.join("; ", entry.getValue().warnings()))).append(" |\n");
                     });
             out.append('\n');
         }
@@ -83,9 +85,20 @@ public final class AiNewsQualityReportRenderer {
     private static void appendMetric(StringBuilder out, String name,
                                      AiNewsQualityEvaluator.MetricSummary metric) {
         out.append("| `").append(name).append("` | ").append(metric.evaluated()).append(" | ")
-                .append(format(metric.value())).append(" | ").append(format(metric.precision()))
+                .append(metric.invalidPredictions()).append(" | ")
+                .append(formatWithInterval(metric)).append(" | ").append(format(metric.precision()))
                 .append(" | ").append(format(metric.recall())).append(" | ")
-                .append(format(metric.f1())).append(" |\n");
+                .append(format(metric.f1())).append(" | ")
+                .append(escape(String.join("; ", metric.warnings()))).append(" |\n");
+    }
+
+    private static String formatWithInterval(AiNewsQualityEvaluator.MetricSummary metric) {
+        if (metric == null || metric.value() == null) return "n/a";
+        if (metric.confidenceLower() == null || metric.confidenceUpper() == null) {
+            return format(metric.value());
+        }
+        return format(metric.value()) + " [" + format(metric.confidenceLower()) + ", "
+                + format(metric.confidenceUpper()) + "]";
     }
 
     private static String format(Double value) {

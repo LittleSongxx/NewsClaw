@@ -8,13 +8,18 @@ import org.springframework.web.bind.annotation.*;
 import vip.newsclaw.common.result.R;
 import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.wiki.model.WikiKnowledgeBaseEntity;
+import vip.newsclaw.wiki.model.WikiPageEntity;
+import vip.newsclaw.wiki.model.WikiRawMaterialEntity;
 import vip.newsclaw.wiki.model.WikiTransformationEntity;
 import vip.newsclaw.wiki.model.WikiTransformationRunEntity;
 import vip.newsclaw.wiki.service.WikiKnowledgeBaseService;
 import vip.newsclaw.wiki.service.WikiTransformationAggregator;
 import vip.newsclaw.wiki.service.WikiTransformationExecutor;
 import vip.newsclaw.wiki.service.WikiTransformationService;
+import vip.newsclaw.wiki.service.WikiPageService;
+import vip.newsclaw.wiki.service.WikiRawMaterialService;
 import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 
 import java.util.List;
 import java.util.Map;
@@ -37,6 +42,8 @@ public class WikiTransformationController {
     private final WikiTransformationExecutor executor;
     private final WikiTransformationAggregator aggregator;
     private final WikiKnowledgeBaseService kbService;
+    private final WikiRawMaterialService rawService;
+    private final WikiPageService pageService;
 
     // ==================== Templates ====================
 
@@ -69,6 +76,7 @@ public class WikiTransformationController {
     @PostMapping
     public R<WikiTransformationEntity> create(@RequestBody WikiTransformationEntity body,
                                                @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        if (body == null) return R.fail(400, "request body is required");
         long wsId = workspaceId != null ? workspaceId : 1L;
         if (body.getKbId() != null) {
             verifyKBWorkspace(body.getKbId(), wsId);
@@ -83,6 +91,7 @@ public class WikiTransformationController {
     public R<WikiTransformationEntity> update(@PathVariable Long id,
                                                @RequestBody WikiTransformationEntity body,
                                                @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        if (body == null) return R.fail(400, "request body is required");
         WikiTransformationEntity existing = transformationService.getById(id);
         if (existing == null) return R.fail(404, "Transformation not found");
         verifyTemplateWorkspace(existing, workspaceId);
@@ -130,14 +139,35 @@ public class WikiTransformationController {
 
         if (rawIdRaw != null) {
             Long rawId = Long.valueOf(rawIdRaw.toString());
+            WikiRawMaterialEntity raw = requireRawInWorkspace(rawId, workspaceId);
+            verifyTemplateTargetKb(t, raw.getKbId());
             if (sync) return R.ok(executor.runOnRawSync(t, rawId, "manual"));
-            executor.runOnRawAsync(t, rawId, "manual");
+            Long runId = IdWorker.getId();
+            executor.runOnRawAsync(t, rawId, "manual", runId);
+            WikiTransformationRunEntity accepted = new WikiTransformationRunEntity();
+            accepted.setId(runId);
+            accepted.setTransformationId(t.getId());
+            accepted.setKbId(raw.getKbId());
+            accepted.setRawId(rawId);
+            accepted.setInputKind("raw");
+            accepted.setStatus("pending");
+            return R.ok(accepted);
         } else {
             Long pageId = Long.valueOf(pageIdRaw.toString());
+            WikiPageEntity page = requirePageInWorkspace(pageId, workspaceId);
+            verifyTemplateTargetKb(t, page.getKbId());
             if (sync) return R.ok(executor.runOnPageSync(t, pageId, "manual"));
-            executor.runOnPageAsync(t, pageId, "manual");
+            Long runId = IdWorker.getId();
+            executor.runOnPageAsync(t, pageId, "manual", runId);
+            WikiTransformationRunEntity accepted = new WikiTransformationRunEntity();
+            accepted.setId(runId);
+            accepted.setTransformationId(t.getId());
+            accepted.setKbId(page.getKbId());
+            accepted.setPageId(pageId);
+            accepted.setInputKind("page");
+            accepted.setStatus("pending");
+            return R.ok(accepted);
         }
-        return R.ok();
     }
 
     @RequireWorkspaceRole("member")
@@ -152,6 +182,7 @@ public class WikiTransformationController {
         if (t == null) return R.fail(404, "Transformation not found");
         verifyTemplateWorkspace(t, workspaceId);
         verifyKBWorkspace(kbId, workspaceId != null ? workspaceId : 1L);
+        verifyTemplateTargetKb(t, kbId);
 
         try {
             WikiTransformationAggregator.Result res = aggregator.aggregate(t, kbId, "manual");
@@ -192,13 +223,16 @@ public class WikiTransformationController {
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         long wsId = workspaceId != null ? workspaceId : 1L;
         if (rawId != null) {
+            requireRawInWorkspace(rawId, wsId);
             return R.ok(transformationService.listRunsByRaw(rawId, limit));
         }
         if (transformationId != null) {
             WikiTransformationEntity t = transformationService.getById(transformationId);
             if (t == null) return R.fail(404, "Transformation not found");
             verifyTemplateWorkspace(t, wsId);
-            return R.ok(transformationService.listRunsByTransformation(transformationId, limit));
+            return R.ok(transformationService.listRunsByTransformation(transformationId, limit).stream()
+                    .filter(run -> kbBelongsToWorkspace(run.getKbId(), wsId))
+                    .toList());
         }
         if (kbId != null) {
             verifyKBWorkspace(kbId, wsId);
@@ -264,7 +298,7 @@ public class WikiTransformationController {
             throw new NewsClawException("Knowledge base not found");
         }
         long wsId = workspaceId != null ? workspaceId : 1L;
-        if (kb.getWorkspaceId() != null && !kb.getWorkspaceId().equals(wsId)) {
+        if (kb.getWorkspaceId() == null || !kb.getWorkspaceId().equals(wsId)) {
             throw new NewsClawException("err.common.wrong_workspace", 403, "Resource does not belong to current workspace");
         }
     }
@@ -274,6 +308,37 @@ public class WikiTransformationController {
         if (t.getWorkspaceId() != null && !t.getWorkspaceId().equals(wsId)) {
             throw new NewsClawException("err.common.wrong_workspace", 403, "Resource does not belong to current workspace");
         }
+    }
+
+    private WikiRawMaterialEntity requireRawInWorkspace(Long rawId, Long workspaceId) {
+        WikiRawMaterialEntity raw = rawService.getById(rawId);
+        if (raw == null || raw.getKbId() == null) {
+            throw new NewsClawException(404, "Raw material not found");
+        }
+        verifyKBWorkspace(raw.getKbId(), workspaceId);
+        return raw;
+    }
+
+    private WikiPageEntity requirePageInWorkspace(Long pageId, Long workspaceId) {
+        WikiPageEntity page = pageService.getById(pageId);
+        if (page == null || page.getKbId() == null) {
+            throw new NewsClawException(404, "Wiki page not found");
+        }
+        verifyKBWorkspace(page.getKbId(), workspaceId);
+        return page;
+    }
+
+    private void verifyTemplateTargetKb(WikiTransformationEntity transformation, Long targetKbId) {
+        if (transformation.getKbId() != null && !transformation.getKbId().equals(targetKbId)) {
+            throw new NewsClawException(404, "Transformation is not available to the target knowledge base");
+        }
+    }
+
+    private boolean kbBelongsToWorkspace(Long kbId, Long workspaceId) {
+        if (kbId == null) return false;
+        WikiKnowledgeBaseEntity kb = kbService.getById(kbId);
+        return kb != null && kb.getWorkspaceId() != null
+                && kb.getWorkspaceId().equals(workspaceId);
     }
 
     /**

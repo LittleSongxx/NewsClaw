@@ -54,22 +54,28 @@ public class ReadFileTool {
             nextStartColumn when present, to resume reading the rest of a very long \
             line). Text files only; use extract_document_text for PDF/Office documents.""")
     public String read_file(
-            @ToolParam(description = "Absolute or relative file path") String filePath,
+            @ToolParam(description = "Absolute or relative file path (preferred field)", required = false) String filePath,
+            @ToolParam(description = "Compatibility alias for filePath; provide exactly one of filePath/path", required = false) String path,
             @ToolParam(description = "Start line number (1-based, inclusive). Omit to start from line 1", required = false) Integer startLine,
             @ToolParam(description = "End line number (1-based, inclusive). Omit to read to EOF or truncation limit", required = false) Integer endLine,
             @ToolParam(description = "Start character position within startLine (1-based, inclusive). Used to resume reading the rest of a very long line; pass the nextStartColumn from a previous truncated result. Omit to start at the beginning of the line", required = false) Integer startColumn,
             // RFC-063r §2.5: hidden from LLM by JsonSchemaGenerator.
             @Nullable ToolContext ctx) {
 
+        filePath = filePath != null && !filePath.isBlank() ? filePath : path;
+        if (filePath == null || filePath.isBlank()) {
+            return errorResult("", "Either filePath or path is required.");
+        }
+
         JSONObject result = new JSONObject();
         result.set("filePath", filePath);
 
         try {
-            Path path;
+            Path resolvedPath;
             try {
                 // RFC-063r §2.5: forward ToolContext so workspace boundary
                 // honors ChatOrigin.workspaceBasePath when available.
-                path = vip.newsclaw.tool.guard.WorkspacePathGuard.validatePath(filePath, ctx);
+                resolvedPath = vip.newsclaw.tool.guard.WorkspacePathGuard.validatePath(filePath, ctx);
             } catch (IllegalArgumentException e) {
                 // Sandbox rejected the literal path. The LLM may have hallucinated
                 // a Linux-style path (e.g. /app/Dockerfile) for a chat-upload that
@@ -79,11 +85,11 @@ public class ReadFileTool {
                 if (attachment == null) {
                     return errorResult(filePath, e.getMessage());
                 }
-                path = attachment;
+                resolvedPath = attachment;
             }
 
             // 文件存在性和类型校验
-            if (!Files.exists(path)) {
+            if (!Files.exists(resolvedPath)) {
                 // The user-uploaded chat attachment is rendered to the LLM as
                 // "[附件] foo.txt" without its stored path, so LLMs often pass
                 // just the basename or a guessed absolute path. Fall back to
@@ -91,20 +97,20 @@ public class ReadFileTool {
                 // chat-upload directory before reporting not-found.
                 Path attachment = ChatUploadResolver.resolve(filePath);
                 if (attachment == null) {
-                    return errorResult(filePath, i18n.msg("tool.read_file.error.not_found", path));
+                    return errorResult(filePath, i18n.msg("tool.read_file.error.not_found", resolvedPath));
                 }
                 log.info("[ReadFile] Resolved chat-upload attachment fallback: {} -> {}", filePath, attachment);
-                path = attachment;
+                resolvedPath = attachment;
             }
-            if (Files.isDirectory(path)) {
-                return errorResult(filePath, i18n.msg("tool.read_file.error.is_directory", path));
+            if (Files.isDirectory(resolvedPath)) {
+                return errorResult(filePath, i18n.msg("tool.read_file.error.is_directory", resolvedPath));
             }
-            if (!Files.isReadable(path)) {
-                return errorResult(filePath, i18n.msg("tool.read_file.error.not_readable", path));
+            if (!Files.isReadable(resolvedPath)) {
+                return errorResult(filePath, i18n.msg("tool.read_file.error.not_readable", resolvedPath));
             }
 
             // 检查是否是二进制文档 - 拒绝直接读取
-            String fileName = path.getFileName().toString().toLowerCase();
+            String fileName = resolvedPath.getFileName().toString().toLowerCase();
             for (String ext : DOCUMENT_EXTENSIONS) {
                 if (fileName.endsWith(ext)) {
                     return errorResult(filePath, buildDocumentErrorMessage(fileName, ext));
@@ -112,7 +118,7 @@ public class ReadFileTool {
             }
 
             // 读取所有行
-            List<String> allLines = readLinesUtf8(path);
+            List<String> allLines = readLinesUtf8(resolvedPath);
             int totalLines = allLines.size();
             result.set("totalLines", totalLines);
 
@@ -240,7 +246,7 @@ public class ReadFileTool {
                 result.set("truncated", false);
             }
 
-            log.info("[ReadFile] Read {} lines from {} (lines {}-{})", linesRead, path, start, start + linesRead - 1);
+            log.info("[ReadFile] Read {} lines from {} (lines {}-{})", linesRead, resolvedPath, start, start + linesRead - 1);
 
         } catch (Exception e) {
             log.error("[ReadFile] Failed to read file: {}", e.getMessage(), e);
@@ -248,6 +254,15 @@ public class ReadFileTool {
         }
 
         return JSONUtil.toJsonPrettyStr(result);
+    }
+
+    /** Source-compatible overload retained for direct Java callers/tests. */
+    public String read_file(String filePath,
+                            Integer startLine,
+                            Integer endLine,
+                            Integer startColumn,
+                            @Nullable ToolContext ctx) {
+        return read_file(filePath, null, startLine, endLine, startColumn, ctx);
     }
 
     /**

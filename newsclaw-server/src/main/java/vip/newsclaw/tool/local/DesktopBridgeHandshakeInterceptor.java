@@ -12,6 +12,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import vip.newsclaw.auth.model.UserEntity;
 import vip.newsclaw.auth.pat.PersonalAccessTokenEntity;
 import vip.newsclaw.auth.pat.PersonalAccessTokenService;
+import vip.newsclaw.auth.pat.PersonalAccessTokenScopePolicy;
 import vip.newsclaw.auth.service.AuthService;
 
 import java.util.Map;
@@ -65,6 +66,8 @@ public class DesktopBridgeHandshakeInterceptor implements HandshakeInterceptor {
             if (token.startsWith(PersonalAccessTokenService.PAT_PREFIX)) {
                 Optional<PersonalAccessTokenEntity> maybe = patService.findActiveByPlaintext(token);
                 if (maybe.isEmpty()) return null;
+                if (!PersonalAccessTokenScopePolicy.allows(
+                        maybe.get().getScopes(), "desktop:write")) return null;
                 UserEntity user = authService.findById(maybe.get().getUserId());
                 return (user != null && Boolean.TRUE.equals(user.getEnabled())) ? user.getUsername() : null;
             }

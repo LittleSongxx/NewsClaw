@@ -18,17 +18,19 @@ public class AgentTeamMemberEntity {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
+    @TableField("team_id")
     private Long teamId;
 
+    @TableField("agent_id")
     private Long agentId;
 
     /** Member role within the team: lead / member / reviewer. */
     private String role;
 
-    @TableField(fill = FieldFill.INSERT)
+    @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
-    @TableField(fill = FieldFill.INSERT_UPDATE)
+    @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
     @TableLogic

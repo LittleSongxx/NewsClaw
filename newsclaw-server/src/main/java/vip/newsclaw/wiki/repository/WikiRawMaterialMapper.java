@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 import vip.newsclaw.wiki.dto.RawTitleRef;
 import vip.newsclaw.wiki.dto.WikiFailureItem;
 import vip.newsclaw.wiki.model.WikiRawMaterialEntity;
@@ -18,6 +19,14 @@ import java.util.List;
  */
 @Mapper
 public interface WikiRawMaterialMapper extends BaseMapper<WikiRawMaterialEntity> {
+
+    /** Atomically claim one pending material; exactly one competing worker can win. */
+    @Update("UPDATE mate_wiki_raw_material SET processing_status = 'processing', "
+            + "error_code = NULL, error_message = NULL, warning_code = NULL, warning_message = NULL, "
+            + "progress_phase = NULL, progress_total = 0, progress_done = 0, cancel_requested = FALSE, "
+            + "update_time = CURRENT_TIMESTAMP "
+            + "WHERE id = #{id} AND processing_status = 'pending' AND deleted = 0")
+    int claimPending(@Param("id") Long id);
 
     /**
      * RFC-032: Batch-fetch raw material titles by IDs (fixes N+1 in wiki_semantic_search).

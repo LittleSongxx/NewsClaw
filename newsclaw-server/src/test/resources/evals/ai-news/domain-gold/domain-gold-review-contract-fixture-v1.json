@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "1.0",
+  "campaignId": "newsclaw-ai-news-domain-gold-v1",
+  "datasetClassification": "synthetic-contract-fixture-not-evaluation",
+  "ledgerVersion": "contract-fixture-v1",
+  "generatedAt": "2026-08-28T01:00:00Z",
+  "campaignManifestSha256": "908e708b3a2680eb097cc5e1b549493df79088e61807a938f3bbcfc749eab492",
+  "systems": [
+    {
+      "systemId": "newsclaw-shadow-contract",
+      "kind": "system_under_test",
+      "operator": "contract-fixture",
+      "independentOfNewsClawDiscovery": false,
+      "implementationVersion": "synthetic-v1"
+    },
+    {
+      "systemId": "direct-source-contract",
+      "kind": "independent_direct_source",
+      "operator": "contract-fixture",
+      "independentOfNewsClawDiscovery": true,
+      "implementationVersion": "synthetic-v1"
+    },
+    {
+      "systemId": "human-patrol-contract",
+      "kind": "independent_human_patrol",
+      "operator": "contract-fixture",
+      "independentOfNewsClawDiscovery": true,
+      "implementationVersion": "synthetic-v1"
+    }
+  ],
+  "cases": [
+    {
+      "caseId": "coordinator-source-case-001",
+      "caseKind": "source_observation",
+      "reviewMaterial": {
+        "itemId": "source-item-secret-001",
+        "observedAt": "2026-08-28T00:05:00Z",
+        "publisher": "示例 AI 实验室",
+        "sourceFamily": "official",
+        "language": "zh",
+        "url": "https://example.invalid/zh/releases/model-a",
+        "canonicalUrl": "https://example.invalid/zh/releases/model-a",
+        "title": "示例 AI 实验室发布 Model A",
+        "publishedAt": "2026-08-28T00:00:00Z",
+        "publishedAtRaw": "2026-08-28 08:00 CST",
+        "mainContent": "这是仅用于验证盲评数据隔离的合成正文。",
+        "contentSha256": null,
+        "claims": [],
+        "quotes": []
+      },
+      "coordinatorOnly": {
+        "poolDiscoveries": [
+          {
+            "systemId": "direct-source-contract",
+            "firstObservedAt": "2026-08-28T00:05:00Z",
+            "runId": "direct-run-secret-001",
+            "rank": 1
+          },
+          {
+            "systemId": "newsclaw-shadow-contract",
+            "firstObservedAt": "2026-08-28T00:12:00Z",
+            "runId": "newsclaw-run-secret-001",
+            "rank": 3
+          }
+        ],
+        "systemUnderTestPrediction": null
+      }
+    },
+    {
+      "caseId": "coordinator-output-case-002",
+      "caseKind": "system_output",
+      "reviewMaterial": {
+        "itemId": "system-item-secret-002",
+        "observedAt": "2026-08-28T00:12:00Z",
+        "publisher": "Example AI Lab",
+        "sourceFamily": "official",
+        "language": "en",
+        "url": "https://example.invalid/en/releases/model-a",
+        "canonicalUrl": "https://example.invalid/en/releases/model-a",
+        "title": "Example AI Lab releases Model A",
+        "publishedAt": "2026-08-28T00:00:00Z",
+        "publishedAtRaw": "August 28, 2026",
+        "mainContent": "Synthetic body used only to verify the blind-review packaging contract.",
+        "contentSha256": null,
+        "claims": [
+          {"claimId": "coordinator-claim-secret-001", "text": "Example AI Lab released Model A."}
+        ],
+        "quotes": [
+          {
+            "quoteId": "coordinator-quote-secret-001",
+            "sourceUrl": "https://example.invalid/en/releases/model-a",
+            "text": "Today we release Model A."
+          }
+        ]
+      },
+      "coordinatorOnly": {
+        "poolDiscoveries": [
+          {
+            "systemId": "newsclaw-shadow-contract",
+            "firstObservedAt": "2026-08-28T00:12:00Z",
+            "runId": "newsclaw-run-secret-001",
+            "rank": 1
+          }
+        ],
+        "systemUnderTestPrediction": {
+          "systemEventId": "system-event-secret-002",
+          "predictedClusterId": "cluster-secret-009",
+          "predictedClusterVersion": 4,
+          "detectedAt": "2026-08-28T00:12:00Z",
+          "rankingSnapshotIds": ["ranking-secret-003"]
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Synthetic contract fixture only; it is not collected news and must never enter a quality metric.",
+    "Reserved identifiers intentionally test that coordinator-only values do not leak into reviewer files."
+  ]
+}

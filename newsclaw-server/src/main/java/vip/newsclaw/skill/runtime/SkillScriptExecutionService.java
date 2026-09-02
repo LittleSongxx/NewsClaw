@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.io.InputStream;
+import java.net.URI;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -16,7 +16,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import vip.newsclaw.common.process.BoundedProcessOutput;
+import vip.newsclaw.common.process.ProcessTreeTerminator;
 
 /**
  * 技能脚本执行服务
@@ -34,6 +37,14 @@ public class SkillScriptExecutionService {
     private static final int MAX_OUTPUT_BYTES = 50_000;
     private static final boolean IS_WINDOWS = System.getProperty("os.name", "")
             .toLowerCase(Locale.ROOT).contains("win");
+
+    /** Host variables safe and necessary for locating interpreters and temp files. */
+    private static final Set<String> SAFE_INHERITED_ENV = Set.of(
+            "PATH", "Path", "PATHEXT", "SYSTEMROOT", "SystemRoot", "COMSPEC", "ComSpec",
+            "HOME", "USERPROFILE", "TMPDIR", "TMP", "TEMP",
+            "LANG", "LANGUAGE", "LC_ALL", "TZ");
+
+    private static final Set<String> PROXY_ENV = Set.of("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY");
 
     /**
      * Pip mirror config for desktop (non-Docker) deployments. In Docker these
@@ -83,7 +94,7 @@ public class SkillScriptExecutionService {
      * @return 执行结果
      */
     public ScriptResult execute(Path scriptPath, List<String> args, Map<String, String> envVars) {
-        return executeResolved(scriptPath, args, envVars, DEFAULT_TIMEOUT_SECONDS, false);
+        return executeResolved(scriptPath, args, envVars, DEFAULT_TIMEOUT_SECONDS, true);
     }
 
     /**
@@ -166,9 +177,8 @@ public class SkillScriptExecutionService {
             return ScriptResult.error(-1, "Script not found: " + scriptPath);
         }
 
-        Path stdoutFile = null;
-        Path stderrFile = null;
         Process process = null;
+        BoundedProcessOutput output = null;
 
         try {
             // 构建命令（结构化参数，避免 shell 注入）
@@ -212,21 +222,13 @@ public class SkillScriptExecutionService {
                 command.addAll(args);
             }
 
-            // 重定向到临时文件，使 waitFor(timeout) 不被管道阻塞
-            stdoutFile = Files.createTempFile("mc_script_out_", ".tmp");
-            stderrFile = Files.createTempFile("mc_script_err_", ".tmp");
-
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.directory(scriptPath.getParent().toFile());
-            pb.redirectOutput(stdoutFile.toFile());
-            pb.redirectError(stderrFile.toFile());
-            // Strip secrets from the inherited environment before injecting the
-            // caller's own env. Used for LLM-authored inline code so it never
-            // sees the server's API keys / tokens via process inheritance.
+            // A skill is extension code, not part of the trusted server process.
+            // Keep only the small interpreter/runtime allow-list, then inject
+            // that skill's explicitly configured secrets below.
             if (scrubSensitiveEnv) {
-                pb.environment().keySet().removeIf(key ->
-                        key.contains("KEY") || key.contains("SECRET") || key.contains("TOKEN")
-                                || key.contains("PASSWORD") || key.contains("CREDENTIAL"));
+                retainSafeInheritedEnvironment(pb.environment());
             }
             // Inject per-skill secrets / settings as env vars.
             // pb.environment() inherits the parent process env; putAll
@@ -244,20 +246,26 @@ public class SkillScriptExecutionService {
             injectPipMirrorEnv(pb);
 
             process = pb.start();
+            output = BoundedProcessOutput.start(process, MAX_OUTPUT_BYTES);
 
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+            if (!finished && !output.exceeded()) ProcessTreeTerminator.kill(process);
+            output.await();
+            if (output.exceeded()) {
+                return ScriptResult.error(-1,
+                        "Process output exceeded " + MAX_OUTPUT_BYTES + " bytes");
+            }
             if (!finished) {
-                killProcess(process);
-                String stdout = readFileTruncated(stdoutFile, MAX_OUTPUT_BYTES);
-                String stderr = readFileTruncated(stderrFile, MAX_OUTPUT_BYTES);
+                String stdout = output.stdout();
+                String stderr = output.stderr();
                 String timeoutMsg = "[timeout after " + timeoutSeconds + "s]";
                 stderr = stderr.isEmpty() ? timeoutMsg : stderr + "\n" + timeoutMsg;
                 return new ScriptResult(-1, stdout, stderr);
             }
 
             int exitCode = process.exitValue();
-            String stdout = readFileTruncated(stdoutFile, MAX_OUTPUT_BYTES);
-            String stderr = readFileTruncated(stderrFile, MAX_OUTPUT_BYTES);
+            String stdout = output.stdout();
+            String stderr = output.stderr();
             return new ScriptResult(exitCode, stdout, stderr);
 
         } catch (InterruptedException e) {
@@ -265,7 +273,7 @@ public class SkillScriptExecutionService {
             // Without this, cancelling the outer chat stream leaves skill
             // scripts running until their normal timeout.
             if (process != null && process.isAlive()) {
-                killProcess(process);
+                ProcessTreeTerminator.kill(process);
             }
             Thread.currentThread().interrupt();
             log.info("Skill script interrupted by conversation cancellation: {}", scriptPath);
@@ -274,28 +282,7 @@ public class SkillScriptExecutionService {
             log.error("Failed to execute script {}: {}", scriptPath, e.getMessage());
             return ScriptResult.error(-1, "Execution error: " + e.getMessage());
         } finally {
-            deleteQuietly(stdoutFile);
-            deleteQuietly(stderrFile);
-        }
-    }
-
-    private static void killProcess(Process process) {
-        if (IS_WINDOWS) {
-            try {
-                new ProcessBuilder("taskkill", "/F", "/T", "/PID", String.valueOf(process.pid()))
-                        .redirectErrorStream(true)
-                        .start()
-                        .waitFor(10, TimeUnit.SECONDS);
-            } catch (Exception e) {
-                process.destroyForcibly();
-            }
-        } else {
-            process.destroyForcibly();
-        }
-        try {
-            process.waitFor(5, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            if (output != null) output.close();
         }
     }
 
@@ -304,8 +291,10 @@ public class SkillScriptExecutionService {
      *
      * <p>Three layers, later ones only fill gaps left by earlier ones:
      * <ol>
-     *   <li>Docker / system env — {@code PIP_INDEX_URL} / {@code PIP_TRUSTED_HOST}
-     *       already in the ProcessBuilder env (inherited from JVM). Nothing to do.</li>
+     *   <li>Explicit caller env — {@code PIP_INDEX_URL} / {@code PIP_TRUSTED_HOST}
+     *       may be supplied as a skill-scoped value. Host environment values
+     *       are scrubbed before this method runs so embedded credentials do not
+     *       leak into LLM-authored code.</li>
      *   <li>Spring config fallback — for desktop (non-Docker) deployments where
      *       the host may not have those env vars. Injected only when absent.</li>
      *   <li>Auto-derive {@code PIP_TRUSTED_HOST} — if the index URL is plain
@@ -338,24 +327,39 @@ public class SkillScriptExecutionService {
         }
     }
 
-    private static String readFileTruncated(Path file, int maxBytes) {
-        try {
-            if (file == null || !Files.exists(file)) return "";
-            long size = Files.size(file);
-            if (size == 0) return "";
-
-            boolean truncated = size > maxBytes;
-            try (InputStream is = Files.newInputStream(file)) {
-                byte[] data = is.readNBytes(maxBytes);
-                String content = new String(data, StandardCharsets.UTF_8);
-                if (truncated) {
-                    content += "\n... [输出已截断，超过 " + maxBytes + " 字节限制]";
-                }
-                return content;
+    static void retainSafeInheritedEnvironment(Map<String, String> environment) {
+        if (environment == null) return;
+        Map<String, String> inheritedProxies = new java.util.HashMap<>();
+        for (String key : PROXY_ENV) {
+            String value = environment.get(key);
+            if ("NO_PROXY".equals(key) ? isSafeNoProxy(value) : isUnauthenticatedProxy(value)) {
+                inheritedProxies.put(key, value);
             }
-        } catch (IOException e) {
-            return "[读取输出失败: " + e.getMessage() + "]";
         }
+        environment.keySet().removeIf(key -> !SAFE_INHERITED_ENV.contains(key));
+        // Keep connectivity through an operator's proxy only when its URL has
+        // no user-info credentials. Skill-provided envVars are applied later
+        // and may explicitly opt into an authenticated proxy.
+        environment.putAll(inheritedProxies);
+    }
+
+    static boolean isUnauthenticatedProxy(String value) {
+        if (value == null || value.isBlank() || value.contains("@")) return false;
+        try {
+            URI uri = URI.create(value.trim());
+            String scheme = uri.getScheme();
+            return uri.getHost() != null
+                    && ("http".equalsIgnoreCase(scheme)
+                    || "https".equalsIgnoreCase(scheme)
+                    || "socks".equalsIgnoreCase(scheme)
+                    || "socks5".equalsIgnoreCase(scheme));
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private static boolean isSafeNoProxy(String value) {
+        return value != null && !value.isBlank() && value.length() <= 4096 && !value.contains("@");
     }
 
     private static void deleteQuietly(Path file) {

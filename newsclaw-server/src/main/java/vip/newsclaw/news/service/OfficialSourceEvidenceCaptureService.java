@@ -40,6 +40,7 @@ public class OfficialSourceEvidenceCaptureService {
     private final ObjectMapper objectMapper;
     private final AiNewsSourceRegistry sourceRegistry;
     private final AiNewsCaptureAttemptService captureAttemptService;
+    private final AiNewsSourceDocumentParser documentParser;
 
     @Autowired
     public OfficialSourceEvidenceCaptureService(OfficialSourceHttpFetcher httpFetcher,
@@ -47,13 +48,26 @@ public class OfficialSourceEvidenceCaptureService {
                                                 AiNewsEventService eventService,
                                                 ObjectMapper objectMapper,
                                                 AiNewsSourceRegistry sourceRegistry,
-                                                AiNewsCaptureAttemptService captureAttemptService) {
+                                                AiNewsCaptureAttemptService captureAttemptService,
+                                                AiNewsSourceDocumentParser documentParser) {
         this.httpFetcher = httpFetcher;
         this.properties = properties;
         this.eventService = eventService;
         this.objectMapper = objectMapper;
         this.sourceRegistry = sourceRegistry;
         this.captureAttemptService = captureAttemptService;
+        this.documentParser = documentParser;
+    }
+
+    /** Compatibility constructor retained for focused service tests/extensions. */
+    public OfficialSourceEvidenceCaptureService(OfficialSourceHttpFetcher httpFetcher,
+                                                AiNewsOfficialCaptureProperties properties,
+                                                AiNewsEventService eventService,
+                                                ObjectMapper objectMapper,
+                                                AiNewsSourceRegistry sourceRegistry,
+                                                AiNewsCaptureAttemptService captureAttemptService) {
+        this(httpFetcher, properties, eventService, objectMapper, sourceRegistry,
+                captureAttemptService, new AiNewsSourceDocumentParser(objectMapper));
     }
 
     /** Narrow constructor retained for transport-boundary unit tests. */
@@ -62,7 +76,7 @@ public class OfficialSourceEvidenceCaptureService {
                                                 AiNewsEventService eventService,
                                                 ObjectMapper objectMapper) {
         this(httpFetcher, properties, eventService, objectMapper,
-                new AiNewsSourceRegistry(), null);
+                new AiNewsSourceRegistry(), null, new AiNewsSourceDocumentParser(objectMapper));
     }
 
     public AiNewsEvidenceEntity capture(Long workspaceId, Long eventId, String sourceUrl, String claim) {
@@ -90,15 +104,18 @@ public class OfficialSourceEvidenceCaptureService {
                         "重定向目标不在官方来源注册表中", fetched.httpStatus(), fetched.redirectChain());
                 throw new NewsClawException(409, "重定向目标不是受信任的官方来源");
             }
+            AiNewsSourceDocumentParser.ParsedDocument parsed = documentParser.parse(
+                    fetched.body(), fetched.contentType(), fetched.finalUrl());
             if (fetched.body() == null || fetched.body().isBlank()
-                    || text(fetched.body()).isBlank()) {
+                    || parsed.text() == null || parsed.text().isBlank()) {
                 record(event, sourceUrl, fetched.finalUrl(), AiNewsCaptureStatus.EMPTY_CONTENT,
                         "官方页面响应成功，但未提取到可核验正文", fetched.httpStatus(), fetched.redirectChain());
                 throw new NewsClawException(409, "官方来源页面为空，不能作为核验证据");
             }
-            String title = extractTitle(fetched.body());
-            String quote = extractExcerpt(fetched.body());
-            AiNewsEvidenceRequest request = new AiNewsEvidenceRequest(sourceUrl.trim(), title, null,
+            String title = trim(parsed.title(), 512);
+            String quote = trim(parsed.text(), 1_200);
+            AiNewsEvidenceRequest request = new AiNewsEvidenceRequest(sourceUrl.trim(), title,
+                    parsed.publishedAtUtc(),
                     "official", claim.trim(), quote, 0.8D);
             AiNewsEvidenceCaptureTrace trace = new AiNewsEvidenceCaptureTrace(fetched.finalUrl(),
                     fetched.fetchedAt() == null ? LocalDateTime.now() : fetched.fetchedAt(),

@@ -74,6 +74,7 @@ public class KbOpenResearchController {
             @PathVariable Long kbId,
             @RequestBody ResearchRequest req,
             HttpServletRequest request) {
+        if (req == null) throw new NewsClawException(400, "request body is required");
         KbApiKeyContext ctx = requireContext(request);
         String topic = req.topic();
         if (topic == null || topic.isBlank()) {

@@ -7,6 +7,8 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 import vip.newsclaw.team.model.AgentTeamEntity;
 import vip.newsclaw.team.model.TeamTaskCommentEntity;
@@ -19,8 +21,9 @@ import vip.newsclaw.team.model.TeamTaskEventEntity;
 import vip.newsclaw.team.repository.TeamTaskCommentMapper;
 import vip.newsclaw.team.repository.TeamTaskEventMapper;
 import vip.newsclaw.team.repository.TeamTaskMapper;
+import vip.newsclaw.team.repository.AgentTeamMemberMapper;
+import vip.newsclaw.tool.document.GeneratedFileCache;
 
-import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -67,6 +70,16 @@ public class TeamTaskService {
     private final TeamService teamService;
     private final TeamRunProjectionScheduler projectionScheduler;
     private final TeamRunService runService;
+
+    /** Optional only for narrow constructor tests; present in production. */
+    @Autowired(required = false)
+    private AgentTeamMemberMapper memberMapper;
+
+    @Autowired(required = false)
+    private GeneratedFileCache generatedFileCache;
+
+    @Value("${newsclaw.security.production-mode:false}")
+    private boolean productionSecurity;
 
     // ==================== creation ====================
 
@@ -158,7 +171,16 @@ public class TeamTaskService {
      * Atomically claim a pending, unowned task. Exactly one caller wins; losers
      * get false. The WHERE clause is the mutex.
      */
+    @Transactional
     public boolean claimTask(Long taskId, Long agentId) {
+        // The optional membership mapper is absent in narrow unit-test
+        // constructors.  Production beans keep the membership lock/check;
+        // the task UPDATE itself remains the authoritative CAS for both
+        // paths, so no post-mutation read is needed.
+        if (memberMapper != null) {
+            TeamTaskEntity current = taskMapper.selectById(taskId);
+            if (current == null || !lockMember(current.getTeamId(), agentId)) return false;
+        }
         boolean claimed = taskMapper.update(null, Wrappers.<TeamTaskEntity>lambdaUpdate()
                 .eq(TeamTaskEntity::getId, taskId)
                 .eq(TeamTaskEntity::getStatus, TeamTaskStatus.PENDING)
@@ -176,7 +198,12 @@ public class TeamTaskService {
      * Assign a pending task to an agent (dispatch / admin path). Unlike claim,
      * this overrides a previously set owner but still requires pending status.
      */
+    @Transactional
     public boolean assignTask(Long taskId, Long agentId) {
+        if (memberMapper != null) {
+            TeamTaskEntity current = taskMapper.selectById(taskId);
+            if (current == null || !lockMember(current.getTeamId(), agentId)) return false;
+        }
         boolean assigned = taskMapper.update(null, Wrappers.<TeamTaskEntity>lambdaUpdate()
                 .eq(TeamTaskEntity::getId, taskId)
                 .eq(TeamTaskEntity::getStatus, TeamTaskStatus.PENDING)
@@ -188,6 +215,13 @@ public class TeamTaskService {
             projectTask(taskId);
         }
         return assigned;
+    }
+
+    private boolean lockMember(Long teamId, Long agentId) {
+        // Constructor-only unit tests predate the mapper; their single-threaded
+        // path keeps working. Production always has the mapper and therefore a
+        // real cross-node row lock for member+task claim atomicity.
+        return memberMapper == null || memberMapper.lockMember(teamId, agentId) != null;
     }
 
     /** Record the member conversation executing the task. */
@@ -510,6 +544,31 @@ public class TeamTaskService {
                 .orderByAsc(TeamTaskEventEntity::getId));
     }
 
+    public boolean hasEvent(Long taskId, String eventType) {
+        return taskId != null && eventType != null
+                && eventMapper.selectCount(Wrappers.<TeamTaskEventEntity>lambdaQuery()
+                .eq(TeamTaskEventEntity::getTaskId, taskId)
+                .eq(TeamTaskEventEntity::getEventType, eventType)) > 0;
+    }
+
+    /** Durable recovery source for announcement work lost on JVM restart. */
+    public List<TeamTaskEntity> findUnannouncedSettledTasks(int limit) {
+        int capped = Math.max(1, Math.min(limit, 100));
+        List<TeamTaskEntity> recent = taskMapper.selectList(
+                Wrappers.<TeamTaskEntity>lambdaQuery()
+                        .in(TeamTaskEntity::getStatus,
+                                TeamTaskStatus.COMPLETED, TeamTaskStatus.FAILED,
+                                TeamTaskStatus.CANCELLED, TeamTaskStatus.IN_REVIEW)
+                        .isNotNull(TeamTaskEntity::getLeadConversationId)
+                        .ge(TeamTaskEntity::getUpdateTime, LocalDateTime.now().minusDays(1))
+                        .orderByAsc(TeamTaskEntity::getUpdateTime)
+                        .last("LIMIT " + capped));
+        return recent.stream()
+                .filter(task -> !hasEvent(task.getId(), TeamTaskEventEntity.ANNOUNCED))
+                .filter(task -> !hasEvent(task.getId(), TeamTaskEventEntity.ANNOUNCE_FAILED))
+                .toList();
+    }
+
     // ==================== deliverables ====================
 
     /** Maximum deliverables per task; the board is a summary surface, not a file store. */
@@ -517,6 +576,9 @@ public class TeamTaskService {
 
     /** Download-path prefix of the generated-file cache — the only accepted deliverable URL form. */
     static final String GENERATED_FILE_PATH = "/api/v1/files/generated/";
+    private static final Pattern GENERATED_FILE_URL = Pattern.compile(
+            "^(?:https?://[^/\\s]+)?" + Pattern.quote(GENERATED_FILE_PATH)
+                    + "([a-zA-Z0-9-]{1,64})(?:[?#].*)?$", Pattern.CASE_INSENSITIVE);
 
     /** A produced-file reference surfaced on the task card. */
     public record Deliverable(String name, String url, String time) {
@@ -550,6 +612,24 @@ public class TeamTaskService {
         if (!isGeneratedFileUrl(trimmedUrl)) {
             throw new IllegalArgumentException("url must be a " + GENERATED_FILE_PATH
                     + " download link produced by a render tool; external links are not accepted");
+        }
+        if (productionSecurity && generatedFileCache == null) {
+            throw new IllegalStateException("generated-file cache is required for production deliverables");
+        }
+        if (generatedFileCache != null) {
+            Matcher generated = GENERATED_FILE_URL.matcher(trimmedUrl);
+            if (!generated.matches()) {
+                throw new IllegalArgumentException("deliverable URL must contain a server-issued file id");
+            }
+            AgentTeamEntity team = teamService.getTeam(task.getTeamId());
+            if (team == null || team.getWorkspaceId() == null) {
+                throw new IllegalArgumentException("deliverable task has no workspace-owned team");
+            }
+            var entry = generatedFileCache.getForWorkspace(generated.group(1), team.getWorkspaceId()).orElse(null);
+            if (entry == null || entry.workspaceId() == null
+                    || entry.bytes() == null || entry.bytes().length == 0) {
+                throw new IllegalArgumentException("deliverable file is missing or expired");
+            }
         }
 
         JSONObject metadata = task.getMetadata() == null || task.getMetadata().isBlank()
@@ -590,7 +670,9 @@ public class TeamTaskService {
             List<Deliverable> result = new ArrayList<>();
             for (Object entry : arr) {
                 JSONObject obj = (JSONObject) entry;
-                result.add(new Deliverable(obj.getStr("name"), obj.getStr("url"), obj.getStr("time")));
+                String url = obj.getStr("url");
+                if (generatedFileCache != null && !isLiveDeliverable(task, url)) continue;
+                result.add(new Deliverable(obj.getStr("name"), url, obj.getStr("time")));
             }
             return result;
         } catch (Exception e) {
@@ -598,20 +680,18 @@ public class TeamTaskService {
         }
     }
 
+    private boolean isLiveDeliverable(TeamTaskEntity task, String url) {
+        if (task == null || url == null) return false;
+        Matcher matcher = GENERATED_FILE_URL.matcher(url.trim());
+        if (!matcher.matches()) return false;
+        AgentTeamEntity team = teamService.getTeam(task.getTeamId());
+        return team != null && team.getWorkspaceId() != null
+                && generatedFileCache.getForWorkspace(matcher.group(1), team.getWorkspaceId()).isPresent();
+    }
+
     /** Accept the cache's relative download path, or an absolute URL whose path is one. */
     private static boolean isGeneratedFileUrl(String url) {
-        if (url.startsWith(GENERATED_FILE_PATH)) {
-            return true;
-        }
-        if (url.startsWith("http://") || url.startsWith("https://")) {
-            try {
-                String path = URI.create(url).getPath();
-                return path != null && path.startsWith(GENERATED_FILE_PATH);
-            } catch (Exception e) {
-                return false;
-            }
-        }
-        return false;
+        return url != null && GENERATED_FILE_URL.matcher(url.trim()).matches();
     }
 
     // ==================== dispatch support ====================
@@ -677,22 +757,36 @@ public class TeamTaskService {
                 .eq(TeamTaskEntity::getStatus, TeamTaskStatus.IN_PROGRESS)
                 .isNotNull(TeamTaskEntity::getLockExpiresAt)
                 .lt(TeamTaskEntity::getLockExpiresAt, LocalDateTime.now()));
+        List<TeamTaskEntity> recovered = new ArrayList<>();
         for (TeamTaskEntity task : expired) {
+            int attempts = task.getDispatchCount() == null ? 0 : task.getDispatchCount();
+            if (attempts >= MAX_DISPATCHES) {
+                failTask(task.getId(), "execution lease expired after " + attempts + " dispatches");
+                continue;
+            }
             int rows = taskMapper.update(null, Wrappers.<TeamTaskEntity>lambdaUpdate()
                     .eq(TeamTaskEntity::getId, task.getId())
                     .eq(TeamTaskEntity::getStatus, TeamTaskStatus.IN_PROGRESS)
-                    .set(TeamTaskEntity::getStatus, TeamTaskStatus.STALE)
-                    .set(TeamTaskEntity::getReason, "execution lease expired"));
+                    .lt(TeamTaskEntity::getLockExpiresAt, LocalDateTime.now())
+                    .set(TeamTaskEntity::getStatus, TeamTaskStatus.PENDING)
+                    .set(TeamTaskEntity::getOwnerAgentId, null)
+                    .set(TeamTaskEntity::getConversationId, null)
+                    .set(TeamTaskEntity::getLockExpiresAt, null)
+                    .set(TeamTaskEntity::getReason, "execution lease expired; automatically requeued"));
             if (rows == 1) {
                 recordEvent(task.getTeamId(), task.getId(), TeamTaskEventEntity.STALE,
                         AUTHOR_SYSTEM, null, "execution lease expired");
+                recordEvent(task.getTeamId(), task.getId(), TeamTaskEventEntity.RETRIED,
+                        AUTHOR_SYSTEM, null, "automatic stale recovery");
                 projectTask(task);
+                task.setStatus(TeamTaskStatus.PENDING);
+                recovered.add(task);
             }
         }
         if (!expired.isEmpty()) {
-            log.warn("Marked {} team task(s) stale after lease expiry", expired.size());
+            log.warn("Recovered {} of {} expired team task lease(s)", recovered.size(), expired.size());
         }
-        return expired;
+        return recovered;
     }
 
     // ==================== queries ====================

@@ -43,20 +43,126 @@ NEWSCLAW_SEARCH_ENABLED=true
 NEWSCLAW_SEARCH_FALLBACK_ENABLED=true
 NEWSCLAW_SEARCH_PROVIDER=serper
 SERPER_API_KEY=
+TAVILY_API_KEYS=
 TAVILY_API_KEY=
 SEARXNG_BASE_URL=http://newsclaw-searxng:8080
 NEWSCLAW_AI_NEWS_RSS_FEEDS=
+NEWSCLAW_AI_NEWS_SITEMAPS=
+NEWSCLAW_AI_NEWS_SOURCE_ENDPOINT_IDS=
 NEWSCLAW_AI_NEWS_SEARXNG_BASE_URL=
 NEWSCLAW_AI_NEWS_SEARXNG_ALLOW_PRIVATE_ENDPOINT=true
 
+NEWSCLAW_AI_NEWS_INGESTION_ENABLED=true
+NEWSCLAW_AI_NEWS_INGESTION_SCAN_INTERVAL_MS=60000
+NEWSCLAW_AI_NEWS_INGESTION_INITIAL_DELAY_MS=15000
+NEWSCLAW_AI_NEWS_INGESTION_ON_DEMAND_REFRESH_IF_EMPTY=false
+NEWSCLAW_AI_NEWS_INGESTION_MAX_POLLS_PER_CYCLE=50
+NEWSCLAW_AI_NEWS_INGESTION_STALE_RUN_MINUTES=30
+NEWSCLAW_AI_NEWS_INGESTION_CANDIDATE_LOOKBACK_DAYS=31
+
+# V213 shadow 候选流水线；扫描和外部正文抓取分别显式开启。
+NEWSCLAW_AI_NEWS_CANDIDATE_PIPELINE_ENABLED=false
+NEWSCLAW_AI_NEWS_CANDIDATE_CAPTURE_ENABLED=false
+NEWSCLAW_AI_NEWS_CANDIDATE_SCAN_INTERVAL_MS=900000
+NEWSCLAW_AI_NEWS_CANDIDATE_CAPTURE_INTERVAL_MS=60000
+NEWSCLAW_AI_NEWS_CANDIDATE_LOOKBACK_HOURS=24
+NEWSCLAW_AI_NEWS_CANDIDATE_MAX_CANDIDATES=30
+NEWSCLAW_AI_NEWS_CANDIDATE_MAX_CAPTURES_PER_SCAN=10
+NEWSCLAW_AI_NEWS_CANDIDATE_MAX_CAPTURE_ATTEMPTS=3
+NEWSCLAW_AI_NEWS_CANDIDATE_CAPTURE_RETRY_MINUTES=15
+NEWSCLAW_AI_NEWS_CANDIDATE_STALE_CAPTURE_MINUTES=30
+NEWSCLAW_AI_NEWS_CANDIDATE_CONFIG_VERSION=candidate-pipeline-v2-bocha
+# 博查 Web Search 使用独立密钥，不复用模型或视频生成凭证。
+NEWSCLAW_AI_NEWS_CHINA_SEARCH_ENABLED=false
+NEWSCLAW_AI_NEWS_CHINA_SEARCH_API_KEY=
+NEWSCLAW_AI_NEWS_CHINA_SEARCH_BASE_URL=https://api.bochaai.com/v1/web-search
+NEWSCLAW_AI_NEWS_CHINA_SEARCH_COUNT=20
+NEWSCLAW_AI_NEWS_CHINA_SEARCH_TIMEOUT_SECONDS=15
+
+NEWSCLAW_AI_NEWS_DISCOVERY_MAX_CANDIDATES_PER_HOST=4
+NEWSCLAW_AI_NEWS_DISCOVERY_MAX_CANDIDATES_PER_STORY=2
+NEWSCLAW_AI_NEWS_DISCOVERY_CURRENT_OPEN_WEB_PERCENT=20
+NEWSCLAW_AI_NEWS_DISCOVERY_MAX_UNKNOWN_PERCENT=0
+NEWSCLAW_AI_NEWS_DISCOVERY_UNKNOWN_OFFICIAL_PERCENT=20
+NEWSCLAW_AI_NEWS_DISCOVERY_UNKNOWN_MEDIA_PERCENT=20
+NEWSCLAW_AI_NEWS_DISCOVERY_UNKNOWN_OPEN_WEB_PERCENT=0
+
+NEWSCLAW_OTLP_METRICS_ENABLED=false
+NEWSCLAW_OTLP_METRICS_URL=http://otel-collector:4318/v1/metrics
+NEWSCLAW_OTLP_METRICS_STEP=60s
+
 NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_ENABLED=true
-NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_BYTES=524288
+NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_BYTES=1048576
+NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MIN_TEXT_CHARS=200
 NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_TIMEOUT_SECONDS=15
 NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_REDIRECTS=5
+NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_ATTEMPTS=2
+NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_RETRY_BASE_DELAY_MILLIS=250
+NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_RETRY_MAX_DELAY_MILLIS=5000
+NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_PROXY_URL=
+
+NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_ENABLED=true
+NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_REQUIRED=true
+NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_ENDPOINT=http://newsclaw-content-extractor:8090
+NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_EXPECTED_NAME=trafilatura
+NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_EXPECTED_VERSION=2.2.0
+NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_EXPECTED_CONFIG_HASH=0235b7bf49c3c80ea6a52aee9f413fa2d4e4e1f5196af87278c48e558c7d0400
+NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_TIMEOUT_MILLIS=5000
+NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_REQUEST_BYTES=1048576
+NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_RESPONSE_BYTES=1572864
+NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_OUTPUT_CHARS=1048576
+NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_CONCURRENCY=4
 ~~~
 
 Serper 和 Tavily 是可选搜索增强，未提供 Key 时系统可回退到 Docker 内置的 SearXNG。
+`TAVILY_API_KEYS` 可填写逗号分隔的多个 Key；鉴权、限流或额度错误时会自动切换。
+旧版 `TAVILY_API_KEY` 仍兼容，并在号池变量为空时生效。
 官方证据抓取只允许受限的 GET、重定向检查、字节数和超时，不会自动把事件标为已核验。
+默认最多接收 1 MiB 完整响应，超限会明确失败而不会截断后冒充证据；Trafilatura 正文少于
+`MIN_TEXT_CHARS` 时同样不能成为成功 capture。可选 `PROXY_URL` 只接受无凭证、无路径的 HTTP
+代理，并且只在直连发生 timeout/TLS/I/O 故障后回退；是否走过代理会写入 capture provenance。
+
+`NEWSCLAW_AI_NEWS_RSS_FEEDS` 接受部署方审核过的逗号分隔 RSS/Atom URL，轮询会复用
+发布方提供的 ETag 与 Last-Modified。`NEWSCLAW_AI_NEWS_SITEMAPS` 接受 Google News
+Sitemap 或 sitemap index；没有新闻发布时间元数据的普通 URL 条目会被忽略。已配置的
+feed 和 sitemap 会作为不消耗 Web 搜索额度的结构化通道参与候选融合；标题、摘要和
+发布时间默认都只是排序线索，选中的文章必须继续通过来源抓取。仅当版本化目录把 endpoint
+标为 `evidence_eligible: true`，并把 rights/robots 状态填写为代码允许的已审核值时，发布方
+结构化时间才能在规范 URL、发布者身份、完整响应摘要均一致的条件下补充文章 capture 的时间。
+上线前需逐个审核发布方对聚合、转载和商业使用的许可条款；仅启用 endpoint id 不会自动授予
+证据资格。
+
+`NEWSCLAW_AI_NEWS_SOURCE_ENDPOINT_IDS` 用于启用版本化 `source_catalog.yml` 中的
+endpoint id；内置 endpoint 默认全部关闭，未知 id 会使启动失败。原始 URL 变量继续作为
+兼容入口，由部署方自行负责其来源身份和条款审核。结构化时间证言采用 fail-closed allowlist：
+rights 只接受 `approved/licensed/publisher_authorized/public_metadata`，robots 只接受
+`allowed/not_applicable/publisher_authorized`；多来源精确时间冲突时不选择多数值，而是拒绝准入。
+
+发现层先把可解析发布时间分为窗口内、未知、窗口外；窗口外候选硬拒绝，未知时间候选只占
+`MAX_UNKNOWN_PERCENT` 所定义的 Top-K 探索槽位，并继续要求正文抓取确认。当前但未注册的开放
+Web 候选受 `CURRENT_OPEN_WEB_PERCENT` 限制。单一 host 最多保留
+`MAX_CANDIDATES_PER_HOST` 条；高置信实体/产品/动作签名相同的报道最多保留
+`MAX_CANDIDATES_PER_STORY` 个独立发布方，既避免同一事件挤满抓取队列，也保留交叉核验来源。
+这些比例是精度门禁，不是相关性加分；达到配额后允许返回不足请求 Top-K 的结果。
+未注册且时间未知的开放 Web lane 默认关闭；只有部署方明确接受更高陈旧率并安排逐条抓取复核时，
+才应把 `UNKNOWN_OPEN_WEB_PERCENT` 调到大于 0。
+
+启用 ingestion 后，RSS/Atom 与 News Sitemap 由集群单例调度器按 endpoint 独立轮询，
+ETag/Last-Modified、每次 run、HTTP observation、item identity 和语义版本都会进入持久化
+账本。数据库条件租约避免调度线程与请求线程重复领取同一 endpoint。发现请求只读取最新
+持久化版本；`ON_DEMAND_REFRESH_IF_EMPTY` 默认关闭，只有明确接受请求延迟依赖发布方时才
+应开启。`MAX_POLLS_PER_CYCLE`、stale run 和候选回看窗口均有后端硬上限。
+摄取 run、耗时、item outcome、HTTP 状态族和接收字节使用低基数 Micrometer 指标；设置
+`NEWSCLAW_OTLP_METRICS_ENABLED=true` 后由 Spring Boot 官方 OTLP registry 上报到指定
+OpenTelemetry Collector。默认关闭 exporter，且 metric label 不包含 endpoint id、URL 或正文。
+
+Compose 默认运行固定版本的 Trafilatura 正文抽取容器，并令来源证据 capture 在抽取器不可用、
+拒绝输入或返回未知版本时 fail-closed。Java 服务仍是唯一 URL 抓取方；抽取容器只接收已经过
+SSRF、重定向、大小和超时检查的 HTML，不会自行访问 `sourceUrl`。每份成功 capture 都保存
+extractor 名称、版本、配置 SHA-256、fallback 标记和正文 SHA-256。单独运行 JAR 时默认关闭
+主抽取器；部署方应运行同协议 sidecar 后显式启用，或接受带明确 provenance 的兼容 fallback。
+生产服务只接受与三个 `EXPECTED_*` 值完全一致的 provenance，升级实现或配置必须显式改值并
+重跑评测。生产环境不建议把 `REQUIRED` 设为 `false`，否则正文可能退回整页文本近似路径。
 
 AI 动态来源 SPI 可选配置 RSS 列表或独立的 SearXNG endpoint。`SEARXNG_BASE_URL`
 会作为新闻来源 adapter 的默认值；`NEWSCLAW_AI_NEWS_SEARXNG_BASE_URL` 可覆盖它。
@@ -70,6 +176,8 @@ AI 动态来源 SPI 可选配置 RSS 列表或独立的 SearXNG endpoint。`SEAR
 FEISHU_APP_ID=
 FEISHU_APP_SECRET=
 FEISHU_CONNECTION_MODE=websocket
+# 每日雷达还要求 NEWSCLAW_AI_NEWS_CANDIDATE_PIPELINE_ENABLED=true；否则旧兼容
+# ai_news_event 仅可手动调用，不会被定时任务静默使用。
 NEWSCLAW_AI_NEWS_RADAR_ENABLED=true
 ~~~
 

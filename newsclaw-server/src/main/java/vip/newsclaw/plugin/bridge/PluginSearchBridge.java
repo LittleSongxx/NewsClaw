@@ -90,7 +90,10 @@ public class PluginSearchBridge implements SearchProvider {
                 searchQuery.query(),
                 searchQuery.freshness(),
                 searchQuery.language(),
-                searchQuery.resolvedCount()
+                // Plugin API v1 promises 1-10. Core providers may request up
+                // to 20 for bounded vertical retrieval, but that must not
+                // silently widen the stable plugin contract.
+                Math.min(10, searchQuery.resolvedCount())
         );
         List<PluginSearchResult> pluginResults = delegate.search(pluginQuery);
         if (pluginResults == null) {

@@ -1,0 +1,201 @@
+{
+  "schemaVersion": "1.0",
+  "datasetId": "ai-news-discovery-scorer-contract",
+  "datasetVersion": "1",
+  "evaluationScope": "synthetic-scorer-contract-only",
+  "window": {
+    "startAt": "2026-08-01T00:00:00Z",
+    "endAt": "2026-08-03T00:00:00Z",
+    "observationEndAt": "2026-08-04T00:00:00Z"
+  },
+  "config": {
+    "freshnessCutoffsMinutes": [30, 120, 1440],
+    "rankingCutoffs": [2, 3],
+    "latencyStepMinutes": 360,
+    "rankingLookbackMinutes": 1440,
+    "earlyDetectionToleranceMinutes": 0
+  },
+  "executionMetadata": {
+    "fixtureClass": "scorer-contract",
+    "labels": "synthetic",
+    "clusterUniverseItemCount": "6"
+  },
+  "goldEvents": [
+    {
+      "eventId": "gold-1",
+      "title": "Major model release",
+      "firstPublishedAt": "2026-08-01T00:00:00Z",
+      "importance": 3,
+      "slices": {"category": "model-release", "language": "en"}
+    },
+    {
+      "eventId": "gold-2",
+      "title": "Research result",
+      "firstPublishedAt": "2026-08-01T01:00:00Z",
+      "importance": 2,
+      "slices": {"category": "research", "language": "en"}
+    },
+    {
+      "eventId": "gold-3",
+      "title": "AI policy update",
+      "firstPublishedAt": "2026-08-02T00:00:00Z",
+      "importance": 1,
+      "slices": {"category": "policy", "language": "zh"}
+    },
+    {
+      "eventId": "gold-4",
+      "title": "Second major model release",
+      "firstPublishedAt": "2026-08-02T12:00:00Z",
+      "importance": 3,
+      "slices": {"category": "model-release", "language": "en"}
+    }
+  ],
+  "systemEvents": [
+    {
+      "systemEventId": "system-1",
+      "title": "Major model release found",
+      "detectedAt": "2026-08-01T00:20:00Z",
+      "matchedGoldEventId": "gold-1",
+      "adjudicationReason": null,
+      "claims": [
+        {"claimId": "claim-1", "text": "The model was released.", "verifiable": true, "jointlySupported": true}
+      ],
+      "evidence": [
+        {
+          "evidenceId": "evidence-1",
+          "sourceUrl": "https://official.example/model",
+          "sourceTitle": "Model release",
+          "sourcePublishedAt": "2026-08-01T00:00:00Z",
+          "publishedAtCorrect": true,
+          "predictedSourceTier": "official",
+          "adjudicatedSourceTier": "official",
+          "fetchSucceeded": true,
+          "relations": [{"claimId": "claim-1", "adjudicatedRelation": "entails"}]
+        }
+      ]
+    },
+    {
+      "systemEventId": "system-2",
+      "title": "Research result found",
+      "detectedAt": "2026-08-01T01:30:00Z",
+      "matchedGoldEventId": "gold-2",
+      "adjudicationReason": null,
+      "claims": [
+        {"claimId": "claim-2", "text": "The result beats every baseline.", "verifiable": true, "jointlySupported": false}
+      ],
+      "evidence": [
+        {
+          "evidenceId": "evidence-2",
+          "sourceUrl": "https://media.example/research",
+          "sourceTitle": "Research coverage",
+          "sourcePublishedAt": "2026-08-01T01:00:00Z",
+          "publishedAtCorrect": true,
+          "predictedSourceTier": "official",
+          "adjudicatedSourceTier": "media",
+          "fetchSucceeded": true,
+          "relations": [{"claimId": "claim-2", "adjudicatedRelation": "partial"}]
+        }
+      ]
+    },
+    {
+      "systemEventId": "system-3",
+      "title": "Duplicate model release card",
+      "detectedAt": "2026-08-01T02:00:00Z",
+      "matchedGoldEventId": "gold-1",
+      "adjudicationReason": null,
+      "claims": [],
+      "evidence": [
+        {
+          "evidenceId": "evidence-3",
+          "sourceUrl": "https://community.example/model-post",
+          "sourceTitle": "Community repost",
+          "sourcePublishedAt": null,
+          "publishedAtCorrect": false,
+          "predictedSourceTier": "community",
+          "adjudicatedSourceTier": "community",
+          "fetchSucceeded": false,
+          "relations": []
+        }
+      ]
+    },
+    {
+      "systemEventId": "system-4",
+      "title": "Unrelated technology promotion",
+      "detectedAt": "2026-08-01T03:00:00Z",
+      "matchedGoldEventId": null,
+      "adjudicatedRelevant": false,
+      "adjudicationReason": "off-topic promotion",
+      "claims": [
+        {"claimId": "claim-4", "text": "The promotion is an AI news event.", "verifiable": true, "jointlySupported": false}
+      ],
+      "evidence": [
+        {
+          "evidenceId": "evidence-4",
+          "sourceUrl": "not-a-url",
+          "sourceTitle": "Promotion",
+          "sourcePublishedAt": null,
+          "publishedAtCorrect": false,
+          "predictedSourceTier": "media",
+          "adjudicatedSourceTier": "media",
+          "fetchSucceeded": false,
+          "relations": [{"claimId": "claim-4", "adjudicatedRelation": "unrelated"}]
+        }
+      ]
+    },
+    {
+      "systemEventId": "system-5",
+      "title": "Second model release found",
+      "detectedAt": "2026-08-02T14:00:00Z",
+      "matchedGoldEventId": "gold-4",
+      "adjudicationReason": null,
+      "claims": [
+        {"claimId": "claim-5", "text": "A second model was released.", "verifiable": true, "jointlySupported": true}
+      ],
+      "evidence": [
+        {
+          "evidenceId": "evidence-5",
+          "sourceUrl": "https://official.example/second-model",
+          "sourceTitle": "Second model release",
+          "sourcePublishedAt": "2026-08-02T12:00:00Z",
+          "publishedAtCorrect": true,
+          "predictedSourceTier": "official",
+          "adjudicatedSourceTier": "official",
+          "fetchSucceeded": true,
+          "relations": [{"claimId": "claim-5", "adjudicatedRelation": "entails"}]
+        }
+      ]
+    },
+    {
+      "systemEventId": "system-6",
+      "title": "Policy update found late",
+      "detectedAt": "2026-08-03T12:00:00Z",
+      "matchedGoldEventId": "gold-3",
+      "adjudicationReason": null,
+      "claims": [],
+      "evidence": []
+    }
+  ],
+  "clusterAssignments": [
+    {"itemId": "system-1", "goldClusterId": "gold-1", "predictedClusterId": "predicted-1"},
+    {"itemId": "system-2", "goldClusterId": "gold-1", "predictedClusterId": "predicted-1"},
+    {"itemId": "system-3", "goldClusterId": "gold-2", "predictedClusterId": "predicted-2"},
+    {"itemId": "system-4", "goldClusterId": "gold-2", "predictedClusterId": "predicted-3"},
+    {"itemId": "system-5", "goldClusterId": "gold-3", "predictedClusterId": "predicted-1"},
+    {"itemId": "system-6", "goldClusterId": "gold-4", "predictedClusterId": "predicted-4"}
+  ],
+  "rankingSnapshots": [
+    {
+      "snapshotId": "snapshot-1",
+      "at": "2026-08-02T00:00:00Z",
+      "rankedSystemEventIds": ["system-2", "system-1", "system-3"]
+    },
+    {
+      "snapshotId": "snapshot-2",
+      "at": "2026-08-02T23:00:00Z",
+      "rankedSystemEventIds": ["system-5", "system-4", "system-2"]
+    }
+  ],
+  "limitations": [
+    "Synthetic fixture for validating scorer arithmetic; never report these values as NewsClaw product quality."
+  ]
+}

@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -51,6 +52,14 @@ import java.util.function.Function;
 @Slf4j
 public class AcpStdioClient implements AutoCloseable {
 
+    /** Keep user prompts from turning a globally configured ACP CLI into an
+     * environment-variable exfiltration primitive. Endpoint env_json is still
+     * applied explicitly after this baseline is scrubbed. */
+    private static final Set<String> SAFE_INHERITED_ENV = Set.of(
+            "PATH", "Path", "PATHEXT", "SYSTEMROOT", "SystemRoot", "COMSPEC", "ComSpec",
+            "HOME", "USERPROFILE", "TMPDIR", "TMP", "TEMP",
+            "LANG", "LANGUAGE", "LC_ALL", "TZ", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY");
+
     /** ACP protocol version we advertise (matches v1 ACP-compatible agents). */
     public static final int PROTOCOL_VERSION = 1;
 
@@ -59,6 +68,8 @@ public class AcpStdioClient implements AutoCloseable {
     private final Writer stdin;
     private final BufferedReader stdout;
     private final Thread readerThread;
+    private final long stdioBufferLimitBytes;
+    private final AtomicLong stdioBytes;
     private final AtomicLong nextRequestId = new AtomicLong(1);
     private final Map<Long, CompletableFuture<JsonNode>> pending = new ConcurrentHashMap<>();
     private volatile boolean closed = false;
@@ -85,12 +96,15 @@ public class AcpStdioClient implements AutoCloseable {
      */
     private volatile Function<JsonNode, JsonNode> requestHandler = msg -> null;
 
-    private AcpStdioClient(ObjectMapper mapper, Process process) {
+    private AcpStdioClient(ObjectMapper mapper, Process process, long stdioBufferLimitBytes,
+                           AtomicLong stdioBytes) {
         this.mapper = mapper;
         this.process = process;
         this.stdin = new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8);
         this.stdout = new BufferedReader(
                 new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+        this.stdioBufferLimitBytes = Math.max(1L, stdioBufferLimitBytes);
+        this.stdioBytes = stdioBytes;
         this.readerThread = new Thread(this::readLoop, "acp-stdio-reader");
         this.readerThread.setDaemon(true);
         this.readerThread.start();
@@ -107,6 +121,16 @@ public class AcpStdioClient implements AutoCloseable {
                                         Map<String, String> envOverrides,
                                         String cwd)
             throws IOException {
+        return spawn(mapper, command, args, envOverrides, cwd, 50L * 1024L * 1024L);
+    }
+
+    public static AcpStdioClient spawn(ObjectMapper mapper,
+                                       String command,
+                                       List<String> args,
+                                       Map<String, String> envOverrides,
+                                       String cwd,
+                                       long stdioBufferLimitBytes)
+            throws IOException {
         if (command == null || command.isBlank()) {
             throw new IllegalArgumentException("ACP command is required");
         }
@@ -115,6 +139,7 @@ public class AcpStdioClient implements AutoCloseable {
         if (args != null) cmdline.addAll(args);
         ProcessBuilder pb = new ProcessBuilder(cmdline);
         Map<String, String> env = pb.environment();
+        env.keySet().removeIf(key -> !SAFE_INHERITED_ENV.contains(key));
         if (envOverrides != null) env.putAll(envOverrides);
         if (cwd != null && !cwd.isBlank()) {
             pb.directory(new java.io.File(cwd));
@@ -125,21 +150,28 @@ public class AcpStdioClient implements AutoCloseable {
         Process proc = pb.start();
         // Drain stderr in the background — many CLIs print diagnostics
         // there (e.g. Zed agents print version on startup).
-        Thread errDrain = new Thread(() -> drainStream(proc.getErrorStream()), "acp-stdio-stderr");
+        AtomicLong stdioBytes = new AtomicLong();
+        Thread errDrain = new Thread(() -> drainStream(
+                proc, proc.getErrorStream(), stdioBytes, stdioBufferLimitBytes), "acp-stdio-stderr");
         errDrain.setDaemon(true);
         errDrain.start();
-        return new AcpStdioClient(mapper, proc);
+        return new AcpStdioClient(mapper, proc, stdioBufferLimitBytes, stdioBytes);
     }
 
-    private static void drainStream(java.io.InputStream in) {
+    private static void drainStream(Process process, java.io.InputStream in,
+                                    AtomicLong consumed, long limit) {
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(in, StandardCharsets.UTF_8))) {
             String line;
-            while ((line = br.readLine()) != null) {
+            while ((line = readLineBounded(br, remainingChars(consumed.get(), limit))) != null) {
+                if (consumed.addAndGet(line.getBytes(StandardCharsets.UTF_8).length + 1L) > limit) {
+                    process.destroyForcibly();
+                    return;
+                }
                 if (log.isDebugEnabled()) log.debug("[acp-stderr] {}", line);
             }
         } catch (IOException ignore) {
-            // Process exited; nothing to do.
+            process.destroyForcibly();
         }
     }
 
@@ -227,7 +259,13 @@ public class AcpStdioClient implements AutoCloseable {
     private void readLoop() {
         try {
             String line;
-            while (!closed && (line = stdout.readLine()) != null) {
+            while (!closed && (line = readLineBounded(
+                    stdout, remainingChars(stdioBytes.get(), stdioBufferLimitBytes))) != null) {
+                long total = stdioBytes.addAndGet(
+                        line.getBytes(StandardCharsets.UTF_8).length + 1L);
+                if (total > stdioBufferLimitBytes) {
+                    throw new IOException("ACP stdio exceeded " + stdioBufferLimitBytes + " bytes");
+                }
                 if (line.isEmpty()) continue;
                 try {
                     JsonNode msg = mapper.readTree(line);
@@ -239,6 +277,7 @@ public class AcpStdioClient implements AutoCloseable {
         } catch (IOException e) {
             if (!closed) {
                 log.debug("ACP stdio reader closed: {}", e.getMessage());
+                process.destroyForcibly();
             }
         } finally {
             // If the process exited mid-await, fail every pending future.
@@ -248,6 +287,25 @@ public class AcpStdioClient implements AutoCloseable {
             }
             pending.clear();
         }
+    }
+
+    private static int remainingChars(long consumed, long limit) throws IOException {
+        long remaining = limit - consumed;
+        if (remaining <= 0) throw new IOException("ACP stdio buffer limit exceeded");
+        return (int) Math.min(remaining, Integer.MAX_VALUE);
+    }
+
+    static String readLineBounded(BufferedReader reader, int maxChars) throws IOException {
+        StringBuilder line = new StringBuilder(Math.min(maxChars, 256));
+        int ch;
+        while ((ch = reader.read()) != -1) {
+            if (ch == '\n') return line.toString();
+            if (ch != '\r') line.append((char) ch);
+            if (line.length() > maxChars) {
+                throw new IOException("ACP stdio line exceeds configured buffer limit");
+            }
+        }
+        return line.isEmpty() ? null : line.toString();
     }
 
     private void routeMessage(JsonNode msg) {

@@ -837,7 +837,8 @@ public class SkillPackageResolver {
 
         Long endpointId = manifest.getAcp().getResolvedEndpointId();
         if (endpointId == null) {
-            endpointId = acpWrapperFactory.resolveEndpointId(manifest.getAcp().getEndpoint());
+            endpointId = acpWrapperFactory.resolveEndpointId(
+                    manifest.getAcp().getEndpoint(), resolved.getWorkspaceId());
             if (endpointId == null) {
                 String slug = manifest.getAcp().getEndpoint();
                 log.warn("Skill '{}' type=acp but endpoint '{}' did not resolve",
@@ -857,7 +858,8 @@ public class SkillPackageResolver {
         // type from knowledge to acp).
         deregisterSkillWrappers(resolved.getId());
 
-        java.util.List<ToolCallback> wrappers = acpWrapperFactory.buildWrappers(manifest);
+        java.util.List<ToolCallback> wrappers = acpWrapperFactory.buildWrappers(
+                manifest, resolved.getWorkspaceId());
         if (wrappers.isEmpty()) return;
         java.util.Set<String> registered = new java.util.LinkedHashSet<>();
         Long entityId = resolved.getId();

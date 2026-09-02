@@ -6,6 +6,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import vip.newsclaw.agent.AgentService;
 import vip.newsclaw.agent.model.AgentEntity;
+import vip.newsclaw.auth.service.AuthService;
+import vip.newsclaw.exception.NewsClawException;
+import vip.newsclaw.workspace.core.service.WorkspaceService;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,6 +23,14 @@ public class A2aAgentCardService {
 
     private final A2aProperties properties;
     private final AgentService agentService;
+    private WorkspaceService workspaceService;
+    private AuthService authService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setScopeServices(WorkspaceService workspaceService, AuthService authService) {
+        this.workspaceService = workspaceService;
+        this.authService = authService;
+    }
 
     public Map<String, Object> publicCard(HttpServletRequest request) {
         Map<String, Object> card = baseCard(request);
@@ -27,7 +40,22 @@ public class A2aAgentCardService {
     }
 
     public Map<String, Object> authenticatedCard(HttpServletRequest request, Long workspaceId) {
+        return authenticatedCard(request, workspaceId,
+                SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    public Map<String, Object> authenticatedCard(HttpServletRequest request, Long workspaceId,
+                                                 Authentication authentication) {
         long wsId = workspaceId == null ? 1L : workspaceId;
+        if (workspaceService != null && authService != null && authentication != null) {
+            Long userId = authentication.getDetails() instanceof Number n ? n.longValue() : null;
+            var user = authService.findByUsername(authentication.getName());
+            boolean globalAdmin = user != null && "admin".equalsIgnoreCase(user.getRole());
+            if (!globalAdmin && (userId == null || !workspaceService.hasPermission(wsId, userId, "viewer"))) {
+                throw new NewsClawException("err.workspace.insufficient_permission", 403,
+                        "User has no access to the requested workspace");
+            }
+        }
         Map<String, Object> card = baseCard(request);
         List<Map<String, Object>> skills = new ArrayList<>();
         for (AgentEntity agent : agentService.listAgentsByWorkspace(wsId, true)) {

@@ -6,6 +6,7 @@ import vip.newsclaw.skill.installer.model.SkillBundle;
 import vip.newsclaw.skill.runtime.SkillFrontmatterParser;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -57,6 +58,12 @@ public class ZipSkillFetcher {
      * raises peak heap usage accordingly.
      */
     public record Limits(long maxEntryBytes, long maxTotalBytes) {
+        public Limits {
+            if (maxEntryBytes < 1 || maxTotalBytes < 1 || maxEntryBytes > maxTotalBytes) {
+                throw new IllegalArgumentException("ZIP size limits must be positive and entry <= total");
+            }
+        }
+
         public static final Limits DEFAULT = ofMb(1, 50);
 
         public static Limits ofMb(long entryMb, long totalMb) {
@@ -241,7 +248,15 @@ public class ZipSkillFetcher {
                     continue;
                 }
 
-                byte[] bytes = zis.readAllBytes();
+                // Do not use readAllBytes here: a zip bomb can advertise an
+                // unknown size and expand far beyond the per-entry cap before
+                // the post-read check gets a chance to run.
+                byte[] bytes = readEntryBounded(zis, limits.maxEntryBytes());
+                if (bytes == null) {
+                    log.warn("[ZipSkillFetcher] Skipping oversized entry: {}", entryName);
+                    zis.closeEntry();
+                    continue;
+                }
                 if (bytes.length > limits.maxEntryBytes()) {
                     log.warn("[ZipSkillFetcher] Skipping oversized entry post-read: {} ({}bytes)", entryName, bytes.length);
                     zis.closeEntry();
@@ -328,6 +343,25 @@ public class ZipSkillFetcher {
         }
 
         return new ExtractedSkill(skillMdContent, references, scripts);
+    }
+
+    private static byte[] readEntryBounded(InputStream input, long maxBytes) throws IOException {
+        long cap = Math.max(1L, maxBytes);
+        ByteArrayOutputStream out = new ByteArrayOutputStream((int) Math.min(cap, 8192L));
+        byte[] buffer = new byte[8192];
+        long total = 0;
+        int n;
+        while ((n = input.read(buffer)) >= 0) {
+            total += n;
+            if (total > cap) {
+                // Drain the remainder so the ZipInputStream stays aligned,
+                // but never retain bytes beyond the configured cap.
+                while (input.read(buffer) >= 0) { /* discard */ }
+                return null;
+            }
+            out.write(buffer, 0, n);
+        }
+        return out.toByteArray();
     }
 
     /**

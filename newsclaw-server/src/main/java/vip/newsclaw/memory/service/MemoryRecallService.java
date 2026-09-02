@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vip.newsclaw.memory.MemoryProperties;
+import vip.newsclaw.memory.identity.MemoryScope;
 import vip.newsclaw.memory.model.MemoryRecallEntity;
 import vip.newsclaw.memory.repository.MemoryRecallMapper;
 
@@ -55,7 +56,20 @@ public class MemoryRecallService {
      * 记录一次文件召回
      */
     public void recordRecall(Long agentId, String filename, String snippetText, String userQueryHash) {
+        recordRecall(agentId, filename, snippetText, userQueryHash, null, MemoryScope.TEAM);
+    }
+
+    /** Record a recall in the exact owner/scope bucket that supplied the content. */
+    public void recordRecall(Long agentId, String filename, String snippetText, String userQueryHash,
+                             String ownerKey, String scope) {
         if (agentId == null || filename == null || filename.isBlank()) {
+            return;
+        }
+        String effectiveScope = normalizeScope(scope);
+        String effectiveOwner = MemoryScope.PERSONAL.equals(effectiveScope)
+                ? normalizeOwner(ownerKey) : null;
+        if (MemoryScope.PERSONAL.equals(effectiveScope) && effectiveOwner == null) {
+            log.warn("[MemoryRecall] Refusing PERSONAL recall without owner: agent={}, file={}", agentId, filename);
             return;
         }
         // 写库前硬截断：覆盖所有调用路径（含 trackActiveRetrieval 透传的外部 filename），
@@ -67,12 +81,13 @@ public class MemoryRecallService {
                 ? snippetText.substring(0, 200)
                 : snippetText;
 
-        MemoryRecallEntity existing = recallMapper.selectOne(
-                new LambdaQueryWrapper<MemoryRecallEntity>()
-                        .eq(MemoryRecallEntity::getAgentId, agentId)
-                        .eq(MemoryRecallEntity::getFilename, filename)
-                        .eq(MemoryRecallEntity::getDeleted, 0)
-                        .last("LIMIT 1"));
+        LambdaQueryWrapper<MemoryRecallEntity> identity = new LambdaQueryWrapper<MemoryRecallEntity>()
+                .eq(MemoryRecallEntity::getAgentId, agentId)
+                .eq(MemoryRecallEntity::getFilename, filename)
+                .eq(MemoryRecallEntity::getScope, effectiveScope)
+                .eq(MemoryRecallEntity::getDeleted, 0);
+        applyOwnerIdentity(identity, effectiveOwner);
+        MemoryRecallEntity existing = recallMapper.selectOne(identity.last("LIMIT 1"));
 
         LocalDateTime now = LocalDateTime.now();
 
@@ -103,6 +118,8 @@ public class MemoryRecallService {
                 entity.setLastRecalledAt(now);
                 entity.setPromoted(false);
                 entity.setScore(0.0);
+                entity.setOwnerKey(effectiveOwner);
+                entity.setScope(effectiveScope);
                 entity.setCreateTime(now);
                 entity.setUpdateTime(now);
                 entity.setDeleted(0);
@@ -115,12 +132,14 @@ public class MemoryRecallService {
             } catch (org.springframework.dao.DuplicateKeyException e) {
                 // 并发插入冲突，重新查询后更新（不递归，避免 StackOverflow）
                 log.debug("[MemoryRecall] Concurrent insert for {}, falling back to update", filename);
-                MemoryRecallEntity retry = recallMapper.selectOne(
+                LambdaQueryWrapper<MemoryRecallEntity> retryIdentity =
                         new LambdaQueryWrapper<MemoryRecallEntity>()
                                 .eq(MemoryRecallEntity::getAgentId, agentId)
                                 .eq(MemoryRecallEntity::getFilename, filename)
-                                .eq(MemoryRecallEntity::getDeleted, 0)
-                                .last("LIMIT 1"));
+                                .eq(MemoryRecallEntity::getScope, effectiveScope)
+                                .eq(MemoryRecallEntity::getDeleted, 0);
+                applyOwnerIdentity(retryIdentity, effectiveOwner);
+                MemoryRecallEntity retry = recallMapper.selectOne(retryIdentity.last("LIMIT 1"));
                 if (retry != null) {
                     retry.setRecallCount(retry.getRecallCount() + 1);
                     retry.setDailyCount(retry.getDailyCount() + 1);
@@ -143,30 +162,43 @@ public class MemoryRecallService {
      * 重置所有记录的 dailyCount（在每轮 dreaming 开始时调用）
      */
     public void resetDailyCounts(Long agentId) {
-        recallMapper.update(null,
-                new LambdaUpdateWrapper<MemoryRecallEntity>()
-                        .eq(MemoryRecallEntity::getAgentId, agentId)
-                        .eq(MemoryRecallEntity::getDeleted, 0)
-                        .set(MemoryRecallEntity::getDailyCount, 0));
+        resetDailyCounts(agentId, null);
+    }
+
+    public void resetDailyCounts(Long agentId, String ownerKey) {
+        LambdaUpdateWrapper<MemoryRecallEntity> q = new LambdaUpdateWrapper<MemoryRecallEntity>()
+                .eq(MemoryRecallEntity::getAgentId, agentId)
+                .eq(MemoryRecallEntity::getDeleted, 0);
+        applyBucket(q, ownerKey);
+        q.set(MemoryRecallEntity::getDailyCount, 0);
+        recallMapper.update(null, q);
     }
 
     /**
      * 获取未提升的候选列表
      */
     public List<MemoryRecallEntity> listCandidates(Long agentId) {
-        return recallMapper.selectList(
-                new LambdaQueryWrapper<MemoryRecallEntity>()
-                        .eq(MemoryRecallEntity::getAgentId, agentId)
-                        .eq(MemoryRecallEntity::getPromoted, false)
-                        .eq(MemoryRecallEntity::getDeleted, 0)
-                        .orderByDesc(MemoryRecallEntity::getScore));
+        return listCandidates(agentId, null);
+    }
+
+    public List<MemoryRecallEntity> listCandidates(Long agentId, String ownerKey) {
+        LambdaQueryWrapper<MemoryRecallEntity> q = new LambdaQueryWrapper<MemoryRecallEntity>()
+                .eq(MemoryRecallEntity::getAgentId, agentId)
+                .eq(MemoryRecallEntity::getPromoted, false)
+                .eq(MemoryRecallEntity::getDeleted, 0);
+        applyBucket(q, ownerKey);
+        return recallMapper.selectList(q.orderByDesc(MemoryRecallEntity::getScore));
     }
 
     /**
      * 计算加权评分，返回超过阈值的高分候选
      */
     public List<MemoryRecallEntity> computeScores(Long agentId) {
-        List<MemoryRecallEntity> candidates = listCandidates(agentId);
+        return computeScores(agentId, null);
+    }
+
+    public List<MemoryRecallEntity> computeScores(Long agentId, String ownerKey) {
+        List<MemoryRecallEntity> candidates = listCandidates(agentId, ownerKey);
         if (candidates.isEmpty()) {
             return Collections.emptyList();
         }
@@ -277,15 +309,21 @@ public class MemoryRecallService {
      * 获取 Agent 的 dreaming 统计摘要
      */
     public Map<String, Object> getDreamingStatus(Long agentId) {
-        long total = recallMapper.selectCount(
-                new LambdaQueryWrapper<MemoryRecallEntity>()
-                        .eq(MemoryRecallEntity::getAgentId, agentId)
-                        .eq(MemoryRecallEntity::getDeleted, 0));
-        long promoted = recallMapper.selectCount(
-                new LambdaQueryWrapper<MemoryRecallEntity>()
-                        .eq(MemoryRecallEntity::getAgentId, agentId)
-                        .eq(MemoryRecallEntity::getPromoted, true)
-                        .eq(MemoryRecallEntity::getDeleted, 0));
+        return getDreamingStatus(agentId, null);
+    }
+
+    public Map<String, Object> getDreamingStatus(Long agentId, String ownerKey) {
+        LambdaQueryWrapper<MemoryRecallEntity> totalQ = new LambdaQueryWrapper<MemoryRecallEntity>()
+                .eq(MemoryRecallEntity::getAgentId, agentId)
+                .eq(MemoryRecallEntity::getDeleted, 0);
+        applyVisibility(totalQ, ownerKey);
+        long total = recallMapper.selectCount(totalQ);
+        LambdaQueryWrapper<MemoryRecallEntity> promotedQ = new LambdaQueryWrapper<MemoryRecallEntity>()
+                .eq(MemoryRecallEntity::getAgentId, agentId)
+                .eq(MemoryRecallEntity::getPromoted, true)
+                .eq(MemoryRecallEntity::getDeleted, 0);
+        applyVisibility(promotedQ, ownerKey);
+        long promoted = recallMapper.selectCount(promotedQ);
         long pending = total - promoted;
 
         Map<String, Object> status = new LinkedHashMap<>();
@@ -304,11 +342,16 @@ public class MemoryRecallService {
      * 获取带详情的候选列表（供 API 使用）
      */
     public List<Map<String, Object>> listCandidatesWithDetails(Long agentId) {
+        return listCandidatesWithDetails(agentId, null);
+    }
+
+    public List<Map<String, Object>> listCandidatesWithDetails(Long agentId, String ownerKey) {
+        LambdaQueryWrapper<MemoryRecallEntity> q = new LambdaQueryWrapper<MemoryRecallEntity>()
+                .eq(MemoryRecallEntity::getAgentId, agentId)
+                .eq(MemoryRecallEntity::getDeleted, 0);
+        applyVisibility(q, ownerKey);
         List<MemoryRecallEntity> candidates = recallMapper.selectList(
-                new LambdaQueryWrapper<MemoryRecallEntity>()
-                        .eq(MemoryRecallEntity::getAgentId, agentId)
-                        .eq(MemoryRecallEntity::getDeleted, 0)
-                        .orderByDesc(MemoryRecallEntity::getScore));
+                q.orderByDesc(MemoryRecallEntity::getScore));
 
         return candidates.stream().map(c -> {
             Map<String, Object> item = new LinkedHashMap<>();
@@ -323,8 +366,60 @@ public class MemoryRecallService {
             item.put("promoted", c.getPromoted());
             item.put("lastRecalledAt", c.getLastRecalledAt());
             item.put("snippetPreview", c.getSnippetPreview());
+            item.put("scope", c.getScope());
             return item;
         }).collect(Collectors.toList());
+    }
+
+    private static String normalizeScope(String scope) {
+        if (MemoryScope.PERSONAL.equals(scope) || MemoryScope.GLOBAL.equals(scope)) {
+            return scope;
+        }
+        return MemoryScope.TEAM;
+    }
+
+    private static String normalizeOwner(String ownerKey) {
+        return ownerKey == null || ownerKey.isBlank() ? null : ownerKey.trim();
+    }
+
+    private static void applyOwnerIdentity(LambdaQueryWrapper<MemoryRecallEntity> q, String ownerKey) {
+        if (ownerKey == null) {
+            q.and(w -> w.isNull(MemoryRecallEntity::getOwnerKey)
+                    .or().eq(MemoryRecallEntity::getOwnerKey, ""));
+        } else {
+            q.eq(MemoryRecallEntity::getOwnerKey, ownerKey);
+        }
+    }
+
+    private static void applyVisibility(LambdaQueryWrapper<MemoryRecallEntity> q, String ownerKey) {
+        String owner = normalizeOwner(ownerKey);
+        if (owner == null) {
+            q.in(MemoryRecallEntity::getScope, MemoryScope.TEAM, MemoryScope.GLOBAL);
+            return;
+        }
+        q.and(w -> w.in(MemoryRecallEntity::getScope, MemoryScope.TEAM, MemoryScope.GLOBAL)
+                .or(p -> p.eq(MemoryRecallEntity::getScope, MemoryScope.PERSONAL)
+                        .eq(MemoryRecallEntity::getOwnerKey, owner)));
+    }
+
+    private static void applyBucket(LambdaQueryWrapper<MemoryRecallEntity> q, String ownerKey) {
+        String owner = normalizeOwner(ownerKey);
+        if (owner == null) {
+            q.in(MemoryRecallEntity::getScope, MemoryScope.TEAM, MemoryScope.GLOBAL);
+        } else {
+            q.eq(MemoryRecallEntity::getScope, MemoryScope.PERSONAL)
+                    .eq(MemoryRecallEntity::getOwnerKey, owner);
+        }
+    }
+
+    private static void applyBucket(LambdaUpdateWrapper<MemoryRecallEntity> q, String ownerKey) {
+        String owner = normalizeOwner(ownerKey);
+        if (owner == null) {
+            q.in(MemoryRecallEntity::getScope, MemoryScope.TEAM, MemoryScope.GLOBAL);
+        } else {
+            q.eq(MemoryRecallEntity::getScope, MemoryScope.PERSONAL)
+                    .eq(MemoryRecallEntity::getOwnerKey, owner);
+        }
     }
 
     // ==================== 内部工具方法 ====================

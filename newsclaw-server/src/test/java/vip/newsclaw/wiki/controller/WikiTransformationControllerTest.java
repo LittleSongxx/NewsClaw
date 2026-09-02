@@ -6,7 +6,11 @@ import vip.newsclaw.common.result.R;
 import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.wiki.model.WikiTransformationEntity;
 import vip.newsclaw.wiki.model.WikiTransformationRunEntity;
+import vip.newsclaw.wiki.model.WikiKnowledgeBaseEntity;
+import vip.newsclaw.wiki.model.WikiRawMaterialEntity;
 import vip.newsclaw.wiki.service.WikiKnowledgeBaseService;
+import vip.newsclaw.wiki.service.WikiPageService;
+import vip.newsclaw.wiki.service.WikiRawMaterialService;
 import vip.newsclaw.wiki.service.WikiTransformationAggregator;
 import vip.newsclaw.wiki.service.WikiTransformationExecutor;
 import vip.newsclaw.wiki.service.WikiTransformationService;
@@ -25,16 +29,24 @@ import static org.mockito.Mockito.when;
 class WikiTransformationControllerTest {
 
     private WikiTransformationService transformationService;
+    private WikiTransformationExecutor executor;
+    private WikiKnowledgeBaseService kbService;
+    private WikiRawMaterialService rawService;
     private WikiTransformationController controller;
 
     @BeforeEach
     void setUp() {
         transformationService = mock(WikiTransformationService.class);
+        executor = mock(WikiTransformationExecutor.class);
+        kbService = mock(WikiKnowledgeBaseService.class);
+        rawService = mock(WikiRawMaterialService.class);
         controller = new WikiTransformationController(
                 transformationService,
-                mock(WikiTransformationExecutor.class),
+                executor,
                 mock(WikiTransformationAggregator.class),
-                mock(WikiKnowledgeBaseService.class));
+                kbService,
+                rawService,
+                mock(WikiPageService.class));
     }
 
     @Test
@@ -89,5 +101,25 @@ class WikiTransformationControllerTest {
         assertEquals(403, ex.getCode());
         assertEquals("err.wiki.global_template_readonly", ex.getMsgKey());
         verify(transformationService, never()).delete(anyLong());
+    }
+
+    @Test
+    void applyRejectsRawFromAnotherWorkspaceBeforeExecutorRuns() {
+        WikiTransformationEntity transformation = new WikiTransformationEntity();
+        transformation.setId(99L);
+        transformation.setWorkspaceId(1L);
+        when(transformationService.getById(99L)).thenReturn(transformation);
+        WikiRawMaterialEntity raw = new WikiRawMaterialEntity();
+        raw.setId(50L);
+        raw.setKbId(20L);
+        when(rawService.getById(50L)).thenReturn(raw);
+        WikiKnowledgeBaseEntity foreignKb = new WikiKnowledgeBaseEntity();
+        foreignKb.setId(20L);
+        foreignKb.setWorkspaceId(2L);
+        when(kbService.getById(20L)).thenReturn(foreignKb);
+
+        assertThrows(NewsClawException.class,
+                () -> controller.apply(99L, Map.of("rawId", 50L), false, 1L));
+        verify(executor, never()).runOnRawAsync(any(), anyLong(), any());
     }
 }

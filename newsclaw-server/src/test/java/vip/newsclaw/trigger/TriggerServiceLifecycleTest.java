@@ -1,5 +1,7 @@
 package vip.newsclaw.trigger;
 
+import java.time.LocalDateTime;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Covers the lamport / scheduler-sync invariants of {@link TriggerService}:
@@ -42,8 +45,10 @@ class TriggerServiceLifecycleTest {
     @DisplayName("create() persists a v1 trigger and registers it with the scheduler when enabled.")
     void createRegistersEnabled() {
         TriggerEntity t = newCronTrigger("hourly", "0 0 * * * *", true);
+        t.setDeleted(1);
         TriggerEntity saved = triggerService.create(t);
         assertEquals(1L, saved.getPatternVersion());
+        assertEquals(0, saved.getDeleted());
         assertTrue(scheduler.isRegistered(saved.getId()));
 
         // Disabled trigger row persists but does not occupy a scheduled slot.
@@ -53,14 +58,46 @@ class TriggerServiceLifecycleTest {
     }
 
     @Test
+    @DisplayName("Managed AI-news radar cannot be enabled or lose its stable identity while the pipeline is off.")
+    void managedRadarFailsClosed() {
+        TriggerEntity radar = newCronTrigger("ai-news.template.v1.daily-radar",
+                "0 0 8 * * *", false);
+        radar.setPatternJson("{\"cron\":\"0 0 8 * * *\",\"managedKey\":\"ai-news.daily-radar.v1\"}");
+        TriggerEntity saved = triggerService.create(radar);
+
+        saved.setName("renamed");
+        saved.setPatternType("cron");
+        saved.setPatternJson("{\"cron\":\"0 30 8 * * *\"}");
+        TriggerEntity protectedRow = triggerService.update(saved);
+        assertEquals("renamed", protectedRow.getName());
+        assertEquals("cron", protectedRow.getPatternType());
+        assertTrue(protectedRow.getPatternJson().contains("0 30 8 * * *"));
+        assertTrue(protectedRow.getPatternJson().contains("ai-news.daily-radar.v1"));
+
+        protectedRow.setPatternType("content_match");
+        assertThrows(IllegalArgumentException.class, () -> triggerService.update(protectedRow));
+        protectedRow.setPatternType("cron");
+        protectedRow.setEnabled(true);
+        assertThrows(IllegalArgumentException.class,
+                () -> triggerService.update(protectedRow));
+    }
+
+    @Test
     @DisplayName("update() bumps pattern_version when the cron expression changes.")
     void updateBumpsLamportOnPatternChange() {
         TriggerEntity created = triggerService.create(newCronTrigger("flex", "0 0 * * * *", true));
+        TriggerEntity schedulerState = triggerMapper.selectById(created.getId());
+        LocalDateTime dispatchedAt = LocalDateTime.of(2026, 8, 30, 8, 0);
+        schedulerState.setLastError("prior dispatch failed");
+        schedulerState.setLastDispatchedAt(dispatchedAt);
+        triggerMapper.updateById(schedulerState);
         long firstVersion = created.getPatternVersion();
 
         created.setPatternJson("{\"cron\":\"0 30 * * * *\"}");
         TriggerEntity updated = triggerService.update(created);
         assertEquals(firstVersion + 1, updated.getPatternVersion());
+        assertEquals("prior dispatch failed", updated.getLastError());
+        assertEquals(dispatchedAt, updated.getLastDispatchedAt());
 
         // No-op update does not bump the lamport.
         TriggerEntity reloaded = triggerMapper.selectById(updated.getId());

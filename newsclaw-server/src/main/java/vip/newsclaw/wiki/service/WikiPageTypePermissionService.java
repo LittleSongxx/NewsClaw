@@ -141,12 +141,15 @@ public class WikiPageTypePermissionService {
         return row;
     }
 
-    /** Logically delete a permission row by id. Returns true when a row was removed. */
-    public boolean deleteRow(Long id) {
-        if (id == null) {
+    /** Delete only when the independent row id belongs to the full path scope. */
+    public boolean deleteRow(Long id, Long agentId, Long kbId) {
+        if (id == null || agentId == null || kbId == null) {
             return false;
         }
-        return permissionMapper.deleteById(id) > 0;
+        return permissionMapper.delete(new LambdaQueryWrapper<WikiAgentPageTypePermissionEntity>()
+                .eq(WikiAgentPageTypePermissionEntity::getId, id)
+                .eq(WikiAgentPageTypePermissionEntity::getAgentId, agentId)
+                .eq(WikiAgentPageTypePermissionEntity::getKbId, kbId)) > 0;
     }
 
     private boolean isDenyAll(Long kbId) {

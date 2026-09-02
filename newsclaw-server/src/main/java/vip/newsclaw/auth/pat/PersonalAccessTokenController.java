@@ -46,6 +46,9 @@ public class PersonalAccessTokenController {
     @PostMapping
     public R<Map<String, Object>> create(@RequestBody CreateRequest req, Authentication auth) {
         UserEntity user = requireUser(auth);
+        if (req == null) {
+            return R.fail(400, "PAT request is required");
+        }
         PersonalAccessTokenService.CreatedToken created = patService.create(
                 user.getId(),
                 req.name(),
@@ -70,7 +73,7 @@ public class PersonalAccessTokenController {
     }
 
     private UserEntity requireUser(Authentication auth) {
-        if (auth == null || auth.getName() == null) {
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
             throw new NewsClawException("err.auth.unauthenticated", "Authentication required");
         }
         UserEntity user = authService.findByUsername(auth.getName());

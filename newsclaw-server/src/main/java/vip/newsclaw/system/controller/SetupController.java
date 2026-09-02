@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.beans.factory.annotation.Value;
 import vip.newsclaw.common.result.R;
 import vip.newsclaw.config.DatabaseBootstrapRunner;
 import vip.newsclaw.llm.service.ModelConfigService;
@@ -20,7 +21,8 @@ import java.util.Map;
  * <p>
  * Called by the Desktop splash screen to initialize the database
  * with the user's chosen language before navigating to the main UI.
- * These endpoints require no authentication.
+ * The status endpoint is safe to read anonymously; the mutating init endpoint
+ * is enabled only for desktop/dev bootstrap and is disabled in production.
  */
 @Slf4j
 @RestController
@@ -32,6 +34,9 @@ public class SetupController {
     private final ModelConfigService modelConfigService;
     private final ModelDiscoveryService modelDiscoveryService;
     private final ModelProviderService modelProviderService;
+
+    @Value("${newsclaw.setup.allow-anonymous:true}")
+    private boolean allowAnonymousSetup;
 
     /**
      * Check whether the application has been initialized.
@@ -52,7 +57,10 @@ public class SetupController {
      */
     @PostMapping("/init")
     public R<String> init(@RequestBody InitRequest request) {
-        String language = request.getLanguage();
+        if (!allowAnonymousSetup) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Setup endpoint is disabled");
+        }
+        String language = request == null ? null : request.getLanguage();
         if (language == null || language.isBlank()) {
             language = "zh-CN";
         }

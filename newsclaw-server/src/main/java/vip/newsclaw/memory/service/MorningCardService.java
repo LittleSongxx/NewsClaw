@@ -31,11 +31,23 @@ public class MorningCardService {
      * Get the morning card for a user+agent. Returns null if no unseen dream exists.
      */
     public Map<String, Object> getCardFor(Long userId, Long agentId) {
+        return getCardFor(userId, agentId, null);
+    }
+
+    public Map<String, Object> getCardFor(Long userId, Long agentId, String ownerKey) {
         if (userId == null || agentId == null) return null;
         // Find the latest successful dream report for this agent
         DreamReportEntity latestReport = dreamReportMapper.selectOne(
                 new LambdaQueryWrapper<DreamReportEntity>()
                         .eq(DreamReportEntity::getAgentId, agentId)
+                        .and(w -> {
+                            if (ownerKey == null || ownerKey.isBlank()) {
+                                w.isNull(DreamReportEntity::getOwnerKey);
+                            } else {
+                                w.eq(DreamReportEntity::getOwnerKey, ownerKey)
+                                        .or().isNull(DreamReportEntity::getOwnerKey);
+                            }
+                        })
                         .eq(DreamReportEntity::getStatus, "SUCCESS")
                         .eq(DreamReportEntity::getDeleted, 0)
                         .orderByDesc(DreamReportEntity::getStartedAt)

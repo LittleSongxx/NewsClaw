@@ -88,6 +88,12 @@ public class WikiProperties {
     /** 上传文件存储目录 */
     private String uploadDir = "./data/wiki-uploads";
 
+    /** Delete unreferenced managed uploads older than this many hours. */
+    private int uploadOrphanTtlHours = 24;
+
+    /** Retain terminal in-memory lint job metadata for this many hours. */
+    private int lintJobTtlHours = 24;
+
     /** 目录扫描最大文件数 */
     private int maxScanFiles = 500;
 

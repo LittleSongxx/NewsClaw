@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Locale;
 
 /** Spring registry and failure-isolating facade for source providers. */
 @Slf4j
@@ -25,7 +26,8 @@ public class NewsSourceProviderRegistry {
             for (NewsSourceProvider provider : discovered) {
                 if (provider == null || provider.providerId() == null
                         || provider.providerId().isBlank()) continue;
-                NewsSourceProvider previous = index.putIfAbsent(provider.providerId(), provider);
+                String key = key(provider.providerId());
+                NewsSourceProvider previous = index.putIfAbsent(key, provider);
                 if (previous != null) {
                     throw new IllegalStateException("duplicate news source provider: "
                             + provider.providerId());
@@ -43,7 +45,7 @@ public class NewsSourceProviderRegistry {
     }
 
     public Optional<NewsSourceProvider> find(String providerId) {
-        return Optional.ofNullable(providerId == null ? null : providers.get(providerId));
+        return Optional.ofNullable(providerId == null ? null : providers.get(key(providerId)));
     }
 
     public List<NewsSourceResult> search(NewsSourceQuery query, List<String> providerIds) {
@@ -56,36 +58,49 @@ public class NewsSourceProviderRegistry {
         } else {
             // Ignore unknown ids, but do not call a selected provider twice if
             // the model repeats an id in its comma-separated argument.
-            Set<String> requested = new LinkedHashSet<>(providerIds);
+            Set<String> requested = providerIds.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(NewsSourceProviderRegistry::key)
+                    .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
             selected = requested.stream().map(providers::get)
                     .filter(java.util.Objects::nonNull).toList();
         }
 
-        Map<String, NewsSourceResult> unique = new LinkedHashMap<>();
+        // Query every selected provider before applying the aggregate limit.
+        // A provider must not be able to fill the whole page and starve later
+        // source families; the round-robin merge below keeps the result
+        // deterministic while preserving first-provider precedence on URL
+        // collisions.
+        List<List<NewsSourceResult>> providerResults = new java.util.ArrayList<>();
         int anonymousResult = 0;
         for (NewsSourceProvider provider : selected) {
             try {
-                List<NewsSourceResult> providerResults = provider.search(query);
-                if (providerResults == null) continue;
-                for (NewsSourceResult result : providerResults) {
-                    // A provider is an extension point. Be defensive about a
-                    // malformed implementation so one bad row cannot break
-                    // the whole discovery turn.
-                    if (result == null || result.provenance() == null) continue;
-                    String key = canonicalKey(result);
-                    if (key == null) {
-                        // Keep a provenance-bearing result even when an
-                        // adapter omitted both URL fields; it cannot collide
-                        // with a canonical URL from another result.
-                        key = "__anonymous__" + anonymousResult++;
-                    }
-                    unique.putIfAbsent(key, result);
-                    if (unique.size() >= limit) {
-                        return List.copyOf(unique.values());
-                    }
-                }
+                List<NewsSourceResult> rows = provider.search(query);
+                providerResults.add(rows == null ? List.of() : rows);
             } catch (Exception e) {
                 log.warn("News source provider {} search failed: {}", provider.providerId(), e.getMessage());
+                providerResults.add(List.of());
+            }
+        }
+        Map<String, NewsSourceResult> unique = new LinkedHashMap<>();
+        int depth = providerResults.stream().mapToInt(List::size).max().orElse(0);
+        for (int index = 0; index < depth && unique.size() < limit; index++) {
+            for (List<NewsSourceResult> rows : providerResults) {
+                if (index >= rows.size()) continue;
+                NewsSourceResult result = rows.get(index);
+                // A provider is an extension point. Be defensive about a
+                // malformed implementation so one bad row cannot break the
+                // whole discovery turn.
+                if (result == null || result.provenance() == null) continue;
+                String key = canonicalKey(result);
+                if (key == null) {
+                    // Keep a provenance-bearing result even when an adapter
+                    // omitted both URL fields; it cannot collide with a
+                    // canonical URL from another result.
+                    key = "__anonymous__" + anonymousResult++;
+                }
+                unique.putIfAbsent(key, result);
+                if (unique.size() >= limit) break;
             }
         }
         return List.copyOf(unique.values());
@@ -99,7 +114,7 @@ public class NewsSourceProviderRegistry {
     }
 
     public Optional<NewsSourceResult> fetch(String providerId, URI url) {
-        NewsSourceProvider provider = providers.get(providerId);
+        NewsSourceProvider provider = providerId == null ? null : providers.get(key(providerId));
         if (provider == null) return Optional.empty();
         try {
             return provider.fetch(url);
@@ -107,5 +122,9 @@ public class NewsSourceProviderRegistry {
             log.warn("News source provider {} fetch failed: {}", providerId, e.getMessage());
             return Optional.empty();
         }
+    }
+
+    private static String key(String providerId) {
+        return providerId.trim().toLowerCase(Locale.ROOT);
     }
 }

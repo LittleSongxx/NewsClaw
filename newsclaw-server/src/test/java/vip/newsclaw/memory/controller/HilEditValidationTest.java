@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.core.Authentication;
 import vip.newsclaw.auth.service.AuthService;
 import vip.newsclaw.memory.model.DreamReportEntity;
 import vip.newsclaw.memory.model.MemoryRecallEntity;
@@ -38,6 +39,7 @@ class HilEditValidationTest {
     @Mock private MemoryHilService hilService;
     @Mock private DreamEventBroadcaster eventBroadcaster;
     @Mock private AuthService authService;
+    @Mock private Authentication auth;
 
     private DreamController controller;
 
@@ -45,6 +47,7 @@ class HilEditValidationTest {
     void setUp() {
         controller = new DreamController(dreamReportMapper, recallMapper,
                 morningCardService, hilService, eventBroadcaster, authService);
+        lenient().when(auth.getName()).thenReturn("alice");
     }
 
     @Test
@@ -54,6 +57,7 @@ class HilEditValidationTest {
         DreamReportEntity report = new DreamReportEntity();
         report.setId(100L);
         report.setAgentId(1L);
+        report.setOwnerKey("user:alice");
         report.setStartedAt(LocalDateTime.of(2026, 4, 20, 3, 0));
         report.setFinishedAt(LocalDateTime.of(2026, 4, 20, 3, 5));
         report.setDeleted(0);
@@ -67,11 +71,11 @@ class HilEditValidationTest {
         lenient().when(recallMapper.selectList(any())).thenReturn(List.of(candidate));
 
         var result = controller.editEntry(1L, 100L, "unrelated_section",
-                Map.of("content", "hacked content"));
+                Map.of("content", "hacked content"), auth);
 
         // Should fail — key doesn't belong to this report
         assertNotEquals(200, result.getCode());
-        verify(hilService, never()).editMemoryEntry(any(), any(), any(), any());
+        verify(hilService, never()).editMemoryEntry(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -80,6 +84,7 @@ class HilEditValidationTest {
         DreamReportEntity report = new DreamReportEntity();
         report.setId(100L);
         report.setAgentId(1L);
+        report.setOwnerKey("user:alice");
         report.setStartedAt(LocalDateTime.of(2026, 4, 20, 3, 0));
         report.setFinishedAt(LocalDateTime.of(2026, 4, 20, 3, 5));
         report.setDeleted(0);
@@ -93,11 +98,12 @@ class HilEditValidationTest {
         lenient().when(recallMapper.selectList(any())).thenReturn(List.of(candidate));
 
         var result = controller.editEntry(1L, 100L, "deployment_info",
-                Map.of("content", "updated content"));
+                Map.of("content", "updated content"), auth);
 
         // Should succeed — report-scoped edits always target MEMORY.md
         assertEquals(200, result.getCode());
-        verify(hilService).editMemoryEntry(eq(1L), eq("MEMORY.md"), eq("deployment_info"), eq("updated content"));
+        verify(hilService).editMemoryEntry(eq(1L), eq("MEMORY.md"), eq("deployment_info"),
+                eq("updated content"), eq("user:alice"));
     }
 
     @Test
@@ -106,6 +112,7 @@ class HilEditValidationTest {
         DreamReportEntity report = new DreamReportEntity();
         report.setId(100L);
         report.setAgentId(1L);
+        report.setOwnerKey("user:alice");
         report.setStartedAt(LocalDateTime.of(2026, 4, 20, 3, 0));
         report.setFinishedAt(LocalDateTime.of(2026, 4, 20, 3, 5));
         report.setDeleted(0);
@@ -119,100 +126,103 @@ class HilEditValidationTest {
 
         // "deployment" is a substring of "deployment_info" — must be rejected
         var result = controller.editEntry(1L, 100L, "deployment",
-                Map.of("content", "content"));
+                Map.of("content", "content"), auth);
 
         assertNotEquals(200, result.getCode());
-        verify(hilService, never()).editMemoryEntry(any(), any(), any(), any());
+        verify(hilService, never()).editMemoryEntry(any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("Direct edit (reportId=0): existing section, no filename → defaults to MEMORY.md")
     void directEdit_existingSection_defaultsToMemoryMd() {
-        when(hilService.sectionExists(1L, "MEMORY.md", "stable_facts")).thenReturn(true);
+        when(hilService.sectionExists(1L, "MEMORY.md", "stable_facts", "user:alice")).thenReturn(true);
 
         var result = controller.editEntry(1L, 0L, "stable_facts",
-                Map.of("content", "new content"));
+                Map.of("content", "new content"), auth);
 
         assertEquals(200, result.getCode());
-        verify(hilService).editMemoryEntry(eq(1L), eq("MEMORY.md"), eq("stable_facts"), eq("new content"));
+        verify(hilService).editMemoryEntry(eq(1L), eq("MEMORY.md"), eq("stable_facts"),
+                eq("new content"), eq("user:alice"));
     }
 
     @Test
     @DisplayName("Direct edit (reportId=0): non-existing section → rejected")
     void directEdit_nonExistingSection_rejected() {
-        when(hilService.sectionExists(1L, "MEMORY.md", "ghost_section")).thenReturn(false);
+        when(hilService.sectionExists(1L, "MEMORY.md", "ghost_section", "user:alice")).thenReturn(false);
 
         var result = controller.editEntry(1L, 0L, "ghost_section",
-                Map.of("content", "content"));
+                Map.of("content", "content"), auth);
 
         assertNotEquals(200, result.getCode());
-        verify(hilService, never()).editMemoryEntry(any(), any(), any(), any());
+        verify(hilService, never()).editMemoryEntry(any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("Direct edit (reportId=0): PROFILE.md section → writes PROFILE.md, not MEMORY.md")
     void directEdit_profileFile_writesProfile() {
-        when(hilService.sectionExists(1L, "PROFILE.md", "Identity")).thenReturn(true);
+        when(hilService.sectionExists(1L, "PROFILE.md", "Identity", "user:alice")).thenReturn(true);
 
         var result = controller.editEntry(1L, 0L, "Identity",
-                Map.of("content", "name: Mate", "filename", "PROFILE.md"));
+                Map.of("content", "name: Mate", "filename", "PROFILE.md"), auth);
 
         assertEquals(200, result.getCode());
-        verify(hilService).editMemoryEntry(eq(1L), eq("PROFILE.md"), eq("Identity"), eq("name: Mate"));
+        verify(hilService).editMemoryEntry(eq(1L), eq("PROFILE.md"), eq("Identity"),
+                eq("name: Mate"), eq("user:alice"));
     }
 
     @Test
     @DisplayName("Direct edit (reportId=0): SOUL.md section → writes SOUL.md")
     void directEdit_soulFile_writesSoul() {
-        when(hilService.sectionExists(1L, "SOUL.md", "Tone")).thenReturn(true);
+        when(hilService.sectionExists(1L, "SOUL.md", "Tone", "user:alice")).thenReturn(true);
 
         var result = controller.editEntry(1L, 0L, "Tone",
-                Map.of("content", "warm and direct", "filename", "SOUL.md"));
+                Map.of("content", "warm and direct", "filename", "SOUL.md"), auth);
 
         assertEquals(200, result.getCode());
-        verify(hilService).editMemoryEntry(eq(1L), eq("SOUL.md"), eq("Tone"), eq("warm and direct"));
+        verify(hilService).editMemoryEntry(eq(1L), eq("SOUL.md"), eq("Tone"),
+                eq("warm and direct"), eq("user:alice"));
     }
 
     @Test
     @DisplayName("Direct edit (reportId=0): structured/*.md section → allowed")
     void directEdit_structuredFile_allowed() {
-        when(hilService.sectionExists(1L, "structured/user.md", "Preferences")).thenReturn(true);
+        when(hilService.sectionExists(1L, "structured/user.md", "Preferences", "user:alice")).thenReturn(true);
 
         var result = controller.editEntry(1L, 0L, "Preferences",
-                Map.of("content", "likes dark mode", "filename", "structured/user.md"));
+                Map.of("content", "likes dark mode", "filename", "structured/user.md"), auth);
 
         assertEquals(200, result.getCode());
         verify(hilService).editMemoryEntry(eq(1L), eq("structured/user.md"), eq("Preferences"),
-                eq("likes dark mode"));
+                eq("likes dark mode"), eq("user:alice"));
     }
 
     @Test
     @DisplayName("Direct edit (reportId=0): non-whitelisted filename → rejected")
     void directEdit_unsupportedFile_rejected() {
         var result = controller.editEntry(1L, 0L, "anything",
-                Map.of("content", "content", "filename", "application.yml"));
+                Map.of("content", "content", "filename", "application.yml"), auth);
 
         assertNotEquals(200, result.getCode());
-        verify(hilService, never()).editMemoryEntry(any(), any(), any(), any());
+        verify(hilService, never()).editMemoryEntry(any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("Direct edit (reportId=0): path-traversal filename → rejected")
     void directEdit_pathTraversal_rejected() {
         var result = controller.editEntry(1L, 0L, "anything",
-                Map.of("content", "content", "filename", "../../etc/passwd"));
+                Map.of("content", "content", "filename", "../../etc/passwd"), auth);
 
         assertNotEquals(200, result.getCode());
-        verify(hilService, never()).editMemoryEntry(any(), any(), any(), any());
+        verify(hilService, never()).editMemoryEntry(any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("Direct edit (reportId=0): blank content → rejected")
     void directEdit_blankContent_rejected() {
         var result = controller.editEntry(1L, 0L, "stable_facts",
-                Map.of("content", "   "));
+                Map.of("content", "   "), auth);
 
         assertNotEquals(200, result.getCode());
-        verify(hilService, never()).editMemoryEntry(any(), any(), any(), any());
+        verify(hilService, never()).editMemoryEntry(any(), any(), any(), any(), any());
     }
 }

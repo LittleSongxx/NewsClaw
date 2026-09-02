@@ -43,6 +43,7 @@ public class DatasourceController {
     @PostMapping
     @RequireGlobalAdmin
     public R<DatasourceEntity> create(@RequestBody DatasourceEntity entity) {
+        if (entity == null) return R.fail(400, "request body is required");
         return R.ok(datasourceService.create(entity));
     }
 
@@ -50,6 +51,7 @@ public class DatasourceController {
     @PutMapping("/{id}")
     @RequireGlobalAdmin
     public R<DatasourceEntity> update(@PathVariable Long id, @RequestBody DatasourceEntity entity) {
+        if (entity == null) return R.fail(400, "request body is required");
         entity.setId(id);
         return R.ok(datasourceService.update(entity));
     }

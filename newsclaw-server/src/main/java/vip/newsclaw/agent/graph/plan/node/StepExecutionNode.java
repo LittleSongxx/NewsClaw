@@ -337,6 +337,15 @@ public class StepExecutionNode implements NodeAction {
                     stepThinking = result.thinking();
                 }
 
+                if (result.partial() && result.hasToolCalls()) {
+                    log.warn("[StepExecution] Step {} dropped {} tool call(s) from partial stream",
+                            stepIndex, result.toolCalls().size());
+                    finalResult = result.text() == null || result.text().isBlank()
+                            ? "模型响应在工具参数生成期间中断；未执行任何工具。"
+                            : result.text();
+                    break;
+                }
+
                 messages.add(result.assistantMessage());
 
                 if (!result.hasToolCalls()) {

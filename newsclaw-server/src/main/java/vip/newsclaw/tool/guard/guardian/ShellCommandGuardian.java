@@ -28,7 +28,7 @@ public class ShellCommandGuardian implements ToolGuardGuardian {
             // Inline code execution runs LLM-authored source through an
             // interpreter, so it is screened against the same dangerous-command
             // ruleset as direct shell execution.
-            "execute_code"
+            "execute_code", "runSkillScript"
     );
 
     private static final Map<String, Pattern> COMPILED_CACHE = new ConcurrentHashMap<>();

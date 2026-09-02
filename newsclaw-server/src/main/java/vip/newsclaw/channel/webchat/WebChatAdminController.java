@@ -14,6 +14,7 @@ import vip.newsclaw.audit.service.AuditEventService;
 import vip.newsclaw.channel.model.ChannelEntity;
 import vip.newsclaw.channel.service.ChannelService;
 import vip.newsclaw.common.result.R;
+import vip.newsclaw.workspace.core.annotation.RequireGlobalAdmin;
 
 import java.util.Map;
 
@@ -41,6 +42,7 @@ public class WebChatAdminController {
 
     @Operation(summary = "撤销访客的 visitorToken(ban 该 visitor 在管理端点的所有调用)")
     @PostMapping("/revoked-visitor")
+    @RequireGlobalAdmin
     public R<Void> revokeVisitor(
             @RequestBody RevokeVisitorRequest request,
             Authentication auth) {
@@ -70,9 +72,13 @@ public class WebChatAdminController {
 
     @Operation(summary = "取消撤销访客(un-ban)")
     @DeleteMapping("/revoked-visitor")
+    @RequireGlobalAdmin
     public R<Void> unrevokeVisitor(
             @RequestBody Map<String, Object> body,
             Authentication auth) {
+        if (body == null) {
+            return R.fail(400, "channelId and visitorId are required");
+        }
         Long channelId = body.get("channelId") instanceof Number n ? n.longValue() : null;
         Object rawChannelId = body.get("channelId");
         if (rawChannelId instanceof String s && !s.isBlank()) {

@@ -56,6 +56,10 @@ public class ScreenshotTool {
     private final GeneratedFileCache cache;
     private final AuthService authService;
 
+    /** Disabled until an async user-identity bridge is available end to end. */
+    @Value("${newsclaw.tools.screenshot.enabled:false}")
+    private boolean enabled;
+
     @Value("${server.port:18088}")
     private int serverPort;
 
@@ -81,6 +85,10 @@ public class ScreenshotTool {
             @ToolParam(description = "Extra settle wait in ms after load for the SPA to render (default 2500, max 8000)", required = false)
             Integer waitMs,
             @Nullable ToolContext ctx) {
+
+        if (!enabled) {
+            return "Error: screenshot tool is disabled in this deployment.";
+        }
 
         if (path == null || path.isBlank()) {
             return "Error: path is required (a relative in-app path like /chat).";
@@ -153,15 +161,11 @@ public class ScreenshotTool {
         }
     }
 
-    /** Mint a token for the current user, falling back to the default admin. */
+    /** Mint a token for the current user; never manufacture an administrator identity. */
     @Nullable
     private String mintToken() {
         String username = currentUsername();
-        String token = username != null ? authService.renewToken(username) : null;
-        if (token == null) {
-            token = authService.renewToken("admin");
-        }
-        return token;
+        return username == null ? null : authService.renewToken(username);
     }
 
     @Nullable

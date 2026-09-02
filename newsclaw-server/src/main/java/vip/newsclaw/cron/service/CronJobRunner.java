@@ -2,21 +2,32 @@ package vip.newsclaw.cron.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.agent.AgentService;
 import vip.newsclaw.agent.context.ChatOrigin;
+import vip.newsclaw.config.EnvironmentConfig;
 import vip.newsclaw.cron.CronChatOriginFactory;
 import vip.newsclaw.cron.model.CronJobEntity;
 import vip.newsclaw.dashboard.model.CronJobRunEntity;
 import vip.newsclaw.wiki.service.WikiProcessingService;
+import vip.newsclaw.news.service.AiNewsCandidatePipelineProperties;
 
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * RFC-063r §2.7.1: scheduler-facing orchestrator that decomposes one cron
@@ -46,12 +57,34 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CronJobRunner {
 
+    /** The distributed lease is deliberately longer than this ceiling. */
+    public static final Duration MAX_RUN_DURATION = Duration.ofMinutes(25);
+
+    private final ThreadPoolExecutor agentExecutor = new ThreadPoolExecutor(
+            8, 8, 60L, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(64),
+            r -> {
+                Thread t = new Thread(r, "cron-agent");
+                t.setDaemon(true);
+                return t;
+            },
+            new ThreadPoolExecutor.AbortPolicy());
+
+    @PreDestroy
+    void shutdownAgentExecutor() {
+        agentExecutor.shutdownNow();
+    }
+
     private final CronJobLifecycleService lifecycle;
     private final AgentService agentService;
     private final CronChatOriginFactory originFactory;
     private final vip.newsclaw.cron.CronConversationResolver conversationResolver;
     private final WikiProcessingService wikiProcessingService;
     private final ObjectMapper objectMapper;
+
+    /** Spring-bound candidate flag; environment fallback supports lightweight tests. */
+    @Autowired(required = false)
+    private AiNewsCandidatePipelineProperties candidatePipelineProperties;
 
     /**
      * Sentinel a scheduled-job run returns when it determines there is
@@ -83,6 +116,15 @@ public class CronJobRunner {
     public void executeJob(CronJobEntity job, String triggerType) {
         if (job == null) {
             log.warn("[CronRunner] executeJob called with null job — ignoring");
+            return;
+        }
+        if (!"manual".equalsIgnoreCase(triggerType)
+                && isManagedAiNewsRadar(job)
+                && (!EnvironmentConfig.aiNewsRadarEnabled() || !candidatePipelineEnabled())) {
+            // A stale registration or an administrator re-enabling the old
+            // row must not resurrect the legacy Agent discovery path.
+            log.info("[CronRunner] skipped scheduled AI-news radar: radarEnabled={}, candidatePipelineEnabled={}",
+                    EnvironmentConfig.aiNewsRadarEnabled(), candidatePipelineEnabled());
             return;
         }
 
@@ -155,7 +197,25 @@ public class CronJobRunner {
         try {
             ChatOrigin origin = originFactory.from(
                     job, conversationId, started.originMessageId());
-            chatResult = runAgent(job, userMessage, origin, conversationId);
+            Future<AgentService.ChatResult> future = agentExecutor.submit(
+                    () -> runAgent(job, userMessage, origin, conversationId));
+            try {
+                chatResult = future.get(MAX_RUN_DURATION.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException timeout) {
+                future.cancel(true);
+                lifecycle.markRunTimedOut(run,
+                        "cron run exceeded " + MAX_RUN_DURATION.toMinutes() + " minutes");
+                log.warn("[CronRunner] job {} timed out; real execution cancelled", job.getId());
+                return;
+            } catch (InterruptedException interrupted) {
+                future.cancel(true);
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("cron run interrupted", interrupted);
+            } catch (ExecutionException execution) {
+                Throwable cause = execution.getCause() != null ? execution.getCause() : execution;
+                if (cause instanceof Exception exception) throw exception;
+                throw new IllegalStateException(cause);
+            }
             result = new AssistantMessage(chatResult.content());
         } catch (Exception e) {
             log.error("[CronRunner] runAgent failed for job {}: {}", job.getId(), e.getMessage(), e);
@@ -186,6 +246,17 @@ public class CronJobRunner {
                         run.getId(), markErr.getMessage());
             }
         }
+    }
+
+    private boolean candidatePipelineEnabled() {
+        return candidatePipelineProperties != null
+                ? candidatePipelineProperties.isEnabled()
+                : EnvironmentConfig.aiNewsCandidatePipelineEnabled();
+    }
+
+    private static boolean isManagedAiNewsRadar(CronJobEntity job) {
+        return job != null && (EnvironmentConfig.isLegacyAiNewsRadarName(job.getName())
+                || EnvironmentConfig.AI_NEWS_DAILY_RADAR_MARKER.equals(job.getTriggerMessage()));
     }
 
     /**
@@ -348,7 +419,7 @@ public class CronJobRunner {
      */
     static String buildRunIdempotencyKey(CronJobEntity job, String triggerType) {
         Long jobId = job == null ? null : job.getId();
-        if (!"scheduled".equalsIgnoreCase(triggerType)) {
+        if ("manual".equalsIgnoreCase(triggerType)) {
             // Manual clicks intentionally remain separate, even if two are made
             // within one scheduler minute.
             return "manual:" + jobId + ":" + UUID.randomUUID();

@@ -1,17 +1,18 @@
 package vip.newsclaw.tool.builtin;
 
-import cn.hutool.http.HttpUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
-import vip.newsclaw.tool.browser.UrlSafetyChecker;
+import vip.newsclaw.agent.context.ChatOrigin;
 import vip.newsclaw.tool.document.GeneratedFileCache;
 import vip.newsclaw.tool.document.GeneratedFileLink;
 import vip.newsclaw.tool.guard.WorkspacePathGuard;
+import vip.newsclaw.tool.image.BoundedImageFetcher;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -50,6 +51,9 @@ public class XhsPublishTool {
 
     private final GeneratedFileCache cache;
 
+    @Value("${newsclaw.tools.external-publish.enabled:false}")
+    private boolean externalPublishEnabled;
+
     @Tool(name = "xhs_publish", description = """
         Package a Xiaohongshu (小红书) note into one downloadable bundle and give
         manual-publish instructions.
@@ -84,6 +88,9 @@ public class XhsPublishTool {
         if ("guide".equals(act)) {
             return guideText();
         }
+        if (!externalPublishEnabled) {
+            return "Error: external publishing tools are disabled in this deployment; use the reviewed package flow instead.";
+        }
         if (!"export".equals(act)) {
             return "Error: unknown action '" + act + "'. Use 'export' or 'guide'.";
         }
@@ -92,6 +99,7 @@ public class XhsPublishTool {
         List<byte[]> imageBytes = new ArrayList<>();
         List<String> imageExts = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
+        long totalBytes = 0;
         if (images != null && !images.isBlank()) {
             String[] refs = images.split(",");
             for (String raw : refs) {
@@ -104,9 +112,11 @@ public class XhsPublishTool {
                     continue;
                 }
                 try {
-                    ResolvedImage img = resolveImage(ref);
+                    ResolvedImage img = resolveImage(ref, ctx);
+                    BoundedImageFetcher.requireTotal(totalBytes + img.bytes().length);
                     imageBytes.add(img.bytes());
                     imageExts.add(img.ext());
+                    totalBytes += img.bytes().length;
                 } catch (Exception e) {
                     skipped.add(ref + " (" + e.getMessage() + ")");
                 }
@@ -177,30 +187,42 @@ public class XhsPublishTool {
     }
 
     /** Resolve an image reference (generated URL / http URL / workspace path) to bytes + extension. */
-    private ResolvedImage resolveImage(String ref) throws Exception {
+    private ResolvedImage resolveImage(String ref, @Nullable ToolContext ctx) throws Exception {
         Matcher m = GeneratedFileCache.GENERATED_URL_PATTERN.matcher(ref);
         if (m.find()) {
             String id = m.group(1);
-            Optional<GeneratedFileCache.Entry> entry = cache.get(id);
+            Optional<GeneratedFileCache.Entry> entry = cache.getForWorkspace(id, workspaceFromContext(ctx));
             if (entry.isEmpty()) {
                 throw new IllegalStateException("生成文件已过期或不存在");
             }
+            BoundedImageFetcher.validate(entry.get().bytes(), entry.get().mimeType());
             return new ResolvedImage(entry.get().bytes(), extFromMime(entry.get().mimeType(), "png"));
         }
         if (ref.startsWith("http://") || ref.startsWith("https://")) {
-            UrlSafetyChecker.check(ref);
-            byte[] bytes = HttpUtil.downloadBytes(ref);
-            if (bytes == null || bytes.length == 0) {
-                throw new IllegalStateException("下载为空");
-            }
-            return new ResolvedImage(bytes, extFromUrl(ref));
+            BoundedImageFetcher.Image image = BoundedImageFetcher.http(ref);
+            return new ResolvedImage(image.bytes(), extFromUrl(ref));
         }
         // Otherwise treat as a workspace-relative/absolute file path.
         Path path = WorkspacePathGuard.validatePath(ref);
         if (!Files.exists(path) || Files.isDirectory(path)) {
             throw new IllegalStateException("文件不存在");
         }
-        return new ResolvedImage(Files.readAllBytes(path), extFromUrl(ref));
+        String ext = extFromUrl(ref);
+        return new ResolvedImage(BoundedImageFetcher.file(path, mimeFromExt(ext)).bytes(), ext);
+    }
+
+    private static String mimeFromExt(String ext) {
+        return switch (ext.toLowerCase()) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "gif" -> "image/gif";
+            case "webp" -> "image/webp";
+            default -> "image/png";
+        };
+    }
+
+    private static Long workspaceFromContext(@Nullable ToolContext ctx) {
+        ChatOrigin origin = ChatOrigin.from(ctx);
+        return origin != null && origin.workspaceId() != null ? origin.workspaceId() : 1L;
     }
 
     private static String extFromMime(String mime, String fallback) {

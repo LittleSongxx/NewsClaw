@@ -1,23 +1,24 @@
 package vip.newsclaw.tool.builtin;
 
-import cn.hutool.http.HttpUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.agent.context.ChatOrigin;
 import vip.newsclaw.content.service.ContentItemService;
 import vip.newsclaw.news.service.AiNewsEvidenceBoundaryService;
 import vip.newsclaw.news.service.AiNewsEventService;
-import vip.newsclaw.tool.browser.UrlSafetyChecker;
 import vip.newsclaw.tool.document.GeneratedFileCache;
 import vip.newsclaw.tool.guard.WorkspacePathGuard;
+import vip.newsclaw.tool.image.BoundedImageFetcher;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -73,6 +74,9 @@ public class XhsPackageTool {
     private final GeneratedFileCache cache;
     private final ContentItemService contentItemService;
 
+    @Value("${newsclaw.ai-news.require-event-context:false}")
+    private boolean requireEventContext;
+
     /** Optional vertical-domain bridge; absent in minimal/library contexts. */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private AiNewsEventService aiNewsEventService;
@@ -124,8 +128,17 @@ public class XhsPackageTool {
         if (title == null || title.isBlank()) {
             return "Error: title is required.";
         }
+        if ((body != null && body.length() > 100_000) || (tags != null && tags.length() > 10_000)) {
+            return "Error: note text exceeds the package limit.";
+        }
 
         String resolvedEventId = resolveAiNewsEventId(eventId, ctx);
+        if (requireEventContext && (resolvedEventId == null || resolvedEventId.isBlank())) {
+            return "⛔ AI 动态内容包必须绑定 eventId；请先完成事件审核。";
+        }
+        if (requireEventContext && aiNewsEvidenceBoundaryService == null) {
+            return "⛔ AI 动态证据边界服务不可用，拒绝生成对外交付包。";
+        }
         AiNewsEvidenceBoundaryService.ValidationResult evidenceBoundary = validateEvidenceBoundary(
                 resolvedEventId, title + "\n" + (body == null ? "" : body) + "\n" + (tags == null ? "" : tags), ctx);
         if (evidenceBoundary != null && !evidenceBoundary.allowed()) {
@@ -144,6 +157,7 @@ public class XhsPackageTool {
         // Resolve images first — 小红书 is image-first, so this is the gate.
         List<ResolvedImg> imgs = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
+        long totalBytes = 0;
         if (images != null && !images.isBlank()) {
             for (String raw : images.split(",")) {
                 String ref = raw.trim();
@@ -155,7 +169,10 @@ public class XhsPackageTool {
                     continue;
                 }
                 try {
-                    imgs.add(resolveImage(ref, ctx));
+                    ResolvedImg image = resolveImage(ref, ctx);
+                    BoundedImageFetcher.requireTotal(totalBytes + image.bytes().length);
+                    imgs.add(image);
+                    totalBytes += image.bytes().length;
                 } catch (Exception e) {
                     skipped.add(ref + " (" + e.getMessage() + ")");
                 }
@@ -176,7 +193,9 @@ public class XhsPackageTool {
 
         // Online preview — image-first phone layout served inline (text/html + CSP).
         String previewDoc = buildPreview(title.trim(), body, tags, imgs);
-        String previewUrl = store(previewDoc.getBytes(StandardCharsets.UTF_8), "小红书预览.html", "text/html", ctx);
+        byte[] previewBytes = previewDoc.getBytes(StandardCharsets.UTF_8);
+        String previewUrl = store(previewBytes, "小红书预览.html", "text/html", ctx);
+        String artifactHash = sha256(previewBytes);
 
         // Material bundle — 文案.txt + numbered card images.
         String copy = buildCopy(title, body, tags);
@@ -194,6 +213,8 @@ public class XhsPackageTool {
         // dispatcher can attach them to the owning task automatically.
         out.append("🔍 在线预览（手机版滑动预览，图在上、文案在下）：[小红书预览.html](")
                 .append(previewUrl).append(")\n");
+        out.append("🔐 审核工件 SHA-256（确认后提交 content_item_acknowledge）：")
+                .append(artifactHash).append("\n");
         if (zipUrl != null) {
             out.append("📦 素材下载（按 01、02… 编号的卡片图 + 文案.txt）：[小红书素材.zip](")
                     .append(zipUrl).append(")\n");
@@ -374,22 +395,27 @@ public class XhsPackageTool {
                     extFromMime(entry.get().mimeType(), "png"), cache.downloadUrl(id, ctx));
         }
         if (ref.startsWith("http://") || ref.startsWith("https://")) {
-            UrlSafetyChecker.check(ref);
-            byte[] bytes = HttpUtil.downloadBytes(ref);
-            if (bytes == null || bytes.length == 0) {
-                throw new IllegalStateException("下载为空");
-            }
-            return new ResolvedImg(bytes, extFromUrl(ref), ref);
+            BoundedImageFetcher.Image image = BoundedImageFetcher.http(ref);
+            return new ResolvedImg(image.bytes(), extFromUrl(ref), ref);
         }
         // Workspace file path — read, then re-store so the preview can serve it.
         Path path = WorkspacePathGuard.validatePath(ref);
         if (!Files.exists(path) || Files.isDirectory(path)) {
             throw new IllegalStateException("文件不存在");
         }
-        byte[] bytes = Files.readAllBytes(path);
         String ext = extFromUrl(ref);
+        byte[] bytes = BoundedImageFetcher.file(path, mimeFromExt(ext)).bytes();
         String id = cache.put(bytes, path.getFileName().toString(), mimeFromExt(ext), ctx);
         return new ResolvedImg(bytes, ext, cache.downloadUrl(id, ctx));
+    }
+
+    private static String mimeFromExt(String ext) {
+        return switch (ext.toLowerCase()) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "gif" -> "image/gif";
+            case "webp" -> "image/webp";
+            default -> "image/png";
+        };
     }
 
     private String store(byte[] bytes, String name, String mime, @Nullable ToolContext ctx) {
@@ -431,15 +457,6 @@ public class XhsPackageTool {
         };
     }
 
-    private static String mimeFromExt(String ext) {
-        return switch (ext.toLowerCase()) {
-            case "jpg", "jpeg" -> "image/jpeg";
-            case "webp" -> "image/webp";
-            case "gif" -> "image/gif";
-            default -> "image/png";
-        };
-    }
-
     private static String extFromUrl(String url) {
         String clean = url.split("[?#]")[0];
         int dot = clean.lastIndexOf('.');
@@ -450,6 +467,17 @@ public class XhsPackageTool {
             }
         }
         return "png";
+    }
+
+    private static String sha256(byte[] bytes) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+            StringBuilder out = new StringBuilder(64);
+            for (byte value : digest) out.append(String.format("%02x", value));
+            return out.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
     }
 
     private static String nl2br(String s) {

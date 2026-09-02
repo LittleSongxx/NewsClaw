@@ -38,21 +38,19 @@ const DEFAULT_CONFIG: Partial<WebChatConfig> = {
 let config: WebChatConfig
 let container: HTMLDivElement
 let visitorId: string
+let visitorToken: string
 let messages: Message[] = []
 let isOpen = false
 let isStreaming = false
 
 export function init(userConfig: WebChatConfig) {
   config = { ...DEFAULT_CONFIG, ...userConfig }
-  visitorId = localStorage.getItem('mc-webchat-visitor') || generateId()
-  localStorage.setItem('mc-webchat-visitor', visitorId)
+  const storageScope = config.apiKey.slice(-16)
+  visitorId = localStorage.getItem(`mc-webchat-visitor:${storageScope}`) || ''
+  visitorToken = localStorage.getItem(`mc-webchat-token:${storageScope}`) || ''
 
   injectStyles()
   createWidget()
-}
-
-function generateId(): string {
-  return 'v_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36)
 }
 
 function injectStyles() {
@@ -304,9 +302,10 @@ async function sendMessage(text: string) {
       headers: {
         'Content-Type': 'application/json',
         'X-MC-Key': config.apiKey,
+        ...(visitorToken ? { 'X-MC-Visitor-Token': visitorToken } : {}),
         Accept: 'text/event-stream',
       },
-      body: JSON.stringify({ message: text, visitorId }),
+      body: JSON.stringify({ message: text, ...(visitorId ? { visitorId } : {}) }),
     })
 
     if (!response.ok) {
@@ -319,6 +318,7 @@ async function sendMessage(text: string) {
     if (!reader) throw new Error('No response body')
 
     let buffer = ''
+    let eventType = ''
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -333,7 +333,13 @@ async function sendMessage(text: string) {
           if (!data) continue
           try {
             const parsed = JSON.parse(data)
-            if (parsed.text) {
+            if (eventType === 'meta' && parsed.visitorId && parsed.visitorToken) {
+              visitorId = parsed.visitorId
+              visitorToken = parsed.visitorToken
+              const storageScope = config.apiKey.slice(-16)
+              localStorage.setItem(`mc-webchat-visitor:${storageScope}`, visitorId)
+              localStorage.setItem(`mc-webchat-token:${storageScope}`, visitorToken)
+            } else if (parsed.text) {
               fullContent += parsed.text
               updateLastAssistant(fullContent)
             }
@@ -341,10 +347,12 @@ async function sendMessage(text: string) {
             // not JSON, might be raw text
           }
         } else if (line.startsWith('event:')) {
-          const eventType = line.slice(6).trim()
+          eventType = line.slice(6).trim()
           if (eventType === 'done') {
             break
           }
+        } else if (!line.trim()) {
+          eventType = ''
         }
       }
     }

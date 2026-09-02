@@ -73,6 +73,19 @@ class ReadFileToolLargeLineTest {
     }
 
     @Test
+    @DisplayName("path alias reads a spill file when a model omits filePath")
+    void pathAliasIsAccepted(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("spill.txt");
+        Files.writeString(file, "captured search result", StandardCharsets.UTF_8);
+
+        String raw = tool.read_file(null, file.toString(), null, null, null, null);
+        JSONObject result = JSONUtil.parseObj(raw);
+
+        assertFalse(result.getBool("error", false));
+        assertTrue(result.getStr("content").contains("captured search result"));
+    }
+
+    @Test
     @DisplayName("single line larger than the 30KB budget returns clipped content, not empty + infinite loop")
     void singleOversizedLine_returnsClippedContent(@TempDir Path dir) throws Exception {
         String json = oneLineJsonArray(4000); // ~40KB on one physical line

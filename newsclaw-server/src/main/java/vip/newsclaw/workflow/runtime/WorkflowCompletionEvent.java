@@ -1,5 +1,7 @@
 package vip.newsclaw.workflow.runtime;
 
+import java.util.List;
+
 /**
  * Spring application event fired when a workflow run reaches a terminal
  * state ({@code succeeded} / {@code failed}). The trigger module
@@ -20,5 +22,19 @@ public record WorkflowCompletionEvent(
         long workspaceId,
         String state,
         String finalOutputRef,
-        String errorMessage
-) {}
+        String errorMessage,
+        List<Long> triggerAncestry,
+        int triggerDepth
+) {
+    public WorkflowCompletionEvent(long runId, long workflowId, long revisionId,
+                                   long workspaceId, String state,
+                                   String finalOutputRef, String errorMessage) {
+        this(runId, workflowId, revisionId, workspaceId, state,
+                finalOutputRef, errorMessage, List.of(), 0);
+    }
+
+    public WorkflowCompletionEvent {
+        triggerAncestry = triggerAncestry == null ? List.of() : List.copyOf(triggerAncestry);
+        triggerDepth = Math.max(0, triggerDepth);
+    }
+}

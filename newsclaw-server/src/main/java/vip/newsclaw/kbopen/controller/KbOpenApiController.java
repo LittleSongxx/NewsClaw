@@ -79,9 +79,10 @@ public class KbOpenApiController {
     public R<Map<String, Object>> search(
             @PathVariable Long kbId,
             @RequestBody SearchRequest req) {
+        if (req == null) throw new NewsClawException(400, "request body is required");
         String query = req.query() != null ? req.query() : "";
         String mode = req.mode() != null ? req.mode() : "hybrid";
-        int topK = req.topK() != null ? Math.min(req.topK(), 20) : 5;
+        int topK = req.topK() != null ? Math.min(Math.max(req.topK(), 1), 20) : 5;
 
         List<PageSearchResult> hits = hybridRetriever.search(kbId, query, mode, topK);
 
@@ -124,8 +125,9 @@ public class KbOpenApiController {
     public R<Map<String, Object>> searchChunks(
             @PathVariable Long kbId,
             @RequestBody ChunkSearchRequest req) {
+        if (req == null) throw new NewsClawException(400, "request body is required");
         String query = req.query() != null ? req.query() : "";
-        int topK = req.topK() != null ? Math.min(req.topK(), 20) : 5;
+        int topK = req.topK() != null ? Math.min(Math.max(req.topK(), 1), 20) : 5;
 
         List<HybridRetriever.ChunkHit> hits = hybridRetriever.searchChunks(kbId, query, topK);
 
@@ -256,7 +258,7 @@ public class KbOpenApiController {
         if (since == null) {
             since = LocalDateTime.now().minusDays(7);
         }
-        int safeLimit = Math.min(limit, 200);
+        int safeLimit = Math.min(Math.max(limit, 1), 200);
 
         List<WikiPageEntity> changed = "created".equals(kind)
                 ? pageService.findRecentCreated(kbId, since, safeLimit)

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import vip.newsclaw.workspace.core.annotation.RequireGlobalAdmin;
 
 import java.util.Map;
 
@@ -38,6 +39,7 @@ public class ChannelQRCodeController {
 
     @Operation(summary = "启动指定渠道的扫码授权流程")
     @PostMapping("/{channelType}/begin")
+    @RequireGlobalAdmin
     public ResponseEntity<Map<String, Object>> begin(
             @PathVariable String channelType,
             @RequestParam(required = false) Map<String, String> params) {
@@ -58,6 +60,7 @@ public class ChannelQRCodeController {
 
     @Operation(summary = "查询指定渠道的扫码授权状态")
     @GetMapping("/{channelType}/status")
+    @RequireGlobalAdmin
     public ResponseEntity<Map<String, Object>> status(
             @PathVariable String channelType,
             @RequestParam("session") String sessionId) {

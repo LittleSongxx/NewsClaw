@@ -22,31 +22,40 @@ import java.util.Set;
  * Pure, deterministic high-risk routing policy for AI-news events.
  *
  * <p>The policy deliberately judges only observable provenance: event
- * conflicts, trusted-source eligibility, evidence excerpts, immutable
- * official captures and capture-attempt outcomes. It does not claim to infer
- * whether a quote semantically entails a claim; that remains a human-review
- * question rather than a brittle string-matching assertion.</p>
+ * conflicts, trusted-source eligibility, persisted semantic assessments,
+ * evidence excerpts, immutable official captures and capture-attempt outcomes.
+ * The model may supply the narrow relation, but it cannot supply or override
+ * any routing decision produced here.</p>
  */
 @Component
 public class AiNewsReviewPolicy {
 
-    public static final String VERSION = "ai-news-review-policy@2026.08.25-v1";
+    public static final String VERSION = "ai-news-review-policy@2026.08.27-v4";
 
     public enum Reason {
         UNRESOLVED_CONFLICT,
         VERIFICATION_NOT_ELIGIBLE,
         LOW_TRUST_OR_UNREGISTERED_SOURCE,
         MISSING_EVIDENCE_QUOTE,
+        MISSING_SEMANTIC_ASSESSMENT,
+        UNATTESTED_SEMANTIC_ASSESSMENT,
+        CLAIM_NOT_SUPPORTED,
+        TRUSTED_SOURCE_CONTRADICTION,
+        HIGH_RISK_CLAIM_REQUIRES_REVIEW,
+        UNCAPTURED_SOURCE,
+        MISSING_SOURCE_TIMESTAMP,
         UNCAPTURED_OFFICIAL_SOURCE,
         OFFICIAL_CAPTURE_FAILED_OR_BLOCKED
     }
 
     private final ObjectMapper objectMapper;
     private final AiNewsSourceRegistry sourceRegistry;
+    private final AiNewsDecisionPolicy decisionPolicy;
 
     public AiNewsReviewPolicy(ObjectMapper objectMapper, AiNewsSourceRegistry sourceRegistry) {
         this.objectMapper = objectMapper;
         this.sourceRegistry = sourceRegistry;
+        this.decisionPolicy = new AiNewsDecisionPolicy(sourceRegistry);
     }
 
     public Decision evaluate(AiNewsEventEntity event,
@@ -70,18 +79,55 @@ public class AiNewsReviewPolicy {
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
 
         LinkedHashSet<Reason> reasons = new LinkedHashSet<>();
-        if (hasConflicts(event.getConflictsJson())) {
+        boolean declaredConflict = hasConflicts(event.getConflictsJson());
+        boolean highRisk = AiNewsRiskClassifier.isHighRisk(event, evidence);
+        AiNewsDecisionPolicy.Decision semanticDecision = decisionPolicy.decideEntities(
+                evidence, declaredConflict, highRisk);
+        if (semanticDecision.unresolvedConflict()) {
             reasons.add(Reason.UNRESOLVED_CONFLICT);
         }
-        boolean verificationEligible = !official.isEmpty() || mediaPublishers.size() >= 2;
-        if (!verificationEligible) {
+        if (semanticDecision.reasons().contains(AiNewsDecisionPolicy.Reason.TRUSTED_SOURCE_CONTRADICTION)) {
+            reasons.add(Reason.TRUSTED_SOURCE_CONTRADICTION);
+        }
+        if (!semanticDecision.verificationEligible()) {
             reasons.add(Reason.VERIFICATION_NOT_ELIGIBLE);
+        }
+        if (semanticDecision.reasons().contains(
+                AiNewsDecisionPolicy.Reason.MISSING_CAPTURE_PROVENANCE)) {
+            reasons.add(Reason.UNCAPTURED_SOURCE);
+        }
+        if (semanticDecision.reasons().contains(
+                AiNewsDecisionPolicy.Reason.MISSING_SOURCE_TIMESTAMP)) {
+            reasons.add(Reason.MISSING_SOURCE_TIMESTAMP);
         }
         if (!evidence.isEmpty() && official.isEmpty() && trustedMedia.isEmpty()) {
             reasons.add(Reason.LOW_TRUST_OR_UNREGISTERED_SOURCE);
         }
         if (missingRequiredQuote(evidence, official, trustedMedia, mediaPublishers)) {
             reasons.add(Reason.MISSING_EVIDENCE_QUOTE);
+        }
+        if (semanticDecision.reasons().contains(AiNewsDecisionPolicy.Reason.MISSING_SEMANTIC_ASSESSMENT)) {
+            reasons.add(Reason.MISSING_SEMANTIC_ASSESSMENT);
+        }
+        boolean unattestedSupport = evidence.stream()
+                .filter(item -> semanticDecision.supportingEvidenceIds().contains(
+                        item.getId() == null ? "" : String.valueOf(item.getId())))
+                .anyMatch(item -> !AiNewsRelationAttestation.isVerificationAttested(
+                        item.getRelationOrigin()));
+        if (unattestedSupport) {
+            reasons.add(Reason.UNATTESTED_SEMANTIC_ASSESSMENT);
+        }
+        boolean hasTrustedQuote = official.stream().anyMatch(this::hasQuote)
+                || trustedMedia.stream().anyMatch(this::hasQuote);
+        boolean provenanceBlocked = semanticDecision.reasons().contains(
+                AiNewsDecisionPolicy.Reason.MISSING_CAPTURE_PROVENANCE)
+                || semanticDecision.reasons().contains(
+                AiNewsDecisionPolicy.Reason.MISSING_SOURCE_TIMESTAMP);
+        if (hasTrustedQuote && !semanticDecision.claimQuoteSupported() && !provenanceBlocked) {
+            reasons.add(Reason.CLAIM_NOT_SUPPORTED);
+        }
+        if (highRisk) {
+            reasons.add(Reason.HIGH_RISK_CLAIM_REQUIRES_REVIEW);
         }
 
         boolean capturedOfficial = official.stream().anyMatch(this::capturedOfficial);
@@ -107,7 +153,8 @@ public class AiNewsReviewPolicy {
     private boolean capturedOfficial(AiNewsEvidenceEntity evidence) {
         if (!trustedOfficial(evidence) || evidence.getFetchedAt() == null
                 || blank(evidence.getContentHash()) || evidence.getHttpStatus() == null
-                || evidence.getHttpStatus() < 200 || evidence.getHttpStatus() >= 300) {
+                || evidence.getHttpStatus() < 200 || evidence.getHttpStatus() >= 300
+                || evidence.getSourcePublishedAt() == null) {
             return false;
         }
         String finalUrl = evidence.getFinalUrl();
@@ -170,9 +217,14 @@ public class AiNewsReviewPolicy {
         evidence.stream().sorted(Comparator.comparing(item -> value(item.getId())))
                 .forEach(item -> parts.add("evidence=" + String.join("|",
                         value(item.getId()), value(item.getSourceUrl()), value(item.getSourceTier()),
-                        value(item.getClaim()), value(item.getQuote()), value(item.getFinalUrl()),
+                        value(item.getClaim()), value(item.getQuote()), value(item.getSourcePublishedAt()),
+                        value(item.getSourceCaptureId()), value(item.getQuoteStart()),
+                        value(item.getQuoteEnd()), value(item.getQuoteMatchMethod()), value(item.getFinalUrl()),
                         value(item.getFetchedAt()), value(item.getContentHash()), value(item.getHttpStatus()),
-                        value(item.getCaptureMethod()))));
+                        value(item.getCaptureMethod()), value(item.getSemanticRelation()),
+                        value(item.getRelationConfidence()), value(item.getRelationOrigin()),
+                        value(item.getRelationReviewedAt()), value(item.getRelationReviewedBy()),
+                        value(item.getRelationReviewNote()))));
         attempts.stream().sorted(Comparator.comparing(item -> value(item.getId())))
                 .forEach(item -> parts.add("capture=" + String.join("|",
                         value(item.getId()), value(item.getSourceUrl()), value(item.getFinalUrl()),

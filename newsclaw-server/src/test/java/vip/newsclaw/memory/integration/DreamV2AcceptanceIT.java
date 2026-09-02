@@ -117,6 +117,31 @@ class DreamV2AcceptanceIT {
     // ==================== Tests ====================
 
     @Test
+    void personalDreamReadsAndWritesOnlyItsOwnerBucket() {
+        WorkspaceFileEntity note = new WorkspaceFileEntity();
+        note.setFilename("memory/2026-04-19.md");
+        note.setContent("## Alice\nprivate note");
+        when(workspaceFileService.listVisibleFiles(1L, "user:alice")).thenReturn(List.of(note));
+        when(workspaceFileService.getVisibleFile(1L, "memory/2026-04-19.md", "user:alice"))
+                .thenReturn(note);
+        when(recallService.computeScores(1L, "user:alice")).thenReturn(List.of());
+        setupLlmResponse("""
+            {"should_update": true, "reason": "owner scoped",
+             "memory_content": "## Alice memory\\nprivate"}
+            """);
+
+        DreamReport report = emergenceService.consolidate(
+                1L, DreamMode.NIGHTLY, null, "user:alice");
+
+        assertEquals("user:alice", report.ownerKey());
+        verify(workspaceFileService).saveMemoryFile(
+                1L, "MEMORY.md", "## Alice memory\nprivate", "user:alice");
+        verify(workspaceFileService, never()).saveFile(eq(1L), eq("MEMORY.md"), any());
+        verify(dreamReportMapper).insert(argThat((DreamReportEntity row) ->
+                "user:alice".equals(row.getOwnerKey())));
+    }
+
+    @Test
     @DisplayName("NIGHTLY dream: returns SUCCESS report with promoted/rejected candidates")
     void nightlyDream_successReport() {
         setupDailyNotes(1L);

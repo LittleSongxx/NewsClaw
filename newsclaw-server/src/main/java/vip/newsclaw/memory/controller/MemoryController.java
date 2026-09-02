@@ -5,13 +5,16 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
 import vip.newsclaw.common.result.R;
+import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
 import vip.newsclaw.memory.MemoryProperties;
 import vip.newsclaw.memory.service.*;
 import vip.newsclaw.memory.scheduler.DreamingScheduler;
 import vip.newsclaw.workspace.document.WorkspaceFileService;
 import vip.newsclaw.workspace.document.model.WorkspaceFileEntity;
+import vip.newsclaw.workspace.conversation.ConversationService;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,6 +41,12 @@ public class MemoryController {
     private final DreamingScheduler dreamingScheduler;
     private final WorkspaceFileService workspaceFileService;
     private final StructuredMemoryConsolidationService structuredConsolidationService;
+    private ConversationService conversationService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setConversationService(ConversationService conversationService) {
+        this.conversationService = conversationService;
+    }
 
     @Operation(summary = "手动触发 always-on 结构化记忆整合（user/feedback，合并去重过时条目）")
     @PostMapping("/{agentId}/structured-consolidation")
@@ -65,9 +74,11 @@ public class MemoryController {
     @Operation(summary = "手动触发记忆整合（daily notes → MEMORY.md，NIGHTLY 模式）")
     @PostMapping("/{agentId}/emergence")
     @RequireWorkspaceRole("member")
-    public R<DreamReport> triggerEmergence(@PathVariable Long agentId) {
+    public R<DreamReport> triggerEmergence(@PathVariable Long agentId,
+                                           Authentication authentication) {
         try {
-            DreamReport report = emergenceService.consolidate(agentId, DreamMode.NIGHTLY, null);
+            DreamReport report = emergenceService.consolidate(
+                    agentId, DreamMode.NIGHTLY, null, currentWebOwner(authentication));
             return R.ok(report);
         } catch (Exception e) {
             log.error("[Memory] Manual emergence failed for agent={}: {}", agentId, e.getMessage(), e);
@@ -79,7 +90,8 @@ public class MemoryController {
     @PostMapping("/{agentId}/dreaming/focused")
     @RequireWorkspaceRole("member")
     public R<DreamReport> triggerFocusedDream(@PathVariable Long agentId,
-                                              @RequestBody Map<String, String> body) {
+                                              @RequestBody Map<String, String> body,
+                                              Authentication authentication) {
         if (!memoryProperties.getDream().isFocusedEnabled()) {
             return R.fail(410, "Focused dream is disabled");
         }
@@ -88,7 +100,8 @@ public class MemoryController {
             return R.fail("topic is required");
         }
         try {
-            DreamReport report = emergenceService.consolidate(agentId, DreamMode.FOCUSED, topic);
+            DreamReport report = emergenceService.consolidate(
+                    agentId, DreamMode.FOCUSED, topic, currentWebOwner(authentication));
             return R.ok(report);
         } catch (Exception e) {
             log.error("[Memory] Focused dream failed for agent={}: {}", agentId, e.getMessage(), e);
@@ -101,9 +114,15 @@ public class MemoryController {
     @RequireWorkspaceRole("member")
     public R<Map<String, String>> triggerSummarize(
             @PathVariable Long agentId,
-            @PathVariable String conversationId) {
+            @PathVariable String conversationId,
+            Authentication authentication) {
+        if (conversationService != null && (authentication == null
+                || !conversationService.isConversationOwner(conversationId, authentication.getName()))) {
+            return R.fail(403, "conversation access denied");
+        }
         try {
-            summarizationService.analyzeAndUpdateMemory(agentId, conversationId);
+            summarizationService.analyzeAndUpdateMemory(
+                    agentId, conversationId, currentWebOwner(authentication));
             return R.ok(Map.of("status", "completed"));
         } catch (Exception e) {
             log.error("[Memory] Manual summarization failed for agent={}, conv={}: {}",
@@ -117,8 +136,11 @@ public class MemoryController {
     @Operation(summary = "查询 Dreaming 状态（配置、统计、上次运行时间）")
     @GetMapping("/{agentId}/dreaming/status")
     @RequireWorkspaceRole("member")
-    public R<Map<String, Object>> getDreamingStatus(@PathVariable Long agentId) {
-        Map<String, Object> status = recallService.getDreamingStatus(agentId);
+    public R<Map<String, Object>> getDreamingStatus(
+            @PathVariable Long agentId,
+            Authentication authentication) {
+        Map<String, Object> status = recallService.getDreamingStatus(
+                agentId, currentWebOwner(authentication));
         status.put("lastRunTime", dreamingScheduler.getLastRunTime());
         return R.ok(status);
     }
@@ -126,15 +148,20 @@ public class MemoryController {
     @Operation(summary = "查询召回候选列表（含评分详情）")
     @GetMapping("/{agentId}/dreaming/candidates")
     @RequireWorkspaceRole("member")
-    public R<List<Map<String, Object>>> getDreamingCandidates(@PathVariable Long agentId) {
-        return R.ok(recallService.listCandidatesWithDetails(agentId));
+    public R<List<Map<String, Object>>> getDreamingCandidates(
+            @PathVariable Long agentId,
+            Authentication authentication) {
+        return R.ok(recallService.listCandidatesWithDetails(
+                agentId, currentWebOwner(authentication)));
     }
 
     @Operation(summary = "查询 DREAMS.md 整合日记")
     @GetMapping("/{agentId}/dreaming/dreams")
     @RequireWorkspaceRole("member")
-    public R<Map<String, Object>> getDreams(@PathVariable Long agentId) {
-        WorkspaceFileEntity file = workspaceFileService.getFile(agentId, "DREAMS.md");
+    public R<Map<String, Object>> getDreams(@PathVariable Long agentId,
+                                            Authentication authentication) {
+        WorkspaceFileEntity file = workspaceFileService.getVisibleFile(
+                agentId, "DREAMS.md", currentWebOwner(authentication));
         Map<String, Object> result = new LinkedHashMap<>();
         if (file != null && file.getContent() != null) {
             result.put("content", file.getContent());
@@ -144,5 +171,13 @@ public class MemoryController {
             result.put("message", "尚未生成 DREAMS.md（需先运行一次 emergence）");
         }
         return R.ok(result);
+    }
+
+    private String currentWebOwner(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null
+                || authentication.getName().isBlank()) {
+            throw new NewsClawException("err.auth.unauthenticated", 401, "Not authenticated");
+        }
+        return "user:" + authentication.getName();
     }
 }

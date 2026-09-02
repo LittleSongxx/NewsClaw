@@ -1,5 +1,7 @@
 package vip.newsclaw.workflow.runtime;
 
+import vip.newsclaw.agent.context.ChatOrigin;
+
 /**
  * SPI for "render prompt → run agent → return text response". Kept thin so
  * unit tests can stub agent execution without booting the full StateGraph
@@ -17,8 +19,27 @@ public interface AgentInvoker {
     String invoke(long agentId, String prompt, String conversationId);
 
     /**
+     * Origin-aware invocation. The default keeps existing test/embedding
+     * implementations source-compatible while production can preserve tenant
+     * and human-vs-cron identity all the way into tools.
+     */
+    default String invoke(long agentId, String prompt, String conversationId,
+                          ChatOrigin origin) {
+        return invoke(agentId, prompt, conversationId);
+    }
+
+    /**
      * Resolve a workspace-scoped agent name to its id. Returns {@code null}
      * when the agent does not exist or is disabled.
      */
     Long resolveAgentId(long workspaceId, String agentName);
+
+    /**
+     * Validate an id embedded in a published graph against its run workspace.
+     * The default preserves source compatibility for lightweight test
+     * implementations; the production binding performs the real lookup.
+     */
+    default Long resolveAgentId(long workspaceId, Long agentId) {
+        return agentId;
+    }
 }

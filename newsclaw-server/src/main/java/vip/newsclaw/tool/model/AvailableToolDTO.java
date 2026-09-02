@@ -77,15 +77,28 @@ public class AvailableToolDTO {
     private String unavailableReason;
 
     public static AvailableToolDTO fromBuiltin(ToolEntity t) {
+        return fromBuiltin(t, t == null ? null : t.getName());
+    }
+
+    /**
+     * Build a picker row with an explicit runtime-resolvable binding name.
+     * Most built-ins use their DB name, but a row may represent several
+     * {@code @Tool} callbacks exposed by one bean.  In that case callers can
+     * pass the bean alias so the saved binding resolves back to every
+     * callback at runtime.
+     */
+    public static AvailableToolDTO fromBuiltin(ToolEntity t, String bindingName) {
+        String dbName = t == null ? "" : (t.getName() == null ? "" : t.getName());
+        String name = bindingName == null || bindingName.isBlank() ? dbName : bindingName;
         return AvailableToolDTO.builder()
                 // Built-in tool names are unique by ToolRegistry contract,
                 // so name suffices as a stable rowId.
-                .rowId("builtin#" + t.getName())
+                .rowId("builtin#" + name)
                 .source("builtin")
                 .providerId(null)
                 .providerName(null)
-                .name(t.getName())
-                .rawName(t.getName())
+                .name(name)
+                .rawName(dbName)
                 .description(t.getDescription() != null ? t.getDescription() : "")
                 .group("builtin")
                 .groupId("builtin")

@@ -1,6 +1,5 @@
 package vip.newsclaw.tool.builtin;
 
-import cn.hutool.http.HttpUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.chanjar.weixin.common.api.WxConsts;
@@ -16,10 +15,11 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.system.service.SystemSettingService;
-import vip.newsclaw.tool.browser.UrlSafetyChecker;
 import vip.newsclaw.tool.document.GeneratedFileCache;
+import vip.newsclaw.tool.image.BoundedImageFetcher;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -31,13 +31,12 @@ import java.util.regex.Matcher;
 /**
  * Built-in tool: publish a generated 图文 article to a WeChat Official Account.
  *
- * <p>The realistic, compliant endpoint is the <b>draft box</b> (草稿箱): the tool
- * uploads the cover image as a permanent material and creates a draft article via
- * the Official Account draft API. The account owner then reviews and taps
- * "publish" in the WeChat backend. Mass-send / one-click publish to all followers
- * is deliberately gated: it is an outward, irreversible action restricted by
- * platform verification and rate limits, so {@code publish} requires an explicit
- * confirmation flag and is only meaningful for verified accounts.
+ * <p>The only enabled endpoint is the <b>draft box</b> (草稿箱): the tool uploads
+ * the cover image as a permanent material and creates a draft article via the
+ * Official Account draft API. The account owner then reviews and taps
+ * "publish" in the WeChat backend. Direct mass-send is intentionally disabled
+ * here because a model-supplied boolean is not proof of a human approval and the
+ * action is externally visible and irreversible.
  *
  * <p>Credentials are read from system settings ({@code weixinoa.app_id} /
  * {@code weixinoa.app_secret}); nothing runs until they are configured.
@@ -49,22 +48,26 @@ public class GzhPublishTool {
 
     private static final String SETTING_APP_ID = "weixinoa.app_id";
     private static final String SETTING_APP_SECRET = "weixinoa.app_secret";
+    private static final int MAX_HTML_CHARS = 200_000;
 
     private final SystemSettingService systemSettingService;
     private final WxMpServiceProvider wxMpServiceProvider;
     private final GeneratedFileCache generatedFileCache;
 
+    @Value("${newsclaw.tools.external-publish.enabled:false}")
+    private boolean externalPublishEnabled;
+
     @Tool(name = "gzh_publish", description = """
         Publish a generated image-text article to a WeChat Official Account (微信公众号).
 
         Actions:
-          - draft  (default): upload the cover image and create a draft in the
-            Official Account 草稿箱. The user then taps "publish" in the WeChat
-            backend. This is the recommended, compliant path.
-          - publish: submit an already-drafted article for free-publish. Only works
-            for verified accounts and is an irreversible outward action, so it
-            requires confirmPublish=true AND you MUST get explicit user confirmation
-            of the final content before calling it.
+          - draft (default): upload the cover image and create a draft in the
+            Official Account 草稿箱. The user then reviews and publishes it in
+            the WeChat backend.
+          - publish: disabled. Direct free-publish is deliberately unavailable
+            until a server-issued, one-time human approval is implemented; the
+            `confirmPublish` argument is retained only for compatibility and is
+            never trusted as an approval proof.
 
         `content` must be WeChat-editor-compatible HTML with INLINE styles only
         (公众号 ignores <style> blocks). `coverImageUrl` is required for a draft
@@ -89,6 +92,13 @@ public class GzhPublishTool {
             @ToolParam(description = "Must be true to actually free-publish; forces explicit user confirmation", required = false)
             Boolean confirmPublish) {
 
+        String act = (action == null || action.isBlank()) ? "draft" : action.trim().toLowerCase();
+        if ("publish".equals(act)) {
+            return "Error: direct WeChat free-publish is disabled. Create a draft and publish it manually in the WeChat backend; confirmPublish is not an approval token.";
+        }
+        if (!externalPublishEnabled) {
+            return "Error: external publishing tools are disabled in this deployment; use the reviewed package flow instead.";
+        }
         String appId = systemSettingService.getString(SETTING_APP_ID, "");
         String appSecret = systemSettingService.getString(SETTING_APP_SECRET, "");
         if (appId.isBlank() || appSecret.isBlank()) {
@@ -97,12 +107,10 @@ public class GzhPublishTool {
         }
 
         WxMpService wxMpService = wxMpServiceProvider.getService(appId, appSecret);
-        String act = (action == null || action.isBlank()) ? "draft" : action.trim().toLowerCase();
 
         return switch (act) {
             case "draft" -> createDraft(wxMpService, title, content, coverImageUrl, author, digest);
-            case "publish" -> freePublish(wxMpService, draftMediaId, confirmPublish);
-            default -> "Error: unknown action '" + act + "'. Use 'draft' or 'publish'.";
+            default -> "Error: unknown action '" + act + "'. Use 'draft'.";
         };
     }
 
@@ -113,6 +121,9 @@ public class GzhPublishTool {
         }
         if (content == null || content.isBlank()) {
             return "Error: content (inline-styled HTML) is required for a draft.";
+        }
+        if (content.length() > MAX_HTML_CHARS) {
+            return "Error: content exceeds the 200000-character draft limit.";
         }
         if (coverImageUrl == null || coverImageUrl.isBlank()) {
             return "Error: coverImageUrl is required — WeChat needs a cover/thumb for the article.";
@@ -132,8 +143,9 @@ public class GzhPublishTool {
         String thumbMediaId;
         File tmpCover = null;
         try {
-            tmpCover = Files.createTempFile("gzh_cover_", ".jpg").toFile();
-            HttpUtil.downloadFile(coverImageUrl, tmpCover);
+            BoundedImageFetcher.Image cover = resolveImage(coverImageUrl);
+            tmpCover = Files.createTempFile("gzh_cover_", ".img").toFile();
+            Files.write(tmpCover.toPath(), cover.bytes());
             WxMpMaterial material = new WxMpMaterial();
             material.setName(tmpCover.getName());
             material.setFile(tmpCover);
@@ -195,32 +207,11 @@ public class GzhPublishTool {
             if (!scan.clean()) {
                 ok.append("⚠️ 合规提示（非高危，建议核对）：").append(ComplianceScanner.report(scan)).append('\n');
             }
-            ok.append("请到公众号后台「草稿箱」核对排版后点击「发表」。\n");
-            ok.append("如需直接群发（仅认证号），可用 gzh_publish action=publish draftMediaId=").append(draftMediaId)
-              .append(" confirmPublish=true，并在发布前与用户再次确认内容。");
+            ok.append("请到公众号后台「草稿箱」核对排版后点击「发表」；NewsClaw 当前不提供机器人直接群发入口。");
             return ok.toString();
         } catch (WxErrorException e) {
             log.warn("[GzhPublish] addDraft failed: {}", e.getMessage());
             return "Error: 创建草稿失败 — " + translateWxError(e);
-        }
-    }
-
-    private String freePublish(WxMpService wxMpService, String draftMediaId, Boolean confirmPublish) {
-        if (draftMediaId == null || draftMediaId.isBlank()) {
-            return "Error: draftMediaId is required for publish. Create a draft first.";
-        }
-        if (confirmPublish == null || !confirmPublish) {
-            return "Publish is an irreversible outward action. Confirm the final content with the user, "
-                    + "then call again with confirmPublish=true.";
-        }
-        try {
-            String publishId = withRetry(() -> wxMpService.getFreePublishService().submit(draftMediaId));
-            log.info("[GzhPublish] free-publish submitted, publish_id={}, draft={}", publishId, draftMediaId);
-            return "✅ 已提交群发（free-publish）。publish_id: " + publishId
-                    + "\n注意：发布结果由微信异步审核，请在公众号后台确认最终状态。";
-        } catch (WxErrorException e) {
-            log.warn("[GzhPublish] free-publish failed: {}", e.getMessage());
-            return "Error: 群发失败（仅认证号可用）— " + translateWxError(e);
         }
     }
 
@@ -291,6 +282,7 @@ public class GzhPublishTool {
         doc.outputSettings().prettyPrint(false);
         List<String> failed = new ArrayList<>();
         int uploaded = 0;
+        long totalBytes = 0;
         for (Element img : doc.select("img[src]")) {
             String src = img.attr("src").trim();
             if (src.isEmpty() || src.contains("mp.weixin.qq.com") || src.startsWith("data:")) {
@@ -301,6 +293,11 @@ public class GzhPublishTool {
                 byte[] bytes = resolveImageBytes(src);
                 if (bytes == null || bytes.length == 0) {
                     failed.add(src);
+                    continue;
+                }
+                totalBytes += bytes.length;
+                if (totalBytes > BoundedImageFetcher.MAX_TOTAL_BYTES) {
+                    failed.add(src + " (图片总量超过上限)");
                     continue;
                 }
                 tmp = Files.createTempFile("gzh_img_", "." + extOf(src)).toFile();
@@ -331,17 +328,31 @@ public class GzhPublishTool {
             Matcher m = GeneratedFileCache.GENERATED_URL_PATTERN.matcher(src);
             if (m.find()) {
                 Optional<GeneratedFileCache.Entry> e = generatedFileCache.get(m.group(1));
-                return e.map(GeneratedFileCache.Entry::bytes).orElse(null);
+                if (e.isEmpty() || e.get().bytes() == null
+                        || e.get().bytes().length > BoundedImageFetcher.MAX_IMAGE_BYTES) return null;
+                return e.get().bytes();
             }
             if (src.startsWith("http://") || src.startsWith("https://")) {
-                UrlSafetyChecker.check(src);
-                byte[] b = HttpUtil.downloadBytes(src);
-                return (b != null && b.length > 0) ? b : null;
+                return BoundedImageFetcher.http(src).bytes();
             }
         } catch (Exception e) {
             log.debug("[GzhPublish] could not resolve body image {}: {}", src, e.toString());
         }
         return null;
+    }
+
+    private BoundedImageFetcher.Image resolveImage(String ref) throws Exception {
+        Matcher m = GeneratedFileCache.GENERATED_URL_PATTERN.matcher(ref == null ? "" : ref.trim());
+        if (m.find()) {
+            Optional<GeneratedFileCache.Entry> entry = generatedFileCache.get(m.group(1));
+            if (entry.isEmpty()) throw new IllegalStateException("生成文件已过期或不存在");
+            BoundedImageFetcher.validate(entry.get().bytes(), entry.get().mimeType());
+            return new BoundedImageFetcher.Image(entry.get().bytes(), entry.get().mimeType());
+        }
+        if (ref != null && (ref.startsWith("http://") || ref.startsWith("https://"))) {
+            return BoundedImageFetcher.http(ref);
+        }
+        throw new IllegalArgumentException("coverImageUrl must be a generated-file or safe http(s) image URL");
     }
 
     private static String extOf(String url) {

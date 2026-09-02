@@ -58,7 +58,7 @@ init({ apiKey: 'your-channel-api-key', server: 'https://<your-deployment>' })
 
 - **Base URL**: `https://<your-NewsClaw-deployment>/api/v1/channels/webchat`
 - **Auth**: every endpoint requires the header `X-MC-Key: <API Key>` (from the channel edit page).
-- **Session-management endpoints** additionally require `X-MC-Visitor-Token: <HMAC>` (issued by the server and returned on the first `/stream` call).
+- **Visitor identity**: the first `/stream` or `/sessions` call receives a server-generated `visitorId` and HMAC `visitorToken`; persist both. Later calls must send the id plus `X-MC-Visitor-Token`.
 - **Response envelope**: `R<T>` → `{"code": 200, "msg": "...", "data": T}`; anything other than 200 is an error.
 - **Charset**: UTF-8. The SSE stream uses `text/event-stream; charset=UTF-8`.
 
@@ -66,9 +66,9 @@ init({ apiKey: 'your-channel-api-key', server: 'https://<your-deployment>' })
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/stream` | API Key | SSE streaming chat (issues visitorToken) |
+| POST | `/stream` | API Key; token after first contact | SSE streaming chat |
 | GET | `/config` | API Key | Get channel config (title/placeholder/...) |
-| POST | `/sessions` | API Key | Explicitly create an empty session thread |
+| POST | `/sessions` | API Key; token after first contact | Explicitly create an empty session thread |
 | GET | `/sessions` | + visitorToken | List sessions (excludes archived by default) |
 | GET | `/sessions/page` | + visitorToken | Paginated + keyword search |
 | PUT | `/sessions/title` | + visitorToken | Rename |
@@ -95,11 +95,11 @@ Admin-level (require a NewsClaw JWT, outside the permitAll set above):
 ## Auth flow
 
 ```text
-┌──────────┐  POST /stream {visitorId:"v1", message:"hi"}
+┌──────────┐  POST /stream {message:"hi"}
 │  Client  │ ─────────────────────────────────────────────► ┌──────────┐
 └──────────┘                                                  │ NewsClaw │
    ▲                                                          └──────────┘
-   │  SSE meta event: {sessionId, conversationId, visitorToken}
+   │  SSE meta event: {visitorId, sessionId, conversationId, visitorToken}
    │  SSE content_delta events: {text}
    │  SSE done event
    └─────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ Admin-level (require a NewsClaw JWT, outside the permitAll set above):
 └──────────┘ ◄──── 200 {code:200, data:[...]}                │
 ```
 
-`visitorToken` is valid for 7 days by default; re-issue it through any `/stream` call once it expires. Every `/stream` call (even with a still-valid token) returns a fresh token in the meta event — the client should keep updating its stored copy.
+`visitorToken` is valid for 7 days. Send it on every later `/stream`; a correctly signed token has a 30-day renewal grace after expiry. Every accepted `/stream` returns a fresh token in the meta event.
 
 ## Error codes
 

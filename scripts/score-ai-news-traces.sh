@@ -43,6 +43,6 @@ printf 'AI_NEWS_TRACE_QUALITY_MANIFEST_PATH=%s\n' "$manifest"
 printf 'AI_NEWS_TRACE_QUALITY_MARKDOWN_PATH=%s\n' "$markdown"
 if [[ -f "$manifest" ]]; then
   printf 'AI_NEWS_TRACE_QUALITY_SUMMARY='
-  jq -c '{schemaVersion,evaluationScope,datasetId,datasetVersion,gitCommit,caseCounts,badcaseCount:(.badcases|length),metrics:(.metrics | with_entries(.value |= {evaluated,value,precision,recall,f1}))}' "$manifest" 2>/dev/null \
+  jq -c '{schemaVersion,evaluationScope,datasetId,datasetVersion,gitCommit,caseCounts,badcaseCount:(.badcases|length),metrics:(.metrics | with_entries(.value |= {evaluated,invalidPredictions,value,confidenceLower,confidenceUpper,precision,recall,f1,warnings}))}' "$manifest" 2>/dev/null \
     || sed -n '1,120p' "$manifest"
 fi

@@ -12,6 +12,11 @@ public interface NewsSourceProvider {
 
     String providerId();
 
+    /** Transport classification; it does not imply source trust. */
+    default NewsSourceChannel channel() {
+        return NewsSourceChannel.SEARCH;
+    }
+
     List<NewsSourceResult> search(NewsSourceQuery query);
 
     Optional<NewsSourceResult> fetch(URI url);

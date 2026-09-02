@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <ul>
  *   <li>TTL: 15 分钟（搜索结果的时效性与 API quota 节省之间的平衡）</li>
  *   <li>最大条目: 100（超出时淘汰最早插入的条目）</li>
- *   <li>Key: providerId + query + freshness + language + count（归一化为小写）</li>
+ *   <li>Key 包含 provider、query、时间、语言、主题和域名过滤，避免不同检索契约串缓存</li>
  * </ul>
  *
  * @author NewsClaw Team
@@ -39,7 +39,12 @@ public class SearchCache {
                 + query.query() + ":"
                 + (query.freshness() != null ? query.freshness() : "") + ":"
                 + (query.language() != null ? query.language() : "") + ":"
-                + query.resolvedCount()
+                + query.resolvedCount() + ":"
+                + (query.topic() != null ? query.topic() : "") + ":"
+                + (query.startDate() != null ? query.startDate() : "") + ":"
+                + (query.endDate() != null ? query.endDate() : "") + ":"
+                + String.join(",", query.includeDomains()) + ":"
+                + String.join(",", query.excludeDomains())
         ).toLowerCase().trim();
     }
 

@@ -11,6 +11,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
+import vip.newsclaw.agent.context.ChatOrigin;
 import vip.newsclaw.acp.event.AcpEndpointChangedEvent;
 import vip.newsclaw.acp.model.AcpEndpointEntity;
 import vip.newsclaw.acp.service.AcpDelegationService;
@@ -197,7 +198,13 @@ public class AcpSkillBridge {
      * regenerated on each call.
      */
     public List<SkillEntity> listAcpDerivedSkillEntities() {
-        return safeListEnabled().stream().map(this::endpointToEntity).toList();
+        return safeListEnabled(null).stream().map(this::endpointToEntity).toList();
+    }
+
+    /** Workspace-scoped snapshot used by HTTP/catalog callers. */
+    public List<SkillEntity> listAcpDerivedSkillEntities(Long workspaceId) {
+        return safeListEnabled(effectiveWorkspaceId(workspaceId)).stream()
+                .map(this::endpointToEntity).toList();
     }
 
     /**
@@ -206,7 +213,13 @@ public class AcpSkillBridge {
      * test on the row: OK → READY, ERROR / unknown → SETUP_NEEDED.
      */
     public List<ResolvedSkill> listAcpDerivedResolvedSkills() {
-        return safeListEnabled().stream().map(this::endpointToResolved).toList();
+        return safeListEnabled(null).stream().map(this::endpointToResolved).toList();
+    }
+
+    /** Workspace-scoped runtime snapshot. */
+    public List<ResolvedSkill> listAcpDerivedResolvedSkills(Long workspaceId) {
+        return safeListEnabled(effectiveWorkspaceId(workspaceId)).stream()
+                .map(this::endpointToResolved).toList();
     }
 
     /**
@@ -216,14 +229,28 @@ public class AcpSkillBridge {
     public ResolvedSkill findResolvedById(Long virtualId) {
         Long endpointId = extractEndpointId(virtualId);
         if (endpointId == null) return null;
-        AcpEndpointEntity ep = safeGet(endpointId);
+        AcpEndpointEntity ep = safeGet(endpointId, null);
+        return ep != null && Boolean.TRUE.equals(ep.getEnabled()) ? endpointToResolved(ep) : null;
+    }
+
+    public ResolvedSkill findResolvedById(Long virtualId, Long workspaceId) {
+        Long endpointId = extractEndpointId(virtualId);
+        if (endpointId == null) return null;
+        AcpEndpointEntity ep = safeGet(endpointId, effectiveWorkspaceId(workspaceId));
         return ep != null && Boolean.TRUE.equals(ep.getEnabled()) ? endpointToResolved(ep) : null;
     }
 
     public SkillEntity findEntityById(Long virtualId) {
         Long endpointId = extractEndpointId(virtualId);
         if (endpointId == null) return null;
-        AcpEndpointEntity ep = safeGet(endpointId);
+        AcpEndpointEntity ep = safeGet(endpointId, null);
+        return ep != null && Boolean.TRUE.equals(ep.getEnabled()) ? endpointToEntity(ep) : null;
+    }
+
+    public SkillEntity findEntityById(Long virtualId, Long workspaceId) {
+        Long endpointId = extractEndpointId(virtualId);
+        if (endpointId == null) return null;
+        AcpEndpointEntity ep = safeGet(endpointId, effectiveWorkspaceId(workspaceId));
         return ep != null && Boolean.TRUE.equals(ep.getEnabled()) ? endpointToEntity(ep) : null;
     }
 
@@ -260,8 +287,13 @@ public class AcpSkillBridge {
         final String endpointName = ep.getName();
         final Long endpointId = ep.getId();
 
-        SkillScopedToolCallback callback = new SkillScopedToolCallback(toolName, desc, schema, input -> {
+        SkillScopedToolCallback callback = new SkillScopedToolCallback(toolName, desc, schema, (input, context) -> {
             try {
+                ChatOrigin origin = ChatOrigin.from(context);
+                if (origin.workspaceId() != null
+                        && !origin.workspaceId().equals(ep.getWorkspaceId())) {
+                    return errorJson("ACP endpoint is outside the current workspace");
+                }
                 JsonNode args = input == null || input.isBlank()
                         ? objectMapper.createObjectNode()
                         : objectMapper.readTree(input);
@@ -269,7 +301,8 @@ public class AcpSkillBridge {
                 if (userPrompt.isEmpty()) return errorJson("prompt is required");
                 String cwdHint = args.path("cwd").asText("");
                 String reply = delegationService.prompt(endpointName, userPrompt,
-                        cwdHint == null || cwdHint.isBlank() ? null : cwdHint);
+                        cwdHint == null || cwdHint.isBlank() ? null : cwdHint,
+                        ep.getWorkspaceId());
                 JSONObject resp = new JSONObject()
                         .set("endpoint", endpointName)
                         .set("reply", reply);
@@ -375,6 +408,7 @@ public class AcpSkillBridge {
                 .enabled(Boolean.TRUE.equals(ep.getEnabled()))
                 .icon(iconFor(ep))
                 .builtin(Boolean.TRUE.equals(ep.getBuiltin()))
+                .workspaceId(ep.getWorkspaceId())
                 .securityBlocked(false)
                 .securitySummary("ACP-derived skill (external CLI; not subject to SKILL.md scanning)")
                 .dependencyReady(ready)
@@ -512,8 +546,14 @@ public class AcpSkillBridge {
     // ==================== Helpers ====================
 
     private List<AcpEndpointEntity> safeListEnabled() {
+        return safeListEnabled(null);
+    }
+
+    private List<AcpEndpointEntity> safeListEnabled(Long workspaceId) {
         try {
-            return endpointService.listEnabled();
+            return workspaceId == null
+                    ? endpointService.listEnabled()
+                    : endpointService.listEnabled(workspaceId);
         } catch (Exception e) {
             log.warn("AcpSkillBridge could not list enabled endpoints: {}", e.getMessage());
             return Collections.emptyList();
@@ -521,11 +561,19 @@ public class AcpSkillBridge {
     }
 
     private AcpEndpointEntity safeGet(Long id) {
+        return safeGet(id, null);
+    }
+
+    private AcpEndpointEntity safeGet(Long id, Long workspaceId) {
         try {
-            return endpointService.get(id);
+            return workspaceId == null ? endpointService.get(id) : endpointService.get(id, workspaceId);
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static Long effectiveWorkspaceId(Long workspaceId) {
+        return workspaceId != null ? workspaceId : 1L;
     }
 
     private String slugify(String raw) {

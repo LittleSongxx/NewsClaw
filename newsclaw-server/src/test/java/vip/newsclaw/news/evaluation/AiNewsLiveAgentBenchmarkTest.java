@@ -34,7 +34,15 @@ class AiNewsLiveAgentBenchmarkTest {
                 intProperty("ai.news.live.max-cases", 0),
                 System.getProperty("git.commit", "unknown"),
                 System.getProperty("ai.news.live.evaluation-tree", "unknown"), rawDirectory,
-                System.getProperty("ai.news.live.response-format", "text"));
+                System.getProperty("ai.news.live.response-format", "text"),
+                System.getProperty("ai.news.live.prompt-version", ""),
+                System.getProperty("ai.news.live.thinking-level", ""),
+                System.getProperty("ai.news.live.run-class", "development"),
+                System.getProperty("ai.news.live.evaluation-source-fingerprint", ""),
+                System.getProperty("ai.news.live.server-revision", ""),
+                System.getProperty("ai.news.live.case-order", "dataset"),
+                System.getProperty("ai.news.live.primary-review-signoff", ""),
+                System.getProperty("ai.news.live.independent-review-signoff", ""));
         AiNewsLiveAgentBenchmarkRunner.LiveEvaluationResult result =
                 AiNewsLiveAgentBenchmarkRunner.run(benchmark, config);
 

@@ -266,7 +266,7 @@ NewsClaw uses **MyBatis Plus** (not JPA) for database access. Conventions:
 - `snake_case` columns, `camelCase` Java fields, auto-mapped
 - Every table has `create_time`, `update_time`, `deleted` (logical delete)
 - **Flyway** manages schema migrations — `db/migration/h2/` and `db/migration/mysql/` hold dialect-specific scripts, auto-selected on startup
-- `FlywayRepairConfig` runs `repair()` before `migrate()` on every boot, self-healing checksum drift and partially-failed migrations
+- Flyway validates migration checksums on startup. `FlywayRepairConfig` only runs `repair()` when the explicit `newsclaw.flyway.auto-repair` switch is enabled; keep that switch off in production so drift and partial failures remain visible
 - Seed data loaded by `DatabaseBootstrapRunner` from `db/data-*.sql`, idempotent
 
 ### Table groups

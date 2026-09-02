@@ -37,6 +37,8 @@ public class AuditEventController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return R.ok(auditEventService.listEvents(workspaceId, action, resourceType, startTime, endTime, page, size));
+        long effectiveWorkspaceId = workspaceId == null || workspaceId <= 0 ? 1L : workspaceId;
+        return R.ok(auditEventService.listEvents(effectiveWorkspaceId, action, resourceType,
+                startTime, endTime, page, size));
     }
 }

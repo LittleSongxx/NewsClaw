@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
 import vip.newsclaw.common.result.R;
 import vip.newsclaw.agent.AgentService;
 import vip.newsclaw.agent.binding.model.AgentSkillBinding;
@@ -144,7 +145,7 @@ public class SkillController {
         }
         try {
             long virtualAcp = countUnshadowedVirtualSkills(
-                    acpSkillBridge.listAcpDerivedSkillEntities(), realNames);
+                    listAcpVirtualSkills(workspaceId), realNames);
             if (virtualAcp > 0) {
                 result.merge("acp", virtualAcp, Long::sum);
                 result.merge("all", virtualAcp, Long::sum);
@@ -251,7 +252,7 @@ public class SkillController {
         }
         if (includeAcpVirtuals) {
             try {
-                result.addAll(filterVirtualSkills(acpSkillBridge.listAcpDerivedSkillEntities(),
+                result.addAll(filterVirtualSkills(listAcpVirtualSkills(workspaceId),
                         realNames, keyword, enabled, scanStatus, runtime));
             } catch (Exception ignored) {
                 // Bridge failure must not break the Skills page.
@@ -336,8 +337,9 @@ public class SkillController {
                     "the local workspace is out of sync with the canonical store.")
     @PostMapping("/sync-files")
     @RequireWorkspaceRole("admin")
-    public R<Map<String, Object>> syncAllFiles() {
-        var report = skillFileSyncer.syncAll();
+    public R<Map<String, Object>> syncAllFiles(
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        var report = skillFileSyncer.syncAll(workspaceId);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("skillsConsidered", report.skillsConsidered());
         body.put("skillsBackfilled", report.skillsBackfilled());
@@ -422,6 +424,7 @@ public class SkillController {
         rejectVirtualSkillMutation(id);
         SkillEntity skill = skillService.getSkill(id);
         verifyResourceWorkspace(skill, workspaceId);
+        if (body == null) return R.fail("request body is required");
         if (Boolean.TRUE.equals(skill.getBuiltin())) {
             return R.fail("Builtin skill files are read-only — they are restored from the shipped bundle on upgrade.");
         }
@@ -526,11 +529,14 @@ public class SkillController {
      * actually belongs to workspace A.
      */
     private void verifyResourceWorkspace(SkillEntity skill, Long headerWorkspaceId) {
-        if (skill == null || Boolean.TRUE.equals(skill.getBuiltin())) {
+        if (skill == null) {
+            throw new vip.newsclaw.exception.NewsClawException("err.skill.not_found", 404,
+                    "Skill not found");
+        }
+        if (Boolean.TRUE.equals(skill.getBuiltin())) {
             return;
         }
-        long requested = headerWorkspaceId != null
-                ? headerWorkspaceId : SkillService.DEFAULT_WORKSPACE_ID;
+        long requested = effectiveWorkspace(headerWorkspaceId);
         long owner = skill.getWorkspaceId() != null
                 ? skill.getWorkspaceId() : SkillService.DEFAULT_WORKSPACE_ID;
         if (owner != requested) {
@@ -564,11 +570,31 @@ public class SkillController {
         }
         try {
             result.addAll(enabledOnly(filterShadowedVirtualSkills(
-                    acpSkillBridge.listAcpDerivedSkillEntities(), realNames)));
+                    listAcpVirtualSkills(workspaceId), realNames)));
         } catch (Exception e) {
             // Bridge failure must not 500 the picker — same defensive stance as /counts.
         }
         return R.ok(result);
+    }
+
+    /** Null workspace means the legacy/default view; keep the bridge's
+     * unscoped overload for that mode so direct callers and old installations
+     * continue to see all ACP virtual skills. */
+    private List<SkillEntity> listAcpVirtualSkills(Long workspaceId) {
+        // Keep direct/unit callers' legacy no-arg behavior, while an actual
+        // HTTP request with an omitted header still receives the default
+        // workspace-scoped view enforced by WorkspaceAccessInterceptor.
+        if (workspaceId == null
+                && !(org.springframework.web.context.request.RequestContextHolder
+                .getRequestAttributes() instanceof org.springframework.web.context.request.ServletRequestAttributes)) {
+            return acpSkillBridge.listAcpDerivedSkillEntities();
+        }
+        return acpSkillBridge.listAcpDerivedSkillEntities(effectiveWorkspace(workspaceId));
+    }
+
+    private static long effectiveWorkspace(Long workspaceId) {
+        return workspaceId == null || workspaceId <= 0
+                ? SkillService.DEFAULT_WORKSPACE_ID : workspaceId;
     }
 
     @Operation(summary = "按类型获取技能列表")
@@ -604,7 +630,7 @@ public class SkillController {
         }
         // RFC-090 §3.2 (parallel) — same path for ACP-derived virtual skills.
         if (vip.newsclaw.skill.acp.AcpSkillBridge.isVirtualAcpSkillId(id)) {
-            SkillEntity ent = acpSkillBridge.findEntityById(id);
+            SkillEntity ent = acpSkillBridge.findEntityById(id, effectiveWorkspace(workspaceId));
             return ent != null ? R.ok(ent) : R.fail("ACP-derived skill not found: " + id);
         }
         SkillEntity skill = skillService.getSkill(id);
@@ -632,6 +658,7 @@ public class SkillController {
     public R<SkillEntity> create(
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
             @RequestBody SkillEntity skill) {
+        if (skill == null) return R.fail(400, "request body is required");
         // Always stamp the owning workspace from the request context — never
         // trust a workspaceId in the request body.
         skill.setWorkspaceId(workspaceId != null
@@ -644,6 +671,7 @@ public class SkillController {
     @RequireWorkspaceRole("admin")
     public R<SkillEntity> update(@PathVariable Long id, @RequestBody SkillEntity skill,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        if (skill == null) return R.fail(400, "request body is required");
         rejectVirtualSkillMutation(id);
         verifyResourceWorkspace(skillService.getSkill(id), workspaceId);
         skill.setId(id);
@@ -674,12 +702,17 @@ public class SkillController {
     @PutMapping("/{id}/toggle")
     @RequireWorkspaceRole("admin")
     public R<SkillEntity> toggle(@PathVariable Long id, @RequestParam boolean enabled,
-            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
+            Authentication authentication) {
         // A virtual MCP skill mirrors an MCP server — toggling it enables /
         // disables that server, keeping the Skills page and Settings ▸ MCP
         // Connections in sync. ACP virtual skills have no such mapping and
         // stay read-only via rejectVirtualSkillMutation below.
         if (vip.newsclaw.skill.mcp.McpSkillBridge.isVirtualMcpSkillId(id)) {
+            boolean globalAdmin = authentication != null && authentication.getAuthorities() != null
+                    && authentication.getAuthorities().stream()
+                    .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+            if (!globalAdmin) return R.fail(403, "Global administrator role required for MCP changes");
             return R.ok(mcpSkillBridge.toggleVirtualSkill(id, enabled));
         }
         rejectVirtualSkillMutation(id);
@@ -689,7 +722,7 @@ public class SkillController {
 
     @Operation(summary = "预览技能 Prompt 增强效果（调试用，与 Agent 真实运行时一致）")
     @GetMapping("/prompt-preview")
-    @RequireWorkspaceRole("admin")
+    @vip.newsclaw.workspace.core.annotation.RequireGlobalAdmin
     public R<Map<String, Object>> promptPreview() {
         String prompt = skillRuntimeService.buildSkillPromptEnhancement();
         return R.ok(Map.of(
@@ -701,24 +734,36 @@ public class SkillController {
 
     // ==================== Runtime API ====================
 
+    /** Source-compatible helper for non-HTTP callers; HTTP uses the authenticated overload below. */
+    public R<SkillEntity> toggle(Long id, boolean enabled, Long workspaceId) {
+        if (vip.newsclaw.skill.mcp.McpSkillBridge.isVirtualMcpSkillId(id)) {
+            return R.ok(mcpSkillBridge.toggleVirtualSkill(id, enabled));
+        }
+        return toggle(id, enabled, workspaceId, null);
+    }
+
     @Operation(summary = "获取 active skills 运行时视图")
     @GetMapping("/runtime/active")
     @RequireWorkspaceRole("admin")
-    public R<Map<String, Object>> getActiveSkills() {
-        List<ResolvedSkill> skills = skillRuntimeService.getActiveSkills();
+    public R<Map<String, Object>> getActiveSkills(
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        List<ResolvedSkill> skills = skillRuntimeService.getActiveSkills(
+                workspaceId == null ? SkillService.DEFAULT_WORKSPACE_ID : workspaceId);
         return R.ok(Map.of("count", skills.size(), "skills", skills));
     }
 
     @Operation(summary = "获取所有技能的运行时解析状态（管理页面使用）")
     @GetMapping("/runtime/status")
     @RequireWorkspaceRole("admin")
-    public R<List<ResolvedSkill>> getRuntimeStatus() {
-        return R.ok(skillRuntimeService.resolveAllSkillsStatus());
+    public R<List<ResolvedSkill>> getRuntimeStatus(
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        return R.ok(skillRuntimeService.resolveAllSkillsStatus(
+                workspaceId == null ? SkillService.DEFAULT_WORKSPACE_ID : workspaceId));
     }
 
     @Operation(summary = "刷新 active skills 缓存，resync=true 时同步内置技能到 workspace")
     @PostMapping("/runtime/refresh")
-    @RequireWorkspaceRole("admin")
+    @vip.newsclaw.workspace.core.annotation.RequireGlobalAdmin
     public R<Map<String, Object>> refreshRuntime(
             @RequestParam(defaultValue = "false") boolean resync) {
         List<String> resynced = List.of();
@@ -745,8 +790,11 @@ public class SkillController {
     @Operation(summary = "Pre-flight requirement statuses for a skill (RFC-090)")
     @GetMapping("/{id}/requirements")
     @RequireWorkspaceRole("member")
-    public R<Map<String, Object>> requirements(@PathVariable Long id) {
-        ResolvedSkill resolved = skillRuntimeService.resolveAllSkillsStatus().stream()
+    public R<Map<String, Object>> requirements(@PathVariable Long id,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifySkillIdWorkspace(id, workspaceId);
+        Long effectiveWorkspaceId = workspaceId == null ? SkillService.DEFAULT_WORKSPACE_ID : workspaceId;
+        ResolvedSkill resolved = skillRuntimeService.resolveAllSkillsStatus(effectiveWorkspaceId).stream()
                 .filter(r -> r != null && id.equals(r.getId()))
                 .findFirst()
                 .orElse(null);
@@ -811,7 +859,10 @@ public class SkillController {
     @Operation(summary = "List agents that can use this skill (RFC-090 §14.2)")
     @GetMapping("/{id}/employees")
     @RequireWorkspaceRole("member")
-    public R<List<Map<String, Object>>> employees(@PathVariable Long id) {
+    public R<List<Map<String, Object>>> employees(@PathVariable Long id,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifySkillIdWorkspace(id, workspaceId);
+        long effectiveWorkspaceId = workspaceId == null ? SkillService.DEFAULT_WORKSPACE_ID : workspaceId;
         // Explicit bindings: agent_skill rows pointing to this skill.
         List<AgentSkillBinding> explicitBindings = agentSkillBindingMapper.selectList(
                 new LambdaQueryWrapper<AgentSkillBinding>()
@@ -824,7 +875,9 @@ public class SkillController {
         // (no explicit row in agent_skill at all). They get every
         // globally-enabled skill, which includes this one provided the
         // skill itself is enabled.
-        List<AgentEntity> allAgents = agentService.listAgents();
+        List<AgentEntity> allAgents = agentService.listAgentsByWorkspace(effectiveWorkspaceId);
+        java.util.Set<Long> visibleAgentIds = allAgents.stream()
+                .map(AgentEntity::getId).collect(java.util.stream.Collectors.toSet());
         java.util.Set<Long> implicitAgentIds = new java.util.LinkedHashSet<>();
         SkillEntity skill;
         try {
@@ -846,10 +899,10 @@ public class SkillController {
         // Stable order: explicit first (most "intentional" relationship),
         // then implicit, agents inside each group keep DB insert order.
         for (Long agentId : explicitAgentIds) {
-            appendAgentRow(rows, agentId, "explicit");
+            if (visibleAgentIds.contains(agentId)) appendAgentRow(rows, agentId, "explicit");
         }
         for (Long agentId : implicitAgentIds) {
-            appendAgentRow(rows, agentId, "implicit");
+            if (visibleAgentIds.contains(agentId)) appendAgentRow(rows, agentId, "implicit");
         }
         return R.ok(rows);
     }
@@ -869,6 +922,23 @@ public class SkillController {
         }
     }
 
+    /** Verify persisted and virtual skill ids before detail/reverse-lookup reads. */
+    private void verifySkillIdWorkspace(Long id, Long workspaceId) {
+        if (id == null) {
+            throw new NewsClawException("err.skill.not_found", 404, "Skill id is required");
+        }
+        if (vip.newsclaw.skill.mcp.McpSkillBridge.isVirtualMcpSkillId(id)) return;
+        if (vip.newsclaw.skill.acp.AcpSkillBridge.isVirtualAcpSkillId(id)) {
+            Long effective = workspaceId == null ? SkillService.DEFAULT_WORKSPACE_ID : workspaceId;
+            if (acpSkillBridge.findEntityById(id, effective) == null) {
+                throw new NewsClawException("err.common.wrong_workspace", 403,
+                        "Skill does not belong to this workspace");
+            }
+            return;
+        }
+        verifyResourceWorkspace(skillService.getSkill(id), workspaceId);
+    }
+
     // ==================== Lessons API (RFC-090 §7 + §11.4) ====================
 
     /**
@@ -878,8 +948,11 @@ public class SkillController {
     @Operation(summary = "Read per-skill LESSONS.md (RFC-090 §11.4)")
     @GetMapping("/{id}/lessons")
     @RequireWorkspaceRole("member")
-    public R<Map<String, Object>> getLessons(@PathVariable Long id) {
-        ResolvedSkill resolved = skillRuntimeService.resolveAllSkillsStatus().stream()
+    public R<Map<String, Object>> getLessons(@PathVariable Long id,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifySkillIdWorkspace(id, workspaceId);
+        Long effectiveWorkspaceId = workspaceId == null ? SkillService.DEFAULT_WORKSPACE_ID : workspaceId;
+        ResolvedSkill resolved = skillRuntimeService.resolveAllSkillsStatus(effectiveWorkspaceId).stream()
                 .filter(r -> r != null && id.equals(r.getId()))
                 .findFirst()
                 .orElse(null);
@@ -909,8 +982,11 @@ public class SkillController {
     @Operation(summary = "Clear all lessons for a skill (RFC-090 §11.4)")
     @PostMapping("/{id}/lessons/clear")
     @RequireWorkspaceRole("admin")
-    public R<Map<String, Object>> clearLessons(@PathVariable Long id) {
-        ResolvedSkill resolved = skillRuntimeService.resolveAllSkillsStatus().stream()
+    public R<Map<String, Object>> clearLessons(@PathVariable Long id,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifySkillIdWorkspace(id, workspaceId);
+        Long effectiveWorkspaceId = workspaceId == null ? SkillService.DEFAULT_WORKSPACE_ID : workspaceId;
+        ResolvedSkill resolved = skillRuntimeService.resolveAllSkillsStatus(effectiveWorkspaceId).stream()
                 .filter(r -> r != null && id.equals(r.getId()))
                 .findFirst()
                 .orElse(null);
@@ -926,6 +1002,7 @@ public class SkillController {
     @RequireWorkspaceRole("admin")
     public R<Map<String, Object>> synthesizeFromConversation(@RequestBody Map<String, Object> body,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        if (body == null) return R.fail("request body is required");
         String conversationId = (String) body.get("conversationId");
         Long agentId = body.get("agentId") != null ? Long.valueOf(body.get("agentId").toString()) : null;
         if (conversationId == null || conversationId.isBlank()) {

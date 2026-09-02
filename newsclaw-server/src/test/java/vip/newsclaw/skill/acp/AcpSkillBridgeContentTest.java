@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.ai.tool.ToolCallback;
+import vip.newsclaw.agent.context.ChatOrigin;
 import vip.newsclaw.acp.model.AcpEndpointEntity;
 import vip.newsclaw.acp.service.AcpDelegationService;
 import vip.newsclaw.acp.service.AcpEndpointService;
@@ -18,6 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -33,13 +38,15 @@ import static org.mockito.Mockito.when;
 class AcpSkillBridgeContentTest {
 
     private AcpEndpointService endpointService;
+    private AcpDelegationService delegationService;
+    private ToolRegistry toolRegistry;
     private AcpSkillBridge bridge;
 
     @BeforeEach
     void setUp() {
         endpointService = mock(AcpEndpointService.class);
-        AcpDelegationService delegationService = mock(AcpDelegationService.class);
-        ToolRegistry toolRegistry = mock(ToolRegistry.class);
+        delegationService = mock(AcpDelegationService.class);
+        toolRegistry = mock(ToolRegistry.class);
         bridge = new AcpSkillBridge(endpointService, delegationService, new ObjectMapper(), toolRegistry);
     }
 
@@ -70,6 +77,7 @@ class AcpSkillBridgeContentTest {
     @DisplayName("virtual SkillEntity skillContent matches the ResolvedSkill content")
     void skillEntityContentMatchesResolved() {
         AcpEndpointEntity ep = newEndpoint(7L, "codex");
+        ep.setWorkspaceId(23L);
         when(endpointService.listEnabled()).thenReturn(List.of(ep));
 
         SkillEntity entity = bridge.listAcpDerivedSkillEntities().get(0);
@@ -79,6 +87,8 @@ class AcpSkillBridgeContentTest {
         assertFalse(entity.getSkillContent().isBlank(), "skillContent must not be blank");
         assertEquals(resolved.getContent(), entity.getSkillContent(),
                 "entity skillContent and resolved content must be the same synthesized body");
+        assertEquals(23L, entity.getWorkspaceId());
+        assertEquals(23L, resolved.getWorkspaceId());
     }
 
     @Test
@@ -173,6 +183,24 @@ class AcpSkillBridgeContentTest {
         assertNotNull(entity);
         assertFalse(resolved.getContent().isBlank(), "resolved content must not be blank");
         assertFalse(entity.getSkillContent().isBlank(), "entity skillContent must not be blank");
+    }
+
+    @Test
+    void wrapperRejectsCallsFromAnotherWorkspace() {
+        AcpEndpointEntity ep = newEndpoint(7L, "codex");
+        ep.setWorkspaceId(23L);
+        when(endpointService.listEnabled()).thenReturn(List.of(ep));
+
+        bridge.onReady();
+
+        ArgumentCaptor<ToolCallback> callback = ArgumentCaptor.forClass(ToolCallback.class);
+        verify(toolRegistry).registerPluginTool(callback.capture(), org.mockito.ArgumentMatchers.any());
+        String result = callback.getValue().call(
+                "{\"prompt\":\"inspect\"}",
+                ChatOrigin.web("conv", "alice", 99L, null).toToolContext());
+
+        assertTrue(result.contains("outside the current workspace"));
+        verifyNoInteractions(delegationService);
     }
 
     private static AcpEndpointEntity newEndpoint(long id, String name) {

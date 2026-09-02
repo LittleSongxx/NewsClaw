@@ -12,8 +12,8 @@ spring:
     #   loginTimeout=10    — 数据库登录超时（秒）
     url: jdbc:kingbase8://${DB_HOST:localhost}:${DB_PORT:54321}/${DB_NAME:newsclaw}?currentSchema=newsclaw&connectTimeout=10&socketTimeout=30&loginTimeout=10
     driver-class-name: com.kingbase8.Driver
-    username: ${DB_USERNAME:system}
-    password: ${DB_PASSWORD:Admin2026@123}
+    username: ${DB_USERNAME:}
+    password: ${DB_PASSWORD:}
     hikari:
       maximum-pool-size: 30
       minimum-idle: 5
@@ -36,15 +36,16 @@ spring:
     #
     # JDBC 超时参数：避免 Flyway 连接阶段也因 OS 级 TCP 超时而"卡住"
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:54321}/${DB_NAME:newsclaw}?currentSchema=newsclaw&connectTimeout=10&socketTimeout=30&loginTimeout=10
-    user: ${DB_USERNAME:system}
-    password: ${DB_PASSWORD:Admin2026@123}
+    user: ${DB_USERNAME:}
+    password: ${DB_PASSWORD:}
     locations:
       - classpath:db/migration/kingbase
     # 迁移前确保目标 schema 存在（Kingbase 不会自动创建非 public schema）
     init-sqls:
       - CREATE SCHEMA IF NOT EXISTS newsclaw
-    # 首次迁移或脚本变更后跳过 checksum 校验，避免因脚本转换导致的校验失败卡住
-    validate-on-migrate: false
+    # 保持 checksum 校验开启。若已有实例报告漂移，应先审查迁移并执行
+    # 一次性、受控的 repair；不要在每次启动时静默掩盖不一致。
+    validate-on-migrate: ${NEWSCLAW_FLYWAY_VALIDATE_ON_MIGRATE:true}
 
   h2:
     console:
@@ -67,6 +68,28 @@ mybatis-plus:
 # Operators set newsclaw.wiki.allowed-source-roots to permit specific roots.
 # The default profile (H2 / desktop / single-tenant) leaves this off.
 newsclaw:
+  webchat:
+    public-enabled: ${NEWSCLAW_WEBCHAT_PUBLIC_ENABLED:false}
+  ai-news:
+    require-event-context: ${NEWSCLAW_AI_NEWS_REQUIRE_EVENT_CONTEXT:true}
+    strict-evidence-boundary: ${NEWSCLAW_AI_NEWS_STRICT_EVIDENCE_BOUNDARY:true}
+  security:
+    production-mode: ${NEWSCLAW_PRODUCTION_MODE:true}
+  setup:
+    allow-anonymous: ${NEWSCLAW_SETUP_ALLOW_ANONYMOUS:false}
+  tools:
+    screenshot:
+      enabled: false
+    external-publish:
+      enabled: false
+  mcp:
+    enabled: false
+  plugin:
+    enabled: false
+  sso:
+    enabled: false
+    feishu:
+      enabled: false
   wiki:
     require-allowed-roots: true
 

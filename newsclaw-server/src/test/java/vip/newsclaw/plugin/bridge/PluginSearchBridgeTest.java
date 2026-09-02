@@ -60,7 +60,7 @@ class PluginSearchBridgeTest {
     }
 
     @Test
-    @DisplayName("count is clamped via SearchQuery.resolvedCount before reaching the plugin")
+    @DisplayName("count remains clamped to the plugin API v1 maximum")
     void countIsClamped() {
         AtomicReference<PluginSearchQuery> received = new AtomicReference<>();
         PluginSearchBridge bridge = new PluginSearchBridge(stub(q -> {

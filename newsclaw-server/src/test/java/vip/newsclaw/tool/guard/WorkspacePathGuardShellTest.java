@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import vip.newsclaw.tool.builtin.ToolExecutionContext;
+import vip.newsclaw.agent.context.ChatOrigin;
 
 import java.nio.file.Path;
 
@@ -281,13 +282,15 @@ class WorkspacePathGuardShellTest {
     @DisplayName("Skill root is trusted in addition to the workspace")
     void skillRoot_pass() {
         WorkspacePathGuard.setSkillRoot(SKILL_ROOT);
-        // Reading and running a shared skill's files from a workspace elsewhere.
+        var ctx = ChatOrigin.web("conv-test", "test-user", 7L, WORKSPACE).toToolContext();
         assertDoesNotThrow(() -> WorkspacePathGuard.validateShellCommand(
-                "cat " + SKILL_ROOT + "/zclt-toolkit/SKILL.md"));
+                "cat " + SKILL_ROOT + "/7/zclt-toolkit/SKILL.md", ctx));
         assertDoesNotThrow(() -> WorkspacePathGuard.validateShellCommand(
-                "bash " + SKILL_ROOT + "/zclt-toolkit/scripts/run.sh"));
+                "bash " + SKILL_ROOT + "/7/zclt-toolkit/scripts/run.sh", ctx));
         assertDoesNotThrow(() -> WorkspacePathGuard.validateShellCommand(
-                "cd " + SKILL_ROOT + "/zclt-toolkit && ls"));
+                "cd " + SKILL_ROOT + "/7/zclt-toolkit && ls", ctx));
+        assertThrows(IllegalArgumentException.class, () -> WorkspacePathGuard.validateShellCommand(
+                "cat " + SKILL_ROOT + "/8/other/SKILL.md", ctx));
         // The workspace itself still passes.
         assertDoesNotThrow(() -> WorkspacePathGuard.validateShellCommand(
                 "cat " + WORKSPACE + "/foo.txt"));

@@ -23,6 +23,8 @@ import java.util.Set;
 public final class AiNewsQualityEvaluator {
 
     private static final List<String> SOURCE_TIERS = List.of("official", "media", "community");
+    private static final int SMALL_SAMPLE_THRESHOLD = 20;
+    private static final double WILSON_95_Z = 1.959963984540054D;
 
     public EvaluationReport evaluate(QualityDataset dataset, String gitCommit, String testCommand) {
         QualityDataset input = dataset == null ? QualityDataset.empty() : dataset;
@@ -47,10 +49,12 @@ public final class AiNewsQualityEvaluator {
         counts.put("canonicalPairLabeled", score.canonicalPairwise().evaluated());
         counts.put("properRefusalLabeled", score.properRefusal().evaluated());
         counts.put("unresolvedConflictCases", (long) score.unresolvedConflictCases());
+        counts.put("invalidOutputs", cases.stream()
+                .filter(item -> Boolean.FALSE.equals(item.prediction().outputValid())).count());
         counts.put("badcases", (long) badcases.size());
 
         AiNewsQualityManifest manifest = new AiNewsQualityManifest(
-                "1.0",
+                "2.0",
                 defaultValue(input.evaluationScope(), "unspecified"),
                 defaultValue(input.datasetId(), "unnamed-dataset"),
                 defaultValue(input.datasetVersion(), "unknown"),
@@ -77,35 +81,53 @@ public final class AiNewsQualityEvaluator {
             }
             GoldLabel gold = item.gold();
             Prediction prediction = item.prediction();
-            if (gold.sourceTier() != null && prediction.sourceTier() == null) {
+            boolean hasLabels = gold.sourceTier() != null || gold.verificationEligible() != null
+                    || gold.citationAllowed() != null || gold.claimQuoteSupported() != null
+                    || gold.canonicalGroup() != null || gold.refusalRequired() != null
+                    || gold.unresolvedConflict() != null || gold.taskSucceeded() != null
+                    || gold.toolSelectionCorrect() != null || gold.toolParametersCorrect() != null
+                    || gold.humanReviewRequired() != null;
+            if (hasLabels && prediction.outputValid() == null) {
+                throw missingPrediction(item.id(), "outputValid");
+            }
+            boolean explicitlyInvalid = Boolean.FALSE.equals(prediction.outputValid());
+            if (gold.sourceTier() != null && prediction.sourceTier() == null && !explicitlyInvalid) {
                 throw missingPrediction(item.id(), "sourceTier");
             }
-            if (gold.verificationEligible() != null && prediction.verificationEligible() == null) {
+            if (gold.verificationEligible() != null && prediction.verificationEligible() == null
+                    && !explicitlyInvalid) {
                 throw missingPrediction(item.id(), "verificationEligible");
             }
-            if (gold.citationAllowed() != null && prediction.citationAllowed() == null) {
+            if (gold.citationAllowed() != null && prediction.citationAllowed() == null && !explicitlyInvalid) {
                 throw missingPrediction(item.id(), "citationAllowed");
             }
-            if (gold.claimQuoteSupported() != null && prediction.claimQuoteSupported() == null) {
+            if (gold.claimQuoteSupported() != null && prediction.claimQuoteSupported() == null
+                    && !explicitlyInvalid) {
                 throw missingPrediction(item.id(), "claimQuoteSupported");
             }
-            if (gold.taskSucceeded() != null && prediction.taskSucceeded() == null) {
+            if (gold.taskSucceeded() != null && prediction.taskSucceeded() == null && !explicitlyInvalid) {
                 throw missingPrediction(item.id(), "taskSucceeded");
             }
-            if (gold.toolSelectionCorrect() != null && prediction.toolSelectionCorrect() == null) {
+            if (gold.toolSelectionCorrect() != null && prediction.toolSelectionCorrect() == null
+                    && !explicitlyInvalid) {
                 throw missingPrediction(item.id(), "toolSelectionCorrect");
             }
-            if (gold.toolParametersCorrect() != null && prediction.toolParametersCorrect() == null) {
+            if (gold.toolParametersCorrect() != null && prediction.toolParametersCorrect() == null
+                    && !explicitlyInvalid) {
                 throw missingPrediction(item.id(), "toolParametersCorrect");
             }
-            if (gold.humanReviewRequired() != null && prediction.humanReviewRequested() == null) {
+            if (gold.humanReviewRequired() != null && prediction.humanReviewRequested() == null
+                    && !explicitlyInvalid) {
                 throw missingPrediction(item.id(), "humanReviewRequested");
             }
-            if (gold.canonicalGroup() != null && prediction.canonicalGroup() == null) {
+            if (gold.canonicalGroup() != null && prediction.canonicalGroup() == null && !explicitlyInvalid) {
                 throw missingPrediction(item.id(), "canonicalGroup");
             }
-            if ((gold.refusalRequired() != null || Boolean.TRUE.equals(gold.unresolvedConflict()))
-                    && prediction.verificationEligible() == null) {
+            if (gold.refusalRequired() != null && prediction.refusalIssued() == null && !explicitlyInvalid) {
+                throw missingPrediction(item.id(), "refusalIssued");
+            }
+            if (Boolean.TRUE.equals(gold.unresolvedConflict())
+                    && prediction.verificationEligible() == null && !explicitlyInvalid) {
                 throw missingPrediction(item.id(), "verificationEligible");
             }
         }
@@ -127,9 +149,24 @@ public final class AiNewsQualityEvaluator {
         Map<String, SliceSummary> summaries = new LinkedHashMap<>();
         bySlice.forEach((slice, items) -> {
             Score score = score(items, null);
-            summaries.put(slice, new SliceSummary(items.size(), score.metrics()));
+            summaries.put(slice, new SliceSummary(items.size(), score.metrics(), sliceWarnings(items, score)));
         });
         return Map.copyOf(summaries);
+    }
+
+    private static List<String> sliceWarnings(List<QualityCase> cases, Score score) {
+        List<String> warnings = new ArrayList<>();
+        if (cases.size() < SMALL_SAMPLE_THRESHOLD) {
+            warnings.add("small slice: N=" + cases.size() + " < " + SMALL_SAMPLE_THRESHOLD
+                    + "; point estimates are unstable");
+        }
+        boolean singleClass = score.metrics().values().stream()
+                .flatMap(metric -> metric.warnings().stream())
+                .anyMatch(warning -> warning.startsWith("single-class gold"));
+        if (singleClass) {
+            warnings.add("one or more binary metrics have single-class gold labels");
+        }
+        return List.copyOf(warnings);
     }
 
     private static Score score(List<QualityCase> cases, List<Badcase> badcases) {
@@ -143,72 +180,78 @@ public final class AiNewsQualityEvaluator {
         BinaryCounter humanReviewRouting = new BinaryCounter();
         BinaryCounter properRefusal = new BinaryCounter();
         BinaryCounter canonicalPairwise = new BinaryCounter();
+        BinaryCounter unresolvedConflictBlocked = new BinaryCounter();
         List<QualityCase> canonicalCases = new ArrayList<>();
         int unresolvedConflictCases = 0;
-        int unresolvedConflictBlocked = 0;
 
         for (QualityCase item : cases) {
             GoldLabel gold = item.gold();
             Prediction prediction = item.prediction();
+            if (Boolean.FALSE.equals(prediction.outputValid()) && badcases != null) {
+                badcases.add(Badcase.of(item, "output-validity", "true", "false",
+                        "prediction was explicitly declared invalid; parseable fields remain independently scored"));
+            }
             if (gold.sourceTier() != null) {
                 String expected = normalizeTier(gold.sourceTier());
                 String actual = normalizeTier(prediction.sourceTier());
-                sourceTierPairs.add(new SourceTierPair(expected, actual));
+                boolean invalid = prediction.sourceTier() == null || !SOURCE_TIERS.contains(actual);
+                sourceTierPairs.add(new SourceTierPair(expected, actual, invalid));
                 addBadcaseIfDifferent(badcases, item, "source-tier", expected, actual,
                         "source registry classification");
             }
             if (gold.verificationEligible() != null) {
                 boolean expected = gold.verificationEligible();
-                boolean actual = prediction.verificationEligible();
+                Boolean actual = prediction.verificationEligible();
                 verificationEligible.add(expected, actual);
                 addBadcaseIfDifferent(badcases, item, "verification-eligible", expected, actual,
                         "official/corroboration/conflict admission policy");
             }
             if (gold.citationAllowed() != null) {
                 boolean expectedAllowed = gold.citationAllowed();
-                boolean actualAllowed = prediction.citationAllowed();
-                citationViolationBlocked.add(!expectedAllowed, !actualAllowed);
+                Boolean actualAllowed = prediction.citationAllowed();
+                Boolean actualBlocked = actualAllowed == null ? null : !actualAllowed;
+                citationViolationBlocked.add(!expectedAllowed, actualBlocked);
                 addBadcaseIfDifferent(badcases, item, "citation-boundary", expectedAllowed, actualAllowed,
                         "only evidence-packet citations are permitted");
             }
             if (gold.claimQuoteSupported() != null) {
                 boolean expected = gold.claimQuoteSupported();
-                boolean actual = prediction.claimQuoteSupported();
+                Boolean actual = prediction.claimQuoteSupported();
                 claimQuoteSupported.add(expected, actual);
                 addBadcaseIfDifferent(badcases, item, "claim-quote-support", expected, actual,
                         "labeled claim-to-quote support");
             }
             if (gold.taskSucceeded() != null) {
                 boolean expected = gold.taskSucceeded();
-                boolean actual = prediction.taskSucceeded();
+                Boolean actual = prediction.taskSucceeded();
                 taskSuccess.add(expected, actual);
                 addBadcaseIfDifferent(badcases, item, "task-success", expected, actual,
                         "labeled end-to-end task outcome");
             }
             if (gold.toolSelectionCorrect() != null) {
                 boolean expected = gold.toolSelectionCorrect();
-                boolean actual = prediction.toolSelectionCorrect();
+                Boolean actual = prediction.toolSelectionCorrect();
                 toolSelectionCorrect.add(expected, actual);
                 addBadcaseIfDifferent(badcases, item, "tool-selection", expected, actual,
                         "labeled tool choice and execution order");
             }
             if (gold.toolParametersCorrect() != null) {
                 boolean expected = gold.toolParametersCorrect();
-                boolean actual = prediction.toolParametersCorrect();
+                Boolean actual = prediction.toolParametersCorrect();
                 toolParametersCorrect.add(expected, actual);
                 addBadcaseIfDifferent(badcases, item, "tool-parameters", expected, actual,
                         "labeled tool argument correctness");
             }
             if (gold.humanReviewRequired() != null) {
                 boolean expected = gold.humanReviewRequired();
-                boolean actual = prediction.humanReviewRequested();
+                Boolean actual = prediction.humanReviewRequested();
                 humanReviewRouting.add(expected, actual);
                 addBadcaseIfDifferent(badcases, item, "human-review-routing", expected, actual,
                         "high-risk or unresolved work must be routed for review");
             }
             if (gold.refusalRequired() != null) {
                 boolean expected = gold.refusalRequired();
-                boolean actual = !prediction.verificationEligible();
+                Boolean actual = prediction.refusalIssued();
                 properRefusal.add(expected, actual);
                 addBadcaseIfDifferent(badcases, item, "proper-refusal", expected, actual,
                         "insufficient or unsafe evidence must not enter production");
@@ -220,10 +263,12 @@ public final class AiNewsQualityEvaluator {
             }
             if (Boolean.TRUE.equals(gold.unresolvedConflict())) {
                 unresolvedConflictCases++;
-                if (!prediction.verificationEligible()) {
-                    unresolvedConflictBlocked++;
-                } else if (badcases != null) {
-                    badcases.add(Badcase.of(item, "unresolved-conflict-block", "blocked", "allowed",
+                Boolean blocked = prediction.verificationEligible() == null
+                        ? null : !prediction.verificationEligible();
+                unresolvedConflictBlocked.add(true, blocked);
+                if (!Boolean.TRUE.equals(blocked) && badcases != null) {
+                    String actual = prediction.verificationEligible() == null ? "missing" : "allowed";
+                    badcases.add(Badcase.of(item, "unresolved-conflict-block", "blocked", actual,
                             "an unresolved conflict must prevent verification"));
                 }
             }
@@ -234,7 +279,10 @@ public final class AiNewsQualityEvaluator {
             for (int right = left + 1; right < canonicalCases.size(); right++) {
                 QualityCase b = canonicalCases.get(right);
                 boolean expectedSame = Objects.equals(a.gold().canonicalGroup(), b.gold().canonicalGroup());
-                boolean actualSame = Objects.equals(a.prediction().canonicalGroup(), b.prediction().canonicalGroup());
+                Boolean actualSame = a.prediction().canonicalGroup() == null
+                        || b.prediction().canonicalGroup() == null
+                        ? null
+                        : Objects.equals(a.prediction().canonicalGroup(), b.prediction().canonicalGroup());
                 canonicalPairwise.add(expectedSame, actualSame);
             }
         }
@@ -249,9 +297,10 @@ public final class AiNewsQualityEvaluator {
         metrics.put("toolSelectionCorrect", toolSelectionCorrect.summary());
         metrics.put("toolParametersCorrect", toolParametersCorrect.summary());
         metrics.put("humanReviewRouting", humanReviewRouting.summary());
-        metrics.put("canonicalDedup.pairwise", canonicalPairwise.summary());
-        metrics.put("unresolvedConflict.blockRate", MetricSummary.rate(
-                unresolvedConflictCases, unresolvedConflictBlocked));
+        metrics.put("canonicalDedup.pairwise", canonicalPairwise.evaluated() == 0
+                ? canonicalPairwise.summary()
+                : canonicalPairwise.correlatedPairwiseSummary(canonicalCases.size()));
+        metrics.put("unresolvedConflict.blockRate", unresolvedConflictBlocked.summary());
         return new Score(sourceTierPairs.size(), verificationEligible, citationViolationBlocked,
                 claimQuoteSupported, taskSuccess, toolSelectionCorrect, toolParametersCorrect,
                 humanReviewRouting, properRefusal, canonicalPairwise, canonicalCases.size(),
@@ -261,12 +310,21 @@ public final class AiNewsQualityEvaluator {
     private static void addSourceTierMetrics(Map<String, MetricSummary> metrics,
                                              List<SourceTierPair> pairs) {
         int correct = (int) pairs.stream().filter(pair -> pair.expected().equals(pair.actual())).count();
-        metrics.put("sourceTier.accuracy", MetricSummary.rate(pairs.size(), correct));
+        long invalid = pairs.stream().filter(SourceTierPair::invalid).count();
+        metrics.put("sourceTier.accuracy", MetricSummary.rate(pairs.size(), correct, invalid));
         List<Double> f1Values = new ArrayList<>();
         for (String tier : SOURCE_TIERS) {
             BinaryCounter counter = new BinaryCounter();
             for (SourceTierPair pair : pairs) {
-                counter.add(tier.equals(pair.expected()), tier.equals(pair.actual()));
+                boolean expected = tier.equals(pair.expected());
+                if (pair.invalid()) {
+                    // An invalid multiclass output predicts no valid tier. It is
+                    // a miss for the gold tier, not a false positive for every
+                    // other one-vs-rest class.
+                    counter.addInvalid(expected, false);
+                } else {
+                    counter.add(expected, tier.equals(pair.actual()));
+                }
             }
             MetricSummary summary = counter.summary();
             metrics.put("sourceTier." + tier, summary);
@@ -352,9 +410,11 @@ public final class AiNewsQualityEvaluator {
                              Boolean taskSucceeded,
                              Boolean toolSelectionCorrect,
                              Boolean toolParametersCorrect,
-                             Boolean humanReviewRequested) {
+                             Boolean humanReviewRequested,
+                             Boolean refusalIssued,
+                             Boolean outputValid) {
         static Prediction empty() {
-            return new Prediction(null, null, null, null, null, null, null, null, null);
+            return new Prediction(null, null, null, null, null, null, null, null, null, null, null);
         }
     }
 
@@ -385,28 +445,44 @@ public final class AiNewsQualityEvaluator {
     /** Precision/recall/F1 use the positive class implied by the metric name. */
     public record MetricSummary(long evaluated,
                                 Long correct,
+                                long invalidPredictions,
                                 Long truePositive,
                                 Long falsePositive,
                                 Long falseNegative,
                                 Long trueNegative,
                                 Double value,
+                                Double confidenceLower,
+                                Double confidenceUpper,
                                 Double precision,
                                 Double recall,
-                                Double f1) {
+                                Double f1,
+                                List<String> warnings) {
+        public MetricSummary {
+            warnings = warnings == null ? List.of() : List.copyOf(warnings);
+        }
+
         static MetricSummary rate(long evaluated, long successes) {
-            return new MetricSummary(evaluated, successes, null, null, null, null,
-                    ratio(successes, evaluated), null, null, null);
+            return rate(evaluated, successes, 0L);
+        }
+
+        static MetricSummary rate(long evaluated, long successes, long invalidPredictions) {
+            ConfidenceInterval interval = wilson95(successes, evaluated);
+            return new MetricSummary(evaluated, successes, invalidPredictions, null, null, null, null,
+                    ratio(successes, evaluated), interval.lower(), interval.upper(), null, null, null,
+                    metricWarnings(evaluated, null, null, invalidPredictions));
         }
 
         static MetricSummary scalar(long evaluated, Double value) {
-            return new MetricSummary(evaluated, null, null, null, null, null,
-                    value, null, null, null);
+            return new MetricSummary(evaluated, null, 0L, null, null, null, null,
+                    value, null, null, null, null, null,
+                    metricWarnings(evaluated, null, null, 0L));
         }
     }
 
-    public record SliceSummary(int cases, Map<String, MetricSummary> metrics) {
+    public record SliceSummary(int cases, Map<String, MetricSummary> metrics, List<String> warnings) {
         public SliceSummary {
             metrics = immutableMap(metrics);
+            warnings = warnings == null ? List.of() : List.copyOf(warnings);
         }
     }
 
@@ -428,7 +504,7 @@ public final class AiNewsQualityEvaluator {
     public record EvaluationReport(AiNewsQualityManifest manifest, List<Badcase> badcases) {
     }
 
-    private record SourceTierPair(String expected, String actual) {
+    private record SourceTierPair(String expected, String actual, boolean invalid) {
     }
 
     private record Score(int sourceTierCases,
@@ -451,8 +527,22 @@ public final class AiNewsQualityEvaluator {
         private long falsePositive;
         private long falseNegative;
         private long trueNegative;
+        private long invalidPredictions;
 
-        void add(boolean expectedPositive, boolean actualPositive) {
+        void add(boolean expectedPositive, Boolean actualPositive) {
+            if (actualPositive == null) {
+                invalidPredictions++;
+                actualPositive = !expectedPositive;
+            }
+            addClassified(expectedPositive, actualPositive);
+        }
+
+        void addInvalid(boolean expectedPositive, boolean actualPositive) {
+            invalidPredictions++;
+            addClassified(expectedPositive, actualPositive);
+        }
+
+        private void addClassified(boolean expectedPositive, boolean actualPositive) {
             if (expectedPositive && actualPositive) truePositive++;
             else if (!expectedPositive && actualPositive) falsePositive++;
             else if (expectedPositive) falseNegative++;
@@ -464,15 +554,69 @@ public final class AiNewsQualityEvaluator {
         }
 
         MetricSummary summary() {
+            return summary(true, List.of());
+        }
+
+        MetricSummary correlatedPairwiseSummary(long sourceCases) {
+            return summary(false, List.of("pairwise observations are correlated: " + evaluated()
+                    + " comparisons share " + sourceCases
+                    + " source cases; no Wilson interval is reported"));
+        }
+
+        private MetricSummary summary(boolean reportWilsonInterval, List<String> extraWarnings) {
             long evaluated = evaluated();
             long correct = truePositive + trueNegative;
             Double precision = ratio(truePositive, truePositive + falsePositive);
             Double recall = ratio(truePositive, truePositive + falseNegative);
             Double f1 = ratio(2L * truePositive,
                     2L * truePositive + falsePositive + falseNegative);
-            return new MetricSummary(evaluated, correct, truePositive, falsePositive, falseNegative,
-                    trueNegative, ratio(correct, evaluated), precision, recall, f1);
+            ConfidenceInterval interval = reportWilsonInterval
+                    ? wilson95(correct, evaluated) : new ConfidenceInterval(null, null);
+            List<String> warnings = new ArrayList<>(metricWarnings(evaluated,
+                    truePositive + falseNegative, falsePositive + trueNegative, invalidPredictions));
+            warnings.addAll(extraWarnings);
+            return new MetricSummary(evaluated, correct, invalidPredictions,
+                    truePositive, falsePositive, falseNegative, trueNegative,
+                    ratio(correct, evaluated), interval.lower(), interval.upper(), precision, recall, f1,
+                    warnings);
         }
+    }
+
+    static ConfidenceInterval wilson95(long successes, long evaluated) {
+        if (evaluated <= 0) return new ConfidenceInterval(null, null);
+        double n = evaluated;
+        double proportion = Math.max(0.0D, Math.min(1.0D, (double) successes / n));
+        double zSquared = WILSON_95_Z * WILSON_95_Z;
+        double denominator = 1.0D + zSquared / n;
+        double center = (proportion + zSquared / (2.0D * n)) / denominator;
+        double margin = WILSON_95_Z * Math.sqrt(
+                (proportion * (1.0D - proportion) / n) + zSquared / (4.0D * n * n)) / denominator;
+        return new ConfidenceInterval(Math.max(0.0D, center - margin), Math.min(1.0D, center + margin));
+    }
+
+    private static List<String> metricWarnings(long evaluated, Long expectedPositive,
+                                                Long expectedNegative, long invalidPredictions) {
+        List<String> warnings = new ArrayList<>();
+        if (evaluated > 0 && evaluated < SMALL_SAMPLE_THRESHOLD) {
+            warnings.add("small sample: N=" + evaluated + " < " + SMALL_SAMPLE_THRESHOLD
+                    + "; point estimates are unstable");
+        }
+        if (expectedPositive != null && expectedNegative != null && evaluated > 0) {
+            if (expectedPositive == 0L) {
+                warnings.add("single-class gold: no positive labels; use value/pass rate as the primary result");
+            }
+            if (expectedNegative == 0L) {
+                warnings.add("single-class gold: no negative labels; use value/pass rate as the primary result");
+            }
+        }
+        if (invalidPredictions > 0) {
+            warnings.add("invalid predictions: " + invalidPredictions
+                    + " missing or invalid value(s) were counted as errors");
+        }
+        return List.copyOf(warnings);
+    }
+
+    record ConfidenceInterval(Double lower, Double upper) {
     }
 
     private static Double ratio(long numerator, long denominator) {

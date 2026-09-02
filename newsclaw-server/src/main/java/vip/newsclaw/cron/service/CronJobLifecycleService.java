@@ -162,9 +162,22 @@ public class CronJobLifecycleService {
         String message = error != null && error.getMessage() != null ? error.getMessage() : "unknown error";
         runMapper.update(null, new LambdaUpdateWrapper<CronJobRunEntity>()
                 .eq(CronJobRunEntity::getId, run.getId())
+                .eq(CronJobRunEntity::getStatus, "running")
                 .set(CronJobRunEntity::getStatus, "failed")
                 .set(CronJobRunEntity::getFinishedAt, LocalDateTime.now())
                 .set(CronJobRunEntity::getErrorMessage, StrUtil.maxLength(message, 1000)));
+    }
+
+    /** Terminal timeout CAS. A late worker can no longer overwrite it. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markRunTimedOut(CronJobRunEntity run, String message) {
+        runMapper.update(null, new LambdaUpdateWrapper<CronJobRunEntity>()
+                .eq(CronJobRunEntity::getId, run.getId())
+                .eq(CronJobRunEntity::getStatus, "running")
+                .set(CronJobRunEntity::getStatus, "timed_out")
+                .set(CronJobRunEntity::getFinishedAt, LocalDateTime.now())
+                .set(CronJobRunEntity::getErrorMessage,
+                        StrUtil.maxLength(message == null ? "cron run timed out" : message, 1000)));
     }
 
     /**
@@ -214,6 +227,7 @@ public class CronJobLifecycleService {
     public void markRunSucceeded(CronJobRunEntity run, String description) {
         runMapper.update(null, new LambdaUpdateWrapper<CronJobRunEntity>()
                 .eq(CronJobRunEntity::getId, run.getId())
+                .eq(CronJobRunEntity::getStatus, "running")
                 .set(CronJobRunEntity::getStatus, "succeeded")
                 .set(CronJobRunEntity::getFinishedAt, LocalDateTime.now())
                 .set(CronJobRunEntity::getErrorMessage,
@@ -255,11 +269,16 @@ public class CronJobLifecycleService {
 
         int totalTokens = chatResult != null
                 ? chatResult.promptTokens() + chatResult.completionTokens() : 0;
-        runMapper.update(null, new LambdaUpdateWrapper<CronJobRunEntity>()
+        int terminalClaim = runMapper.update(null, new LambdaUpdateWrapper<CronJobRunEntity>()
                 .eq(CronJobRunEntity::getId, run.getId())
+                .eq(CronJobRunEntity::getStatus, "running")
                 .set(CronJobRunEntity::getStatus, "succeeded")
                 .set(CronJobRunEntity::getFinishedAt, LocalDateTime.now())
                 .set(totalTokens > 0, CronJobRunEntity::getTokenUsage, totalTokens));
+        if (terminalClaim != 1) {
+            log.info("[CronLifecycle] Ignoring late completion for terminal run {}", run.getId());
+            return;
+        }
 
         if (silent) {
             // No-op run: persist a short marker so the tasks_<wsId>

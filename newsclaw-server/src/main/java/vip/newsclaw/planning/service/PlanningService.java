@@ -12,6 +12,7 @@ import vip.newsclaw.planning.repository.SubPlanMapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Collection;
 import java.util.stream.IntStream;
 import java.util.stream.Collectors;
 
@@ -185,6 +186,17 @@ public class PlanningService {
     public List<PlanEntity> listRecentPlans(int limit) {
         int capped = limit <= 0 ? 100 : Math.min(limit, 500);
         return planMapper.selectList(new LambdaQueryWrapper<PlanEntity>()
+                .orderByDesc(PlanEntity::getCreateTime)
+                .last("LIMIT " + capped));
+    }
+
+    /** Workspace-scoped board view. Plan rows retain the legacy agent_id-only
+     * schema, so the caller supplies the agent ids owned by the workspace. */
+    public List<PlanEntity> listRecentPlans(Collection<String> agentIds, int limit) {
+        if (agentIds == null || agentIds.isEmpty()) return List.of();
+        int capped = limit <= 0 ? 100 : Math.min(limit, 500);
+        return planMapper.selectList(new LambdaQueryWrapper<PlanEntity>()
+                .in(PlanEntity::getAgentId, agentIds)
                 .orderByDesc(PlanEntity::getCreateTime)
                 .last("LIMIT " + capped));
     }

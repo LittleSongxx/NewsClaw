@@ -1,5 +1,6 @@
 package vip.newsclaw.skill.secret;
 
+import cn.hutool.crypto.SecureUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,8 @@ import vip.newsclaw.skill.repository.SkillSecretMapper;
 
 import java.util.List;
 import java.util.Map;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -51,8 +54,8 @@ class SkillSecretServiceTest {
         assertEquals("AIRTABLE_API_KEY", stored.getSecretKey());
         assertNotEquals("pat_secret_value_123", stored.getEncryptedValue(),
                 "stored value must be encrypted");
-        assertTrue(stored.getEncryptedValue().length() >= 32,
-                "AES hex output should be at least one block");
+        assertTrue(stored.getEncryptedValue().startsWith("enc:v1:"),
+                "new writes must use the versioned GCM envelope");
     }
 
     @Test
@@ -71,6 +74,19 @@ class SkillSecretServiceTest {
         Map<String, String> decrypted = service.getDecrypted(7L);
         assertEquals(1, decrypted.size());
         assertEquals("hello-world-12345", decrypted.get("TOKEN"));
+    }
+
+    @Test
+    @DisplayName("legacy Hutool AES rows remain readable during rolling migration")
+    void legacyCiphertextRemainsReadable() {
+        byte[] key = Arrays.copyOf("TestKey-1234567".getBytes(StandardCharsets.UTF_8), 16);
+        SkillSecretEntity row = new SkillSecretEntity();
+        row.setSkillId(7L);
+        row.setSecretKey("TOKEN");
+        row.setEncryptedValue(SecureUtil.aes(key).encryptHex("legacy-value"));
+        when(mapper.selectList(any())).thenReturn(List.of(row));
+
+        assertEquals("legacy-value", service.getDecrypted(7L).get("TOKEN"));
     }
 
     @Test

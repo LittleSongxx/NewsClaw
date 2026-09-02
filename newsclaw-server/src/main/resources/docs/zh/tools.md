@@ -123,7 +123,7 @@ Tool Guard 是守门员。超时是**每个工具独立**的（这样一个慢�
 |------|--------|------|
 | `wechat_article_extract` | 把 `mp.weixin.qq.com` 文章清洗成 `{标题, 作者, 时间, 正文, 图片}`（SSRF 限该 host） | — |
 | `gzh_package` | 打包公众号图文（内联 HTML + 封面）；跑合规扫描 + 落台账 | — |
-| `gzh_publish` | 把文章推进微信**草稿箱**（`draft`）；可选 `publish` 走审批 | ⚠️ |
+| `gzh_publish` | 把文章推进微信**草稿箱**（`draft`）；直接 `publish` 已禁用，最终发表须人工完成 | ⚠️ |
 | `xhs_package` | 打包小红书笔记；硬校验 3-18 张竖版卡片、事件证据与合规；扫 + 记 | — |
 | `xhs_publish` | 不在 NewsClaw 主线暴露；使用 ZIP 素材包人工上传 | — |
 | `content_item` | 内容日历：`check_recent`（选题指纹去重）、`record`、`mark_published` | — |

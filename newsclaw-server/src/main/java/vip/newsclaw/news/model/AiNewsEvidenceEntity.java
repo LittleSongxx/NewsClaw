@@ -21,13 +21,33 @@ public class AiNewsEvidenceEntity {
     private String sourceUrl;
     /** SHA-256 of the canonical URL; keeps MySQL unique indexes below InnoDB's key limit. */
     private String sourceUrlHash;
+    /**
+     * Versioned identity of one atomic evidence packet.  URL alone is not an
+     * identity: one article may support several claims or quote spans.
+     */
+    private String evidenceIdentityHash;
     private String sourceTitle;
     private LocalDateTime sourcePublishedAt;
     private String sourceTier;
     private String claim;
     private String quote;
     private Double confidence;
+    /** Model/human judgment of how {@link #quote} relates to {@link #claim}. */
+    private String semanticRelation;
+    private Double relationConfidence;
+    /** MODEL, HUMAN, DETERMINISTIC_EXTRACTIVE or UNKNOWN. Policy fields are never accepted here. */
+    private String relationOrigin;
+    private LocalDateTime relationReviewedAt;
+    private String relationReviewedBy;
+    private String relationReviewNote;
     private Boolean verified;
+    /** Server-owned immutable source capture used to bind URL and quote. */
+    private Long sourceCaptureId;
+    /** Character offsets inside the capture's normalized extracted text. */
+    private Integer quoteStart;
+    private Integer quoteEnd;
+    /** NORMALIZED_EXACT for Agent-originated evidence. */
+    private String quoteMatchMethod;
     /** URL after a read-only official-source fetch follows safe redirects. */
     private String finalUrl;
     private LocalDateTime fetchedAt;

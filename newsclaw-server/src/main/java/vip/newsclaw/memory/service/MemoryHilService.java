@@ -43,7 +43,14 @@ public class MemoryHilService {
      * @param newContent the new section body
      */
     public void editMemoryEntry(Long agentId, String filename, String key, String newContent) {
-        WorkspaceFileEntity file = workspaceFileService.getFile(agentId, filename);
+        editMemoryEntry(agentId, filename, key, newContent, null);
+    }
+
+    public void editMemoryEntry(Long agentId, String filename, String key,
+                                String newContent, String ownerKey) {
+        WorkspaceFileEntity file = ownerKey != null && !ownerKey.isBlank()
+                ? workspaceFileService.getVisibleFile(agentId, filename, ownerKey)
+                : workspaceFileService.getFile(agentId, filename);
         String fileContent = (file != null && file.getContent() != null) ? file.getContent() : "";
 
         // Strip any pre-existing user-edited markers from the incoming body so a
@@ -68,11 +75,15 @@ public class MemoryHilService {
                     + fileContent.substring(sectionEnd);
         }
 
-        workspaceFileService.saveFile(agentId, filename, updated);
+        if (ownerKey != null && !ownerKey.isBlank()) {
+            workspaceFileService.saveVisibleFile(agentId, filename, updated, ownerKey);
+        } else {
+            workspaceFileService.saveFile(agentId, filename, updated);
+        }
         // SOUL.md auto-evolution counts canonical memory writes. A manual SOUL.md
         // edit must not bump that counter, or a later auto-regeneration would
         // discard the user's edit; PROFILE.md likewise is not a write trigger.
-        if ("MEMORY.md".equals(filename)) {
+        if ("MEMORY.md".equals(filename) && (ownerKey == null || ownerKey.isBlank())) {
             eventPublisher.publishEvent(new MemoryWriteEvent(agentId, filename, "user-edit", cleanContent));
         }
         log.info("[HiL] User edited {} section '{}' for agent={}", filename, key, agentId);
@@ -83,7 +94,13 @@ public class MemoryHilService {
      * Used by DreamController to validate the edit key before allowing a write.
      */
     public boolean sectionExists(Long agentId, String filename, String key) {
-        WorkspaceFileEntity file = workspaceFileService.getFile(agentId, filename);
+        return sectionExists(agentId, filename, key, null);
+    }
+
+    public boolean sectionExists(Long agentId, String filename, String key, String ownerKey) {
+        WorkspaceFileEntity file = ownerKey != null && !ownerKey.isBlank()
+                ? workspaceFileService.getVisibleFile(agentId, filename, ownerKey)
+                : workspaceFileService.getFile(agentId, filename);
         if (file == null || file.getContent() == null) return false;
         return file.getContent().contains("## " + key);
     }

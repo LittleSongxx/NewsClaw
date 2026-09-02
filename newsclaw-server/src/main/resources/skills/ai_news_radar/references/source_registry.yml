@@ -1,4 +1,4 @@
-version: 1
+version: 2
 scope: global-and-china
 policy:
   official_first: true
@@ -16,6 +16,10 @@ official:
       source_key: anthropic
       domains: [anthropic.com]
       query_sites: ["anthropic.com/news"]
+    - name: Mistral AI
+      source_key: mistral
+      domains: [mistral.ai]
+      query_sites: ["mistral.ai/news", "mistral.ai"]
     - name: DeepSeek
       source_key: deepseek
       domains: [deepseek.com]
@@ -38,6 +42,45 @@ official:
       source_key: zhipu
       domains: [zhipuai.cn, bigmodel.cn]
       query_sites: ["zhipuai.cn", "bigmodel.cn"]
+    - name: Hugging Face
+      source_key: huggingface
+      domains: [huggingface.co]
+      domain_match: prefix_only
+      url_prefixes: ["https://huggingface.co/blog/", "https://huggingface.co/huggingface/"]
+      query_sites: ["huggingface.co/blog", "huggingface.co/huggingface"]
+    - name: Z.ai
+      source_key: z-ai
+      domains: [z.ai]
+      query_sites: ["z.ai/blog", "z.ai"]
+    - name: Deep Cogito
+      source_key: deep-cogito
+      domains: [deepcogito.com]
+      query_sites: ["deepcogito.com"]
+  global_products:
+    - name: Google Cloud and AI
+      source_key: google
+      domains: [cloud.google.com]
+      query_sites: ["cloud.google.com/blog/products/ai-machine-learning", "blog.google/technology/ai"]
+    - name: Salesforce
+      source_key: salesforce
+      domains: [salesforce.com]
+      query_sites: ["salesforce.com/news", "salesforce.com/claudeforce"]
+    - name: Qualcomm
+      source_key: qualcomm
+      domains: [qualcomm.com]
+      query_sites: ["qualcomm.com/developer/blog", "qualcomm.com/news"]
+    - name: Amazon Web Services
+      source_key: aws
+      domains: [aws.amazon.com]
+      query_sites: ["aws.amazon.com/blogs/machine-learning", "aws.amazon.com/about-aws/whats-new"]
+    - name: LF AI & Data Foundation
+      source_key: lf-ai-data
+      domains: [lfaidata.foundation]
+      query_sites: ["lfaidata.foundation/blog"]
+    - name: Particle Pro / Radar
+      source_key: particle
+      domains: [particle.pro]
+      query_sites: ["particle.pro", "radar.particle.pro"]
   china_products:
     - name: ByteDance Seed / Volcano Engine
       source_key: bytedance
@@ -45,12 +88,32 @@ official:
       query_sites: ["seed.bytedance.com", "volcengine.com/product"]
     - name: Baidu AI
       source_key: baidu
+      # baidu.com hosts search, user/community and developer-content surfaces.
+      # Search only reviewed first-party subdomains and grant official status
+      # only to the listed editorial/product-announcement paths.
       domains: [baidu.com]
-      query_sites: ["baidu.com/ai"]
+      query_domains: [www.baidu.com, yiyan.baidu.com, ai.baidu.com, ir.baidu.com]
+      domain_match: prefix_only
+      url_prefixes:
+        - "https://www.baidu.com/ai/"
+        - "https://yiyan.baidu.com/blog/"
+        - "https://ai.baidu.com/support/news"
+        - "https://ir.baidu.com/news-releases/"
+      query_sites: ["yiyan.baidu.com/blog", "ai.baidu.com/support/news", "ir.baidu.com/news-releases"]
     - name: Tencent Hunyuan
       source_key: tencent
-      domains: [hunyuan.tencent.com, tencent.com]
+      domains: [hunyuan.tencent.com]
       query_sites: ["hunyuan.tencent.com"]
+    - name: Tencent Newsroom
+      source_key: tencent
+      domains: [tencent.com]
+      query_domains: [www.tencent.com]
+      domain_match: prefix_only
+      url_prefixes:
+        - "https://www.tencent.com/zh-cn/"
+        - "https://www.tencent.com/zh-hk/"
+        - "https://www.tencent.com/en-us/"
+      query_sites: ["www.tencent.com/zh-cn/newsroom"]
     - name: Huawei Ascend / Pangu
       source_key: huawei
       domains: [huawei.com, hiascend.com]
@@ -133,12 +196,51 @@ media:
     - name: Reuters
       source_key: reuters
       domains: [reuters.com]
+    - name: Bloomberg
+      source_key: bloomberg
+      domains: [bloomberg.com]
     - name: TechCrunch
       source_key: techcrunch
       domains: [techcrunch.com]
     - name: The Verge
       source_key: the-verge
       domains: [theverge.com]
+    - name: Wired
+      source_key: wired
+      domains: [wired.com]
+    - name: The Wall Street Journal
+      source_key: wall-street-journal
+      domains: [wsj.com]
+    - name: Engadget
+      source_key: engadget
+      domains: [engadget.com]
+    - name: VentureBeat
+      source_key: venturebeat
+      domains: [venturebeat.com]
     - name: MIT Technology Review
       source_key: mit-technology-review
       domains: [technologyreview.com]
+    - name: Caixin
+      source_key: caixin
+      domains: [caixin.com]
+    - name: Fortune
+      source_key: fortune
+      domains: [fortune.com]
+    - name: The Next Web
+      source_key: the-next-web
+      domains: [thenextweb.com]
+    - name: YourStory
+      source_key: yourstory
+      domains: [yourstory.com]
+    - name: Quartz
+      source_key: quartz
+      domains: [qz.com]
+
+# Publisher ownership only. Entries in this section may own a structured
+# metadata endpoint, but they are not promoted to official or trusted media and
+# therefore gain no discovery/ranking/verification privilege.
+publisher_identity:
+  open_web:
+    - name: Farms.com
+      source_key: farms
+      domains: [farms.com]

@@ -10,6 +10,9 @@ import vip.newsclaw.skill.installer.model.SkillBundle;
 import vip.newsclaw.skill.runtime.SkillFrontmatterParser;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -247,16 +250,35 @@ public class SkillHubClient {
                         .header("User-Agent", "NewsClaw/1.0")
                         .build();
 
-                HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+                HttpResponse<InputStream> response = httpClient.send(
+                        request, HttpResponse.BodyHandlers.ofInputStream());
                 int status = response.statusCode();
 
                 if (status == 200) {
-                    byte[] body = response.body();
-                    if (body == null || body.length == 0) {
+                    long maxBytes = maxDownloadBytes();
+                    if (maxBytes < 1) {
+                        log.warn("Hub download disabled: max-total-size-mb must be positive");
+                        return null;
+                    }
+                    long declared = response.headers().firstValueAsLong("Content-Length").orElse(-1L);
+                    if (declared > maxBytes) {
+                        log.warn("Hub download for '{}' exceeds configured size cap: {} > {} bytes",
+                                slug, declared, maxBytes);
+                        return null;
+                    }
+                    byte[] body;
+                    try (InputStream input = response.body()) {
+                        body = readBounded(input, maxBytes);
+                    }
+                    if (body.length == 0) {
                         log.warn("Hub download for '{}' returned empty body; treating as failure to avoid wiping local SKILL.md", slug);
                         return null;
                     }
                     return body;
+                }
+
+                try (InputStream ignored = response.body()) {
+                    // Release the streaming response before a retry or return.
                 }
 
                 if (isRetryable(status) && attempt < properties.getHttpRetries()) {
@@ -269,6 +291,9 @@ public class SkillHubClient {
                 return null;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                return null;
+            } catch (BundleTooLargeException e) {
+                log.warn("Hub download for '{}' exceeds configured size cap", slug);
                 return null;
             } catch (Exception e) {
                 if (attempt < properties.getHttpRetries()) {
@@ -285,6 +310,28 @@ public class SkillHubClient {
             }
         }
         return null;
+    }
+
+    private long maxDownloadBytes() {
+        if (maxTotalSizeMb <= 0) return 0;
+        return Math.min((long) maxTotalSizeMb * 1_000_000L, Integer.MAX_VALUE - 8L);
+    }
+
+    private static byte[] readBounded(InputStream input, long maxBytes)
+            throws IOException, BundleTooLargeException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream((int) Math.min(maxBytes, 8192L));
+        byte[] buffer = new byte[8192];
+        long total = 0;
+        int n;
+        while ((n = input.read(buffer)) != -1) {
+            total += n;
+            if (total > maxBytes) throw new BundleTooLargeException();
+            out.write(buffer, 0, n);
+        }
+        return out.toByteArray();
+    }
+
+    private static final class BundleTooLargeException extends IOException {
     }
 
     private HttpRequest jsonGet(String url) {

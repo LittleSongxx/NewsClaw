@@ -7,10 +7,15 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
+import vip.newsclaw.common.net.SsrfAllowlist;
 
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Set;
+import java.util.List;
+import java.util.Arrays;
+import java.net.InetAddress;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -22,6 +27,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slf4j
 @Component
 public class LoginRateLimitFilter implements Filter {
+
+    @Value("${newsclaw.security.trusted-proxies:}")
+    private String trustedProxies;
 
     private static final int MAX_ATTEMPTS = 5;
     /**
@@ -50,8 +58,11 @@ public class LoginRateLimitFilter implements Filter {
             throws IOException, ServletException {
         HttpServletRequest httpReq = (HttpServletRequest) request;
 
-        if ("POST".equalsIgnoreCase(httpReq.getMethod()) && PROTECTED_PATHS.contains(httpReq.getRequestURI())) {
-            String ip = getClientIp(httpReq);
+        boolean protectedRequest = "POST".equalsIgnoreCase(httpReq.getMethod())
+                && PROTECTED_PATHS.contains(httpReq.getRequestURI());
+        String ip = null;
+        if (protectedRequest) {
+            ip = getClientIp(httpReq);
             AtomicInteger count = attempts.get(ip, k -> new AtomicInteger(0));
             int current = count.incrementAndGet();
 
@@ -66,17 +77,30 @@ public class LoginRateLimitFilter implements Filter {
         }
 
         chain.doFilter(request, response);
+        if (protectedRequest && ((HttpServletResponse) response).getStatus() < 400) {
+            attempts.invalidate(ip);
+        }
     }
 
-    private static String getClientIp(HttpServletRequest request) {
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isEmpty()) {
-            return xff.split(",")[0].trim();
-        }
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isEmpty()) {
-            return realIp;
+    private String getClientIp(HttpServletRequest request) {
+        if (isTrustedProxy(request.getRemoteAddr())) {
+            String xff = request.getHeader("X-Forwarded-For");
+            if (xff != null && !xff.isEmpty()) return xff.split(",")[0].trim();
+            String realIp = request.getHeader("X-Real-IP");
+            if (realIp != null && !realIp.isEmpty()) return realIp.trim();
         }
         return request.getRemoteAddr();
+    }
+
+    private boolean isTrustedProxy(String remoteAddress) {
+        List<String> allowlist = trustedProxies == null ? List.of()
+                : Arrays.stream(trustedProxies.split(","))
+                        .map(String::trim).filter(s -> !s.isEmpty()).toList();
+        if (allowlist.isEmpty() || remoteAddress == null) return false;
+        try {
+            return SsrfAllowlist.matchesAddress(InetAddress.getByName(remoteAddress), allowlist);
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

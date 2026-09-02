@@ -412,6 +412,10 @@ public class AgentBindingService implements AgentBindingResolver {
             // through from mate_acp_endpoint. A null reply here means the
             // backing endpoint was deleted or disabled between picker render
             // and save — same surface as a deleted real skill.
+            // Resolve without the agent workspace filter first. A cross-
+            // workspace endpoint must be distinguishable from a deleted one
+            // so callers receive the correct 403 instead of a misleading 404;
+            // the exact workspace comparison below remains the enforcement.
             skill = acpSkillBridge.findEntityById(skillId);
             if (skill == null) {
                 throw new NewsClawException("err.skill.not_found", 404,

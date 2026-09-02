@@ -62,7 +62,8 @@ class ChatControllerPreviewRouteTest {
                 mock(vip.newsclaw.memory.event.ConversationCompletionPublisher.class),
                 mock(MemoryOwnerResolver.class),
                 uploadLocationResolver,
-                officePreviewService);
+                officePreviewService,
+                mock(vip.newsclaw.workspace.core.service.WorkspaceService.class));
 
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }

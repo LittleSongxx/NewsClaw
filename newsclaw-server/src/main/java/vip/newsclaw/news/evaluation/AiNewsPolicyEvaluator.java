@@ -90,19 +90,18 @@ public final class AiNewsPolicyEvaluator {
         counts.put("expectedRejected", rejectionExpected);
         counts.put("badcases", badcases.size());
         Map<String, Double> metrics = new LinkedHashMap<>();
-        metrics.put("sourceTierClassificationAccuracy", ratio(tierPass, total));
-        metrics.put("claimQuoteSupportRate", ratio(claimPass, total));
-        metrics.put("conflictDetectionRate", ratio(conflictPass, total));
-        metrics.put("citationBoundaryPrecision", ratio(citationPass, total));
-        metrics.put("verifiedPrecision", ratio(verifiedCorrect, verifiedExpected));
-        metrics.put("rejectionGatePrecision", ratio(rejectionCorrect, rejectionExpected));
-        metrics.put("canonicalDuplicateRemovalRate", ratio(duplicateRemoved,
-                duplicateUrlCandidates));
+        putRatio(metrics, "sourceTierClassificationAccuracy", tierPass, total);
+        putRatio(metrics, "claimQuoteFixturePassRate", claimPass, total);
+        putRatio(metrics, "conflictFlagAccuracy", conflictPass, total);
+        putRatio(metrics, "citationBoundaryAccuracy", citationPass, total);
+        putRatio(metrics, "verificationEligibleRecall", verifiedCorrect, verifiedExpected);
+        putRatio(metrics, "verificationRejectionSpecificity", rejectionCorrect, rejectionExpected);
+        putRatio(metrics, "canonicalUrlRemovalFraction", duplicateRemoved, duplicateUrlCandidates);
         AiNewsEvidenceManifest manifest = new AiNewsEvidenceManifest(
-                "1.0", "deterministic-policy-fixtures", Instant.now().toString(),
+                "1.1", "deterministic-policy-fixtures", Instant.now().toString(),
                 gitCommit == null || gitCommit.isBlank() ? "unknown" : gitCommit,
                 counts, metrics, badcases, testCommand);
-        return new EvaluationReport(manifest, total == 0 || badcases.isEmpty());
+        return new EvaluationReport(manifest, total > 0 && badcases.isEmpty());
     }
 
     public String classify(String url) {
@@ -161,8 +160,10 @@ public final class AiNewsPolicyEvaluator {
                 .replaceAll("\\s+", " ").trim();
     }
 
-    private static double ratio(int numerator, int denominator) {
-        return denominator <= 0 ? 1.0D : ((double) numerator) / denominator;
+    private static void putRatio(Map<String, Double> metrics, String name, int numerator, int denominator) {
+        if (denominator > 0) {
+            metrics.put(name, ((double) numerator) / denominator);
+        }
     }
 
     public record EvidenceCase(

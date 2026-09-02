@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.workspace.core.service.ChatUploadLocationResolver;
+import vip.newsclaw.tool.browser.UrlSafetyChecker;
 
 import java.io.IOException;
 import java.net.URLDecoder;
@@ -47,6 +48,12 @@ public class ImageFileDownloader {
             return saveDataUrl(imageUrl, dir, taskId, index);
         }
 
+        try {
+            UrlSafetyChecker.check(imageUrl);
+        } catch (SecurityException e) {
+            throw new IOException("Refusing to download image from unsafe URL", e);
+        }
+
         String extension = guessExtension(imageUrl);
         String fileName = "image_" + taskId + "_" + index + extension;
         Path targetFile = dir.resolve(fileName);
@@ -65,6 +72,9 @@ public class ImageFileDownloader {
      * stored asset is openable by name.
      */
     private Path saveDataUrl(String dataUrl, Path dir, String taskId, int index) throws IOException {
+        if (dataUrl.length() > 28L * 1024 * 1024) {
+            throw new IOException("Image data URL exceeds 20MB limit");
+        }
         int comma = dataUrl.indexOf(',');
         if (comma < 0) {
             throw new IOException("Malformed data URL: missing comma");
@@ -112,6 +122,9 @@ public class ImageFileDownloader {
      * 将 Base64 编码的图片保存到本地
      */
     public Path saveBase64(String base64Data, String conversationId, String taskId, int index) throws IOException {
+        if (base64Data == null || base64Data.length() > 28L * 1024 * 1024) {
+            throw new IOException("Base64 image exceeds 20MB limit");
+        }
         Path dir = uploadLocationResolver.resolveWriteDir(conversationId);
         Files.createDirectories(dir);
 

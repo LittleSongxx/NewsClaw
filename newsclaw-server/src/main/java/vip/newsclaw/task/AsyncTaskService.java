@@ -50,6 +50,15 @@ public class AsyncTaskService implements ApplicationRunner {
     /** 活跃轮询任务，key = taskId */
     private final ConcurrentHashMap<String, ScheduledFuture<?>> activePolls = new ConcurrentHashMap<>();
 
+    /**
+     * Serializes the quota check and insert on this node.  The operation is
+     * tiny (one count + one insert), so a single lock is less error-prone than
+     * a lock map whose entries would need lifecycle management.  Multi-node
+     * deployments should use a shared admission service for a hard global
+     * quota.
+     */
+    private final Object creationLock = new Object();
+
     /** Reverse mapping taskId → conversationId so a {@link ConversationDeletedEvent}
      *  listener can cancel every poller belonging to the deleted conversation
      *  without scanning DB (the {@code mate_async_task} rows are gone by the
@@ -103,34 +112,37 @@ public class AsyncTaskService implements ApplicationRunner {
                                        Long messageId, String providerName,
                                        String providerTaskId, String requestJson,
                                        String createdBy) {
-        // 并发限制检查
-        long activeCount = asyncTaskMapper.selectCount(
-                new LambdaQueryWrapper<AsyncTaskEntity>()
-                        .eq(AsyncTaskEntity::getCreatedBy, createdBy)
-                        .in(AsyncTaskEntity::getStatus, List.of("pending", "running"))
-        );
-        if (activeCount >= MAX_ACTIVE_TASKS_PER_USER) {
-            throw new IllegalStateException("已达到最大并行任务数（" + MAX_ACTIVE_TASKS_PER_USER + "），请等待现有任务完成");
+        synchronized (creationLock) {
+                // Check and insert are one critical section per creator. The
+                // task row itself remains independently durable and idempotent.
+                long activeCount = asyncTaskMapper.selectCount(
+                        new LambdaQueryWrapper<AsyncTaskEntity>()
+                                .eq(AsyncTaskEntity::getCreatedBy, createdBy)
+                                .in(AsyncTaskEntity::getStatus, List.of("pending", "running"))
+                );
+                if (activeCount >= MAX_ACTIVE_TASKS_PER_USER) {
+                    throw new IllegalStateException("已达到最大并行任务数（" + MAX_ACTIVE_TASKS_PER_USER + "），请等待现有任务完成");
+                }
+
+                AsyncTaskEntity entity = new AsyncTaskEntity();
+                entity.setTaskId(UUID.randomUUID().toString().replace("-", "").substring(0, 16));
+                entity.setTaskType(taskType);
+                entity.setStatus("pending");
+                entity.setConversationId(conversationId);
+                entity.setMessageId(messageId);
+                entity.setProviderName(providerName);
+                entity.setProviderTaskId(providerTaskId);
+                entity.setRequestJson(requestJson);
+                entity.setProgress(0);
+                entity.setCreatedBy(createdBy);
+                entity.setCreateTime(LocalDateTime.now());
+                entity.setUpdateTime(LocalDateTime.now());
+                asyncTaskMapper.insert(entity);
+
+                log.info("[AsyncTask] Created task {} (type={}, provider={}, providerTaskId={})",
+                        entity.getTaskId(), taskType, providerName, providerTaskId);
+                return entity;
         }
-
-        AsyncTaskEntity entity = new AsyncTaskEntity();
-        entity.setTaskId(UUID.randomUUID().toString().replace("-", "").substring(0, 16));
-        entity.setTaskType(taskType);
-        entity.setStatus("pending");
-        entity.setConversationId(conversationId);
-        entity.setMessageId(messageId);
-        entity.setProviderName(providerName);
-        entity.setProviderTaskId(providerTaskId);
-        entity.setRequestJson(requestJson);
-        entity.setProgress(0);
-        entity.setCreatedBy(createdBy);
-        entity.setCreateTime(LocalDateTime.now());
-        entity.setUpdateTime(LocalDateTime.now());
-        asyncTaskMapper.insert(entity);
-
-        log.info("[AsyncTask] Created task {} (type={}, provider={}, providerTaskId={})",
-                entity.getTaskId(), taskType, providerName, providerTaskId);
-        return entity;
     }
 
     // ==================== One-shot Callable submission ====================

@@ -5,9 +5,9 @@
     "expected": "https://example.com/releases/model?ref=home"
   },
   {
-    "id": "keeps-query-for-evidence-auditability",
+    "id": "drops-tracking-query-for-stable-dedup",
     "input": "https://openai.com/index/model/?utm_source=radar#top",
-    "expected": "https://openai.com/index/model?utm_source=radar"
+    "expected": "https://openai.com/index/model"
   },
   {
     "id": "collapses-repeated-path-slashes",

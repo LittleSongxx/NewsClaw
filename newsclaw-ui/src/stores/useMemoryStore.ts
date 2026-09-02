@@ -5,6 +5,7 @@ import { http } from '@/api'
 export interface DreamReportItem {
   id: string
   agentId: string | number
+  ownerKey?: string | null
   mode: string
   topic: string | null
   triggerSource: string

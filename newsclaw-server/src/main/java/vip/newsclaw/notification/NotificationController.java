@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vip.newsclaw.agent.runtime.AgentRuntimeAggregator;
@@ -14,6 +15,7 @@ import vip.newsclaw.approval.ApprovalWorkflowService;
 import vip.newsclaw.common.result.R;
 import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.wiki.service.WikiRawMaterialService;
+import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -41,13 +43,17 @@ public class NotificationController {
 
     @Operation(summary = "Aggregated counts for the sidebar attention badges")
     @GetMapping("/summary")
-    public R<Map<String, Object>> summary(Authentication auth) {
+    @RequireWorkspaceRole("viewer")
+    public R<Map<String, Object>> summary(
+            Authentication auth,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         boolean admin = isAdmin(auth);
+        long ws = workspaceId == null || workspaceId <= 0 ? 1L : workspaceId;
 
         // Cast to int — counts won't exceed Integer.MAX_VALUE in practice
         // and the project's global Jackson config serializes Long as a string
         // (for ID precision), which would break the numeric UI badge.
-        int pendingApprovals = (int) Math.min(Integer.MAX_VALUE, approvalWorkflowService.countPendingFromDb());
+        int pendingApprovals = (int) Math.min(Integer.MAX_VALUE, approvalWorkflowService.countPendingFromDb(ws));
         int stuckAgents = admin
                 ? agentRuntimeAggregator.snapshot().summary().stuck()
                 : 0;

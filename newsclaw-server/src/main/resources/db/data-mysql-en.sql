@@ -1,6 +1,6 @@
 -- NewsClaw Seed Data - English (MySQL/MariaDB compatible, ON DUPLICATE KEY UPDATE)
 
--- Default admin (password: admin123, BCrypt encrypted)
+-- Legacy administrator seed hash; production bootstrap rotates it before serving traffic.
 INSERT INTO mate_user (id, username, password, nickname, role, enabled, create_time, update_time, deleted)
 VALUES (1, 'admin', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', 'NewsClaw Admin', 'admin', TRUE, NOW(), NOW(), 0)
 ON DUPLICATE KEY UPDATE username=VALUES(username), password=VALUES(password), nickname=VALUES(nickname), role=VALUES(role), enabled=VALUES(enabled), update_time=VALUES(update_time), deleted=VALUES(deleted);
@@ -1965,7 +1965,7 @@ INSERT INTO mate_tool (id, name, display_name, description, tool_type, bean_name
 VALUES (1000000630, 'WechatArticleExtractTool', 'WeChat Article Extract', 'Fetch a WeChat Official Account (公众号) article by URL and return cleaned title/author/time/body(Markdown)/images. Preferred over browser_use for mp.weixin.qq.com article pages; use it for reference gathering and summarisation.', 'builtin', 'wechatArticleExtractTool', '📰', TRUE, TRUE, NOW(), NOW(), 0)
 ON DUPLICATE KEY UPDATE name=VALUES(name), display_name=VALUES(display_name), description=VALUES(description), tool_type=VALUES(tool_type), bean_name=VALUES(bean_name), icon=VALUES(icon), enabled=VALUES(enabled), builtin=VALUES(builtin), update_time=VALUES(update_time), deleted=VALUES(deleted);
 INSERT INTO mate_tool (id, name, display_name, description, tool_type, bean_name, icon, enabled, builtin, create_time, update_time, deleted)
-VALUES (1000000631, 'GzhPublishTool', 'WeChat OA Publish', 'Publish a generated image-text article to a WeChat Official Account: action=draft uploads the cover and creates a 草稿箱 draft (recommended); action=publish free-publishes for verified accounts and requires explicit confirmation. Needs weixinoa.app_id/app_secret in system settings.', 'builtin', 'gzhPublishTool', '📤', TRUE, TRUE, NOW(), NOW(), 0)
+VALUES (1000000631, 'GzhPublishTool', 'WeChat OA Draft', 'Push a generated image-text article to the WeChat Official Account draft box with action=draft. Direct action=publish is disabled; the account owner must review and publish manually in the WeChat backend. Needs weixinoa.app_id/app_secret in system settings.', 'builtin', 'gzhPublishTool', '📤', TRUE, TRUE, NOW(), NOW(), 0)
 ON DUPLICATE KEY UPDATE name=VALUES(name), display_name=VALUES(display_name), description=VALUES(description), tool_type=VALUES(tool_type), bean_name=VALUES(bean_name), icon=VALUES(icon), enabled=VALUES(enabled), builtin=VALUES(builtin), update_time=VALUES(update_time), deleted=VALUES(deleted);
 INSERT INTO mate_agent (id, name, description, agent_type, system_prompt, model_name, max_iterations, enabled, icon, tags, create_time, update_time, deleted)
 VALUES (1000000640, 'Content Studio', 'End-to-end 公众号 & 小红书 image-text creation: research, write, illustrate, de-AI, layout, and publish to draft.', 'react', 'You are NewsClaw''s Content Studio — a specialist that creates WeChat Official Account (公众号) and Xiaohongshu (小红书) image-text posts end to end.
@@ -1981,7 +1981,7 @@ Workflow (7 stages):
 
 At the start of a task, recall_structured these keys and honor them: content_persona, writing_style_gzh, writing_style_xhs, topic_interests, banned_words, signature_blocks. If a needed one is missing, ask the user once and remember_structured it.
 
-Publishing is an outward, irreversible action: always show the final content and get explicit user confirmation before calling gzh_publish; never free-publish without confirmPublish=true and the user''s sign-off. Respect banned_words and advertising-law restrictions; keep every piece original.
+Publishing is an outward, irreversible action: NewsClaw only creates a draft; direct free-publish is disabled, and the account owner must review and publish manually in the WeChat backend. Respect banned_words and advertising-law restrictions; keep every piece original.
 ', NULL, 100, TRUE, 'pi:pen-nib', 'content,gzh,xhs,writing', NOW(), NOW(), 0)
 ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), agent_type=VALUES(agent_type), system_prompt=VALUES(system_prompt), model_name=VALUES(model_name), max_iterations=VALUES(max_iterations), enabled=VALUES(enabled), icon=VALUES(icon), tags=VALUES(tags), update_time=VALUES(update_time), deleted=VALUES(deleted);
 

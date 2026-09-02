@@ -132,7 +132,7 @@ public class WikiController {
         // 按 agent 查询后，过滤出属于当前 workspace 的知识库
         List<WikiKnowledgeBaseEntity> kbs = kbService.listByAgentId(agentId);
         return R.ok(withLivePageCount(kbs.stream()
-                .filter(kb -> kb.getWorkspaceId() == null || kb.getWorkspaceId().equals(wsId))
+                .filter(kb -> kb.getWorkspaceId() != null && kb.getWorkspaceId().equals(wsId))
                 .collect(java.util.stream.Collectors.toList())));
     }
 
@@ -141,6 +141,7 @@ public class WikiController {
     @PostMapping("/knowledge-bases")
     public R<WikiKnowledgeBaseEntity> createKB(@RequestBody Map<String, Object> body,
                                                 @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        if (body == null) return R.fail(400, "request body is required");
         String name = (String) body.get("name");
         String description = (String) body.get("description");
         Long agentId = body.get("agentId") != null ? Long.valueOf(body.get("agentId").toString()) : null;
@@ -155,6 +156,7 @@ public class WikiController {
     public R<WikiKnowledgeBaseEntity> updateKB(@PathVariable Long id, @RequestBody Map<String, Object> body,
                                                 @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(id, workspaceId);
+        if (body == null) return R.fail(400, "request body is required");
         String name = (String) body.get("name");
         String description = (String) body.get("description");
         kbService.update(id, name, description);
@@ -202,6 +204,7 @@ public class WikiController {
     public R<Void> updateConfig(@PathVariable Long id, @RequestBody Map<String, String> body,
                                  @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(id, workspaceId);
+        if (body == null) return R.fail(400, "request body is required");
         kbService.updateConfig(id, body.get("content"));
         return R.ok();
     }
@@ -242,6 +245,7 @@ public class WikiController {
     public R<Void> savePageTypeProfile(@PathVariable Long id, @RequestBody Map<String, String> body,
                                        @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(id, workspaceId);
+        if (body == null) return R.fail(400, "request body is required");
         String config = body.get("config");
         if (config == null || config.isBlank()) {
             return R.fail(400, "config is required");
@@ -260,7 +264,8 @@ public class WikiController {
     public R<Map<String, Object>> validatePageTypeProfile(@PathVariable Long id, @RequestBody Map<String, String> body,
                                                           @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(id, workspaceId);
-        List<String> issues = pageTypeProfileService.validateProfileJson(body.getOrDefault("config", ""));
+        List<String> issues = pageTypeProfileService.validateProfileJson(
+                body == null ? "" : body.getOrDefault("config", ""));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("valid", issues.isEmpty());
         out.put("issues", issues);
@@ -309,7 +314,7 @@ public class WikiController {
     public R<Void> setSourceDirectory(@PathVariable Long id, @RequestBody Map<String, String> body,
                                        @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(id, workspaceId);
-        String path = body.get("path");
+        String path = body == null ? null : body.get("path");
         if (path != null && !path.isBlank()) {
             try {
                 pathValidator.validateSourcePatterns(path);
@@ -368,6 +373,7 @@ public class WikiController {
         verifyKBWorkspace(id, workspaceId);
         WikiKnowledgeBaseEntity kb = kbService.getById(id);
         if (kb == null) return R.fail(404, "Knowledge base not found");
+        if (body == null) return R.fail(400, "request body is required");
         Object v = body.get("enabled");
         boolean enabled = (v instanceof Boolean b) ? b : Boolean.parseBoolean(String.valueOf(v));
         kbService.updateWatcherEnabled(id, enabled);
@@ -412,6 +418,7 @@ public class WikiController {
             @PathVariable Long kbId, @RequestBody Map<String, String> body,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
+        if (body == null) return R.fail(400, "request body is required");
         boolean yaml = !"json".equalsIgnoreCase(body.getOrDefault("format", "yaml"));
         try {
             return R.ok(pipelineDefinitionService.saveFromConfig(kbId, body.get("config"), yaml));
@@ -427,6 +434,7 @@ public class WikiController {
             @PathVariable Long kbId, @RequestBody Map<String, String> body,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
+        if (body == null) return R.fail(400, "request body is required");
         boolean yaml = !"json".equalsIgnoreCase(body.getOrDefault("format", "yaml"));
         List<String> issues = pipelineDefinitionService.validateConfig(body.getOrDefault("config", ""), yaml);
         Map<String, Object> out = new LinkedHashMap<>();
@@ -441,6 +449,7 @@ public class WikiController {
     public R<Void> deletePipeline(@PathVariable Long kbId, @PathVariable Long id,
                                   @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
+        verifyPipelineDefinition(kbId, id);
         pipelineDefinitionService.delete(id);
         return R.ok();
     }
@@ -452,6 +461,7 @@ public class WikiController {
             @PathVariable Long kbId, @PathVariable Long id,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
+        verifyPipelineDefinition(kbId, id);
         return R.ok(pipelineRunMapper.selectList(
                 com.baomidou.mybatisplus.core.toolkit.Wrappers.<vip.newsclaw.wiki.model.WikiPipelineRunEntity>lambdaQuery()
                         .eq(vip.newsclaw.wiki.model.WikiPipelineRunEntity::getDefinitionId, id)
@@ -465,8 +475,12 @@ public class WikiController {
             @PathVariable Long kbId, @PathVariable Long runId,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
+        vip.newsclaw.wiki.model.WikiPipelineRunEntity run = pipelineRunMapper.selectById(runId);
+        if (run == null || !kbId.equals(run.getKbId())) {
+            throw new NewsClawException(404, "Pipeline run not found in this knowledge base");
+        }
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("run", pipelineRunMapper.selectById(runId));
+        out.put("run", run);
         out.put("steps", pipelineStepRunMapper.selectList(
                 com.baomidou.mybatisplus.core.toolkit.Wrappers.<vip.newsclaw.wiki.model.WikiPipelineStepRunEntity>lambdaQuery()
                         .eq(vip.newsclaw.wiki.model.WikiPipelineStepRunEntity::getRunId, runId)
@@ -494,6 +508,7 @@ public class WikiController {
             @RequestBody WikiAgentPageTypePermissionEntity body,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
+        if (body == null) return R.fail(400, "request body is required");
         body.setKbId(kbId);
         body.setAgentId(agentId);
         return R.ok(pageTypePermissionService.saveRow(body));
@@ -506,7 +521,7 @@ public class WikiController {
             @PathVariable Long kbId, @PathVariable Long agentId, @PathVariable Long id,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
-        return R.ok(pageTypePermissionService.deleteRow(id));
+        return R.ok(pageTypePermissionService.deleteRow(id, agentId, kbId));
     }
 
     // ==================== Raw Materials ====================
@@ -556,6 +571,7 @@ public class WikiController {
     public R<WikiRawMaterialEntity> addRawText(@PathVariable Long kbId, @RequestBody Map<String, String> body,
                                                 @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
+        if (body == null) return R.fail(400, "request body is required");
         String title = body.get("title");
         String content = body.get("content");
         return R.ok(rawService.addText(kbId, title, content));
@@ -568,6 +584,7 @@ public class WikiController {
                                                @RequestParam("file") MultipartFile file,
                                                @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) throws IOException {
         verifyKBWorkspace(kbId, workspaceId);
+        if (file == null || file.isEmpty()) return R.fail(400, "file is required");
         String originalName = file.getOriginalFilename();
         String extension = originalName != null && originalName.contains(".")
                 ? originalName.substring(originalName.lastIndexOf(".") + 1).toLowerCase()
@@ -598,11 +615,18 @@ public class WikiController {
             // directory resolution does not affect later processing.
             Path uploadDir = Paths.get(properties.getUploadDir()).toAbsolutePath().normalize();
             Files.createDirectories(uploadDir);
-            Path targetPath = uploadDir.resolve(System.currentTimeMillis() + "_" + originalName);
+            String safeName = (originalName == null ? "file" : originalName)
+                    .replaceAll("[^a-zA-Z0-9._-]", "_");
+            if (safeName.length() > 180) safeName = safeName.substring(safeName.length() - 180);
+            Path targetPath = uploadDir.resolve(java.util.UUID.randomUUID() + "_" + safeName);
             file.transferTo(targetPath);
-            return R.ok(rawService.addFile(kbId, originalName, sourceType,
-                    file.getContentType(),
-                    targetPath.toString(), file.getSize()));
+            try {
+                return R.ok(rawService.addFile(kbId, originalName, sourceType,
+                        file.getContentType(), targetPath.toString(), file.getSize()));
+            } catch (RuntimeException e) {
+                Files.deleteIfExists(targetPath);
+                throw e;
+            }
         }
     }
 
@@ -667,6 +691,7 @@ public class WikiController {
                                                     @RequestBody Map<String, Object> body,
                                                     @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
+        if (body == null) return R.fail(400, "request body is required");
         List<Long> ids = resolveBatchIds(kbId, body);
         if (ids == null) {
             return R.fail(400, "Must supply non-empty 'ids' or a 'status' selector");
@@ -705,6 +730,7 @@ public class WikiController {
                                                  @RequestBody Map<String, Object> body,
                                                  @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
+        if (body == null) return R.fail(400, "request body is required");
         List<Long> ids = resolveBatchIds(kbId, body);
         if (ids == null) {
             return R.fail(400, "Must supply non-empty 'ids' or a 'status' selector");
@@ -922,6 +948,7 @@ public class WikiController {
                                          @RequestBody Map<String, String> body,
                                          @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
+        if (body == null) return R.fail(400, "request body is required");
         return R.ok(pageService.updatePageManually(kbId, slug, body.get("content"), body.get("summary")));
     }
 
@@ -1189,12 +1216,15 @@ public class WikiController {
         if (kb == null) return R.fail(404, "Knowledge base not found");
 
         List<WikiRawMaterialEntity> rawList = rawService.listByKbId(kbId);
-        long pending = rawList.stream().filter(r -> "pending".equals(r.getProcessingStatus())).count();
-        long processing = rawList.stream().filter(r -> "processing".equals(r.getProcessingStatus())).count();
-        long completed = rawList.stream().filter(r -> "completed".equals(r.getProcessingStatus())).count();
-        long partial = rawList.stream().filter(r -> "partial".equals(r.getProcessingStatus())).count();
-        long failed = rawList.stream().filter(r -> "failed".equals(r.getProcessingStatus())).count();
-        long cancelled = rawList.stream().filter(r -> "cancelled".equals(r.getProcessingStatus())).count();
+        // Counters come from database-side COUNTs rather than the material list.
+        // The list endpoint may be paginated/filtered in the future; summary
+        // numbers must remain totals for the whole KB, not just the current page.
+        long pending = rawService.countByKbIdAndStatus(kbId, "pending");
+        long processing = rawService.countByKbIdAndStatus(kbId, "processing");
+        long completed = rawService.countByKbIdAndStatus(kbId, "completed");
+        long partial = rawService.countByKbIdAndStatus(kbId, "partial");
+        long failed = rawService.countByKbIdAndStatus(kbId, "failed");
+        long cancelled = rawService.countByKbIdAndStatus(kbId, "cancelled");
 
         // Derive totalPages from the real `mate_wiki_page` table rather than
         // `kb.pageCount`, which can lag behind if a processing run aborts
@@ -1213,15 +1243,19 @@ public class WikiController {
             }
         }
 
-        // KB-level status field reflects whether the heavy pipeline is still
-        // running; once it flips back to "active" no raw material is actually
-        // mid-processing, regardless of any row whose `processing_status`
-        // didn't get its terminal-state update (a known failure mode in
-        // long-running ingest paths). Override the per-raw count so the UI
-        // doesn't show "processing" forever after the KB itself is idle.
-        boolean kbIdle = !"processing".equals(kb.getStatus());
-        long effectiveProcessing = kbIdle ? 0 : processing;
-        long inferredCompleted = kbIdle ? (completed + (realPageCount > 0 ? processing : 0)) : completed;
+        // Keep status counters authoritative: the raw-material rows are the
+        // paginated/list source of truth, while the KB-level status is only a
+        // coarse pipeline hint. Do not infer "completed" from pageCount (a
+        // partial run can create pages, and a page-less successful run is
+        // valid). Expose stale processing separately for operators instead of
+        // silently rewriting the counters.
+        long staleProcessing = rawList.stream()
+                .filter(r -> "processing".equals(r.getProcessingStatus()))
+                .filter(r -> r.getUpdateTime() != null
+                        && java.time.Duration.between(r.getUpdateTime(), java.time.LocalDateTime.now()).toSeconds() > 600)
+                .count();
+        long effectiveProcessing = processing;
+        long inferredCompleted = completed;
 
         // Per-raw progress snapshot — lets callers distinguish "LLM still
         // working through phase-b 4 of 10 pages" from "thread is wedged".
@@ -1256,10 +1290,11 @@ public class WikiController {
         body.put("pending", pending);
         body.put("processing", effectiveProcessing);
         body.put("completed", inferredCompleted);
+        body.put("staleProcessing", staleProcessing);
         body.put("partial", partial);
         body.put("failed", failed);
         body.put("cancelled", cancelled);
-        body.put("totalRaw", rawList.size());
+        body.put("totalRaw", rawService.countByKbId(kbId));
         body.put("totalPages", realPageCount);
         body.put("rawProgress", rawProgress);
         return R.ok(body);
@@ -1327,8 +1362,16 @@ public class WikiController {
             throw new NewsClawException(404, "Knowledge base not found");
         }
         long wsId = headerWorkspaceId != null ? headerWorkspaceId : 1L;
-        if (kb.getWorkspaceId() != null && !kb.getWorkspaceId().equals(wsId)) {
+        if (kb.getWorkspaceId() == null || !kb.getWorkspaceId().equals(wsId)) {
             throw new NewsClawException("err.common.wrong_workspace", 403, "资源不属于当前工作区");
+        }
+    }
+
+    private void verifyPipelineDefinition(Long kbId, Long definitionId) {
+        vip.newsclaw.wiki.model.WikiPipelineDefinitionEntity definition =
+                pipelineDefinitionService.get(definitionId);
+        if (definition == null || !kbId.equals(definition.getKbId())) {
+            throw new NewsClawException(404, "Pipeline definition not found in this knowledge base");
         }
     }
 }

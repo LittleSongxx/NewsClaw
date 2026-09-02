@@ -52,7 +52,9 @@ public class WorkflowCompletionEventBridge {
                     "workflow_completion",
                     "wf-run-" + event.runId(),
                     "system",
-                    data);
+                    data,
+                    null, null, null, null, null, false,
+                    event.triggerAncestry(), event.triggerDepth());
             ingestService.ingest(envelope);
         } catch (Exception e) {
             log.warn("[WorkflowCompletionBridge] forwarding run {} completion failed: {}",

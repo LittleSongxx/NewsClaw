@@ -1,0 +1,232 @@
+name: AI News Evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_webmainbench:
+        description: "Download and run the pinned 109 MB WebMainBench-545 diagnostic"
+        required: false
+        default: false
+        type: boolean
+      require_domain_gold_ready:
+        description: "Fail unless the 14-day domain-gold campaign is fully approved and ready"
+        required: false
+        default: false
+        type: boolean
+  pull_request:
+    paths:
+      - "pom.xml"
+      - "newsclaw-server/**"
+      - "docker/content-extractor/**"
+      - "docker-compose.yml"
+      - "scripts/*ai-news*"
+      - "docs/zh/ai-news-*.md"
+      - "docs/zh/evidence/**"
+      - ".github/workflows/ai-news-evaluation.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "pom.xml"
+      - "newsclaw-server/**"
+      - "docker/content-extractor/**"
+      - "docker-compose.yml"
+      - "scripts/*ai-news*"
+      - "docs/zh/ai-news-*.md"
+      - "docs/zh/evidence/**"
+      - ".github/workflows/ai-news-evaluation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-evaluation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Validate evaluation scripts
+        run: |
+          bash -n scripts/eval-ai-news-quality.sh scripts/eval-ai-news-discovery-quality.sh scripts/eval-ai-news-event-clustering.sh scripts/eval-ai-news-evidence.sh scripts/eval-ai-news-ops.sh scripts/run-ai-news-live-agent-eval.sh scripts/run-ai-news-live-agent-stability.sh scripts/run-ai-news-p0-demo.sh scripts/score-ai-news-traces.sh scripts/validate-ai-news-holdout.sh scripts/validate-ai-news-sealed-holdout-v2.sh
+          node --check scripts/analyze-ai-news-live-runs.js
+          node --check scripts/analyze-ai-news-human-reviews.js
+          node --check scripts/generate-ai-news-holdout-100.js
+          node --check scripts/generate-ai-news-sealed-holdout-v2.js
+          node --check scripts/generate-ai-news-relations-development-v1.js
+          node --check scripts/generate-ai-news-relations-development-v2.js
+          node --check scripts/generate-ai-news-tool-autonomy-development-v1.js
+          node --check scripts/generate-ai-news-tool-autonomy-development-v2.js
+          node --check scripts/generate-ai-news-tool-autonomy-development-v3.js
+          node --check scripts/generate-ai-news-tool-autonomy-development-v4.js
+          node --check scripts/prepare-ai-news-human-review-package.js
+          node --check scripts/prepare-ai-news-domain-gold-review-package.js
+          node --check scripts/validate-ai-news-domain-gold-campaign.js
+          node --check scripts/generate-ai-news-p0-demo-fixture.js
+          node --check scripts/build-ai-news-p0-report.js
+
+      - name: Validate domain-gold campaign contract
+        run: |
+          node scripts/validate-ai-news-domain-gold-campaign.js \
+            newsclaw-server/src/test/resources/evals/ai-news/domain-gold/campaign-draft-v1.json \
+            target/ai-news-domain-gold/campaign-readiness.json
+
+      - name: Enforce domain-gold campaign readiness
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.require_domain_gold_ready }}
+        run: |
+          node scripts/validate-ai-news-domain-gold-campaign.js \
+            --require-ready \
+            newsclaw-server/src/test/resources/evals/ai-news/domain-gold/campaign-draft-v1.json \
+            target/ai-news-domain-gold/campaign-readiness.json
+
+      - name: Verify domain-gold blind packaging contract
+        run: |
+          node scripts/prepare-ai-news-domain-gold-review-package.js \
+            newsclaw-server/src/test/resources/evals/ai-news/domain-gold/campaign-draft-v1.json \
+            newsclaw-server/src/test/resources/evals/ai-news/domain-gold/domain-gold-review-contract-fixture-v1.json \
+            target/ai-news-domain-gold/contract-review-package
+          node scripts/prepare-ai-news-domain-gold-review-package.js \
+            newsclaw-server/src/test/resources/evals/ai-news/domain-gold/campaign-draft-v1.json \
+            newsclaw-server/src/test/resources/evals/ai-news/domain-gold/domain-gold-review-contract-fixture-v1.json \
+            target/ai-news-domain-gold/contract-review-package-repeat
+          diff --recursive --brief \
+            target/ai-news-domain-gold/contract-review-package \
+            target/ai-news-domain-gold/contract-review-package-repeat
+
+      - name: Validate 100-case candidate holdout dataset
+        run: ./scripts/validate-ai-news-holdout.sh
+
+      - name: Validate sealed-v2 regression dataset
+        run: ./scripts/validate-ai-news-sealed-holdout-v2.sh
+
+      - name: Verify generated development fixtures are reproducible
+        run: |
+          node scripts/generate-ai-news-relations-development-v1.js
+          node scripts/generate-ai-news-relations-development-v2.js
+          node scripts/generate-ai-news-tool-autonomy-development-v1.js
+          node scripts/generate-ai-news-tool-autonomy-development-v2.js
+          node scripts/generate-ai-news-tool-autonomy-development-v3.js
+          node scripts/generate-ai-news-tool-autonomy-development-v4.js
+          git diff --exit-code -- newsclaw-server/src/test/resources/evals/ai-news/live-agent-evidence-relations-development-v1.json newsclaw-server/src/test/resources/evals/ai-news/live-agent-evidence-relations-development-v2.json newsclaw-server/src/test/resources/evals/ai-news/live-agent-tool-autonomy-development-v1.json newsclaw-server/src/test/resources/evals/ai-news/live-agent-tool-autonomy-development-v2.json newsclaw-server/src/test/resources/evals/ai-news/live-agent-tool-autonomy-development-v3.json newsclaw-server/src/test/resources/evals/ai-news/live-agent-tool-autonomy-development-v4.json
+
+      - name: Verify P0 candidate-first demo packaging
+        run: |
+          node scripts/generate-ai-news-p0-demo-fixture.js target/ai-news-p0-fixture
+          node scripts/prepare-ai-news-candidate-shadow-review.js \
+            target/ai-news-p0-fixture target/ai-news-p0-review-package
+          jq -e '.schemaVersion == "ai-news-p0-demo-fixture-v1" and .counts.selected == 2' \
+            target/ai-news-p0-fixture/fixture-manifest.json
+          jq -e '.blindLeakageAudit.passed == true and .evaluationEligible == false' \
+            target/ai-news-p0-review-package/manifest.json
+
+      - name: Run deterministic AI-news operations regression
+        run: ./scripts/eval-ai-news-ops.sh
+
+      - name: Run deterministic policy quality evaluation
+        run: ./scripts/eval-ai-news-quality.sh
+
+      - name: Verify vertical discovery scorer contract
+        run: ./scripts/eval-ai-news-discovery-quality.sh newsclaw-server/src/test/resources/evals/ai-news/discovery-quality-fixture-v1.json target/ai-news-discovery-quality-contract
+
+      - name: Replay production event clustering policy reproducibly
+        run: |
+          ./scripts/eval-ai-news-event-clustering.sh
+          AI_NEWS_CLUSTERING_OUTPUT_DIR=target/ai-news-event-clustering-repeat \
+            ./scripts/eval-ai-news-event-clustering.sh
+          cmp \
+            target/ai-news-event-clustering/event-clustering-manifest.json \
+            target/ai-news-event-clustering-repeat/event-clustering-manifest.json
+          cmp \
+            target/ai-news-event-clustering/event-clustering-report.md \
+            target/ai-news-event-clustering-repeat/event-clustering-report.md
+
+      - name: Run legacy fixture manifest regression
+        run: ./scripts/eval-ai-news-evidence.sh
+
+      - name: Upload evaluation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-news-deterministic-evaluation
+          if-no-files-found: warn
+          path: |
+            target/ai-news-policy-quality-manifest.json
+            target/ai-news-policy-quality-report.md
+            target/ai-news-discovery-quality-contract/discovery-quality-manifest.json
+            target/ai-news-discovery-quality-contract/discovery-quality-report.md
+            target/ai-news-event-clustering/event-clustering-manifest.json
+            target/ai-news-event-clustering/event-clustering-report.md
+            target/ai-news-event-clustering-repeat/event-clustering-manifest.json
+            target/ai-news-event-clustering-repeat/event-clustering-report.md
+            target/ai-news-evidence-manifest.json
+            target/ai-news-domain-gold/campaign-readiness.json
+            target/ai-news-domain-gold/contract-review-package/manifest.json
+            target/ai-news-domain-gold/contract-review-package-repeat/manifest.json
+
+  content-extraction-evaluation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate extraction evaluation tooling
+        run: |
+          bash -n scripts/download-ai-news-content-extraction-benchmark.sh
+          python3 -m py_compile scripts/eval-ai-news-content-extraction.py docker/content-extractor/server.py
+
+      - name: Build and start pinned extraction adapter
+        run: |
+          docker build --tag newsclaw-content-extractor:ci docker/content-extractor
+          docker run --detach \
+            --name newsclaw-content-extractor-ci \
+            --publish 127.0.0.1:8090:8090 \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --pids-limit 128 \
+            --memory 512m \
+            newsclaw-content-extractor:ci
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8090/healthz >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8090/healthz
+
+      - name: Run domain-layout extraction gate
+        run: |
+          python3 scripts/eval-ai-news-content-extraction.py \
+            --endpoint http://127.0.0.1:8090 \
+            --output target/ai-news-content-extraction-business-v1.json
+
+      - name: Run pinned WebMainBench diagnostic
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_webmainbench }}
+        run: |
+          benchmark="$(./scripts/download-ai-news-content-extraction-benchmark.sh)"
+          python3 scripts/eval-ai-news-content-extraction.py \
+            --endpoint http://127.0.0.1:8090 \
+            --webmainbench "${benchmark}" \
+            --timeout 20 \
+            --output target/ai-news-content-extraction-webmainbench-545.json
+
+      - name: Upload extraction evaluation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-news-content-extraction-evaluation
+          if-no-files-found: warn
+          path: |
+            target/ai-news-content-extraction-business-v1.json
+            target/ai-news-content-extraction-webmainbench-545.json
+
+      - name: Stop extraction adapter
+        if: always()
+        run: docker rm --force newsclaw-content-extractor-ci || true

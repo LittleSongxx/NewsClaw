@@ -31,6 +31,8 @@ public class TtsService {
     private final ChatUploadLocationResolver uploadLocationResolver;
 
     private static final int MAX_TEXT_LENGTH = 4096;
+    private static final Set<String> SAFE_AUDIO_FORMATS = Set.of(
+            "mp3", "wav", "ogg", "opus", "aac", "flac", "m4a", "pcm");
 
     /** 用于自动 TTS 的异步线程池 */
     private final ExecutorService ttsExecutor = Executors.newFixedThreadPool(2, r -> {
@@ -75,14 +77,15 @@ public class TtsService {
         // 保存文件
         try {
             String fileId = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-            Path filePath = saveAudioFile(conversationId, fileId, result.getAudioData(), result.getFormat());
+            String safeFormat = safeAudioFormat(result.getFormat());
+            Path filePath = saveAudioFile(conversationId, fileId, result.getAudioData(), safeFormat);
             String audioUrl = "/api/v1/chat/files/" + conversationId + "/" + filePath.getFileName();
 
             return Map.of(
                     "success", true,
                     "audioUrl", audioUrl,
                     "contentType", result.getContentType(),
-                    "format", result.getFormat()
+                    "format", safeFormat
             );
         } catch (IOException e) {
             log.error("[TTS] Failed to save audio file: {}", e.getMessage(), e);
@@ -204,11 +207,19 @@ public class TtsService {
 
     private Path saveAudioFile(String conversationId, String fileId, byte[] data, String format)
             throws IOException {
+        if (data == null || data.length == 0) throw new IOException("audio data is empty");
         Path dir = uploadLocationResolver.resolveWriteDir(conversationId);
         Files.createDirectories(dir);
         String fileName = "tts_" + fileId + "." + format;
         Path filePath = dir.resolve(fileName);
         Files.write(filePath, data);
         return filePath;
+    }
+
+    private static String safeAudioFormat(String format) {
+        if (format == null) return "mp3";
+        String normalized = format.trim().toLowerCase(Locale.ROOT);
+        if (normalized.startsWith(".")) normalized = normalized.substring(1);
+        return SAFE_AUDIO_FORMATS.contains(normalized) ? normalized : "mp3";
     }
 }

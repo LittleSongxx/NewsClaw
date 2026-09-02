@@ -34,7 +34,7 @@ import java.util.Set;
  * the same hostname later and obtain a different IP. Fully closing this requires
  * hooking the browser's DNS layer, which Playwright does not expose; the
  * private-network-allow mode makes this a non-issue because every private
- * address is permitted anyway.
+ * address is permitted anyway. DNS lookup failures fail closed.
  */
 public final class UrlSafetyChecker {
 
@@ -164,9 +164,7 @@ public final class UrlSafetyChecker {
         } catch (SecurityException e) {
             throw e;
         } catch (Exception e) {
-            // DNS resolution failure — let the caller deal with it (browser will show its own error).
-            // Known limitation: a deliberately slow/timeout DNS server can use this to bypass the
-            // guard. Not fixable here without a hard fail policy; document as accepted risk.
+            throw new SecurityException("SSRF blocked: unable to resolve and validate " + hostname, e);
         }
     }
 

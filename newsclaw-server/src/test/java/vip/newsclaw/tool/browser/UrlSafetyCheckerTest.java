@@ -26,6 +26,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 class UrlSafetyCheckerTest {
 
+    @Test
+    void unresolvedHostnameFailsClosed() {
+        assertThrows(SecurityException.class,
+                () -> UrlSafetyChecker.check("https://definitely-not-a-host.invalid/path"));
+    }
+
     // ==================== Strict mode (default) ====================
 
     @Test

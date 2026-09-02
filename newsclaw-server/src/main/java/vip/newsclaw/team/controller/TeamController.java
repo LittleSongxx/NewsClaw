@@ -86,6 +86,7 @@ public class TeamController {
     @PostMapping
     @RequireWorkspaceRole("admin")
     public R<TeamVO> create(@RequestBody CreateTeamRequest req, Principal principal) {
+        if (req == null) return R.fail(400, "request body is required");
         return guarded(() -> {
             AgentTeamEntity team = teamService.createTeam(currentWorkspaceId(), req.getName(), req.getDescription(),
                     req.getLeadAgentId(), req.getMemberAgentIds(),
@@ -98,6 +99,7 @@ public class TeamController {
     @PutMapping("/{id}")
     @RequireWorkspaceRole("admin")
     public R<TeamVO> update(@PathVariable Long id, @RequestBody UpdateTeamRequest req) {
+        if (req == null) return R.fail(400, "request body is required");
         return guarded(() -> R.ok(toVO(teamService.updateTeam(id, currentWorkspaceId(), req.getName(),
                 req.getDescription(), req.getSettings()))));
     }
@@ -118,6 +120,7 @@ public class TeamController {
     @PostMapping("/{id}/members")
     @RequireWorkspaceRole("admin")
     public R<Void> addMember(@PathVariable Long id, @RequestBody MemberRequest req) {
+        if (req == null) return R.fail(400, "request body is required");
         return guarded(() -> {
             teamService.addMember(id, currentWorkspaceId(), req.getAgentId(), req.getRole());
             return R.ok(null);
@@ -176,6 +179,7 @@ public class TeamController {
     @RequireWorkspaceRole("admin")
     public R<TaskVO> createTask(@PathVariable Long id, @RequestBody CreateTaskRequest req,
                                 Principal principal) {
+        if (req == null) return R.fail(400, "request body is required");
         return guarded(() -> {
             AgentTeamEntity team = requireTeam(id);
             TeamTaskEntity task = manualTaskService.createTask(team, TeamTaskCreateCommand.builder()
@@ -315,6 +319,7 @@ public class TeamController {
     @RequireWorkspaceRole("admin")
     public R<Void> comment(@PathVariable Long id, @PathVariable Long taskId,
                            @RequestBody CommentRequest req, Principal principal) {
+        if (req == null) return R.fail(400, "request body is required");
         return guarded(() -> {
             requireTeam(id);
             requireTask(id, taskId);

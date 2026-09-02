@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -109,6 +110,35 @@ class OfficialSourceEvidenceCaptureServiceTest {
         assertEquals(504, error.getCode());
         verify(captureAttemptService).record(eq(7L), eq(101L), any(), eq(null),
                 eq(AiNewsCaptureStatus.TIMEOUT), any(), eq(null), any());
+    }
+
+    @Test
+    @DisplayName("一次超时不会污染后续重试，恢复后可正常归档")
+    void recoversOnASeparatedRetryAfterTimeout() throws Exception {
+        when(fetcher.fetch(any(), any(Integer.class), any(Integer.class), any(Integer.class)))
+                .thenThrow(new HttpTimeoutException("first attempt timed out"))
+                .thenReturn(new OfficialSourceHttpFetcher.FetchResult(
+                        "https://openai.com/index/recovered", 200,
+                        "<html><title>Recovered</title><body>Official recovery evidence.</body></html>",
+                        "text/html", LocalDateTime.of(2026, 8, 26, 9, 0), List.of()));
+        AiNewsEvidenceEntity stored = new AiNewsEvidenceEntity();
+        stored.setId(302L);
+        when(eventService.attachCapturedOfficialEvidence(eq(7L), eq(101L), any(), any()))
+                .thenReturn(stored);
+
+        assertThrows(NewsClawException.class, () -> service.capture(
+                7L, 101L, "https://openai.com/index/recovered", "recovery claim"));
+        AiNewsEvidenceEntity recovered = service.capture(
+                7L, 101L, "https://openai.com/index/recovered", "recovery claim");
+
+        assertEquals(302L, recovered.getId());
+        verify(fetcher, times(2)).fetch(any(), any(Integer.class), any(Integer.class), any(Integer.class));
+        verify(eventService, times(1)).attachCapturedOfficialEvidence(eq(7L), eq(101L), any(), any());
+        verify(captureAttemptService).record(eq(7L), eq(101L), any(), eq(null),
+                eq(AiNewsCaptureStatus.TIMEOUT), any(), eq(null), any());
+        verify(captureAttemptService).record(eq(7L), eq(101L), any(),
+                eq("https://openai.com/index/recovered"), eq(AiNewsCaptureStatus.SUCCESS),
+                eq(null), eq(200), any());
     }
 
     @Test

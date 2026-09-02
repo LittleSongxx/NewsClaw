@@ -45,7 +45,11 @@ public class WorkspaceController {
 
     @Operation(summary = "获取工作区详情")
     @GetMapping("/{id}")
-    public R<WorkspaceEntity> get(@PathVariable Long id) {
+    public R<WorkspaceEntity> get(@PathVariable Long id, Authentication auth) {
+        UserEntity user = resolveUser(auth);
+        if (!isGlobalAdmin(user)) {
+            workspaceService.requirePermission(id, user.getId(), "viewer");
+        }
         return R.ok(workspaceService.getById(id));
     }
 
@@ -61,6 +65,7 @@ public class WorkspaceController {
     @PostMapping
     @RequireGlobalAdmin
     public R<WorkspaceEntity> create(@RequestBody WorkspaceEntity entity, Authentication auth) {
+        if (entity == null) return R.fail(400, "request body is required");
         Long userId = resolveUserId(auth);
         return R.ok(workspaceService.create(entity, userId));
     }
@@ -68,7 +73,17 @@ public class WorkspaceController {
     @Operation(summary = "更新工作区")
     @PutMapping("/{id}")
     public R<WorkspaceEntity> update(@PathVariable Long id, @RequestBody WorkspaceEntity entity, Authentication auth) {
-        Long userId = resolveUserId(auth);
+        if (entity == null) return R.fail(400, "request body is required");
+        UserEntity user = resolveUser(auth);
+        WorkspaceEntity existing = workspaceService.getById(id);
+        if (existing == null) return R.fail(404, "workspace not found");
+        if (!isGlobalAdmin(user)) {
+            // Workspace admins may edit presentation fields, but path and
+            // ownership are security-sensitive and remain operator-owned.
+            entity.setBasePath(existing.getBasePath());
+            entity.setOwnerId(existing.getOwnerId());
+        }
+        Long userId = user.getId();
         workspaceService.requirePermission(id, userId, "admin");
         entity.setId(id);
         return R.ok(workspaceService.update(entity));
@@ -111,6 +126,10 @@ public class WorkspaceController {
                                                Authentication auth) {
         Long userId = resolveUserId(auth);
         workspaceService.requirePermission(id, userId, "admin");
+        if (body == null || body.isEmpty()) {
+            throw new NewsClawException("err.workspace.member_payload_required", 400,
+                    "member payload is required");
+        }
 
         Long targetUserId;
         if (body.containsKey("username")) {
@@ -153,7 +172,8 @@ public class WorkspaceController {
         workspaceService.requirePermission(id, userId, "admin");
         // Path variable is the member's USER id (not the membership row id):
         // WorkspaceService resolves membership by (workspaceId, userId).
-        return R.ok(workspaceService.updateMemberRole(id, targetUserId, body.get("role")));
+        return R.ok(workspaceService.updateMemberRole(id, targetUserId,
+                body == null ? null : body.get("role")));
     }
 
     @Operation(summary = "移除工作区成员")
@@ -174,6 +194,9 @@ public class WorkspaceController {
     }
 
     private UserEntity resolveUser(Authentication auth) {
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            throw new NewsClawException("err.auth.unauthenticated", 401, "Not authenticated");
+        }
         String username = auth.getName();
         UserEntity user = authService.findByUsername(username);
         if (user == null) {

@@ -22,15 +22,9 @@ import java.util.Base64;
  * are transparently upgraded to ciphertext the next time they are saved.
  *
  * <p>Key source, in order:
- * <ol>
- *   <li>{@code NEWSCLAW_SETTING_KEY} environment variable (any string — hashed
- *       to a 256-bit key). This is the recommended production setup; back it up,
- *       because rotating or losing it makes existing ciphertext unreadable.</li>
- *   <li>A built-in default passphrase when the env var is absent. This still
- *       keeps secrets out of plaintext in the database, but since the passphrase
- *       ships with the code it is obfuscation rather than strong protection — a
- *       warning is logged at startup urging the operator to set the env var.</li>
- * </ol>
+ * <p>{@code NEWSCLAW_SETTING_KEY} is required for production. A random
+ * process-local key is used only for an explicitly keyless development run, so
+ * such a run cannot silently create ciphertext that looks production-safe.</p>
  */
 @Slf4j
 @Component
@@ -41,8 +35,6 @@ public class SettingCrypto {
     private static final String ENV_KEY = "NEWSCLAW_SETTING_KEY";
     private static final int GCM_IV_BYTES = 12;
     private static final int GCM_TAG_BITS = 128;
-    /** Fallback passphrase used only when the env var is unset (obfuscation-grade). */
-    private static final String DEFAULT_PASSPHRASE = "newsclaw-default-setting-key-v1";
 
     private final SecretKeySpec key;
     private final SecureRandom random = new SecureRandom();
@@ -50,10 +42,11 @@ public class SettingCrypto {
     public SettingCrypto(@Value("${newsclaw.setting.key:}") String configuredKey) {
         String source = firstNonBlank(configuredKey, System.getenv(ENV_KEY));
         if (source == null || source.isBlank()) {
-            log.warn("[SettingCrypto] No {} set — encrypting sensitive settings with a built-in "
-                    + "default key (obfuscation only). Set {} to a strong secret in production "
-                    + "and back it up; losing it makes stored secrets unreadable.", ENV_KEY, ENV_KEY);
-            source = DEFAULT_PASSPHRASE;
+            byte[] ephemeral = new byte[32];
+            new SecureRandom().nextBytes(ephemeral);
+            source = Base64.getEncoder().encodeToString(ephemeral);
+            log.warn("[SettingCrypto] No {} set; using a process-local development key. "
+                    + "Production startup must provide a persistent high-entropy key.", ENV_KEY);
         }
         this.key = deriveKey(source);
     }

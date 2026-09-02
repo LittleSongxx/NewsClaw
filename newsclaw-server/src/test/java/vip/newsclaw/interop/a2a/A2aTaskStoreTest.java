@@ -56,6 +56,25 @@ class A2aTaskStoreTest {
         assertTrue(store.get("tenant", "active").isPresent());
     }
 
+    @Test
+    void admissionPressureEvictsStaleNonTerminalTasks() {
+        MutableClock clock = new MutableClock();
+        A2aTaskStore store = new A2aTaskStore(1, Duration.ofSeconds(30), clock);
+        assertTrue(store.putIfAbsent("tenant", A2aTask.submitted("stale", "ctx", "tenant")));
+        clock.advance(Duration.ofSeconds(31));
+        assertTrue(store.putIfAbsent("tenant", A2aTask.submitted("fresh", "ctx", "tenant")));
+        assertTrue(store.get("tenant", "stale").isEmpty());
+    }
+
+    @Test
+    void rpcSnapshotsExpireWithTheStoreTtl() {
+        MutableClock clock = new MutableClock();
+        A2aTaskStore store = new A2aTaskStore(2, Duration.ofSeconds(30), clock);
+        assertTrue(store.rememberRpcSnapshot("tenant", "rpc", Map.of("ok", true)));
+        clock.advance(Duration.ofSeconds(31));
+        assertTrue(store.rpcSnapshot("tenant", "rpc").isEmpty());
+    }
+
     private static final class MutableClock extends Clock {
         private Instant now = Instant.parse("2026-08-19T00:00:00Z");
 

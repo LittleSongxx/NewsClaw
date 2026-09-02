@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vip.newsclaw.workspace.conversation.model.MessageEntity;
 import vip.newsclaw.workspace.conversation.repository.MessageMapper;
+import vip.newsclaw.workspace.conversation.repository.ConversationMapper;
 import vip.newsclaw.workspace.conversation.vo.TokenUsageSummaryVO;
 import vip.newsclaw.workspace.conversation.vo.TokenUsageSummaryVO.DateUsageItem;
 import vip.newsclaw.workspace.conversation.vo.TokenUsageSummaryVO.ModelUsageItem;
@@ -28,12 +29,18 @@ import java.util.stream.Collectors;
 public class TokenUsageService {
 
     private final MessageMapper messageMapper;
+    private final ConversationMapper conversationMapper;
 
     /**
      * 查询指定时间范围内的 token 使用汇总
      */
     public TokenUsageSummaryVO getSummary(LocalDate startDate, LocalDate endDate,
                                           String modelName, String providerId) {
+        return getSummary(startDate, endDate, modelName, providerId, null);
+    }
+
+    public TokenUsageSummaryVO getSummary(LocalDate startDate, LocalDate endDate,
+                                          String modelName, String providerId, Long workspaceId) {
         // 自动交换
         if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
             LocalDate tmp = startDate;
@@ -66,6 +73,17 @@ public class TokenUsageService {
         }
         if (providerId != null && !providerId.isBlank()) {
             wrapper.eq(MessageEntity::getRuntimeProvider, providerId);
+        }
+        if (workspaceId != null) {
+            List<String> conversationIds = conversationMapper.selectList(
+                            new LambdaQueryWrapper<vip.newsclaw.workspace.conversation.model.ConversationEntity>()
+                                    .eq(vip.newsclaw.workspace.conversation.model.ConversationEntity::getWorkspaceId,
+                                            workspaceId)
+                                    .select(vip.newsclaw.workspace.conversation.model.ConversationEntity::getConversationId))
+                    .stream().map(vip.newsclaw.workspace.conversation.model.ConversationEntity::getConversationId)
+                    .filter(Objects::nonNull).toList();
+            if (conversationIds.isEmpty()) return buildSummary(List.of());
+            wrapper.in(MessageEntity::getConversationId, conversationIds);
         }
 
         // 只查需要的列

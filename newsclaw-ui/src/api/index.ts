@@ -211,9 +211,11 @@ export interface AiNewsEvent {
   entitiesJson?: string
   status: string
   confidence?: number
+  rankingScore?: number
   claimsJson?: string
   conflictsJson?: string
   discoveredAt?: string
+  sourcePublishedAt?: string
   publishedAt?: string
   wikiPageId?: string | number | null
   wikiKbId?: string | number | null
@@ -224,8 +226,112 @@ export interface AiNewsEvent {
   evidenceCount?: number
   verifiedEvidenceCount?: number
   primaryEvidenceTier?: 'official' | 'media' | 'community' | string | null
+  reviewRequired?: boolean
+  reviewTaskId?: string | number | null
+  reviewStatus?: string | null
+  reviewReasons?: string[]
+  clusterId?: string | number | null
+  clusterVersionId?: string | number | null
+  clusterMemberCount?: number | null
+  clusterAssignmentOrigin?: string | null
+  clusterAssignmentScore?: number | null
+  clusterReviewRequired?: boolean
   createTime?: string
   updateTime?: string
+}
+
+export interface AiNewsEventCluster {
+  id: string | number
+  workspaceId?: string | number
+  clusterKey: string
+  status: 'active' | 'merged' | string
+  currentVersionId?: string | number
+  createdOrigin?: string
+  versionNo?: number
+  representativeEventId?: string | number
+  canonicalTitle?: string
+  category?: string
+  memberCount?: number
+  algorithmVersion?: string
+  configHash?: string
+  pendingReviewCount?: number
+  createTime?: string
+  updateTime?: string
+}
+
+export interface AiNewsEventClusterVersion {
+  id: string | number
+  clusterId: string | number
+  versionNo: number
+  changeType: string
+  representativeEventId: string | number
+  canonicalTitle: string
+  category?: string
+  entitiesJson?: string
+  earliestSourcePublishedAt?: string
+  latestSourcePublishedAt?: string
+  memberCount: number
+  algorithmName: string
+  algorithmVersion: string
+  featureVersion: string
+  configHash: string
+  changeReason?: string
+  createdBy?: string
+  createTime?: string
+}
+
+export interface AiNewsEventClusterMember {
+  id: string | number
+  clusterId: string | number
+  clusterVersionId: string | number
+  eventId: string | number
+  membershipScore?: number
+  assignmentOrigin?: string
+  scoreBreakdownJson?: string
+  assignedAt?: string
+}
+
+export interface AiNewsEventClusterLineage {
+  id: string | number
+  operationId: string
+  operationType: 'MERGE' | 'SPLIT' | string
+  fromClusterId: string | number
+  fromVersionId: string | number
+  toClusterId: string | number
+  toVersionId: string | number
+  reason?: string
+  reviewer?: string
+  createTime?: string
+}
+
+export interface AiNewsEventClusterReview {
+  id: string | number
+  eventId: string | number
+  sourceClusterId: string | number
+  candidateClusterId: string | number
+  proposedAction: string
+  score: number
+  decisionThreshold: number
+  algorithmName: string
+  algorithmVersion: string
+  featureVersion: string
+  configHash: string
+  scoreBreakdownJson?: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUPERSEDED' | string
+  reviewer?: string
+  reviewNote?: string
+  resolvedAt?: string
+  createTime?: string
+}
+
+export interface AiNewsEventClusterDetail {
+  cluster: AiNewsEventCluster
+  currentVersion: AiNewsEventClusterVersion
+  currentMemberships: AiNewsEventClusterMember[]
+  currentEvents: AiNewsEvent[]
+  versions: AiNewsEventClusterVersion[]
+  lineage: AiNewsEventClusterLineage[]
+  reviews: AiNewsEventClusterReview[]
 }
 
 export interface AiNewsEvidence {
@@ -238,13 +344,54 @@ export interface AiNewsEvidence {
   claim: string
   quote?: string
   confidence?: number
+  semanticRelation?: 'entails' | 'contradicts' | 'partial' | 'unrelated' | 'hedged' | 'unknown' | string
+  relationConfidence?: number
+  relationOrigin?: 'MODEL' | 'HUMAN' | 'DETERMINISTIC_EXTRACTIVE' | 'UNKNOWN' | string
+  relationReviewedAt?: string
+  relationReviewedBy?: string
+  relationReviewNote?: string
   verified?: boolean
+  sourceCaptureId?: string | number
+  quoteStart?: number
+  quoteEnd?: number
+  quoteMatchMethod?: string
   finalUrl?: string
   fetchedAt?: string
   contentHash?: string
   httpStatus?: number
   captureMethod?: string
   redirectChainJson?: string
+}
+
+export interface AiNewsSourceCaptureSummary {
+  captureId: string | number
+  sourceUrl: string
+  finalUrl: string
+  sourceTitle?: string
+  sourcePublishedAtUtc?: string
+  publishedAtMethod?: string
+  sourceTier: 'official' | 'media' | 'community' | string
+  httpStatus: number
+  fetchedAt: string
+  contentHash: string
+  extractedTextHash: string
+  textLength: number
+  excerpt: string
+  truncated: boolean
+  nextOffset?: number
+  admissionRule: string
+}
+
+export interface AiNewsSourceCapturePage {
+  captureId: string | number
+  startOffset: number
+  endOffset: number
+  textLength: number
+  content: string
+  truncated: boolean
+  nextOffset?: number
+  sourcePublishedAtUtc?: string
+  contentHash: string
 }
 
 export interface AiNewsCaptureAttempt {
@@ -266,6 +413,85 @@ export interface AiNewsEventDetail {
   captureAttempts: AiNewsCaptureAttempt[]
 }
 
+export interface AiNewsScanRun {
+  id: string | number
+  triggerType: string
+  topic: string
+  windowStart: string
+  windowEnd: string
+  runStatus: string
+  configVersion: string
+  startedAt: string
+  finishedAt?: string
+  providerCount: number
+  providerDisabledCount: number
+  rawResultCount: number
+  invalidResultCount: number
+  uniqueCandidateCount: number
+  selectedCandidateCount: number
+  captureSuccessCount: number
+  captureFailureCount: number
+  reviewedCount: number
+  acceptedCount: number
+  errorMessage?: string
+}
+
+export interface AiNewsCandidate {
+  id: string | number
+  scanRunId: string | number
+  canonicalUrl: string
+  originalUrl: string
+  title?: string
+  snippet?: string
+  providerId: string
+  queryLane: string
+  providerRank: number
+  sourceKey?: string | null
+  publishedAtHint?: string
+  timeConfidence: string
+  lastSeenAt: string
+  selectionStatus: string
+  captureStatus: string
+  captureId?: string | number | null
+  storyId?: string | number | null
+  reviewStatus: string
+  selectionScore?: number
+  selectionReason?: string
+  failureReason?: string
+  reviewReason?: string
+  eventId?: string | number | null
+  promotedAt?: string | null
+  reviewedBy?: string | null
+  reviewedAt?: string | null
+  reviewOrigin?: string | null
+}
+
+export interface AiNewsCandidateMetric {
+  name: string
+  numerator: number
+  denominator: number
+  rate?: number | null
+  note?: string
+}
+
+export interface AiNewsCandidateRunSummary {
+  run: AiNewsScanRun
+  providers: Array<{
+    providerId: string
+    candidateCount: number
+    selectedCount: number
+    marginalUniqueCount: number
+  }>
+  scorecard: {
+    candidateRecall: AiNewsCandidateMetric
+    relevantPrecision: AiNewsCandidateMetric
+    usableCaptureRate: AiNewsCandidateMetric
+    reviewerAcceptance: AiNewsCandidateMetric
+    acceptedUniqueStoryCount: number
+  }
+  audit?: Record<string, unknown>
+}
+
 export const aiNewsApi = {
   list: (params?: {
     page?: number
@@ -277,6 +503,13 @@ export const aiNewsApi = {
   get: (id: string | number) => http.get(`/ai-news/events/${id}`),
   verify: (id: string | number, data?: { verdict?: string; confidence?: number }) =>
     http.post(`/ai-news/events/${id}/verify`, data || {}),
+  reviewEvidenceRelation: (id: string | number, evidenceId: string | number, data: {
+    semanticRelation: 'entails' | 'contradicts' | 'partial' | 'unrelated' | 'hedged'
+    confidence: number
+    note: string
+  }) => http.post(`/ai-news/events/${id}/evidence/${evidenceId}/relation`, data),
+  resolveReview: (id: string | number, note: string) =>
+    http.post(`/ai-news/reviews/${id}/resolve`, { note }),
   dismiss: (id: string | number) => http.post(`/ai-news/events/${id}/dismiss`),
   produce: (id: string | number, startTeamRun = true) =>
     http.post(`/ai-news/events/${id}/produce`, { startTeamRun }),
@@ -293,21 +526,66 @@ export const aiNewsApi = {
     claims?: string[]
     conflicts?: string[]
     evidence?: Array<{
-      sourceUrl: string
+      sourceUrl?: string
+      captureId?: string | number
       sourceTitle?: string
       sourcePublishedAt?: string
       sourceTier?: string
       claim: string
       quote?: string
       confidence?: number
+      semanticRelation?: 'entails' | 'contradicts' | 'partial' | 'unrelated' | 'hedged' | 'unknown'
+      relationConfidence?: number
     }>
   }) => http.post('/ai-news/events', data),
+  captureSource: (sourceUrl: string) =>
+    http.post('/ai-news/source-captures', { sourceUrl }),
+  readSourceCapture: (captureId: string | number, startOffset = 0) =>
+    http.get(`/ai-news/source-captures/${captureId}`, { params: { startOffset } }),
   linkRun: (id: string | number, runId: string | number) =>
     http.post(`/ai-news/events/${id}/run`, { id: runId }),
   linkContent: (id: string | number, contentId: string | number, platform: 'gzh' | 'xhs') =>
     http.post(`/ai-news/events/${id}/content`, { id: contentId, platform }),
   linkWiki: (id: string | number, wikiPageId: string | number) =>
     http.post(`/ai-news/events/${id}/wiki`, { id: wikiPageId }),
+  listClusters: (params?: { page?: number; size?: number; status?: string }) =>
+    http.get('/ai-news/clusters', { params }),
+  getCluster: (id: string | number) => http.get(`/ai-news/clusters/${id}`),
+  listClusterReviews: (status = 'PENDING', limit = 100) =>
+    http.get('/ai-news/clusters/reviews', { params: { status, limit } }),
+  mergeClusters: (clusterIds: Array<string | number>, note: string) =>
+    http.post('/ai-news/clusters/merge', { clusterIds, note }),
+  splitCluster: (clusterId: string | number, eventIds: Array<string | number>, note: string) =>
+    http.post('/ai-news/clusters/split', { clusterId, eventIds, note }),
+  resolveClusterReview: (id: string | number, decision: 'approve' | 'reject', note: string) =>
+    http.post(`/ai-news/clusters/reviews/${id}/resolve`, { decision, note }),
+  backfillClusters: (limit = 200) => http.post('/ai-news/clusters/backfill', undefined, { params: { limit } }),
+  listCandidateRuns: (params?: { page?: number; size?: number; status?: string }) =>
+    http.get('/ai-news/candidate-pipeline/scans', { params }),
+  getCandidateRun: (scanRunId: string | number) =>
+    http.get(`/ai-news/candidate-pipeline/scans/${scanRunId}`),
+  listCandidates: (params?: {
+    page?: number
+    size?: number
+    scanRunId?: string | number
+    providerId?: string
+    selectionStatus?: string
+    captureStatus?: string
+    reviewStatus?: string
+    marginalOnly?: boolean
+    seenAfter?: string
+    seenBefore?: string
+  }) => http.get('/ai-news/candidate-pipeline/candidates', { params }),
+  reviewCandidate: (candidateId: string | number, decision: 'ACCEPTED' | 'REJECTED', reason: string) =>
+    http.post(`/ai-news/candidate-pipeline/candidates/${candidateId}/review`, { decision, reason }),
+  promoteCandidate: (candidateId: string | number, data: {
+    claim: string
+    quote: string
+    category?: string
+    entities?: string[]
+    semanticRelation?: string
+    relationConfidence?: number
+  }) => http.post(`/ai-news/candidate-pipeline/candidates/${candidateId}/promote`, data),
 }
 
 export const conversationApi = {
@@ -921,6 +1199,12 @@ export const agentContextApi = {
     http.get(`/agents/${agentId}/workspace/memory/personal-files`),
   getPersonalFile: (agentId: string | number, filename: string, ownerKey: string) =>
     http.get(`/agents/${agentId}/workspace/memory/personal-file`, { params: { filename, ownerKey } }),
+  listMyMemoryFiles: (agentId: string | number) =>
+    http.get(`/agents/${agentId}/workspace/memory/my-files`),
+  getMyMemoryFile: (agentId: string | number, filename: string) =>
+    http.get(`/agents/${agentId}/workspace/memory/my-file`, { params: { filename } }),
+  saveMyMemoryFile: (agentId: string | number, filename: string, content: string) =>
+    http.put(`/agents/${agentId}/workspace/memory/my-file`, { content }, { params: { filename } }),
   getPromptFiles: (agentId: string | number) =>
     http.get(`/agents/${agentId}/workspace/prompt-files`),
   setPromptFiles: (agentId: string | number, files: string[]) =>

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import vip.newsclaw.news.model.AiNewsCaptureAttemptEntity;
 import vip.newsclaw.news.model.AiNewsEvidenceEntity;
 import vip.newsclaw.news.model.AiNewsEventEntity;
+import vip.newsclaw.news.model.AiNewsEvidenceRelation;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -46,7 +47,8 @@ class AiNewsReviewPolicyTest {
         AiNewsReviewPolicy.Decision decision = policy.evaluate(
                 event("verified"), List.of(official), List.of(blocked));
 
-        assertEquals(List.of("UNCAPTURED_OFFICIAL_SOURCE", "OFFICIAL_CAPTURE_FAILED_OR_BLOCKED"),
+        assertEquals(List.of("VERIFICATION_NOT_ELIGIBLE", "UNCAPTURED_SOURCE",
+                        "UNCAPTURED_OFFICIAL_SOURCE", "OFFICIAL_CAPTURE_FAILED_OR_BLOCKED"),
                 decision.reasonCodes());
         assertTrue(decision.requiresReview());
     }
@@ -56,6 +58,7 @@ class AiNewsReviewPolicyTest {
         AiNewsEvidenceEntity official = evidence(3L, "official",
                 "https://openai.com/news/model", "OpenAI released the model.");
         official.setFinalUrl("https://openai.com/news/model");
+        official.setSourcePublishedAt(LocalDateTime.of(2026, 8, 25, 7, 30));
         official.setFetchedAt(LocalDateTime.of(2026, 8, 25, 8, 0));
         official.setContentHash("a".repeat(64));
         official.setHttpStatus(200);
@@ -69,15 +72,32 @@ class AiNewsReviewPolicyTest {
     }
 
     @Test
+    void modelOnlySemanticAssessmentRemainsHumanReviewRisk() {
+        AiNewsEvidenceEntity official = evidence(31L, "official",
+                "https://openai.com/news/model", "OpenAI released the model.");
+        official.setRelationOrigin(AiNewsRelationAttestation.MODEL);
+        markCaptured(official);
+
+        AiNewsReviewPolicy.Decision decision = policy.evaluate(
+                event("verified"), List.of(official), List.of());
+
+        assertTrue(decision.requiresReview());
+        assertTrue(decision.reasonCodes().contains("UNATTESTED_SEMANTIC_ASSESSMENT"));
+    }
+
+    @Test
     void twoIndependentMediaNeedQuotesFromBothPublishers() {
         AiNewsEvidenceEntity reuters = evidence(4L, "media",
                 "https://www.reuters.com/technology/story", "Reuters quote");
         AiNewsEvidenceEntity techCrunch = evidence(5L, "media",
                 "https://techcrunch.com/2026/08/25/story", null);
+        markCaptured(reuters);
+        markCaptured(techCrunch);
 
         AiNewsReviewPolicy.Decision missingQuote = policy.evaluate(
                 event("verified"), List.of(reuters, techCrunch), List.of());
-        assertEquals(List.of("MISSING_EVIDENCE_QUOTE"), missingQuote.reasonCodes());
+        assertEquals(List.of("VERIFICATION_NOT_ELIGIBLE", "MISSING_EVIDENCE_QUOTE"),
+                missingQuote.reasonCodes());
 
         techCrunch.setQuote("TechCrunch quote");
         AiNewsReviewPolicy.Decision complete = policy.evaluate(
@@ -115,6 +135,9 @@ class AiNewsReviewPolicyTest {
         evidence.setSourceUrl(url);
         evidence.setClaim("supports claim");
         evidence.setQuote(quote);
+        evidence.setSemanticRelation(AiNewsEvidenceRelation.ENTAILS.token());
+        evidence.setRelationConfidence(0.9D);
+        evidence.setRelationOrigin(AiNewsRelationAttestation.HUMAN);
         evidence.setDeleted(0);
         return evidence;
     }
@@ -130,5 +153,14 @@ class AiNewsReviewPolicyTest {
         attempt.setAttemptedAt(LocalDateTime.of(2026, 8, 25, 8, 0));
         attempt.setDeleted(0);
         return attempt;
+    }
+
+    private static void markCaptured(AiNewsEvidenceEntity evidence) {
+        evidence.setFinalUrl(evidence.getSourceUrl());
+        evidence.setSourcePublishedAt(LocalDateTime.of(2026, 8, 25, 7, 30));
+        evidence.setFetchedAt(LocalDateTime.of(2026, 8, 25, 8, 0));
+        evidence.setContentHash("b".repeat(64));
+        evidence.setHttpStatus(200);
+        evidence.setCaptureMethod("READ_ONLY_HTTP");
     }
 }

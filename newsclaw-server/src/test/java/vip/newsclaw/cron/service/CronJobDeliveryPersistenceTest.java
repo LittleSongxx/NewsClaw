@@ -1,10 +1,12 @@
 package vip.newsclaw.cron.service;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import vip.newsclaw.NewsClawApplication;
 import vip.newsclaw.cron.model.CronJobDTO;
 import vip.newsclaw.cron.model.DeliveryConfig;
@@ -35,6 +37,21 @@ class CronJobDeliveryPersistenceTest {
 
     @Autowired
     private CronJobService cronJobService;
+    @Autowired
+    private JdbcTemplate jdbc;
+
+    @BeforeEach
+    void seedBindings() {
+        jdbc.update("MERGE INTO mate_agent (id, name, agent_type, system_prompt, max_iterations, enabled, "
+                        + "workspace_id, create_time, update_time, deleted) KEY(id) "
+                        + "VALUES (9001, 'cron-test-agent', 'react', '', 10, TRUE, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)");
+        for (long id : new long[]{7001L, 7002L}) {
+            jdbc.update("MERGE INTO mate_channel (id, name, channel_type, enabled, workspace_id, "
+                            + "create_time, update_time, deleted) KEY(id) "
+                            + "VALUES (?, ?, 'web', FALSE, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)",
+                    id, "cron-test-channel-" + id);
+        }
+    }
 
     private CronJobDTO newDto(String name, Long channelId, DeliveryConfig deliveryConfig) {
         CronJobDTO dto = new CronJobDTO();

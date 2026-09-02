@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://newsclaw.local/schemas/ai-news-discovery-quality-v1.json",
+  "title": "NewsClaw AI News Discovery P0 Evaluation Dataset",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "datasetId",
+    "datasetVersion",
+    "evaluationScope",
+    "window",
+    "goldEvents",
+    "systemEvents",
+    "clusterAssignments",
+    "rankingSnapshots"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "datasetId": {"type": "string", "minLength": 1},
+    "datasetVersion": {"type": "string", "minLength": 1},
+    "evaluationScope": {"type": "string", "minLength": 1},
+    "window": {"$ref": "#/$defs/window"},
+    "config": {
+      "oneOf": [
+        {"$ref": "#/$defs/config"},
+        {"type": "null"}
+      ]
+    },
+    "executionMetadata": {
+      "type": "object",
+      "description": "String metadata (declarative coordinator attestations; the scorer cannot prove provenance from JSON alone). Formal runs must include evaluationEligible=true, two-independent-reviewers-complete, sourceUniverse=FROZEN_APPROVED, independentCollector=true, futureLeakage=PASS, splits=FROZEN, clusterUniverseItemCount, clusterUniverseItemIds (complete comma-separated exact IDs; stable-ID sorting is recommended for reproducible diffs but order is not semantic), and candidateAdjudicationStatus=complete when candidates are present.",
+      "additionalProperties": {"type": "string"}
+    },
+    "goldEvents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/goldEvent"}
+    },
+    "discoveryCandidates": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/discoveryCandidate"}
+    },
+    "systemEvents": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/systemEvent"}
+    },
+    "clusterAssignments": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/clusterAssignment"}
+    },
+    "rankingSnapshots": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/rankingSnapshot"}
+    },
+    "limitations": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "utcInstant": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startAt", "endAt", "observationEndAt"],
+      "properties": {
+        "startAt": {"$ref": "#/$defs/utcInstant"},
+        "endAt": {"$ref": "#/$defs/utcInstant"},
+        "observationEndAt": {"$ref": "#/$defs/utcInstant"}
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "freshnessCutoffsMinutes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 1}
+        },
+        "rankingCutoffs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 1}
+        },
+        "latencyStepMinutes": {"type": "integer", "minimum": 1},
+        "rankingLookbackMinutes": {"type": "integer", "minimum": 1},
+        "earlyDetectionToleranceMinutes": {"type": "integer", "minimum": 0}
+      }
+    },
+    "goldEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "title", "firstPublishedAt", "importance", "slices"],
+      "properties": {
+        "eventId": {"type": "string", "minLength": 1},
+        "title": {"type": "string"},
+        "firstPublishedAt": {"$ref": "#/$defs/utcInstant"},
+        "importance": {"type": "integer", "minimum": 1, "maximum": 3},
+        "slices": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "discoveryCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateId", "rank", "title", "url", "sourceClass",
+        "publishedAtHint", "matchedGoldEventId", "adjudicationReason"
+      ],
+      "properties": {
+        "candidateId": {"type": "string", "minLength": 1},
+        "rank": {"type": "integer", "minimum": 1},
+        "title": {"type": "string", "minLength": 1},
+        "url": {"type": "string", "minLength": 1},
+        "sourceClass": {"type": ["string", "null"]},
+        "publishedAtHint": {"type": ["string", "null"]},
+        "matchedGoldEventId": {"type": ["string", "null"]},
+        "adjudicationReason": {"type": ["string", "null"]}
+      }
+    },
+    "systemEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "systemEventId",
+        "title",
+        "detectedAt",
+        "matchedGoldEventId",
+        "adjudicationReason",
+        "claims",
+        "evidence"
+      ],
+      "properties": {
+        "systemEventId": {"type": "string", "minLength": 1},
+        "title": {"type": "string"},
+        "detectedAt": {"$ref": "#/$defs/utcInstant"},
+        "matchedGoldEventId": {"type": ["string", "null"]},
+        "adjudicatedRelevant": {"type": ["boolean", "null"]},
+        "adjudicatedEventId": {"type": ["string", "null"]},
+        "adjudicationReason": {"type": ["string", "null"]},
+        "claims": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/claim"}
+        },
+        "evidence": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/evidence"}
+        }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claimId", "text", "verifiable", "jointlySupported"],
+      "properties": {
+        "claimId": {"type": "string", "minLength": 1},
+        "text": {"type": "string"},
+        "verifiable": {"type": "boolean"},
+        "jointlySupported": {"type": ["boolean", "null"]}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidenceId",
+        "sourceUrl",
+        "sourceTitle",
+        "sourcePublishedAt",
+        "publishedAtCorrect",
+        "predictedSourceTier",
+        "adjudicatedSourceTier",
+        "fetchSucceeded",
+        "relations"
+      ],
+      "properties": {
+        "evidenceId": {"type": "string", "minLength": 1},
+        "sourceUrl": {"type": ["string", "null"]},
+        "sourceTitle": {"type": ["string", "null"]},
+        "sourcePublishedAt": {"type": ["string", "null"]},
+        "publishedAtCorrect": {"type": "boolean"},
+        "predictedSourceTier": {"type": ["string", "null"]},
+        "adjudicatedSourceTier": {
+          "enum": ["official", "media", "community"]
+        },
+        "fetchSucceeded": {"type": ["boolean", "null"]},
+        "relations": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/relation"}
+        }
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claimId", "adjudicatedRelation"],
+      "properties": {
+        "claimId": {"type": "string", "minLength": 1},
+        "adjudicatedRelation": {
+          "enum": ["entails", "partial", "contradicts", "unrelated", "hedged", "unknown"]
+        }
+      }
+    },
+    "clusterAssignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["itemId", "goldClusterId", "predictedClusterId"],
+      "properties": {
+        "itemId": {"type": "string", "minLength": 1},
+        "goldClusterId": {"type": "string", "minLength": 1},
+        "predictedClusterId": {"type": "string", "minLength": 1}
+      }
+    },
+    "rankingSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshotId", "at", "rankedSystemEventIds"],
+      "properties": {
+        "snapshotId": {"type": "string", "minLength": 1},
+        "at": {"$ref": "#/$defs/utcInstant"},
+        "rankedSystemEventIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

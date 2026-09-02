@@ -12,6 +12,7 @@ import vip.newsclaw.tool.model.ToolEntity;
 import vip.newsclaw.tool.service.AvailableToolService;
 import vip.newsclaw.tool.service.ToolService;
 import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
+import vip.newsclaw.exception.NewsClawException;
 
 import java.util.List;
 import java.util.Map;
@@ -56,13 +57,14 @@ public class ToolController {
     @GetMapping("/{id}")
     @RequireWorkspaceRole("admin")
     public R<ToolEntity> get(@PathVariable Long id) {
-        return R.ok(toolService.getTool(id));
+        return R.ok(requireTool(id));
     }
 
     @Operation(summary = "创建工具（MCP）")
     @PostMapping
     @RequireWorkspaceRole("admin")
     public R<ToolEntity> create(@RequestBody ToolEntity tool) {
+        if (tool == null) return R.fail(400, "request body is required");
         return R.ok(toolService.createTool(tool));
     }
 
@@ -70,6 +72,7 @@ public class ToolController {
     @PutMapping("/{id}")
     @RequireWorkspaceRole("admin")
     public R<ToolEntity> update(@PathVariable Long id, @RequestBody ToolEntity tool) {
+        if (tool == null) return R.fail(400, "request body is required");
         tool.setId(id);
         return R.ok(toolService.updateTool(tool));
     }
@@ -78,6 +81,7 @@ public class ToolController {
     @DeleteMapping("/{id}")
     @RequireWorkspaceRole("admin")
     public R<Void> delete(@PathVariable Long id) {
+        requireTool(id);
         toolService.deleteTool(id);
         return R.ok();
     }
@@ -86,6 +90,7 @@ public class ToolController {
     @PutMapping("/{id}/toggle")
     @RequireWorkspaceRole("admin")
     public R<ToolEntity> toggle(@PathVariable Long id, @RequestParam boolean enabled) {
+        requireTool(id);
         return R.ok(toolService.toggleTool(id, enabled));
     }
 
@@ -97,7 +102,7 @@ public class ToolController {
         if (!DisclosureTier.isValidToken(tier)) {
             return R.fail(400, "tier must be 'core' or 'extension'");
         }
-        ToolEntity tool = toolService.getTool(id);
+        ToolEntity tool = requireTool(id);
         String type = tool.getToolType();
         // Only builtin / channel atomic tools are tiered on the row itself; MCP /
         // ACP / skill tools are tiered at their owning source.
@@ -108,5 +113,16 @@ public class ToolController {
         ToolEntity updated = toolService.setDisclosureTier(id, tier);
         toolDisclosureService.invalidate();
         return R.ok(updated);
+    }
+
+    private ToolEntity requireTool(Long id) {
+        if (id == null) {
+            throw new NewsClawException("err.tool.not_found", 404, "Tool not found");
+        }
+        ToolEntity tool = toolService.getTool(id);
+        if (tool == null) {
+            throw new NewsClawException("err.tool.not_found", 404, "Tool not found: " + id);
+        }
+        return tool;
     }
 }

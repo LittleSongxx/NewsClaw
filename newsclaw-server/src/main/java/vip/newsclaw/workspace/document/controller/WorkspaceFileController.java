@@ -10,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.servlet.HandlerMapping;
 import vip.newsclaw.common.result.R;
 import vip.newsclaw.exception.NewsClawException;
@@ -71,6 +72,7 @@ public class WorkspaceFileController {
     public R<WorkspaceFileEntity> saveFile(@PathVariable Long agentId,
                                            HttpServletRequest httpRequest,
                                            @RequestBody SaveFileRequest body) {
+        if (body == null) return R.fail(400, "request body is required");
         String filename = extractFilename(httpRequest);
         return R.ok(workspaceFileService.saveFile(agentId, filename, body.getContent()));
     }
@@ -114,7 +116,7 @@ public class WorkspaceFileController {
     @PutMapping("/prompt-files")
     public R<Void> setPromptFiles(@PathVariable Long agentId,
                                    @RequestBody PromptFilesRequest request) {
-        workspaceFileService.setPromptFiles(agentId, request.getFiles());
+        workspaceFileService.setPromptFiles(agentId, request == null ? List.of() : request.getFiles());
         return R.ok();
     }
 
@@ -152,6 +154,48 @@ public class WorkspaceFileController {
         return R.ok(file);
     }
 
+    /** List the authenticated user's PERSONAL memory rows only. */
+    @Operation(summary = "列出当前用户的私有记忆文件")
+    @RequireWorkspaceRole("viewer")
+    @GetMapping("/memory/my-files")
+    public R<List<WorkspaceFileEntity>> listMyMemoryFiles(
+            @PathVariable Long agentId, Authentication authentication) {
+        return R.ok(workspaceFileService.listPersonalFiles(agentId, currentWebOwner(authentication)));
+    }
+
+    /** Read one authenticated user's PERSONAL memory file. */
+    @Operation(summary = "读取当前用户的私有记忆文件")
+    @RequireWorkspaceRole("viewer")
+    @GetMapping("/memory/my-file")
+    public R<WorkspaceFileEntity> getMyMemoryFile(
+            @PathVariable Long agentId,
+            @RequestParam String filename,
+            Authentication authentication) {
+        if (!isMemoryManagedFilename(filename)) {
+            throw new NewsClawException(400, "Unsupported personal memory file: " + filename);
+        }
+        WorkspaceFileEntity file = workspaceFileService.getMemoryFile(
+                agentId, filename, currentWebOwner(authentication));
+        if (file == null) return R.fail("文件不存在: " + filename);
+        return R.ok(file);
+    }
+
+    /** Update the authenticated user's PERSONAL memory file (used for a file preamble). */
+    @Operation(summary = "保存当前用户的私有记忆文件")
+    @RequireWorkspaceRole("member")
+    @PutMapping("/memory/my-file")
+    public R<WorkspaceFileEntity> saveMyMemoryFile(
+            @PathVariable Long agentId,
+            @RequestParam String filename,
+            @RequestBody SaveFileRequest body,
+            Authentication authentication) {
+        if (!isMemoryManagedFilename(filename)) {
+            throw new NewsClawException(400, "Unsupported personal memory file: " + filename);
+        }
+        return R.ok(workspaceFileService.saveMemoryFile(
+                agentId, filename, body == null ? null : body.getContent(), currentWebOwner(authentication)));
+    }
+
     // ==================== Memory snapshot export / import ====================
 
     /**
@@ -164,8 +208,10 @@ public class WorkspaceFileController {
     @RequireWorkspaceRole("viewer")
     public ResponseEntity<byte[]> exportMemory(
             @PathVariable Long agentId,
-            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
-        byte[] body = memoryArchiveService.export(agentId, workspaceId);
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
+            Authentication authentication) {
+        byte[] body = memoryArchiveService.export(
+                agentId, workspaceId, currentWebOwner(authentication));
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/zip"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
@@ -184,8 +230,10 @@ public class WorkspaceFileController {
     public R<WorkspaceMemoryArchiveService.ImportPreview> previewImportMemory(
             @PathVariable Long agentId,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
-            @RequestPart("file") MultipartFile file) {
-        return R.ok(memoryArchiveService.previewImport(agentId, workspaceId, readBytes(file)));
+            @RequestPart("file") MultipartFile file,
+            Authentication authentication) {
+        return R.ok(memoryArchiveService.previewImport(
+                agentId, workspaceId, readBytes(file), currentWebOwner(authentication)));
     }
 
     /**
@@ -199,8 +247,10 @@ public class WorkspaceFileController {
     public R<WorkspaceMemoryArchiveService.ImportResult> importMemory(
             @PathVariable Long agentId,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
-            @RequestPart("file") MultipartFile file) {
-        return R.ok(memoryArchiveService.apply(agentId, workspaceId, readBytes(file)));
+            @RequestPart("file") MultipartFile file,
+            Authentication authentication) {
+        return R.ok(memoryArchiveService.apply(
+                agentId, workspaceId, readBytes(file), currentWebOwner(authentication)));
     }
 
     private static byte[] readBytes(MultipartFile file) {
@@ -222,6 +272,22 @@ public class WorkspaceFileController {
         } catch (IOException e) {
             throw new NewsClawException(400, "Failed to read upload: " + e.getMessage());
         }
+    }
+
+    private static String currentWebOwner(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null
+                || authentication.getName().isBlank()) {
+            throw new NewsClawException(401, "Not authenticated");
+        }
+        return "user:" + authentication.getName();
+    }
+
+    private static boolean isMemoryManagedFilename(String filename) {
+        return filename != null && ("MEMORY.md".equals(filename)
+                || "PROFILE.md".equals(filename)
+                || "SOUL.md".equals(filename)
+                || filename.matches("memory/\\d{4}-\\d{2}-\\d{2}\\.md")
+                || filename.matches("structured/(user|feedback|project|reference)\\.md"));
     }
 
     @Data

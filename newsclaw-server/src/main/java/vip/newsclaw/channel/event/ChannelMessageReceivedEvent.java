@@ -22,5 +22,34 @@ public record ChannelMessageReceivedEvent(
         String senderId,
         String senderName,
         String chatId,
-        String content
-) {}
+        String content,
+        /** Router-derived conversation id; null for legacy publishers. */
+        String conversationId,
+        /** Internal channel row id; null for legacy publishers. */
+        Long channelId
+) {
+    /** Backward-compatible constructor used by existing channel adapters/tests. */
+    public ChannelMessageReceivedEvent(long workspaceId,
+                                       String channelType,
+                                       String messageId,
+                                       String senderId,
+                                       String senderName,
+                                       String chatId,
+                                       String content) {
+        this(workspaceId, channelType, messageId, senderId, senderName, chatId,
+                content, null, null);
+    }
+
+    /** Convenience constructor for publishers that know only the conversation. */
+    public ChannelMessageReceivedEvent(long workspaceId,
+                                       String channelType,
+                                       String messageId,
+                                       String senderId,
+                                       String senderName,
+                                       String chatId,
+                                       String content,
+                                       String conversationId) {
+        this(workspaceId, channelType, messageId, senderId, senderName, chatId,
+                content, conversationId, null);
+    }
+}

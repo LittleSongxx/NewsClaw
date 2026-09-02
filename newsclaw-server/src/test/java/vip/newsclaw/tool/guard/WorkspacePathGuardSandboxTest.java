@@ -51,6 +51,11 @@ class WorkspacePathGuardSandboxTest {
         void setup() {
             // No per-conversation workspace configured — the out-of-the-box state.
             ToolExecutionContext.clear();
+            try {
+                java.nio.file.Files.createDirectories(java.nio.file.Paths.get(DEFAULT_ROOT));
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
             WorkspacePathGuard.setDefaultRoot(DEFAULT_ROOT);
         }
 
@@ -144,6 +149,12 @@ class WorkspacePathGuardSandboxTest {
         void setup() {
             // A conversation bound to a workspace, with a central spill dir that
             // lives outside that workspace — the production scenario from #403.
+            try {
+                java.nio.file.Files.createDirectories(
+                        java.nio.file.Paths.get(SPILL_ROOT, "conv"));
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
             ToolExecutionContext.set("conv", "user", WORKSPACE);
             WorkspacePathGuard.addTrustedRoot(SPILL_ROOT);
         }
@@ -160,7 +171,7 @@ class WorkspacePathGuardSandboxTest {
         void findPathBoundaryViolationSpill_null() {
             org.junit.jupiter.api.Assertions.assertNull(
                     WorkspacePathGuard.findPathBoundaryViolation(
-                            SPILL_ROOT + "/conv/call_2.txt", WORKSPACE));
+                            SPILL_ROOT + "/conv/call_2.txt", WORKSPACE, null, "conv"));
         }
 
         @Test
@@ -168,6 +179,16 @@ class WorkspacePathGuardSandboxTest {
         void shellSpill_pass() {
             assertDoesNotThrow(() ->
                     WorkspacePathGuard.validateShellCommand("cat " + SPILL_ROOT + "/conv/call_2.txt"));
+        }
+
+        @Test
+        @DisplayName("A conversation cannot read another conversation's spill files")
+        void siblingConversationSpill_blocked() {
+            assertThrows(IllegalArgumentException.class, () ->
+                    WorkspacePathGuard.validatePath(SPILL_ROOT + "/other-conversation/call_2.txt"));
+            assertThrows(IllegalArgumentException.class, () ->
+                    WorkspacePathGuard.validateShellCommand(
+                            "cat " + SPILL_ROOT + "/other-conversation/call_2.txt"));
         }
 
         @Test

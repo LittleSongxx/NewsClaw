@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://newsclaw.local/schemas/ai-news-domain-gold-pool-v1.json",
+  "title": "NewsClaw AI-news domain-gold coordinator pool",
+  "description": "Coordinator-only union of independent observations. Never distribute this file to blind reviewers because it contains system provenance and predictions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "campaignId",
+    "datasetClassification",
+    "ledgerVersion",
+    "generatedAt",
+    "campaignManifestSha256",
+    "systems",
+    "cases",
+    "limitations"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "campaignId": {"type": "string", "minLength": 1},
+    "datasetClassification": {
+      "enum": ["production-domain-gold", "synthetic-contract-fixture-not-evaluation"]
+    },
+    "ledgerVersion": {"type": "string", "minLength": 1},
+    "generatedAt": {"$ref": "#/$defs/utcInstant"},
+    "campaignManifestSha256": {"$ref": "#/$defs/sha256"},
+    "systems": {
+      "type": "array",
+      "minItems": 3,
+      "items": {"$ref": "#/$defs/system"}
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/case"}
+    },
+    "limitations": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "utcInstant": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "system": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["systemId", "kind", "operator", "independentOfNewsClawDiscovery"],
+      "properties": {
+        "systemId": {"type": "string", "minLength": 1},
+        "kind": {
+          "enum": [
+            "system_under_test",
+            "independent_direct_source",
+            "independent_search",
+            "independent_human_patrol",
+            "commercial_reference"
+          ]
+        },
+        "operator": {"type": "string", "minLength": 1},
+        "independentOfNewsClawDiscovery": {"type": "boolean"},
+        "implementationVersion": {"type": ["string", "null"]}
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "caseKind", "reviewMaterial", "coordinatorOnly"],
+      "properties": {
+        "caseId": {"type": "string", "minLength": 1},
+        "caseKind": {"enum": ["source_observation", "system_output"]},
+        "reviewMaterial": {"$ref": "#/$defs/reviewMaterial"},
+        "coordinatorOnly": {"$ref": "#/$defs/coordinatorOnly"}
+      }
+    },
+    "reviewMaterial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "itemId",
+        "observedAt",
+        "publisher",
+        "sourceFamily",
+        "language",
+        "url",
+        "canonicalUrl",
+        "title",
+        "publishedAt",
+        "mainContent",
+        "claims",
+        "quotes"
+      ],
+      "properties": {
+        "itemId": {"type": "string", "minLength": 1},
+        "observedAt": {"$ref": "#/$defs/utcInstant"},
+        "publisher": {"type": "string", "minLength": 1},
+        "sourceFamily": {"enum": ["official", "media", "community"]},
+        "language": {"type": "string", "minLength": 2},
+        "url": {"type": "string", "format": "uri"},
+        "canonicalUrl": {"type": "string", "format": "uri"},
+        "title": {"type": "string", "minLength": 1},
+        "publishedAt": {
+          "oneOf": [{"$ref": "#/$defs/utcInstant"}, {"type": "null"}]
+        },
+        "publishedAtRaw": {"type": ["string", "null"]},
+        "mainContent": {"type": ["string", "null"]},
+        "contentSha256": {
+          "oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        },
+        "claims": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/claim"}
+        },
+        "quotes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/quote"}
+        }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claimId", "text"],
+      "properties": {
+        "claimId": {"type": "string", "minLength": 1},
+        "text": {"type": "string", "minLength": 1}
+      }
+    },
+    "quote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quoteId", "sourceUrl", "text"],
+      "properties": {
+        "quoteId": {"type": "string", "minLength": 1},
+        "sourceUrl": {"type": "string", "format": "uri"},
+        "text": {"type": "string", "minLength": 1}
+      }
+    },
+    "coordinatorOnly": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["poolDiscoveries", "systemUnderTestPrediction"],
+      "properties": {
+        "poolDiscoveries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/poolDiscovery"}
+        },
+        "systemUnderTestPrediction": {
+          "oneOf": [{"$ref": "#/$defs/systemPrediction"}, {"type": "null"}]
+        }
+      }
+    },
+    "poolDiscovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["systemId", "firstObservedAt", "runId", "rank"],
+      "properties": {
+        "systemId": {"type": "string", "minLength": 1},
+        "firstObservedAt": {"$ref": "#/$defs/utcInstant"},
+        "runId": {"type": ["string", "null"]},
+        "rank": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "systemPrediction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "systemEventId",
+        "predictedClusterId",
+        "predictedClusterVersion",
+        "detectedAt",
+        "rankingSnapshotIds"
+      ],
+      "properties": {
+        "systemEventId": {"type": ["string", "null"]},
+        "predictedClusterId": {"type": ["string", "null"]},
+        "predictedClusterVersion": {"type": ["integer", "null"], "minimum": 1},
+        "detectedAt": {
+          "oneOf": [{"$ref": "#/$defs/utcInstant"}, {"type": "null"}]
+        },
+        "rankingSnapshotIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

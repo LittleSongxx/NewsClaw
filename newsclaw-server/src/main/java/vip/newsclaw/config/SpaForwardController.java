@@ -15,6 +15,18 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Controller
 public class SpaForwardController {
 
+    /** Public, read-only portfolio entry. It never boots the authenticated SPA. */
+    @GetMapping("/")
+    public String showcaseHome() {
+        return "forward:/showcase/index.html";
+    }
+
+    /** Keep an explicit bookmarkable path for static hosts and reverse proxies. */
+    @GetMapping({"/showcase", "/showcase/"})
+    public String showcase() {
+        return "forward:/showcase/index.html";
+    }
+
     @GetMapping(value = {
         "/{path:[^\\.]*}",
         "/{path1:[^\\.]*}/{path2:[^\\.]*}",

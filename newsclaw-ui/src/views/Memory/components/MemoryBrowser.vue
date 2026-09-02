@@ -1,5 +1,13 @@
 <template>
   <div class="memory-browser">
+    <div class="scope-nav" role="tablist" :aria-label="t('memory.tabMemory')">
+      <button class="scope-btn" :class="{ active: viewScope === 'shared' }"
+        role="tab" :aria-selected="viewScope === 'shared'"
+        @click="viewScope = 'shared'">{{ t('memory.memoryBrowser.scopeShared') }}</button>
+      <button class="scope-btn" :class="{ active: viewScope === 'personal' }"
+        role="tab" :aria-selected="viewScope === 'personal'"
+        @click="viewScope = 'personal'">{{ t('memory.memoryBrowser.scopePersonal') }}</button>
+    </div>
     <!-- File selector -->
     <div class="file-nav">
       <button v-for="f in files" :key="f.filename"
@@ -50,17 +58,21 @@ const files = ref<FileInfo[]>([])
 const currentFile = ref('')
 const sections = ref<MemorySectionData[]>([])
 const loading = ref(false)
+const viewScope = ref<'shared' | 'personal'>('shared')
 
-watch(() => props.agentId, () => { loadFileList() }, { immediate: true })
+watch([() => props.agentId, viewScope], () => { loadFileList() }, { immediate: true })
 
 async function loadFileList() {
   try {
-    const res: any = await agentContextApi.listFiles(props.agentId)
+    const res: any = viewScope.value === 'personal'
+      ? await agentContextApi.listMyMemoryFiles(props.agentId)
+      : await agentContextApi.listFiles(props.agentId)
     const allFiles: FileInfo[] = res.data || []
     // Memory-relevant files only: MEMORY.md, PROFILE.md, SOUL.md, structured/*.md
     const filtered = allFiles.filter((f: FileInfo) =>
       ['MEMORY.md', 'PROFILE.md', 'SOUL.md'].includes(f.filename) ||
-      f.filename.startsWith('structured/')
+      f.filename.startsWith('structured/') ||
+      (viewScope.value === 'personal' && /^memory\/\d{4}-\d{2}-\d{2}\.md$/.test(f.filename))
     )
     // Order by importance: brain → persona → extracted facts (alpha within group)
     files.value = filtered.sort((a, b) => fileRank(a.filename) - fileRank(b.filename) || a.filename.localeCompare(b.filename))
@@ -76,7 +88,9 @@ async function loadFile(filename: string) {
   currentFile.value = filename
   loading.value = true
   try {
-    const res: any = await agentContextApi.getFile(props.agentId, filename)
+    const res: any = viewScope.value === 'personal'
+      ? await agentContextApi.getMyMemoryFile(props.agentId, filename)
+      : await agentContextApi.getFile(props.agentId, filename)
     const content: string = res.data?.content || ''
     sections.value = parseSections(content)
   } catch { sections.value = [] }
@@ -123,13 +137,19 @@ async function saveSection(sec: MemorySectionData, body: string) {
     // The preamble (content before the first ## heading) has no section key
     // the HiL endpoint can address — rewrite it through the workspace file
     // API, preserving every real `## ` section that follows.
-    const res: any = await agentContextApi.getFile(props.agentId, currentFile.value)
+    const res: any = viewScope.value === 'personal'
+      ? await agentContextApi.getMyMemoryFile(props.agentId, currentFile.value)
+      : await agentContextApi.getFile(props.agentId, currentFile.value)
     const content: string = res.data?.content || ''
     const headingIdx = content.search(/^## /m)
     const rest = headingIdx >= 0 ? content.slice(headingIdx) : ''
     const preamble = body.trim()
     const merged = preamble && rest ? `${preamble}\n\n${rest}` : preamble + rest
-    await agentContextApi.saveFile(props.agentId, currentFile.value, merged)
+    if (viewScope.value === 'personal') {
+      await agentContextApi.saveMyMemoryFile(props.agentId, currentFile.value, merged)
+    } else {
+      await agentContextApi.saveFile(props.agentId, currentFile.value, merged)
+    }
   } else {
     // Use HiL edit endpoint to write back with user-edited metadata.
     // `filename` tells the backend which memory file to edit — without it the
@@ -182,6 +202,14 @@ function fileLabel(filename: string): string {
 </script>
 
 <style scoped>
+/* Shared and owner-scoped memory are intentionally separate views. */
+.scope-nav { display: flex; gap: 4px; margin-bottom: 10px; }
+.scope-btn {
+  border: 1px solid var(--mc-border-light); border-radius: 6px;
+  background: var(--mc-bg-sunken); color: var(--mc-text-secondary);
+  padding: 5px 10px; font-size: 12px; cursor: pointer;
+}
+.scope-btn.active { background: var(--mc-primary-bg); color: var(--mc-text-primary); border-color: var(--mc-primary); }
 /* File nav — segmented pills, no file-system noise */
 .file-nav {
   display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px;

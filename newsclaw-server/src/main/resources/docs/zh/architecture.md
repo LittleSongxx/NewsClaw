@@ -266,7 +266,7 @@ NewsClaw 用 **MyBatis Plus**（不是 JPA）做数据库访问。约定：
 - `snake_case` 列、`camelCase` Java 字段、自动映射
 - 每张表有 `create_time`、`update_time`、`deleted`（逻辑删除）
 - **Flyway** 管理 schema 迁移——`db/migration/h2/` 和 `db/migration/mysql/` 各有一套方言脚本，启动时自动选择
-- `FlywayRepairConfig` 在每次启动时先 `repair()` 再 `migrate()`，checksum 变更和部分失败的迁移自动修复
+- Flyway 在启动时校验迁移 checksum；`FlywayRepairConfig` 只有显式打开 `newsclaw.flyway.auto-repair` 才会执行 `repair()`。生产环境应保持关闭，让脚本漂移和部分失败清晰暴露
 - 种子数据由 `DatabaseBootstrapRunner` 从 `db/data-*.sql` 加载，幂等执行
 
 ### 表分组

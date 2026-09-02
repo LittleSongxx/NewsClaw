@@ -24,8 +24,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -288,6 +292,25 @@ public class SlackChannelAdapter extends AbstractChannelAdapter {
             return Map.of("challenge", payload.getOrDefault("challenge", ""));
         }
         return Map.of("status", "ok");
+    }
+
+    /** Slack Events API v0 signature verification with the mandated 5-minute replay window. */
+    public boolean acceptsWebhook(String rawBody, String timestamp, String signature) {
+        String secret = getConfigString("signing_secret");
+        if (secret == null || secret.isBlank() || rawBody == null
+                || timestamp == null || signature == null) return false;
+        try {
+            long ts = Long.parseLong(timestamp);
+            if (Math.abs(java.time.Instant.now().getEpochSecond() - ts) > 300) return false;
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            String expected = "v0=" + java.util.HexFormat.of().formatHex(
+                    mac.doFinal(("v0:" + timestamp + ":" + rawBody).getBytes(StandardCharsets.UTF_8)));
+            return MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
+                    signature.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception invalid) {
+            return false;
+        }
     }
 
     /**

@@ -12,12 +12,17 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import vip.newsclaw.common.result.R;
+import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.news.model.AiNewsEventDetail;
 import vip.newsclaw.news.model.AiNewsEventEntity;
 import vip.newsclaw.news.model.AiNewsEvidenceCaptureRequest;
 import vip.newsclaw.news.model.AiNewsEvidenceEntity;
+import vip.newsclaw.news.model.AiNewsEvidenceRelationReviewRequest;
 import vip.newsclaw.news.model.AiNewsEventUpsertRequest;
+import vip.newsclaw.news.model.AiNewsDeliveryAcknowledgementRequest;
 import vip.newsclaw.news.model.AiNewsLinkRequest;
 import vip.newsclaw.news.model.AiNewsProduceRequest;
 import vip.newsclaw.news.model.AiNewsVerifyRequest;
@@ -101,6 +106,20 @@ public class AiNewsEventController {
     }
 
     @RequireWorkspaceRole("member")
+    @Operation(summary = "人工复核一条证据与声明的语义关系")
+    @PostMapping("/{id}/evidence/{evidenceId}/relation")
+    public R<AiNewsEvidenceEntity> reviewEvidenceRelation(
+            @PathVariable Long id,
+            @PathVariable Long evidenceId,
+            @RequestBody AiNewsEvidenceRelationReviewRequest request,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        return R.ok(eventService.reviewEvidenceRelation(workspaceId, id, evidenceId,
+                request == null ? null : request.semanticRelation(),
+                request == null ? null : request.confidence(),
+                currentOperator(), request == null ? null : request.note()));
+    }
+
+    @RequireWorkspaceRole("member")
     @Operation(summary = "将已核验事件送入内容生产")
     @PostMapping("/{id}/produce")
     public R<AiNewsEventEntity> produce(
@@ -121,6 +140,17 @@ public class AiNewsEventController {
             @PathVariable Long id,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         return R.ok(eventService.markPublished(workspaceId, id));
+    }
+
+    @RequireWorkspaceRole("member")
+    @Operation(summary = "记录人工交付确认（不代表平台已发布）")
+    @PostMapping("/{id}/acknowledge-delivery")
+    public R<AiNewsEventEntity> acknowledgeDelivery(
+            @PathVariable Long id,
+            @RequestBody AiNewsDeliveryAcknowledgementRequest request,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        return R.ok(eventService.acknowledgeDelivery(workspaceId, id,
+                request == null ? null : request.artifactHash()));
     }
 
     @RequireWorkspaceRole("member")
@@ -161,5 +191,15 @@ public class AiNewsEventController {
             @PathVariable Long id,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         return R.ok(eventService.archive(workspaceId, id));
+    }
+
+    private static String currentOperator() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || authentication.getName() == null || authentication.getName().isBlank()
+                || "anonymousUser".equalsIgnoreCase(authentication.getName())) {
+            throw new NewsClawException(401, "未识别证据复核操作者");
+        }
+        return authentication.getName();
     }
 }

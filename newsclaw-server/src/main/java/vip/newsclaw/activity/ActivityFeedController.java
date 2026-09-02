@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import vip.newsclaw.approval.model.ToolApprovalEntity;
 import vip.newsclaw.approval.repository.ToolApprovalMapper;
@@ -80,7 +81,10 @@ public class ActivityFeedController {
             @RequestParam(required = false) Long workspaceId,
             @RequestParam(required = false) String source,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long headerWorkspaceId,
+            Authentication authentication) {
+        Long effectiveWorkspaceId = resolveWorkspaceId(workspaceId, headerWorkspaceId, authentication);
         if (size <= 0) size = 20;
         if (size > 200) size = 200;
         if (page <= 0) page = 1;
@@ -90,10 +94,10 @@ public class ActivityFeedController {
 
         // ───── Single-source path: direct SQL pagination ─────
         if (wantAudit && !wantApproval) {
-            return R.ok(pageAuditOnly(workspaceId, page, size));
+            return R.ok(pageAuditOnly(effectiveWorkspaceId, page, size));
         }
         if (wantApproval && !wantAudit) {
-            return R.ok(pageApprovalOnly(page, size));
+            return R.ok(pageApprovalOnly(effectiveWorkspaceId, page, size));
         }
 
         // ───── Combined path: per-source paginate + merge ─────
@@ -106,10 +110,11 @@ public class ActivityFeedController {
 
         LambdaQueryWrapper<AuditEventEntity> auditQ = new LambdaQueryWrapper<AuditEventEntity>()
                 .orderByDesc(AuditEventEntity::getCreateTime);
-        if (workspaceId != null) auditQ.eq(AuditEventEntity::getWorkspaceId, workspaceId);
+        auditQ.eq(AuditEventEntity::getWorkspaceId, effectiveWorkspaceId);
         IPage<AuditEventEntity> auditPage = auditEventMapper.selectPage(new Page<>(1, bufferSize), auditQ);
 
         LambdaQueryWrapper<ToolApprovalEntity> approvalQ = new LambdaQueryWrapper<ToolApprovalEntity>()
+                .eq(ToolApprovalEntity::getWorkspaceId, effectiveWorkspaceId)
                 .orderByDesc(ToolApprovalEntity::getCreatedAt);
         IPage<ToolApprovalEntity> approvalPage = toolApprovalMapper.selectPage(new Page<>(1, bufferSize), approvalQ);
 
@@ -131,6 +136,11 @@ public class ActivityFeedController {
         return R.ok(resp);
     }
 
+    /** Source-compatible helper for direct callers that predate the header/auth parameters. */
+    public R<Map<String, Object>> feed(Long workspaceId, String source, int page, int size) {
+        return feed(workspaceId, source, page, size, workspaceId, null);
+    }
+
     /** Pure SQL pagination on the audit_event table; total + records both
      *  come from the underlying {@link Page} object. */
     private Map<String, Object> pageAuditOnly(Long workspaceId, int page, int size) {
@@ -149,8 +159,9 @@ public class ActivityFeedController {
     }
 
     /** Pure SQL pagination on the tool_approval table. */
-    private Map<String, Object> pageApprovalOnly(int page, int size) {
+    private Map<String, Object> pageApprovalOnly(Long workspaceId, int page, int size) {
         LambdaQueryWrapper<ToolApprovalEntity> q = new LambdaQueryWrapper<ToolApprovalEntity>()
+                .eq(ToolApprovalEntity::getWorkspaceId, workspaceId)
                 .orderByDesc(ToolApprovalEntity::getCreatedAt);
         IPage<ToolApprovalEntity> p = toolApprovalMapper.selectPage(new Page<>(page, size), q);
         List<ActivityRow> records = new ArrayList<>(p.getRecords().size());
@@ -161,6 +172,23 @@ public class ActivityFeedController {
         resp.put("total", p.getTotal());
         resp.put("records", records);
         return resp;
+    }
+
+    private Long resolveWorkspaceId(Long queryWorkspaceId, Long headerWorkspaceId,
+                                    Authentication authentication) {
+        if (headerWorkspaceId != null && headerWorkspaceId > 0) return headerWorkspaceId;
+        // Global admins may use the query parameter for cross-workspace
+        // inspection when a legacy client has not started sending the header.
+        if (isGlobalAdmin(authentication) && queryWorkspaceId != null && queryWorkspaceId > 0) {
+            return queryWorkspaceId;
+        }
+        return 1L;
+    }
+
+    private boolean isGlobalAdmin(Authentication authentication) {
+        return authentication != null && authentication.getAuthorities() != null
+                && authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equalsIgnoreCase(a.getAuthority()));
     }
 
     private ActivityRow fromAuditEvent(AuditEventEntity ev) {

@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vip.newsclaw.common.result.R;
@@ -22,11 +23,14 @@ import vip.newsclaw.wiki.service.WikiOverviewService;
 import vip.newsclaw.wiki.service.WikiPageService;
 import vip.newsclaw.wiki.service.WikiRawMaterialService;
 import vip.newsclaw.wiki.service.WikiScaffoldService;
+import vip.newsclaw.wiki.service.WikiKnowledgeBaseService;
+import vip.newsclaw.wiki.model.WikiKnowledgeBaseEntity;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
+import vip.newsclaw.workspace.core.annotation.RequireGlobalAdmin;
 
 /**
  * RFC-051 follow-up: small set of operator-facing endpoints for things the
@@ -46,6 +50,7 @@ public class WikiAdminController {
     private final WikiScaffoldService scaffoldService;
     private final WikiPageService pageService;
     private final WikiRawMaterialService rawService;
+    private final WikiKnowledgeBaseService kbService;
 
     /** Optional so the controller can boot in environments where the rebuilder isn't wired (e.g. minimal tests). */
     @Autowired(required = false)
@@ -58,7 +63,10 @@ public class WikiAdminController {
                description = "Idempotent. Use after manual data imports or when stats look stale.")
     @PostMapping("/kb/{kbId}/rebuild-overview")
     @RequireWorkspaceRole("admin")
-    public ResponseEntity<Map<String, Object>> rebuildOverview(@PathVariable Long kbId) {
+    public ResponseEntity<Map<String, Object>> rebuildOverview(
+            @PathVariable Long kbId,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifyKBWorkspace(kbId, workspaceId);
         Map<String, Object> body = new HashMap<>();
         scaffoldService.ensureScaffold(kbId);
         if (overviewService != null) {
@@ -76,7 +84,7 @@ public class WikiAdminController {
                description = "Picks up to BATCH_SIZE chunks with token_count IS NULL and fills them. "
                        + "Returns the pending count after the batch so callers can poll.")
     @PostMapping("/backfill-tokens")
-    @RequireWorkspaceRole("admin")
+    @RequireGlobalAdmin
     public ResponseEntity<Map<String, Object>> backfillTokens() {
         Map<String, Object> body = new HashMap<>();
         if (backfillJob == null) {
@@ -105,7 +113,9 @@ public class WikiAdminController {
     public ResponseEntity<Map<String, Object>> mergeDuplicateTitles(
             @PathVariable Long kbId,
             @RequestParam(defaultValue = "true") boolean dryRun,
-            @RequestParam(defaultValue = "true") boolean concatenate) {
+            @RequestParam(defaultValue = "true") boolean concatenate,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        verifyKBWorkspace(kbId, workspaceId);
         Map<String, Object> report = pageService.mergeDuplicateTitles(kbId, dryRun, concatenate);
         return ResponseEntity.ok(report);
     }
@@ -137,6 +147,18 @@ public class WikiAdminController {
                 .anyMatch("ROLE_ADMIN"::equals);
         if (!admin) {
             throw new NewsClawException(403, "admin only");
+        }
+    }
+
+    private void verifyKBWorkspace(Long kbId, Long headerWorkspaceId) {
+        WikiKnowledgeBaseEntity kb = kbService.getById(kbId);
+        if (kb == null) {
+            throw new NewsClawException(404, "Knowledge base not found");
+        }
+        long workspaceId = headerWorkspaceId != null ? headerWorkspaceId : 1L;
+        if (kb.getWorkspaceId() == null || !kb.getWorkspaceId().equals(workspaceId)) {
+            throw new NewsClawException("err.common.wrong_workspace", 403,
+                    "Resource does not belong to current workspace");
         }
     }
 }

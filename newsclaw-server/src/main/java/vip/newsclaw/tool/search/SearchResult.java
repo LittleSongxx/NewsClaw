@@ -30,6 +30,9 @@ public class SearchResult {
     /** 提供该结果的 provider id */
     private String providerId;
 
+    /** Provider 原始相关性分数；只用于候选排序，不具有证据资格。 */
+    private Double relevanceScore;
+
     /**
      * 格式化为 Markdown 行，用于返回给 LLM
      */

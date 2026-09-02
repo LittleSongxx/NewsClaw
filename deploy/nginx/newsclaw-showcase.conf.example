@@ -1,0 +1,41 @@
+# Copy to the host's nginx sites-enabled directory after replacing the domain
+# and certificate paths. The public server serves only the static showcase;
+# the Spring Boot/DB/SearXNG/desktop ports stay loopback-only.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name portfolio.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name portfolio.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/portfolio.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/portfolio.example.com/privkey.pem;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'none'; base-uri 'none'; frame-ancestors 'none'" always;
+
+    # Copy the complete Vite dist here so the showcase can reuse the checked-in
+    # logo and assets without reaching the Spring Boot console.
+    root /srv/newsclaw;
+    index index.html;
+    client_max_body_size 1m;
+
+    location = / {
+        try_files /showcase/index.html =404;
+    }
+
+    location / {
+        try_files $uri $uri/ /showcase/index.html;
+    }
+
+    location ~* \.(?:css|svg|png|jpg|jpeg|webp|ico)$ {
+        add_header Cache-Control "public, max-age=86400, immutable";
+        try_files $uri =404;
+    }
+}

@@ -66,10 +66,13 @@ public class AiNewsReviewRoutingService {
     @Transactional
     public AiNewsReviewTaskEntity sync(Long workspaceId, Long eventId) {
         long ws = workspace(workspaceId);
-        AiNewsEventEntity event = eventMapper.selectOne(new LambdaQueryWrapper<AiNewsEventEntity>()
-                .eq(AiNewsEventEntity::getWorkspaceId, ws)
-                .eq(AiNewsEventEntity::getId, eventId)
-                .eq(AiNewsEventEntity::getDeleted, 0));
+        AiNewsEventEntity event = eventMapper.selectForUpdate(ws, eventId);
+        if (event == null) {
+            event = eventMapper.selectOne(new LambdaQueryWrapper<AiNewsEventEntity>()
+                    .eq(AiNewsEventEntity::getWorkspaceId, ws)
+                    .eq(AiNewsEventEntity::getId, eventId)
+                    .eq(AiNewsEventEntity::getDeleted, 0));
+        }
         return event == null ? null : sync(event);
     }
 
@@ -98,7 +101,7 @@ public class AiNewsReviewRoutingService {
         if (event == null || event.getId() == null) return null;
         long ws = workspace(event.getWorkspaceId());
         AiNewsReviewPolicy.Decision decision = policy.evaluate(event, evidence, attempts);
-        AiNewsReviewTaskEntity existing = findTask(ws, event.getId());
+        AiNewsReviewTaskEntity existing = findTaskForUpdate(ws, event.getId());
         if (!decision.requiresReview()) {
             AiNewsReviewTaskEntity closed = noLongerRequired(existing, decision);
             applyProjection(event, closed);
@@ -161,7 +164,7 @@ public class AiNewsReviewRoutingService {
     @Transactional
     public AiNewsReviewTaskEntity resolve(Long workspaceId, Long eventId,
                                           String operator, String note) {
-        AiNewsEventEntity event = findEvent(workspaceId, eventId);
+        AiNewsEventEntity event = findEventForUpdate(workspaceId, eventId);
         AiNewsReviewTaskEntity task = sync(event);
         if (task == null) {
             throw new NewsClawException(409, "当前事件没有待解决的人工复核任务");
@@ -193,7 +196,7 @@ public class AiNewsReviewRoutingService {
     @Transactional
     public AiNewsReviewTaskEntity resolveIfPending(Long workspaceId, Long eventId,
                                                    String operator, String note) {
-        AiNewsEventEntity event = findEvent(workspaceId, eventId);
+        AiNewsEventEntity event = findEventForUpdate(workspaceId, eventId);
         AiNewsReviewTaskEntity task = sync(event);
         if (task == null || !AiNewsReviewTaskStatus.PENDING.name().equals(task.getStatus())) return task;
         return resolve(workspaceId, eventId, operator, note);
@@ -221,7 +224,7 @@ public class AiNewsReviewRoutingService {
 
     @Transactional
     public void recordCardDispatch(Long workspaceId, Long eventId, boolean delivered, String error) {
-        AiNewsReviewTaskEntity task = findTask(workspace(workspaceId), eventId);
+        AiNewsReviewTaskEntity task = findTaskForUpdate(workspace(workspaceId), eventId);
         if (task == null || !AiNewsReviewTaskStatus.PENDING.name().equals(task.getStatus())) return;
         task.setUpdateTime(LocalDateTime.now());
         if (delivered) {
@@ -286,10 +289,22 @@ public class AiNewsReviewRoutingService {
         return event;
     }
 
+    private AiNewsEventEntity findEventForUpdate(Long workspaceId, Long eventId) {
+        long ws = workspace(workspaceId);
+        AiNewsEventEntity event = eventMapper.selectForUpdate(ws, eventId);
+        return event != null ? event : findEvent(ws, eventId);
+    }
+
     private AiNewsReviewTaskEntity findTask(long workspaceId, Long eventId) {
         if (eventId == null) return null;
         return taskMapper.selectOne(baseQuery(workspaceId)
                 .eq(AiNewsReviewTaskEntity::getEventId, eventId));
+    }
+
+    private AiNewsReviewTaskEntity findTaskForUpdate(long workspaceId, Long eventId) {
+        if (eventId == null) return null;
+        AiNewsReviewTaskEntity task = taskMapper.selectForUpdate(workspaceId, eventId);
+        return task != null ? task : findTask(workspaceId, eventId);
     }
 
     private static LambdaQueryWrapper<AiNewsReviewTaskEntity> baseQuery(long workspaceId) {

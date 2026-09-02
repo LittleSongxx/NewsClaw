@@ -30,6 +30,8 @@ Its key technical boundaries are deliberate:
 - Reflection and Routine Mining create reviewable Skill candidates only. Promotion, binding, archive, and restore remain audited human actions.
 - Feishu supports WebSocket inbound messages and interactive review cards. Xiaohongshu delivery stops at a validated 3–18 image preview/ZIP package for human creator-console upload; NewsClaw makes no claim of an ordinary-creator publishing API or unattended browser posting.
 
+The public portfolio is available at `/` or `/showcase` after a build. It is a redacted, read-only static page with no login, database, or model dependency; the authenticated console remains at `/ai-news`.
+
 ## Real evidence
 
 The Chinese README documents one real Feishu request received on 2026-08-24:
@@ -50,9 +52,10 @@ Java 21, Spring Boot 3.5, Spring AI Alibaba, MyBatis Plus, Flyway, PostgreSQL 16
 git clone https://github.com/LittleSongxx/NewsClaw.git
 cd NewsClaw
 cp .env.example .env
+# Also set a random one-time NEWSCLAW_BOOTSTRAP_PASSWORD; never keep the placeholder.
 docker compose up -d --build
 ```
 
-Open <http://localhost:18080>. Configure database/JWT/encryption/SearXNG secrets, model keys, and Feishu credentials only in the ignored `.env` file.
+Open <http://localhost:18080/showcase> for the static portfolio, or <http://localhost:18080/ai-news> for the authenticated console. On the first production start the legacy seed administrator is rotated; change it immediately and remove `NEWSCLAW_BOOTSTRAP_PASSWORD`. Configure database/JWT/encryption/SearXNG secrets, model keys, and Feishu credentials only in the ignored `.env` file.
 
 Licensed under the [Apache License 2.0](LICENSE).

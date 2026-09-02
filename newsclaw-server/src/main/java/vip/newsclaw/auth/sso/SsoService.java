@@ -21,6 +21,7 @@ import vip.newsclaw.auth.sso.provider.SsoUserInfo;
 import vip.newsclaw.auth.sso.repository.ExternalIdentityMapper;
 import vip.newsclaw.audit.service.AuditEventService;
 import vip.newsclaw.exception.NewsClawException;
+import vip.newsclaw.workspace.core.service.WorkspaceService;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -43,6 +44,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SsoService {
 
+    private static final long DEFAULT_WORKSPACE_ID = 1L;
+
     private final SsoProviderRegistry registry;
     private final SsoStateService stateService;
     private final ExternalIdentityMapper identityMapper;
@@ -51,6 +54,7 @@ public class SsoService {
     private final SsoProperties ssoProperties;
     private final BCryptPasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
+    private final WorkspaceService workspaceService;
     /** Optional — audit may be null in narrow test contexts. */
     @Autowired(required = false)
     private AuditEventService auditService;
@@ -84,7 +88,7 @@ public class SsoService {
      */
     public SsoCallbackResponse handleCallback(String providerId, String code, String state) {
         // 1. 校验 state (签名 + 过期 + 一次性消费)
-        stateService.verifyState(state);
+        stateService.verifyState(state, providerId);
 
         // 2. code → IdP 用户信息
         SsoProvider provider = registry.get(providerId)
@@ -200,7 +204,10 @@ public class SsoService {
         newUser.setNickname(info.displayName());
         newUser.setAvatar(info.avatarUrl());
         newUser.setEmail(info.email());
-        newUser.setRole(ssoProperties.getDefaultRole());
+        // An IdP assertion must never be able to bootstrap a global
+        // administrator.  Keep auto-provisioned accounts at the ordinary
+        // user role; privilege elevation is an explicit local-admin action.
+        newUser.setRole("user");
         newUser.setEnabled(true);
 
         try {
@@ -215,12 +222,14 @@ public class SsoService {
             identity.setExternalEmail(info.email());
             identity.setLastLoginAt(LocalDateTime.now());
             identityMapper.insert(identity);
+            workspaceService.addMember(DEFAULT_WORKSPACE_ID, newUser.getId(), "member");
             audit("sso.auto_create", providerId, info.externalId(), newUser.getId());
             return newUser;
         } catch (DuplicateKeyException e) {
             // 并发: 另一个请求已创建了该用户。回滚刚建的孤儿 user, 重查已存在的 identity。
             log.info("[SSO] Concurrent auto-create for provider={}, externalId={}: "
                     + "rolling back orphan user {}, falling back to existing", providerId, info.externalId(), newUser.getId());
+            cleanupIdentityForUser(newUser.getId());
             userMapper.deleteById(newUser.getId()); // mate_user 无 @TableLogic, 物理删
             ExternalIdentityEntity existing = findIdentity(providerId, info);
             if (existing != null) {
@@ -239,16 +248,28 @@ public class SsoService {
             // @Transactional would not apply. Roll back the freshly inserted user here so we
             // never leave a passwordless orphan account behind.
             if (newUser.getId() != null) {
+                cleanupIdentityForUser(newUser.getId());
                 userMapper.deleteById(newUser.getId());
             }
             throw e;
         }
     }
 
+    private void cleanupIdentityForUser(Long userId) {
+        if (userId == null) return;
+        try {
+            identityMapper.delete(new LambdaQueryWrapper<ExternalIdentityEntity>()
+                    .eq(ExternalIdentityEntity::getUserId, userId));
+        } catch (Exception cleanupError) {
+            log.warn("[SSO] Failed to clean identity for orphan user {}: {}",
+                    userId, cleanupError.getMessage());
+        }
+    }
+
     private LoginResponse loginSuccess(UserEntity user) {
         String token = authService.generateToken(user);
         return new LoginResponse(user.getId(), token, user.getUsername(),
-                user.getNickname(), user.getRole());
+                user.getNickname(), user.getRole(), false);
     }
 
     private void audit(String action, String provider, String externalId, Long userId) {

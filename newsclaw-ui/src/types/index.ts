@@ -29,6 +29,7 @@ export interface LoginResponse {
   username: string
   nickname: string
   role: string
+  mustChangePassword?: boolean
 }
 
 // ==================== Agent ====================
@@ -860,6 +861,7 @@ export interface SystemSettings {
   serperApiKey?: string
   serperBaseUrl: string
   tavilyApiKey?: string
+  tavilyApiKeyCount?: number
   tavilyBaseUrl: string
   serperApiKeyMasked?: string
   tavilyApiKeyMasked?: string

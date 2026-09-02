@@ -3,6 +3,8 @@ package vip.newsclaw.wiki.job;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.scheduling.annotation.Scheduled;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import vip.newsclaw.wiki.job.event.WikiJobCreatedEvent;
 import vip.newsclaw.wiki.repository.WikiProcessingJobMapper;
 import vip.newsclaw.wiki.job.model.WikiProcessingJobEntity;
@@ -45,6 +47,7 @@ public class WikiJobDispatcher {
         WikiProcessingJobEntity job = jobMapper.selectById(jobId);
         if (job == null) return;
 
+        if (!"queued".equals(job.getStatus())) return;
         try {
             WikiJobStage stage = WikiJobStage.valueOf(job.getStage().toUpperCase());
             if (stage.isTerminal()) return;
@@ -58,7 +61,17 @@ public class WikiJobDispatcher {
             log.error("[WikiDispatch] No template for job type: {}", job.getJobType());
             return;
         }
+        if (jobMapper.claimQueued(jobId) != 1) return;
+        job = jobMapper.selectById(jobId);
+        if (job == null) return;
         template.execute(job);
+    }
+
+    @Scheduled(fixedDelayString = "${newsclaw.wiki.job-dispatch-interval-ms:30000}")
+    @SchedulerLock(name = "wiki-processing-job-dispatch", lockAtMostFor = "PT2M")
+    public void dispatchQueued() {
+        jobMapper.listAllQueued(100).forEach(job ->
+                DISPATCH_EXECUTOR.submit(() -> dispatch(job.getId())));
     }
 
     private WikiProcessingTemplate resolveTemplate(String jobType) {

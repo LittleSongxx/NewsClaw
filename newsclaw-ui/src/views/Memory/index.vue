@@ -51,6 +51,7 @@
                 <div class="card-row-top">
                   <span class="status-dot" :class="report.status.toLowerCase()" />
                   <span class="card-mode">{{ report.mode === 'FOCUSED' ? t('memory.modeFocused') : t('memory.modeNightly') }}</span>
+                  <span class="card-scope">{{ report.ownerKey ? t('memory.memoryBrowser.scopePersonal') : t('memory.memoryBrowser.scopeShared') }}</span>
                   <span class="card-time">{{ relTime(report.startedAt) }}</span>
                 </div>
                 <div v-if="report.topic" class="card-topic">{{ report.topic }}</div>
@@ -330,6 +331,7 @@ function fmtTime(iso: string) {
 .status-dot.failed { background: #ff3b30; }
 .status-dot.skipped { background: #ff9f0a; }
 .card-mode { font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.card-scope { color: var(--mc-text-tertiary); font-size: 10px; }
 .card-time { margin-left: auto; }
 .card-topic { margin-top: 4px; font-size: 13px; font-weight: 500; color: var(--mc-text-primary); }
 .card-stats { margin-top: 4px; display: flex; gap: 8px; font-size: 11px; }

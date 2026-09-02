@@ -28,7 +28,8 @@ public class DefaultToolGuard implements ToolGuard {
             "execute_shell_command",
             "shell_execute",
             "run_command",
-            "execute_code"
+            "execute_code",
+            "runSkillScript"
     );
 
     /** 文件写入类工具 —— 默认需要用户审批 */

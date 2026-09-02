@@ -53,6 +53,9 @@ public class GoalController {
     @Operation(summary = "Create a persistent goal for a conversation")
     @PostMapping
     public R<GoalResponse> create(@RequestBody GoalCreateRequest req, Authentication auth) {
+        if (req == null) {
+            throw new NewsClawException("err.goal.bad_request", 400, "request body required");
+        }
         String username = currentUsername(auth);
         requireOwner(req.getConversationId(), username);
         // Derive agentId/workspaceId from the conversation itself so the
@@ -85,8 +88,7 @@ public class GoalController {
     @Operation(summary = "Get goal detail by id")
     @GetMapping("/{id}")
     public R<GoalResponse> get(@PathVariable Long id, Authentication auth) {
-        GoalEntity g = goalService.getById(id);
-        requireOwner(g.getConversationId(), currentUsername(auth));
+        GoalEntity g = requireGoal(id, currentUsername(auth));
         return R.ok(goalService.toResponse(g));
     }
 
@@ -95,8 +97,7 @@ public class GoalController {
     public R<List<GoalEventEntity>> events(@PathVariable Long id,
                                             @RequestParam(defaultValue = "100") int limit,
                                             Authentication auth) {
-        GoalEntity g = goalService.getById(id);
-        requireOwner(g.getConversationId(), currentUsername(auth));
+        requireGoal(id, currentUsername(auth));
         return R.ok(goalService.listEvents(id, limit));
     }
 
@@ -114,36 +115,35 @@ public class GoalController {
     public R<GoalResponse> update(@PathVariable Long id,
                                  @RequestBody GoalUpdateRequest req,
                                  Authentication auth) {
-        GoalEntity g = goalService.getById(id);
+        if (req == null) {
+            throw new NewsClawException("err.goal.bad_request", 400, "request body required");
+        }
         String username = currentUsername(auth);
-        requireOwner(g.getConversationId(), username);
+        requireGoal(id, username);
         return R.ok(goalService.toResponse(goalService.update(id, req, username)));
     }
 
     @Operation(summary = "Pause an active goal")
     @PostMapping("/{id}/pause")
     public R<GoalResponse> pause(@PathVariable Long id, Authentication auth) {
-        GoalEntity g = goalService.getById(id);
         String username = currentUsername(auth);
-        requireOwner(g.getConversationId(), username);
+        requireGoal(id, username);
         return R.ok(goalService.toResponse(goalService.pause(id, username)));
     }
 
     @Operation(summary = "Resume a paused goal")
     @PostMapping("/{id}/resume")
     public R<GoalResponse> resume(@PathVariable Long id, Authentication auth) {
-        GoalEntity g = goalService.getById(id);
         String username = currentUsername(auth);
-        requireOwner(g.getConversationId(), username);
+        requireGoal(id, username);
         return R.ok(goalService.toResponse(goalService.resume(id, username)));
     }
 
     @Operation(summary = "Abandon a goal (terminal)")
     @PostMapping("/{id}/abandon")
     public R<GoalResponse> abandon(@PathVariable Long id, Authentication auth) {
-        GoalEntity g = goalService.getById(id);
         String username = currentUsername(auth);
-        requireOwner(g.getConversationId(), username);
+        requireGoal(id, username);
         return R.ok(goalService.toResponse(goalService.abandon(id, username)));
     }
 
@@ -152,9 +152,8 @@ public class GoalController {
     public R<GoalResponse> addCriterion(@PathVariable Long id,
                                        @RequestBody Map<String, String> body,
                                        Authentication auth) {
-        GoalEntity g = goalService.getById(id);
         String username = currentUsername(auth);
-        requireOwner(g.getConversationId(), username);
+        requireGoal(id, username);
         String criterion = body != null ? body.get("criterion") : null;
         return R.ok(goalService.toResponse(goalService.appendCriterion(id, criterion, username)));
     }
@@ -163,6 +162,19 @@ public class GoalController {
 
     private String currentUsername(Authentication auth) {
         return auth != null ? auth.getName() : "anonymous";
+    }
+
+    /** Resolve once, return a stable client error instead of leaking an NPE as 500. */
+    private GoalEntity requireGoal(Long id, String username) {
+        if (id == null) {
+            throw new NewsClawException("err.goal.bad_request", 400, "goal id required");
+        }
+        GoalEntity goal = goalService.getById(id);
+        if (goal == null) {
+            throw new NewsClawException("err.goal.not_found", 404, "Goal not found: " + id);
+        }
+        requireOwner(goal.getConversationId(), username);
+        return goal;
     }
 
     private void requireOwner(String conversationId, String username) {

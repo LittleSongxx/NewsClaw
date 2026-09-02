@@ -10,6 +10,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Emits the versioned evidence manifest consumed by scripts/eval-ai-news-evidence.sh. */
@@ -28,6 +30,11 @@ class AiNewsEvidenceManifestEvaluationTest {
         AiNewsPolicyEvaluator.EvaluationReport report = new AiNewsPolicyEvaluator(
                 new AiNewsSourceRegistry()).evaluate(cases, commit, command);
         assertTrue(report.passed(), () -> "unexpected evidence badcases: " + report.manifest().badcases());
+        assertEquals("1.1", report.manifest().schemaVersion());
+        assertTrue(report.manifest().metrics().containsKey("citationBoundaryAccuracy"));
+        assertTrue(report.manifest().metrics().containsKey("verificationEligibleRecall"));
+        assertTrue(report.manifest().metrics().containsKey("verificationRejectionSpecificity"));
+        assertFalse(report.manifest().metrics().containsKey("citationBoundaryPrecision"));
         String json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(report.manifest());
         System.out.println("AI_NEWS_EVIDENCE_MANIFEST " + json);
         String output = System.getProperty("ai.news.eval.manifest");

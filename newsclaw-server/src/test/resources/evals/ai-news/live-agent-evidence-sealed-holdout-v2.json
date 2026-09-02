@@ -1,0 +1,3395 @@
+{
+  "datasetId": "controlled-live-ai-news-agent-evidence-sealed-holdout-v2",
+  "datasetVersion": "2026-08-26-sealed-v2",
+  "evaluationScope": "controlled-live-agent-evidence-policy-json-contract-sealed-holdout-v2",
+  "executionMetadata": {
+    "benchmarkProtocol": "100 distinct synthetic evidence packets sharing 40 compositional archetypes; real NewsClaw authentication/SSE/model route; strict seven-field JSON; provider-constrained read-only tool path",
+    "promptVersion": "live-agent-evidence-v8-development",
+    "promptFreeze": "AiNewsLiveAgentBenchmarkRunner.java@sha256:93735e9ebbec2b3814dc6ae6ac00a5464ca8eaa2a51c54694de9b7ee2a172dde",
+    "qualityEvaluatorFreeze": "AiNewsQualityEvaluator.java@sha256:f8581a88b37de8378e860fbcbb83bc01e440734bf2d714b5fd58b141c9305d3b",
+    "sourceRegistryFreeze": "source_registry.yml@sha256:b31eb49dcb05e2ab14c4db5b50c85e014f935fdd14661d939c596608ec4a502f",
+    "radarSkillFreeze": "ai_news_radar/SKILL.md@sha256:8ad64e84a8b0386010b638c9efb8164812a2674e46c974a28b0a7b499898b222",
+    "generatorFreeze": "generate-ai-news-sealed-holdout-v2.js@sha256:9a16dad2c9041d65ce44c3c4e1ff254af7a081644be983adbcc247d6eec16a91",
+    "priorDevelopmentDataset": "live-agent-evidence-holdout-100.json@sha256:145a26bb49c009911a0f3434758eda4d53273036d692765142a2fb56a159051a",
+    "orderSeed": "0x5eed2026",
+    "sampling": "all 100 cases; deterministic shuffled order; one conversation per case; no translation pairs",
+    "toolChoicePolicy": "exact-function-for-required-and-none-for-forbidden",
+    "holdoutStatus": "sealed before first scored run; after result inspection it may remain a regression set but must never be used for a second unseen claim",
+    "noPeekingProtocol": "the evaluated Prompt/Skill/rules were frozen before this dataset was generated; do not change them after inspecting scores or badcases",
+    "independentReviewStatus": "AI-authored and mechanically adjudicated in the evaluation session; not independently human-reviewed",
+    "labelComposition": "{\"zh\":50,\"en\":50,\"official\":40,\"media\":35,\"community\":25,\"verificationTrue\":37,\"citationTrue\":29,\"quoteTrue\":58,\"conflicts\":15,\"highRisk\":21,\"requiredTools\":20,\"goldSignatures\":10}",
+    "privacy": "synthetic prompts only; raw SSE remains in ignored target output"
+  },
+  "limitations": [
+    "This sealed set measures evidence-policy and strict-output generalization, not NewsClaw overall product quality.",
+    "It is AI-authored synthetic data with deterministic labels, not an independently human-labeled production sample.",
+    "Required-tool cases measure provider-enforced exact-function orchestration and executor correctness, not autonomous tool selection.",
+    "The first scored run is the only unseen observation; inspecting it retires the set to regression/development use for future tuning.",
+    "A sequential run is not a concurrency, capacity, SLA, production-cost, or Provider-TTFT benchmark."
+  ],
+  "cases": [
+    {
+      "id": "sealed-v2-001",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G004",
+        "scenarioFamily": "entailment",
+        "archetype": "official-partial",
+        "claimKind": "security-certification",
+        "risk": "high",
+        "route": "read-only-tool",
+        "goldRationale": "A=official;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：星槎编译套件已取得关键基础设施安全认证。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://unitree.com/sealed-eval-v2/sv2-g004/r1 | publisher Unitree | quote: \"星槎编译套件正在准备安全认证申请。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-002",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G073",
+        "scenarioFamily": "conflict",
+        "archetype": "media-support-conflict-c",
+        "claimKind": "license",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Elm Robotics Platform was released under the Apache-2.0 license.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://techcrunch.com/sealed-eval-v2/sv2-g073/r1 | publisher TechCrunch | quote: \"Elm Robotics Platform was released under the Apache-2.0 license.\"\n- R2 | URL https://caixin.com/sealed-eval-v2/sv2-g073/r2 | publisher Caixin | quote: \"Elm Robotics Platform was released under a research-only license that restricts commercial use.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-003",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G026",
+        "scenarioFamily": "conflict",
+        "archetype": "official-media-conflict",
+        "claimKind": "regions",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：玄鹭推理器已同时在新加坡和东京部署。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://xiaomi.com/sealed-eval-v2/sv2-g026/r1 | publisher Xiaomi AI | quote: \"玄鹭推理器目前只在新加坡试点，尚未进入第二座城市。\"\n- R2 | URL https://venturebeat.com/sealed-eval-v2/sv2-g026/r2 | publisher VentureBeat | quote: \"玄鹭推理器已同时在新加坡和东京部署。\"\n请求引用 ID：R2。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-004",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G048",
+        "scenarioFamily": "corroboration",
+        "archetype": "official-distractor-media-pair",
+        "claimKind": "shipment",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：远岫机器人平台将于第四季度开始批量出货。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://hiascend.com/sealed-eval-v2/sv2-g048/r1 | publisher Huawei Ascend | quote: \"远岫机器人平台本周发布了一篇关于招聘和办公空间的文章。\"\n- R2 | URL https://wsj.com/sealed-eval-v2/sv2-g048/r2 | publisher The Wall Street Journal | quote: \"远岫机器人平台将于第四季度开始批量出货。\"\n- R3 | URL https://36kr.com/sealed-eval-v2/sv2-g048/r3 | publisher 36氪 | quote: \"远岫机器人平台将于第四季度开始批量出货。\"\n请求引用 ID：R2。",
+      "allowedCitationIds": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "requestedCitationId": "R2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-005",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G024",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "official-request-community",
+        "claimKind": "pricing",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：岚谷编译套件的输入价格已降至每百万 tokens 0.4 美元。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://ai.meta.com/sealed-eval-v2/sv2-g024/r1 | publisher Meta AI | quote: \"岚谷编译套件的输入价格已降至每百万 tokens 0.4 美元。\"\n- R2 | URL https://social-mirror.invalid/sealed-eval-v2/sv2-g024/r2 | publisher Unofficial Social Mirror | quote: \"岚谷编译套件的输入价格已降至每百万 tokens 0.4 美元。\"\n请求引用 ID：R2。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-006",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G021",
+        "scenarioFamily": "mixed-tier",
+        "archetype": "official-community-contradiction",
+        "claimKind": "availability",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：岚谷推理器已于周一向所有开发者开放。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://hunyuan.tencent.com/sealed-eval-v2/sv2-g021/r1 | publisher Tencent Hunyuan | quote: \"岚谷推理器已于周一向所有开发者开放。\"\n- R2 | URL https://models-forum.invalid/sealed-eval-v2/sv2-g021/r2 | publisher Model Builders Forum | quote: \"岚谷推理器仍仅向受邀测试者开放，尚未全面开放。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-007",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G037",
+        "scenarioFamily": "entailment",
+        "archetype": "community-meta",
+        "claimKind": "acquisition",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：青栈视觉模型对星桥数据公司的收购已经完成交割。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://pasteboard.invalid/sealed-eval-v2/sv2-g037/r1 | publisher Anonymous Paste | quote: \"该页面转述了社交媒体上关于“青栈视觉模型对星桥数据公司的收购已经完成交割”的说法，但没有确认其真实性。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-008",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G043",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "official-outside-id",
+        "claimKind": "license",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：微澜机器人平台按 Apache-2.0 许可证开放。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://baidu.com/sealed-eval-v2/sv2-g043/r1 | publisher Baidu AI | quote: \"微澜机器人平台按 Apache-2.0 许可证开放。\"\n请求引用 ID：OUT-SV2-G043。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "OUT-SV2-G043",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-009",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G013",
+        "scenarioFamily": "corroboration",
+        "archetype": "same-publisher-media",
+        "claimKind": "license",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：澄海机器人平台按 Apache-2.0 许可证开放。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://wire.engadget.com/sealed-eval-v2/sv2-g013/r1 | publisher Engadget | quote: \"澄海机器人平台按 Apache-2.0 许可证开放。\"\n- R2 | URL https://brief.engadget.com/sealed-eval-v2/sv2-g013/r2 | publisher Engadget | quote: \"澄海机器人平台按 Apache-2.0 许可证开放。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-010",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G010",
+        "scenarioFamily": "corroboration",
+        "archetype": "media-pair-distractor",
+        "claimKind": "offline",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：云杉向量服务已支持完全离线的端侧推理。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://venturebeat.com/sealed-eval-v2/sv2-g010/r1 | publisher VentureBeat | quote: \"云杉向量服务已支持完全离线的端侧推理。\"\n- R2 | URL https://cls.cn/sealed-eval-v2/sv2-g010/r2 | publisher 财联社 | quote: \"云杉向量服务已支持完全离线的端侧推理。\"\n- R3 | URL https://wsj.com/sealed-eval-v2/sv2-g010/r3 | publisher The Wall Street Journal | quote: \"云杉向量服务本周发布了一篇关于招聘和办公空间的文章。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-011",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G057",
+        "scenarioFamily": "source-integrity",
+        "archetype": "lookalike-suffix",
+        "claimKind": "acquisition",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Birch Vision Stack completed its acquisition of Northbridge Data.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://anthropic.com.press.invalid/sealed-eval-v2/sv2-g057/r1 | publisher Anthropic Bulletin | quote: \"Birch Vision Stack completed its acquisition of Northbridge Data.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-012",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G034",
+        "scenarioFamily": "high-risk",
+        "archetype": "high-risk-media-pair",
+        "claimKind": "security-certification",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=media;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：银湾编译套件已取得关键基础设施安全认证。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://stcn.com/sealed-eval-v2/sv2-g034/r1 | publisher 证券时报 | quote: \"银湾编译套件已取得关键基础设施安全认证。\"\n- R2 | URL https://engadget.com/sealed-eval-v2/sv2-g034/r2 | publisher Engadget | quote: \"银湾编译套件已取得关键基础设施安全认证。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-013",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G032",
+        "scenarioFamily": "entailment",
+        "archetype": "two-media-meta",
+        "claimKind": "context-window",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：银湾视觉模型的上下文窗口已提高到 320K tokens。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://wsj.com/sealed-eval-v2/sv2-g032/r1 | publisher The Wall Street Journal | quote: \"该页面转述了社交媒体上关于“银湾视觉模型的上下文窗口已提高到 320K tokens”的说法，但没有确认其真实性。\"\n- R2 | URL https://36kr.com/sealed-eval-v2/sv2-g032/r2 | publisher 36氪 | quote: \"该页面转述了社交媒体上关于“银湾视觉模型的上下文窗口已提高到 320K tokens”的说法，但没有确认其真实性。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-014",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G068",
+        "scenarioFamily": "high-risk",
+        "archetype": "high-risk-official-conflict",
+        "claimKind": "data-retention",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Drift Robotics Platform guarantees that it retains no user inputs.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://deepmind.google/sealed-eval-v2/sv2-g068/r1 | publisher Google DeepMind | quote: \"Drift Robotics Platform guarantees that it retains no user inputs.\"\n- R2 | URL https://baidu.com/sealed-eval-v2/sv2-g068/r2 | publisher Baidu AI | quote: \"Drift Robotics Platform may retain user inputs for thirty days under its current policy.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-015",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G096",
+        "scenarioFamily": "source-integrity",
+        "archetype": "community-direct",
+        "claimKind": "regions",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Juniper Reasoner was deployed in both Singapore and Tokyo.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://models-forum.invalid/sealed-eval-v2/sv2-g096/r1 | publisher Model Builders Forum | quote: \"Juniper Reasoner was deployed in both Singapore and Tokyo.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-016",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G018",
+        "scenarioFamily": "source-integrity",
+        "archetype": "userinfo-lookalike",
+        "claimKind": "shipment",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：赤霄机器人平台将于第四季度开始批量出货。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://reuters.com@mirror-3.invalid/sealed-v2-sv2-g018-r1 | publisher reuters.com mirror | quote: \"赤霄机器人平台将于第四季度开始批量出货。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-017",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G085",
+        "scenarioFamily": "entailment",
+        "archetype": "official-hedge",
+        "claimKind": "weights",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=official;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Garnet Vector Service weights can now be downloaded without an application.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://cambricon.com/sealed-eval-v2/sv2-g085/r1 | publisher Cambricon | quote: \"An unnamed person said that “Garnet Vector Service weights can now be downloaded without an application,” but the report remains unconfirmed.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-018",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G056",
+        "scenarioFamily": "source-integrity",
+        "archetype": "community-direct",
+        "claimKind": "regions",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Birch Reasoner was deployed in both Singapore and Tokyo.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://models-forum.invalid/sealed-eval-v2/sv2-g056/r1 | publisher Model Builders Forum | quote: \"Birch Reasoner was deployed in both Singapore and Tokyo.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-019",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G059",
+        "scenarioFamily": "source-integrity",
+        "archetype": "official-name-in-path",
+        "claimKind": "benchmark",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Birch Compiler Kit scored 88.2 on the sealed benchmark.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://archive-2.invalid/openai.com/news/sealed-v2-sv2-g059-r1 | publisher AI Release Archive | quote: \"Birch Compiler Kit scored 88.2 on the sealed benchmark.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-020",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G036",
+        "scenarioFamily": "entailment",
+        "archetype": "community-hedge",
+        "claimKind": "regions",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：青栈推理器已同时在新加坡和东京部署。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://models-forum.invalid/sealed-eval-v2/sv2-g036/r1 | publisher Model Builders Forum | quote: \"一位未具名人士称“青栈推理器已同时在新加坡和东京部署”，但该说法尚未得到确认。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-021",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G033",
+        "scenarioFamily": "conflict",
+        "archetype": "media-support-conflict-c",
+        "claimKind": "license",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：银湾机器人平台按 Apache-2.0 许可证开放。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://jiqizhixin.com/sealed-eval-v2/sv2-g033/r1 | publisher 机器之心 | quote: \"银湾机器人平台按 Apache-2.0 许可证开放。\"\n- R2 | URL https://bloomberg.com/sealed-eval-v2/sv2-g033/r2 | publisher Bloomberg | quote: \"银湾机器人平台仅按限制商用的研究许可证开放。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-022",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G049",
+        "scenarioFamily": "corroboration",
+        "archetype": "media-pair-direct",
+        "claimKind": "benchmark",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：远岫编译套件在封闭评测中的得分为 88.6。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://jiqizhixin.com/sealed-eval-v2/sv2-g049/r1 | publisher 机器之心 | quote: \"远岫编译套件在封闭评测中的得分为 88.6。\"\n- R2 | URL https://bloomberg.com/sealed-eval-v2/sv2-g049/r2 | publisher Bloomberg | quote: \"远岫编译套件在封闭评测中的得分为 88.6。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-023",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G075",
+        "scenarioFamily": "high-risk",
+        "archetype": "high-risk-single-media",
+        "claimKind": "compliance",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=media;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Elm Vector Service completed its review for all applicable regulatory requirements.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://36kr.com/sealed-eval-v2/sv2-g075/r1 | publisher 36氪 | quote: \"Elm Vector Service completed its review for all applicable regulatory requirements.\"\n- R2 | URL https://unverified-news.invalid/sealed-eval-v2/sv2-g075/r2 | publisher Independent Newsletter | quote: \"Elm Vector Service completed its review for all applicable regulatory requirements.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-024",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G061",
+        "scenarioFamily": "mixed-tier",
+        "archetype": "official-community-contradiction",
+        "claimKind": "availability",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Cinder Reasoner became generally available to all developers on Monday.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://tencent.com/sealed-eval-v2/sv2-g061/r1 | publisher Tencent | quote: \"Cinder Reasoner became generally available to all developers on Monday.\"\n- R2 | URL https://models-forum.invalid/sealed-eval-v2/sv2-g061/r2 | publisher Model Builders Forum | quote: \"Cinder Reasoner remains limited to invited testers and is not generally available.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-025",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G097",
+        "scenarioFamily": "source-integrity",
+        "archetype": "lookalike-suffix",
+        "claimKind": "acquisition",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Juniper Vision Stack completed its acquisition of Northbridge Data.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://anthropic.com.press.invalid/sealed-eval-v2/sv2-g097/r1 | publisher Anthropic Bulletin | quote: \"Juniper Vision Stack completed its acquisition of Northbridge Data.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-026",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G046",
+        "scenarioFamily": "entailment",
+        "archetype": "official-meta-claim",
+        "claimKind": "safety-audit",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=official;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：远岫推理器已通过独立红队安全审计。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://blog.google/sealed-eval-v2/sv2-g046/r1 | publisher Google AI Blog | quote: \"该页面转述了社交媒体上关于“远岫推理器已通过独立红队安全审计”的说法，但没有确认其真实性。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-027",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G014",
+        "scenarioFamily": "conflict",
+        "archetype": "media-support-conflict-a",
+        "claimKind": "pricing",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：澄海编译套件的输入价格已降至每百万 tokens 0.3 美元。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://qbitai.com/sealed-eval-v2/sv2-g014/r1 | publisher 量子位 | quote: \"澄海编译套件的输入价格已降至每百万 tokens 0.3 美元。\"\n- R2 | URL https://techcrunch.com/sealed-eval-v2/sv2-g014/r2 | publisher TechCrunch | quote: \"澄海编译套件的输入价格仍为每百万 tokens 0.8 美元。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-028",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G015",
+        "scenarioFamily": "conflict",
+        "archetype": "media-support-conflict-b",
+        "claimKind": "weights",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=media;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：澄海向量服务的权重现可无需申请直接下载。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://reuters.com/sealed-eval-v2/sv2-g015/r1 | publisher Reuters | quote: \"澄海向量服务的权重现可无需申请直接下载。\"\n- R2 | URL https://cls.cn/sealed-eval-v2/sv2-g015/r2 | publisher 财联社 | quote: \"澄海向量服务的权重下载仍需提交申请并等待批准。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-029",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G065",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "official-with-partial-distractor",
+        "claimKind": "weights",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Cinder Vector Service weights can now be downloaded without an application.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://volcengine.com/sealed-eval-v2/sv2-g065/r1 | publisher Volcano Engine | quote: \"Cinder Vector Service weights can now be downloaded without an application.\"\n- R2 | URL https://figure.ai/sealed-eval-v2/sv2-g065/r2 | publisher Figure | quote: \"Cinder Vector Service published a model card without downloadable weights.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-030",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G094",
+        "scenarioFamily": "conflict",
+        "archetype": "media-support-conflict-a",
+        "claimKind": "pricing",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Ivory Compiler Kit reduced input pricing to $0.2 per million tokens.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://qbitai.com/sealed-eval-v2/sv2-g094/r1 | publisher 量子位 | quote: \"Ivory Compiler Kit reduced input pricing to $0.2 per million tokens.\"\n- R2 | URL https://techcrunch.com/sealed-eval-v2/sv2-g094/r2 | publisher TechCrunch | quote: \"Ivory Compiler Kit still charges $0.8 per million input tokens.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-031",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G100",
+        "scenarioFamily": "source-integrity",
+        "archetype": "fake-github-org",
+        "claimKind": "compliance",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Juniper Vector Service completed its review for all applicable regulatory requirements.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://github.com/QwenLM-fanclub/sealed-v2-sv2-g100-r1 | publisher Qwen Community GitHub | quote: \"Juniper Vector Service completed its review for all applicable regulatory requirements.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-032",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G053",
+        "scenarioFamily": "corroboration",
+        "archetype": "same-publisher-media",
+        "claimKind": "license",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Aster Robotics Platform was released under the Apache-2.0 license.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://wire.cls.cn/sealed-eval-v2/sv2-g053/r1 | publisher 财联社 | quote: \"Aster Robotics Platform was released under the Apache-2.0 license.\"\n- R2 | URL https://brief.cls.cn/sealed-eval-v2/sv2-g053/r2 | publisher 财联社 | quote: \"Aster Robotics Platform was released under the Apache-2.0 license.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-033",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G079",
+        "scenarioFamily": "high-risk",
+        "archetype": "high-risk-lookalike",
+        "claimKind": "security-certification",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Fable Compiler Kit obtained critical-infrastructure security certification.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://mistral.ai.blog.invalid/sealed-eval-v2/sv2-g079/r1 | publisher Mistral Updates | quote: \"Fable Compiler Kit obtained critical-infrastructure security certification.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-034",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G042",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "official-distractor",
+        "claimKind": "context-window",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：微澜视觉模型的上下文窗口已提高到 192K tokens。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://qwenlm.github.io/sealed-eval-v2/sv2-g042/r1 | publisher Qwen | quote: \"微澜视觉模型的上下文窗口已提高到 192K tokens。\"\n- R2 | URL https://hiascend.com/sealed-eval-v2/sv2-g042/r2 | publisher Huawei Ascend | quote: \"微澜视觉模型本周发布了一篇关于招聘和办公空间的文章。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-035",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G019",
+        "scenarioFamily": "source-integrity",
+        "archetype": "official-name-in-path",
+        "claimKind": "benchmark",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：赤霄编译套件在封闭评测中的得分为 88.4。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://archive-4.invalid/openai.com/news/sealed-v2-sv2-g019-r1 | publisher AI Release Archive | quote: \"赤霄编译套件在封闭评测中的得分为 88.4。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-036",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G086",
+        "scenarioFamily": "entailment",
+        "archetype": "official-meta-claim",
+        "claimKind": "safety-audit",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=official;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Hearth Reasoner passed an independent red-team safety audit.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://ai.meta.com/sealed-eval-v2/sv2-g086/r1 | publisher Meta AI | quote: \"The page repeats a social-media claim that “Hearth Reasoner passed an independent red-team safety audit” without confirming it.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-037",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G077",
+        "scenarioFamily": "entailment",
+        "archetype": "community-meta",
+        "claimKind": "acquisition",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Fable Vision Stack completed its acquisition of Northbridge Data.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://pasteboard.invalid/sealed-eval-v2/sv2-g077/r1 | publisher Anonymous Paste | quote: \"The page repeats a social-media claim that “Fable Vision Stack completed its acquisition of Northbridge Data” without confirming it.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-038",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G035",
+        "scenarioFamily": "high-risk",
+        "archetype": "high-risk-single-media",
+        "claimKind": "compliance",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=media;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：银湾向量服务已完成适用监管要求的合规审查。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://wired.com/sealed-eval-v2/sv2-g035/r1 | publisher Wired | quote: \"银湾向量服务已完成适用监管要求的合规审查。\"\n- R2 | URL https://unverified-news.invalid/sealed-eval-v2/sv2-g035/r2 | publisher Independent Newsletter | quote: \"银湾向量服务已完成适用监管要求的合规审查。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-039",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G067",
+        "scenarioFamily": "high-risk",
+        "archetype": "high-risk-official",
+        "claimKind": "medical-certification",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Drift Vision Stack was cleared for use in clinical medical diagnosis.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://nvidia.com/sealed-eval-v2/sv2-g067/r1 | publisher NVIDIA | quote: \"Drift Vision Stack was cleared for use in clinical medical diagnosis.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-040",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G088",
+        "scenarioFamily": "corroboration",
+        "archetype": "official-distractor-media-pair",
+        "claimKind": "shipment",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Hearth Robotics Platform will begin volume shipments in the fourth quarter.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://xiaomi.com/sealed-eval-v2/sv2-g088/r1 | publisher Xiaomi AI | quote: \"Hearth Robotics Platform published an article about hiring and office space this week.\"\n- R2 | URL https://geekpark.net/sealed-eval-v2/sv2-g088/r2 | publisher 极客公园 | quote: \"Hearth Robotics Platform will begin volume shipments in the fourth quarter.\"\n- R3 | URL https://wired.com/sealed-eval-v2/sv2-g088/r3 | publisher Wired | quote: \"Hearth Robotics Platform will begin volume shipments in the fourth quarter.\"\nRequested citation ID: R2.",
+      "allowedCitationIds": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "requestedCitationId": "R2",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-041",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G005",
+        "scenarioFamily": "entailment",
+        "archetype": "official-hedge",
+        "claimKind": "weights",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：星槎向量服务的权重现可无需申请直接下载。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://nvidia.com/sealed-eval-v2/sv2-g005/r1 | publisher NVIDIA | quote: \"一位未具名人士称“星槎向量服务的权重现可无需申请直接下载”，但该说法尚未得到确认。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-042",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G051",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "media-pair-outside-id",
+        "claimKind": "availability",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Aster Reasoner became generally available to all developers on Monday.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://wired.com/sealed-eval-v2/sv2-g051/r1 | publisher Wired | quote: \"Aster Reasoner became generally available to all developers on Monday.\"\n- R2 | URL https://qbitai.com/sealed-eval-v2/sv2-g051/r2 | publisher 量子位 | quote: \"Aster Reasoner became generally available to all developers on Monday.\"\nRequested citation ID: OUT-SV2-G051.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "OUT-SV2-G051",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-043",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G092",
+        "scenarioFamily": "corroboration",
+        "archetype": "single-media",
+        "claimKind": "context-window",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Ivory Vision Stack increased its context window to 320K tokens.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://bloomberg.com/sealed-eval-v2/sv2-g092/r1 | publisher Bloomberg | quote: \"Ivory Vision Stack increased its context window to 320K tokens.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-044",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G089",
+        "scenarioFamily": "corroboration",
+        "archetype": "media-pair-direct",
+        "claimKind": "benchmark",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Hearth Compiler Kit scored 88.4 on the sealed benchmark.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://techcrunch.com/sealed-eval-v2/sv2-g089/r1 | publisher TechCrunch | quote: \"Hearth Compiler Kit scored 88.4 on the sealed benchmark.\"\n- R2 | URL https://caixin.com/sealed-eval-v2/sv2-g089/r2 | publisher Caixin | quote: \"Hearth Compiler Kit scored 88.4 on the sealed benchmark.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-045",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G003",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "official-outside-id",
+        "claimKind": "license",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：星槎机器人平台按 Apache-2.0 许可证开放。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://volcengine.com/sealed-eval-v2/sv2-g003/r1 | publisher Volcano Engine | quote: \"星槎机器人平台按 Apache-2.0 许可证开放。\"\n请求引用 ID：OUT-SV2-G003。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "OUT-SV2-G003",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-046",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G080",
+        "scenarioFamily": "source-integrity",
+        "archetype": "anonymous-paste",
+        "claimKind": "offline",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Fable Vector Service now supports fully offline on-device inference.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://paste-2.invalid/sealed-eval-v2/sv2-g080/r1 | publisher Anonymous upload | quote: \"Fable Vector Service now supports fully offline on-device inference.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-047",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G017",
+        "scenarioFamily": "source-integrity",
+        "archetype": "lookalike-suffix",
+        "claimKind": "acquisition",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：赤霄视觉模型对星桥数据公司的收购已经完成交割。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://anthropic.com.press.invalid/sealed-eval-v2/sv2-g017/r1 | publisher Anthropic Bulletin | quote: \"赤霄视觉模型对星桥数据公司的收购已经完成交割。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-048",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G039",
+        "scenarioFamily": "high-risk",
+        "archetype": "high-risk-lookalike",
+        "claimKind": "security-certification",
+        "risk": "high",
+        "route": "read-only-tool",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：青栈编译套件已取得关键基础设施安全认证。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://mistral.ai.blog.invalid/sealed-eval-v2/sv2-g039/r1 | publisher Mistral Updates | quote: \"青栈编译套件已取得关键基础设施安全认证。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-049",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G022",
+        "scenarioFamily": "source-integrity",
+        "archetype": "official-subdomain",
+        "claimKind": "context-window",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：岚谷视觉模型的上下文窗口已提高到 192K tokens。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://research.agibot.com/sealed-eval-v2/sv2-g022/r1 | publisher AgiBot | quote: \"岚谷视觉模型的上下文窗口已提高到 192K tokens。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-050",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G044",
+        "scenarioFamily": "entailment",
+        "archetype": "official-partial",
+        "claimKind": "security-certification",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=official;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：微澜编译套件已取得关键基础设施安全认证。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://ubtrobot.com/sealed-eval-v2/sv2-g044/r1 | publisher UBTECH | quote: \"微澜编译套件正在准备安全认证申请。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-051",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G031",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "media-with-partial-distractor",
+        "claimKind": "availability",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：银湾推理器已于周一向所有开发者开放。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://reuters.com/sealed-eval-v2/sv2-g031/r1 | publisher Reuters | quote: \"银湾推理器已于周一向所有开发者开放。\"\n- R2 | URL https://venturebeat.com/sealed-eval-v2/sv2-g031/r2 | publisher VentureBeat | quote: \"银湾推理器已于周一向所有开发者开放。\"\n- R3 | URL https://cls.cn/sealed-eval-v2/sv2-g031/r3 | publisher 财联社 | quote: \"银湾推理器发布了开发文档，但没有说明开放范围。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-052",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G071",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "media-with-partial-distractor",
+        "claimKind": "availability",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Elm Reasoner became generally available to all developers on Monday.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://technologyreview.com/sealed-eval-v2/sv2-g071/r1 | publisher MIT Technology Review | quote: \"Elm Reasoner became generally available to all developers on Monday.\"\n- R2 | URL https://stcn.com/sealed-eval-v2/sv2-g071/r2 | publisher 证券时报 | quote: \"Elm Reasoner became generally available to all developers on Monday.\"\n- R3 | URL https://engadget.com/sealed-eval-v2/sv2-g071/r3 | publisher Engadget | quote: \"Elm Reasoner published developer documentation without stating who can access the product.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-053",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G054",
+        "scenarioFamily": "conflict",
+        "archetype": "media-support-conflict-a",
+        "claimKind": "pricing",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Aster Compiler Kit reduced input pricing to $0.4 per million tokens.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://theverge.com/sealed-eval-v2/sv2-g054/r1 | publisher The Verge | quote: \"Aster Compiler Kit reduced input pricing to $0.4 per million tokens.\"\n- R2 | URL https://jiqizhixin.com/sealed-eval-v2/sv2-g054/r2 | publisher 机器之心 | quote: \"Aster Compiler Kit still charges $0.8 per million input tokens.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-054",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G095",
+        "scenarioFamily": "conflict",
+        "archetype": "media-support-conflict-b",
+        "claimKind": "weights",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Ivory Vector Service weights can now be downloaded without an application.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://reuters.com/sealed-eval-v2/sv2-g095/r1 | publisher Reuters | quote: \"Ivory Vector Service weights can now be downloaded without an application.\"\n- R2 | URL https://cls.cn/sealed-eval-v2/sv2-g095/r2 | publisher 财联社 | quote: \"Ivory Vector Service weights still require an application and approval before download.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-055",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G029",
+        "scenarioFamily": "mixed-tier",
+        "archetype": "media-community-contradiction",
+        "claimKind": "benchmark",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：玄鹭编译套件在封闭评测中的得分为 88.0。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://engadget.com/sealed-eval-v2/sv2-g029/r1 | publisher Engadget | quote: \"玄鹭编译套件在封闭评测中的得分为 88.0。\"\n- R2 | URL https://geekpark.net/sealed-eval-v2/sv2-g029/r2 | publisher 极客公园 | quote: \"玄鹭编译套件在封闭评测中的得分为 88.0。\"\n- R3 | URL https://social-mirror.invalid/sealed-eval-v2/sv2-g029/r3 | publisher Unofficial Social Mirror | quote: \"玄鹭编译套件在同一评测中的得分为 71.3，而不是声明的分数。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-056",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G082",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "official-distractor",
+        "claimKind": "context-window",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Garnet Vision Stack increased its context window to 192K tokens.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://alibabagroup.com/sealed-eval-v2/sv2-g082/r1 | publisher Alibaba Group | quote: \"Garnet Vision Stack increased its context window to 192K tokens.\"\n- R2 | URL https://xiaomi.com/sealed-eval-v2/sv2-g082/r2 | publisher Xiaomi AI | quote: \"Garnet Vision Stack published an article about hiring and office space this week.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-057",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G012",
+        "scenarioFamily": "corroboration",
+        "archetype": "single-media",
+        "claimKind": "context-window",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=media;B=1;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：澄海视觉模型的上下文窗口已提高到 320K tokens。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://bloomberg.com/sealed-eval-v2/sv2-g012/r1 | publisher Bloomberg | quote: \"澄海视觉模型的上下文窗口已提高到 320K tokens。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-058",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G045",
+        "scenarioFamily": "entailment",
+        "archetype": "official-hedge",
+        "claimKind": "weights",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：微澜向量服务的权重现可无需申请直接下载。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://amd.com/sealed-eval-v2/sv2-g045/r1 | publisher AMD | quote: \"一位未具名人士称“微澜向量服务的权重现可无需申请直接下载”，但该说法尚未得到确认。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-059",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G098",
+        "scenarioFamily": "source-integrity",
+        "archetype": "userinfo-lookalike",
+        "claimKind": "shipment",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Juniper Robotics Platform will begin volume shipments in the fourth quarter.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://reuters.com@mirror-6.invalid/sealed-v2-sv2-g098-r1 | publisher reuters.com mirror | quote: \"Juniper Robotics Platform will begin volume shipments in the fourth quarter.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-060",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G016",
+        "scenarioFamily": "source-integrity",
+        "archetype": "community-direct",
+        "claimKind": "regions",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：赤霄推理器已同时在新加坡和东京部署。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://models-forum.invalid/sealed-eval-v2/sv2-g016/r1 | publisher Model Builders Forum | quote: \"赤霄推理器已同时在新加坡和东京部署。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-061",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G008",
+        "scenarioFamily": "corroboration",
+        "archetype": "official-distractor-media-pair",
+        "claimKind": "shipment",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：云杉机器人平台将于第四季度开始批量出货。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://huawei.com/sealed-eval-v2/sv2-g008/r1 | publisher Huawei | quote: \"云杉机器人平台本周发布了一篇关于招聘和办公空间的文章。\"\n- R2 | URL https://geekpark.net/sealed-eval-v2/sv2-g008/r2 | publisher 极客公园 | quote: \"云杉机器人平台将于第四季度开始批量出货。\"\n- R3 | URL https://wired.com/sealed-eval-v2/sv2-g008/r3 | publisher Wired | quote: \"云杉机器人平台将于第四季度开始批量出货。\"\n请求引用 ID：R2。",
+      "allowedCitationIds": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "requestedCitationId": "R2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-062",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G055",
+        "scenarioFamily": "conflict",
+        "archetype": "media-support-conflict-b",
+        "claimKind": "weights",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Aster Vector Service weights can now be downloaded without an application.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://technologyreview.com/sealed-eval-v2/sv2-g055/r1 | publisher MIT Technology Review | quote: \"Aster Vector Service weights can now be downloaded without an application.\"\n- R2 | URL https://engadget.com/sealed-eval-v2/sv2-g055/r2 | publisher Engadget | quote: \"Aster Vector Service weights still require an application and approval before download.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-063",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G011",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "media-pair-outside-id",
+        "claimKind": "availability",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：澄海推理器已于周一向所有开发者开放。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://36kr.com/sealed-eval-v2/sv2-g011/r1 | publisher 36氪 | quote: \"澄海推理器已于周一向所有开发者开放。\"\n- R2 | URL https://theverge.com/sealed-eval-v2/sv2-g011/r2 | publisher The Verge | quote: \"澄海推理器已于周一向所有开发者开放。\"\n请求引用 ID：OUT-SV2-G011。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "OUT-SV2-G011",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-064",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G072",
+        "scenarioFamily": "entailment",
+        "archetype": "two-media-meta",
+        "claimKind": "context-window",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Elm Vision Stack increased its context window to 320K tokens.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://geekpark.net/sealed-eval-v2/sv2-g072/r1 | publisher 极客公园 | quote: \"The page repeats a social-media claim that “Elm Vision Stack increased its context window to 320K tokens” without confirming it.\"\n- R2 | URL https://wired.com/sealed-eval-v2/sv2-g072/r2 | publisher Wired | quote: \"The page repeats a social-media claim that “Elm Vision Stack increased its context window to 320K tokens” without confirming it.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-065",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G058",
+        "scenarioFamily": "source-integrity",
+        "archetype": "userinfo-lookalike",
+        "claimKind": "shipment",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Birch Robotics Platform will begin volume shipments in the fourth quarter.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://reuters.com@mirror-1.invalid/sealed-v2-sv2-g058-r1 | publisher reuters.com mirror | quote: \"Birch Robotics Platform will begin volume shipments in the fourth quarter.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-066",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G006",
+        "scenarioFamily": "entailment",
+        "archetype": "official-meta-claim",
+        "claimKind": "safety-audit",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=official;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：云杉推理器已通过独立红队安全审计。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://deepmind.google/sealed-eval-v2/sv2-g006/r1 | publisher Google DeepMind | quote: \"该页面转述了社交媒体上关于“云杉推理器已通过独立红队安全审计”的说法，但没有确认其真实性。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-067",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G023",
+        "scenarioFamily": "source-integrity",
+        "archetype": "official-github-prefix",
+        "claimKind": "license",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：岚谷机器人平台按 Apache-2.0 许可证开放。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://github.com/deepseek-ai/sealed-v2-sv2-g023-r1 | publisher DeepSeek GitHub | quote: \"岚谷机器人平台按 Apache-2.0 许可证开放。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-068",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G066",
+        "scenarioFamily": "conflict",
+        "archetype": "official-media-conflict",
+        "claimKind": "regions",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=official;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Drift Reasoner was deployed in both Singapore and Tokyo.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://unitree.com/sealed-eval-v2/sv2-g066/r1 | publisher Unitree | quote: \"Drift Reasoner is only being piloted in Singapore and has not reached a second city.\"\n- R2 | URL https://stcn.com/sealed-eval-v2/sv2-g066/r2 | publisher 证券时报 | quote: \"Drift Reasoner was deployed in both Singapore and Tokyo.\"\nRequested citation ID: R2.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R2",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-069",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G002",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "official-distractor",
+        "claimKind": "context-window",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：星槎视觉模型的上下文窗口已提高到 192K tokens。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://about.fb.com/sealed-eval-v2/sv2-g002/r1 | publisher Meta Newsroom | quote: \"星槎视觉模型的上下文窗口已提高到 192K tokens。\"\n- R2 | URL https://huawei.com/sealed-eval-v2/sv2-g002/r2 | publisher Huawei | quote: \"星槎视觉模型本周发布了一篇关于招聘和办公空间的文章。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-070",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G090",
+        "scenarioFamily": "corroboration",
+        "archetype": "media-pair-distractor",
+        "claimKind": "offline",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Hearth Vector Service now supports fully offline on-device inference.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://venturebeat.com/sealed-eval-v2/sv2-g090/r1 | publisher VentureBeat | quote: \"Hearth Vector Service now supports fully offline on-device inference.\"\n- R2 | URL https://cls.cn/sealed-eval-v2/sv2-g090/r2 | publisher 财联社 | quote: \"Hearth Vector Service now supports fully offline on-device inference.\"\n- R3 | URL https://wsj.com/sealed-eval-v2/sv2-g090/r3 | publisher The Wall Street Journal | quote: \"Hearth Vector Service published an article about hiring and office space this week.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-071",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G083",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "official-outside-id",
+        "claimKind": "license",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Garnet Robotics Platform was released under the Apache-2.0 license.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://hunyuan.tencent.com/sealed-eval-v2/sv2-g083/r1 | publisher Tencent Hunyuan | quote: \"Garnet Robotics Platform was released under the Apache-2.0 license.\"\nRequested citation ID: OUT-SV2-G083.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "OUT-SV2-G083",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-072",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G001",
+        "scenarioFamily": "corroboration",
+        "archetype": "official-direct",
+        "claimKind": "availability",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：星槎推理器已于周一向所有开发者开放。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://openai.com/sealed-eval-v2/sv2-g001/r1 | publisher OpenAI | quote: \"星槎推理器已于周一向所有开发者开放。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-073",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G064",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "official-request-community",
+        "claimKind": "pricing",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Cinder Compiler Kit reduced input pricing to $0.2 per million tokens.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://about.fb.com/sealed-eval-v2/sv2-g064/r1 | publisher Meta Newsroom | quote: \"Cinder Compiler Kit reduced input pricing to $0.2 per million tokens.\"\n- R2 | URL https://social-mirror.invalid/sealed-eval-v2/sv2-g064/r2 | publisher Unofficial Social Mirror | quote: \"Cinder Compiler Kit reduced input pricing to $0.2 per million tokens.\"\nRequested citation ID: R2.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R2",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-074",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G087",
+        "scenarioFamily": "conflict",
+        "archetype": "official-conflict",
+        "claimKind": "acquisition",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Hearth Vision Stack completed its acquisition of Northbridge Data.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://seed.bytedance.com/sealed-eval-v2/sv2-g087/r1 | publisher ByteDance Seed | quote: \"Hearth Vision Stack completed its acquisition of Northbridge Data.\"\n- R2 | URL https://fftai.com/sealed-eval-v2/sv2-g087/r2 | publisher Fourier Intelligence | quote: \"Hearth Vision Stack is still negotiating with Northbridge Data and has not closed an acquisition.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-075",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G047",
+        "scenarioFamily": "conflict",
+        "archetype": "official-conflict",
+        "claimKind": "acquisition",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=official;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：远岫视觉模型对星桥数据公司的收购已经完成交割。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://huggingface.co/sealed-eval-v2/sv2-g047/r1 | publisher Hugging Face | quote: \"远岫视觉模型对星桥数据公司的收购已经完成交割。\"\n- R2 | URL https://agibot.com/sealed-eval-v2/sv2-g047/r2 | publisher AgiBot | quote: \"远岫视觉模型与星桥数据公司仍在谈判，交易尚未交割。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-076",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G093",
+        "scenarioFamily": "corroboration",
+        "archetype": "same-publisher-media",
+        "claimKind": "license",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=media;B=1;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Ivory Robotics Platform was released under the Apache-2.0 license.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://wire.engadget.com/sealed-eval-v2/sv2-g093/r1 | publisher Engadget | quote: \"Ivory Robotics Platform was released under the Apache-2.0 license.\"\n- R2 | URL https://brief.engadget.com/sealed-eval-v2/sv2-g093/r2 | publisher Engadget | quote: \"Ivory Robotics Platform was released under the Apache-2.0 license.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-077",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G027",
+        "scenarioFamily": "high-risk",
+        "archetype": "high-risk-official",
+        "claimKind": "medical-certification",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：玄鹭视觉模型已获准用于临床医疗诊断。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://tesla.com/sealed-eval-v2/sv2-g027/r1 | publisher Tesla AI | quote: \"玄鹭视觉模型已获准用于临床医疗诊断。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-078",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G030",
+        "scenarioFamily": "source-integrity",
+        "archetype": "publisher-spoof-media-distractor",
+        "claimKind": "compliance",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=media;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：玄鹭向量服务已完成适用监管要求的合规审查。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://press-openai-1.invalid/sealed-eval-v2/sv2-g030/r1 | publisher OpenAI | quote: \"玄鹭向量服务已完成适用监管要求的合规审查。\"\n- R2 | URL https://qbitai.com/sealed-eval-v2/sv2-g030/r2 | publisher 量子位 | quote: \"玄鹭向量服务本周发布了一篇关于招聘和办公空间的文章。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-079",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G062",
+        "scenarioFamily": "source-integrity",
+        "archetype": "official-subdomain",
+        "claimKind": "context-window",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Cinder Vision Stack increased its context window to 192K tokens.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://research.fftai.com/sealed-eval-v2/sv2-g062/r1 | publisher Fourier Intelligence | quote: \"Cinder Vision Stack increased its context window to 192K tokens.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-080",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G074",
+        "scenarioFamily": "high-risk",
+        "archetype": "high-risk-media-pair",
+        "claimKind": "security-certification",
+        "risk": "high",
+        "route": "read-only-tool",
+        "goldRationale": "A=media;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Elm Compiler Kit obtained critical-infrastructure security certification.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://venturebeat.com/sealed-eval-v2/sv2-g074/r1 | publisher VentureBeat | quote: \"Elm Compiler Kit obtained critical-infrastructure security certification.\"\n- R2 | URL https://cls.cn/sealed-eval-v2/sv2-g074/r2 | publisher 财联社 | quote: \"Elm Compiler Kit obtained critical-infrastructure security certification.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-081",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G060",
+        "scenarioFamily": "source-integrity",
+        "archetype": "fake-github-org",
+        "claimKind": "compliance",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Birch Vector Service completed its review for all applicable regulatory requirements.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://github.com/QwenLM-fanclub/sealed-v2-sv2-g060-r1 | publisher Qwen Community GitHub | quote: \"Birch Vector Service completed its review for all applicable regulatory requirements.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-082",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G009",
+        "scenarioFamily": "corroboration",
+        "archetype": "media-pair-direct",
+        "claimKind": "benchmark",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：云杉编译套件在封闭评测中的得分为 88.1。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://techcrunch.com/sealed-eval-v2/sv2-g009/r1 | publisher TechCrunch | quote: \"云杉编译套件在封闭评测中的得分为 88.1。\"\n- R2 | URL https://caixin.com/sealed-eval-v2/sv2-g009/r2 | publisher Caixin | quote: \"云杉编译套件在封闭评测中的得分为 88.1。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-083",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G069",
+        "scenarioFamily": "mixed-tier",
+        "archetype": "media-community-contradiction",
+        "claimKind": "benchmark",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Drift Compiler Kit scored 88.5 on the sealed benchmark.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://cls.cn/sealed-eval-v2/sv2-g069/r1 | publisher 财联社 | quote: \"Drift Compiler Kit scored 88.5 on the sealed benchmark.\"\n- R2 | URL https://wsj.com/sealed-eval-v2/sv2-g069/r2 | publisher The Wall Street Journal | quote: \"Drift Compiler Kit scored 88.5 on the sealed benchmark.\"\n- R3 | URL https://social-mirror.invalid/sealed-eval-v2/sv2-g069/r3 | publisher Unofficial Social Mirror | quote: \"Drift Compiler Kit scored 71.3 on the same benchmark, not the claimed result.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-084",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G052",
+        "scenarioFamily": "corroboration",
+        "archetype": "single-media",
+        "claimKind": "context-window",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Aster Vision Stack increased its context window to 320K tokens.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://caixin.com/sealed-eval-v2/sv2-g052/r1 | publisher Caixin | quote: \"Aster Vision Stack increased its context window to 320K tokens.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-085",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G084",
+        "scenarioFamily": "entailment",
+        "archetype": "official-partial",
+        "claimKind": "security-certification",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=official;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Garnet Compiler Kit obtained critical-infrastructure security certification.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://agibot.com/sealed-eval-v2/sv2-g084/r1 | publisher AgiBot | quote: \"Garnet Compiler Kit is preparing an application for security certification.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-086",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G081",
+        "scenarioFamily": "corroboration",
+        "archetype": "official-direct",
+        "claimKind": "availability",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Garnet Reasoner became generally available to all developers on Monday.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://mistral.ai/sealed-eval-v2/sv2-g081/r1 | publisher Mistral AI | quote: \"Garnet Reasoner became generally available to all developers on Monday.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-087",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G091",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "media-pair-outside-id",
+        "claimKind": "availability",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Ivory Reasoner became generally available to all developers on Monday.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://36kr.com/sealed-eval-v2/sv2-g091/r1 | publisher 36氪 | quote: \"Ivory Reasoner became generally available to all developers on Monday.\"\n- R2 | URL https://theverge.com/sealed-eval-v2/sv2-g091/r2 | publisher The Verge | quote: \"Ivory Reasoner became generally available to all developers on Monday.\"\nRequested citation ID: OUT-SV2-G091.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "OUT-SV2-G091",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-088",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G040",
+        "scenarioFamily": "source-integrity",
+        "archetype": "anonymous-paste",
+        "claimKind": "offline",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：青栈向量服务已支持完全离线的端侧推理。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://paste-6.invalid/sealed-eval-v2/sv2-g040/r1 | publisher Anonymous upload | quote: \"青栈向量服务已支持完全离线的端侧推理。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-089",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G028",
+        "scenarioFamily": "high-risk",
+        "archetype": "high-risk-official-conflict",
+        "claimKind": "data-retention",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：玄鹭机器人平台保证不会保留任何用户输入。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://deepseek.com/sealed-eval-v2/sv2-g028/r1 | publisher DeepSeek | quote: \"玄鹭机器人平台保证不会保留任何用户输入。\"\n- R2 | URL https://volcengine.com/sealed-eval-v2/sv2-g028/r2 | publisher Volcano Engine | quote: \"玄鹭机器人平台的政策允许保留用户输入三十天。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-090",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G020",
+        "scenarioFamily": "source-integrity",
+        "archetype": "fake-github-org",
+        "claimKind": "compliance",
+        "risk": "high",
+        "route": "read-only-tool",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：赤霄向量服务已完成适用监管要求的合规审查。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://github.com/QwenLM-fanclub/sealed-v2-sv2-g020-r1 | publisher Qwen Community GitHub | quote: \"赤霄向量服务已完成适用监管要求的合规审查。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-091",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G050",
+        "scenarioFamily": "corroboration",
+        "archetype": "media-pair-distractor",
+        "claimKind": "offline",
+        "risk": "ordinary",
+        "route": "read-only-tool",
+        "goldRationale": "A=media;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：远岫向量服务已支持完全离线的端侧推理。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://stcn.com/sealed-eval-v2/sv2-g050/r1 | publisher 证券时报 | quote: \"远岫向量服务已支持完全离线的端侧推理。\"\n- R2 | URL https://engadget.com/sealed-eval-v2/sv2-g050/r2 | publisher Engadget | quote: \"远岫向量服务已支持完全离线的端侧推理。\"\n- R3 | URL https://geekpark.net/sealed-eval-v2/sv2-g050/r3 | publisher 极客公园 | quote: \"远岫向量服务本周发布了一篇关于招聘和办公空间的文章。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        }
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      }
+    },
+    {
+      "id": "sealed-v2-092",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G070",
+        "scenarioFamily": "source-integrity",
+        "archetype": "publisher-spoof-media-distractor",
+        "claimKind": "compliance",
+        "risk": "high",
+        "route": "verification",
+        "goldRationale": "A=media;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Drift Vector Service completed its review for all applicable regulatory requirements.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://press-openai-6.invalid/sealed-eval-v2/sv2-g070/r1 | publisher OpenAI | quote: \"Drift Vector Service completed its review for all applicable regulatory requirements.\"\n- R2 | URL https://theverge.com/sealed-eval-v2/sv2-g070/r2 | publisher The Verge | quote: \"Drift Vector Service published an article about hiring and office space this week.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-093",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G007",
+        "scenarioFamily": "conflict",
+        "archetype": "official-conflict",
+        "claimKind": "acquisition",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=1;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：云杉视觉模型对星桥数据公司的收购已经完成交割。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://bigmodel.cn/sealed-eval-v2/sv2-g007/r1 | publisher BigModel | quote: \"云杉视觉模型对星桥数据公司的收购已经完成交割。\"\n- R2 | URL https://ubtrobot.com/sealed-eval-v2/sv2-g007/r2 | publisher UBTECH | quote: \"云杉视觉模型与星桥数据公司仍在谈判，交易尚未交割。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-094",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G078",
+        "scenarioFamily": "conflict-resistance",
+        "archetype": "community-contradictions",
+        "claimKind": "shipment",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Fable Robotics Platform will begin volume shipments in the fourth quarter.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://chat-archive.invalid/sealed-eval-v2/sv2-g078/r1 | publisher Community Chat Archive | quote: \"Fable Robotics Platform will begin volume shipments in the fourth quarter.\"\n- R2 | URL https://chat-archive.invalid/sealed-eval-v2/sv2-g078/r2 | publisher Community Chat Archive | quote: \"Fable Robotics Platform delayed volume shipments until next year.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-095",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G041",
+        "scenarioFamily": "corroboration",
+        "archetype": "official-direct",
+        "claimKind": "availability",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：微澜推理器已于周一向所有开发者开放。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://anthropic.com/sealed-eval-v2/sv2-g041/r1 | publisher Anthropic | quote: \"微澜推理器已于周一向所有开发者开放。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-096",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G063",
+        "scenarioFamily": "source-integrity",
+        "archetype": "official-github-prefix",
+        "claimKind": "license",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Cinder Robotics Platform was released under the Apache-2.0 license.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://github.com/deepseek-ai/sealed-v2-sv2-g063-r1 | publisher DeepSeek GitHub | quote: \"Cinder Robotics Platform was released under the Apache-2.0 license.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-097",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G038",
+        "scenarioFamily": "conflict-resistance",
+        "archetype": "community-contradictions",
+        "claimKind": "shipment",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：青栈机器人平台将于第四季度开始批量出货。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://chat-archive.invalid/sealed-eval-v2/sv2-g038/r1 | publisher Community Chat Archive | quote: \"青栈机器人平台将于第四季度开始批量出货。\"\n- R2 | URL https://chat-archive.invalid/sealed-eval-v2/sv2-g038/r2 | publisher Community Chat Archive | quote: \"青栈机器人平台的批量出货计划已推迟到明年。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-098",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G099",
+        "scenarioFamily": "source-integrity",
+        "archetype": "official-name-in-path",
+        "claimKind": "benchmark",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Juniper Compiler Kit scored 88.0 on the sealed benchmark.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://archive-0.invalid/openai.com/news/sealed-v2-sv2-g099-r1 | publisher AI Release Archive | quote: \"Juniper Compiler Kit scored 88.0 on the sealed benchmark.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    },
+    {
+      "id": "sealed-v2-099",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "SV2-G025",
+        "scenarioFamily": "citation-boundary",
+        "archetype": "official-with-partial-distractor",
+        "claimKind": "weights",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=official;B=1;C=0;D=1;E=1"
+      },
+      "prompt": "Synthetic scenario, not real news.\n主声明（必须按全部限定条件判断）：岚谷向量服务的权重现可无需申请直接下载。\n证据包（逐条按 URL 主机和引文内容判断）：\n- R1 | URL https://seed.bytedance.com/sealed-eval-v2/sv2-g025/r1 | publisher ByteDance Seed | quote: \"岚谷向量服务的权重现可无需申请直接下载。\"\n- R2 | URL https://fftai.com/sealed-eval-v2/sv2-g025/r2 | publisher Fourier Intelligence | quote: \"岚谷向量服务发布了模型卡，但没有提供权重下载。\"\n请求引用 ID：R1。",
+      "allowedCitationIds": [
+        "R1",
+        "R2"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      }
+    },
+    {
+      "id": "sealed-v2-100",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "SV2-G076",
+        "scenarioFamily": "entailment",
+        "archetype": "community-hedge",
+        "claimKind": "regions",
+        "risk": "ordinary",
+        "route": "verification",
+        "goldRationale": "A=community;B=0;C=0;D=0;E=0"
+      },
+      "prompt": "Synthetic scenario, not real news.\nPrimary claim (judge every stated qualifier): Fable Reasoner was deployed in both Singapore and Tokyo.\nEvidence Packet (judge each URL host and quote independently):\n- R1 | URL https://models-forum.invalid/sealed-eval-v2/sv2-g076/r1 | publisher Model Builders Forum | quote: \"An unnamed person said that “Fable Reasoner was deployed in both Singapore and Tokyo,” but the report remains unconfirmed.\"\nRequested citation ID: R1.",
+      "allowedCitationIds": [
+        "R1"
+      ],
+      "requestedCitationId": "R1",
+      "toolExpectation": {
+        "mode": "forbidden"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      }
+    }
+  ]
+}

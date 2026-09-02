@@ -11,8 +11,8 @@ spring:
     #   loginTimeout=10    — database login timeout (s)
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:newsclaw}?currentSchema=newsclaw&connectTimeout=10&socketTimeout=30&loginTimeout=10
     driver-class-name: org.postgresql.Driver
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    username: ${DB_USERNAME:}
+    password: ${DB_PASSWORD:}
     hikari:
       maximum-pool-size: 30
       minimum-idle: 5
@@ -32,16 +32,18 @@ spring:
     # PostgreSQL and KingbaseES share the same migration tree
     # (db/migration/kingbase) because they use the same SQL dialect.
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:newsclaw}?currentSchema=newsclaw&connectTimeout=10&socketTimeout=30&loginTimeout=10
-    user: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    user: ${DB_USERNAME:}
+    password: ${DB_PASSWORD:}
     locations:
       - classpath:db/migration/kingbase
     # Ensure the target schema exists before migrating (PostgreSQL won't
     # auto-create a non-public schema).
     init-sqls:
       - CREATE SCHEMA IF NOT EXISTS newsclaw
-    # Skip checksum validation so an in-place migration edit doesn't block startup.
-    validate-on-migrate: false
+    # Keep checksum validation enabled. If an existing installation reports
+    # drift, review the migration and run an explicit, controlled repair; do
+    # not hide the mismatch during every startup.
+    validate-on-migrate: ${NEWSCLAW_FLYWAY_VALIDATE_ON_MIGRATE:true}
 
   h2:
     console:
@@ -64,6 +66,28 @@ mybatis-plus:
 # NEWSCLAW_WIKI_ALLOWED_SOURCE_ROOTS to permit specific roots. The default profile
 # (H2 / desktop / single-tenant) leaves this off.
 newsclaw:
+  webchat:
+    public-enabled: ${NEWSCLAW_WEBCHAT_PUBLIC_ENABLED:false}
+  ai-news:
+    require-event-context: ${NEWSCLAW_AI_NEWS_REQUIRE_EVENT_CONTEXT:true}
+    strict-evidence-boundary: ${NEWSCLAW_AI_NEWS_STRICT_EVIDENCE_BOUNDARY:true}
+  security:
+    production-mode: ${NEWSCLAW_PRODUCTION_MODE:true}
+  setup:
+    allow-anonymous: ${NEWSCLAW_SETUP_ALLOW_ANONYMOUS:false}
+  tools:
+    screenshot:
+      enabled: false
+    external-publish:
+      enabled: false
+  mcp:
+    enabled: false
+  plugin:
+    enabled: false
+  sso:
+    enabled: false
+    feishu:
+      enabled: false
   wiki:
     require-allowed-roots: true
     allowed-source-roots: ${NEWSCLAW_WIKI_ALLOWED_SOURCE_ROOTS:}

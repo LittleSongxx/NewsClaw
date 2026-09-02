@@ -141,6 +141,12 @@ public class MemoryProperties {
      */
     private int memoryMdMaxChars = 8000;
 
+    /** Total PERSONAL file block injected per turn by the builtin provider. */
+    private int ownerBlockMaxChars = 12000;
+
+    /** Only the newest N PERSONAL daily ledgers are injected unconditionally. */
+    private int ownerDailyMaxFiles = 7;
+
     // ==================== Long-term memory write governance ====================
 
     /**
@@ -160,6 +166,9 @@ public class MemoryProperties {
 
     /** Require a conversation, event, Wiki, or explicit user source pointer for durable memory. */
     private boolean requireSourceRef = true;
+
+    /** Crash-recovery TTL for ledger rows left PENDING before the file write completed. */
+    private int governancePendingTtlMinutes = 30;
 
     // ==================== Dream v2 Feature Flags ====================
 

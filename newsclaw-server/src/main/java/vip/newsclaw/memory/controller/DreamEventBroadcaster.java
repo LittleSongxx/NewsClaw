@@ -30,15 +30,19 @@ public class DreamEventBroadcaster {
     private final ObjectMapper objectMapper;
     private final List<EmitterEntry> emitters = new CopyOnWriteArrayList<>();
 
-    record EmitterEntry(Long agentId, SseEmitter emitter) {}
+    record EmitterEntry(Long agentId, String ownerKey, SseEmitter emitter) {}
 
     /**
      * Register a new SSE emitter for an agent.
      */
     public SseEmitter register(Long agentId) {
+        return register(agentId, null);
+    }
+
+    public SseEmitter register(Long agentId, String ownerKey) {
         // RFC-058 PR-1: Utf8SseEmitter 显式 charset=UTF-8，防止中文 SSE 乱码
         SseEmitter emitter = new Utf8SseEmitter(300_000L); // 5 min timeout
-        EmitterEntry entry = new EmitterEntry(agentId, emitter);
+        EmitterEntry entry = new EmitterEntry(agentId, ownerKey, emitter);
         emitters.add(entry);
         emitter.onCompletion(() -> emitters.remove(entry));
         emitter.onTimeout(() -> emitters.remove(entry));
@@ -79,7 +83,8 @@ public class DreamEventBroadcaster {
 
         List<EmitterEntry> dead = new java.util.ArrayList<>();
         for (EmitterEntry entry : emitters) {
-            if (!entry.agentId().equals(agentId)) continue;
+            if (!entry.agentId().equals(agentId)
+                    || !java.util.Objects.equals(entry.ownerKey(), report.ownerKey())) continue;
             try {
                 entry.emitter().send(SseEmitter.event()
                         .name(eventType)

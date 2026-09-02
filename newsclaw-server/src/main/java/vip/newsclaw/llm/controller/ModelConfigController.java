@@ -103,6 +103,9 @@ public class ModelConfigController {
     @RequireWorkspaceRole("viewer")
     public R<ActiveModelsInfo> getActiveModel() {
         ModelConfigEntity model = modelConfigService.getDefaultModel();
+        if (model == null) {
+            return R.fail(404, "No active model configured");
+        }
         ActiveModelsInfo info = new ActiveModelsInfo();
         info.setActiveLlm(new ModelSlotConfig(model.getProvider(), model.getModelName()));
         return R.ok(info);
@@ -112,6 +115,7 @@ public class ModelConfigController {
     @PutMapping("/active")
     @RequireGlobalAdmin
     public R<ActiveModelsInfo> setActiveModel(@RequestBody ModelSlotRequest request) {
+        if (request == null) return R.fail(400, "request body is required");
         ModelConfigEntity model = modelConfigService.setDefaultModel(request.getProviderId(), request.getModel());
         ActiveModelsInfo info = new ActiveModelsInfo();
         info.setActiveLlm(new ModelSlotConfig(model.getProvider(), model.getModelName()));
@@ -123,6 +127,7 @@ public class ModelConfigController {
     @RequireGlobalAdmin
     public R<ProviderInfoDTO> updateProviderConfig(@PathVariable String providerId,
                                                    @RequestBody ProviderConfigRequest request) {
+        if (request == null) return R.fail(400, "request body is required");
         ProviderInfoDTO updated = modelProviderService.updateProviderConfig(providerId, request);
         // Provider 的 apiKey/baseUrl 变化时，清空 embedding factory 的缓存，确保下次用新凭证
         embeddingModelFactory.evictAll();
@@ -133,6 +138,7 @@ public class ModelConfigController {
     @PostMapping("/custom-providers")
     @RequireGlobalAdmin
     public R<ProviderInfoDTO> createCustomProvider(@RequestBody CreateCustomProviderRequest request) {
+        if (request == null) return R.fail(400, "request body is required");
         return R.ok(modelProviderService.createCustomProvider(request));
     }
 
@@ -165,6 +171,7 @@ public class ModelConfigController {
     @RequireGlobalAdmin
     public R<ProviderInfoDTO> addProviderModel(@PathVariable String providerId,
                                                @RequestBody AddProviderModelRequest request) {
+        if (request == null) return R.fail(400, "request body is required");
         return R.ok(modelProviderService.addModel(providerId, request));
     }
 
@@ -181,6 +188,7 @@ public class ModelConfigController {
     @RequireGlobalAdmin
     public R<ProviderInfoDTO> updateModelContextWindow(@PathVariable String providerId,
                                                        @RequestBody UpdateModelContextWindowRequest request) {
+        if (request == null) return R.fail(400, "request body is required");
         return R.ok(modelProviderService.updateModelContextWindow(
                 providerId, request.getModelId(), request.getMaxInputTokens()));
     }
@@ -196,6 +204,7 @@ public class ModelConfigController {
     @PostMapping
     @RequireGlobalAdmin
     public R<ModelConfigEntity> create(@RequestBody ModelConfigEntity entity) {
+        if (entity == null) return R.fail(400, "request body is required");
         return R.ok(modelConfigService.createModel(entity));
     }
 
@@ -203,6 +212,7 @@ public class ModelConfigController {
     @PutMapping("/{id}")
     @RequireGlobalAdmin
     public R<ModelConfigEntity> update(@PathVariable Long id, @RequestBody ModelConfigEntity entity) {
+        if (entity == null) return R.fail(400, "request body is required");
         entity.setId(id);
         return R.ok(modelConfigService.updateModel(entity));
     }
@@ -236,6 +246,7 @@ public class ModelConfigController {
     @RequireGlobalAdmin
     public R<Map<String, Integer>> applyDiscoveredModels(@PathVariable String providerId,
                                                           @RequestBody ApplyDiscoveredModelsRequest request) {
+        if (request == null) return R.fail(400, "request body is required");
         int added = modelDiscoveryService.batchAddModels(providerId, request.getModelIds());
         return R.ok(Map.of("added", added));
     }
@@ -273,6 +284,11 @@ public class ModelConfigController {
         Map<String, Object> result = new HashMap<>();
         try {
             ModelConfigEntity config = modelConfigService.getModel(modelId);
+            if (config == null) {
+                result.put("success", false);
+                result.put("message", "模型不存在: " + modelId);
+                return R.ok(result);
+            }
             if (!"embedding".equals(config.getModelType())) {
                 result.put("success", false);
                 result.put("message", "模型类型不是 embedding: " + config.getModelType());
@@ -317,6 +333,7 @@ public class ModelConfigController {
     @PostMapping("/embedding/default")
     @RequireGlobalAdmin
     public R<Void> setDefaultEmbedding(@RequestBody Map<String, Object> body) {
+        if (body == null) return R.fail(400, "request body is required");
         Object v = body.get("modelId");
         String value = v == null ? "" : v.toString();
 

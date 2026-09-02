@@ -57,6 +57,7 @@ public class SkillInstallController {
     @RequireWorkspaceRole("admin")
     public R<InstallTask> startInstall(@RequestBody InstallRequest request,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        if (request == null) return R.fail(400, "request body is required");
         if (request.getBundleUrl() == null || request.getBundleUrl().isBlank()) {
             return R.fail("bundleUrl is required");
         }
@@ -69,10 +70,15 @@ public class SkillInstallController {
     @Operation(summary = "查询安装任务状态")
     @GetMapping("/status/{taskId}")
     @RequireWorkspaceRole("admin")
-    public R<InstallTask> getStatus(@PathVariable String taskId) {
+    public R<InstallTask> getStatus(@PathVariable String taskId,
+                                    @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         InstallTask task = skillInstaller.getTaskStatus(taskId);
         if (task == null) {
             return R.fail("Task not found: " + taskId);
+        }
+        if (task.getWorkspaceId() != null && !task.getWorkspaceId().equals(
+                workspaceId == null ? vip.newsclaw.skill.service.SkillService.DEFAULT_WORKSPACE_ID : workspaceId)) {
+            return R.fail(404, "Task not found: " + taskId);
         }
         return R.ok(task);
     }
@@ -80,7 +86,13 @@ public class SkillInstallController {
     @Operation(summary = "取消安装任务")
     @PostMapping("/cancel/{taskId}")
     @RequireWorkspaceRole("admin")
-    public R<Void> cancel(@PathVariable String taskId) {
+    public R<Void> cancel(@PathVariable String taskId,
+                          @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        InstallTask task = skillInstaller.getTaskStatus(taskId);
+        if (task == null || (task.getWorkspaceId() != null && !task.getWorkspaceId().equals(
+                workspaceId == null ? vip.newsclaw.skill.service.SkillService.DEFAULT_WORKSPACE_ID : workspaceId))) {
+            return R.fail(404, "Task not found: " + taskId);
+        }
         skillInstaller.cancelTask(taskId);
         return R.ok();
     }
@@ -94,6 +106,7 @@ public class SkillInstallController {
             @RequestParam(defaultValue = "false") Boolean overwrite,
             @RequestParam(required = false) String targetName,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        if (zipFile == null || zipFile.isEmpty()) return R.fail(400, "file is required");
         // 校验文件类型
         String filename = zipFile.getOriginalFilename();
         if (filename == null || !filename.toLowerCase().endsWith(".zip")) {

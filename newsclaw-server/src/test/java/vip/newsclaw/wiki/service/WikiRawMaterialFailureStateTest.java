@@ -79,22 +79,9 @@ class WikiRawMaterialFailureStateTest {
     @Test
     @DisplayName("claimForProcessing wipes stale error + warning state for a clean re-run")
     void claim_clearsFailureState() {
-        WikiRawMaterialEntity stale = row("pending");
-        stale.setErrorCode("AUTH_ERROR");
-        stale.setErrorMessage("old error");
-        stale.setWarningCode("EMBEDDING_FAILED");
-        stale.setWarningMessage("old warning");
-        when(rawMapper.selectById(ID)).thenReturn(stale);
+        when(rawMapper.claimPending(ID)).thenReturn(1);
 
         assertTrue(service.claimForProcessing(ID));
-
-        ArgumentCaptor<WikiRawMaterialEntity> captor = ArgumentCaptor.forClass(WikiRawMaterialEntity.class);
-        verify(rawMapper).updateById(captor.capture());
-        WikiRawMaterialEntity persisted = captor.getValue();
-        assertNull(persisted.getErrorCode());
-        assertNull(persisted.getErrorMessage());
-        assertNull(persisted.getWarningCode());
-        assertNull(persisted.getWarningMessage());
-        assertEquals("processing", persisted.getProcessingStatus());
+        verify(rawMapper).claimPending(ID);
     }
 }

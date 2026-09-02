@@ -131,10 +131,29 @@ class WebChatStreamE2ETest {
     }
 
     private HttpRequest streamPost(String apiKey, String bodyJson) {
-        return HttpRequest.newBuilder()
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(streamUri())
                 .timeout(HTTP_TIMEOUT)
                 .header("X-MC-Key", apiKey)
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream");
+        java.util.regex.Matcher visitor = java.util.regex.Pattern
+                .compile("\\\"visitorId\\\":\\\"([^\\\"]+)\\\"").matcher(bodyJson);
+        Long channelId = null;
+        if (API_KEY.equals(apiKey)) channelId = CHANNEL_ID;
+        else if ("testkey1noagent00".equals(apiKey)) channelId = 9_148_002L;
+        if (channelId != null && visitor.find()) {
+            builder.header("X-MC-Visitor-Token",
+                    WebChatController.computeVisitorToken(SECRET, channelId, visitor.group(1)));
+        }
+        return builder
+                .POST(HttpRequest.BodyPublishers.ofString(bodyJson, StandardCharsets.UTF_8))
+                .build();
+    }
+
+    private HttpRequest streamPostWithoutVisitorToken(String bodyJson) {
+        return HttpRequest.newBuilder().uri(streamUri()).timeout(HTTP_TIMEOUT)
+                .header("X-MC-Key", API_KEY)
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(bodyJson, StandardCharsets.UTF_8))
@@ -249,10 +268,24 @@ class WebChatStreamE2ETest {
                 .contains("\"sessionId\":null");
 
         // Concatenated assistant reply persisted exactly once.
-        String cid = WebChatController.deriveConversationId(API_KEY, visitorId, null);
+        String cid = WebChatController.deriveConversationId(CHANNEL_ID, visitorId, null);
         assertThat(countUserMessages(cid)).isEqualTo(1);
         assertThat(countAssistantMessages(cid)).isEqualTo(1);
         assertThat(lastAssistantContent(cid)).isEqualTo("Hello world!");
+    }
+
+    @Test
+    void firstContactDoesNotTrustCallerSuppliedVisitorId() throws Exception {
+        org.mockito.Mockito.when(agentService.chatStructuredStream(
+                        eq(AGENT_ID), anyString(), anyString(), anyString(), isNull(), any()))
+                .thenReturn(Flux.just(new AgentService.StreamDelta("ok", null)));
+
+        List<SseEvent> events = sendAndDrain(streamPostWithoutVisitorToken(
+                "{\"message\":\"hi\",\"visitorId\":\"victim-known-id\"}"));
+        SseEvent meta = events.stream().filter(e -> "meta".equals(e.name)).findFirst().orElseThrow();
+
+        assertThat(meta.data).contains("\"visitorId\":").doesNotContain("victim-known-id");
+        assertThat(meta.data).contains("\"conversationId\":\"webchat:" + CHANNEL_ID + ":");
     }
 
     @Test
@@ -263,7 +296,7 @@ class WebChatStreamE2ETest {
                 .thenReturn(Flux.never());
         String visitorId = "vE2E-pre-register-disconnect";
         String sessionId = "pre-register";
-        String cid = WebChatController.deriveConversationId(API_KEY, visitorId, sessionId);
+        String cid = WebChatController.deriveConversationId(CHANNEL_ID, visitorId, sessionId);
         WebChatRequest request = new WebChatRequest();
         request.setMessage("keep running");
         request.setVisitorId(visitorId);
@@ -317,7 +350,7 @@ class WebChatStreamE2ETest {
         assertThat(byName.get("meta")).hasSize(1);
 
         // Persisted assistant message: only the concatenated content (no thinking).
-        String cid = WebChatController.deriveConversationId(API_KEY, visitorId, null);
+        String cid = WebChatController.deriveConversationId(CHANNEL_ID, visitorId, null);
         assertThat(lastAssistantContent(cid)).isEqualTo("Final answer.");
 
         // Usage attribution lands on the row.
@@ -397,7 +430,7 @@ class WebChatStreamE2ETest {
         assertThat(meta.data)
                 .contains("\"sessionId\":\"" + sessionId + "\"")
                 .contains("\"conversationId\":\"" +
-                        WebChatController.deriveConversationId(API_KEY, visitorId, sessionId) + "\"");
+                        WebChatController.deriveConversationId(CHANNEL_ID, visitorId, sessionId) + "\"");
     }
 
     @Test

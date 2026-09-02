@@ -65,7 +65,7 @@ public class AiNewsProductionService {
 
     @Transactional
     public AiNewsEventEntity start(Long workspaceId, Long eventId) {
-        AiNewsEventEntity event = eventService.findEvent(workspaceId, eventId);
+        AiNewsEventEntity event = eventService.findEventForUpdate(workspaceId, eventId);
         if (!"in_production".equals(event.getStatus())) {
             throw new NewsClawException(409, "只有进入内容生产的事件才能启动 Team Run");
         }

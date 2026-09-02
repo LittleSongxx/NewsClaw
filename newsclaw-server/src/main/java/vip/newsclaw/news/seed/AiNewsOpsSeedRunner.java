@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.agent.binding.model.AgentToolBinding;
+import vip.newsclaw.agent.binding.model.AgentSkillBinding;
+import vip.newsclaw.agent.binding.repository.AgentSkillBindingMapper;
 import vip.newsclaw.agent.binding.repository.AgentToolBindingMapper;
 import vip.newsclaw.agent.model.AgentEntity;
 import vip.newsclaw.agent.repository.AgentMapper;
@@ -27,6 +29,7 @@ import vip.newsclaw.team.repository.AgentTeamMapper;
 import vip.newsclaw.team.service.TeamService;
 import vip.newsclaw.tool.model.ToolEntity;
 import vip.newsclaw.tool.repository.ToolMapper;
+import vip.newsclaw.news.service.AiNewsCandidatePipelineProperties;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -36,9 +39,10 @@ import java.util.Set;
 
 /**
  * Seeds the vertical AI-news operating team after the regular database seed.
- * It is intentionally idempotent. The discovery radar is enabled when the
- * deployment-owned model chain and a domestic IM target are ready; the weekly
- * production job remains disabled because it always requires user approval.
+ * It is intentionally idempotent. A fresh discovery radar is enabled only
+ * when the candidate pipeline, deployment-owned model chain, and a domestic
+ * IM target are ready; the weekly production job remains disabled because it
+ * always requires user approval.
  */
 @Slf4j
 @Component
@@ -51,6 +55,21 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
     private static final String DEFAULT_IM_NAME = "AI 动态默认飞书";
     private static final String RADAR_CRON_NAME = "每日 AI 动态雷达";
     private static final String WEEKLY_CRON_NAME = "AI 动态周报生产";
+    private static final long LEGACY_TOPIC_RADAR_CRON_ID = 1000100020L;
+    private static final String LEGACY_RADAR_REQUEST_BODY =
+            "每日按来源白名单检索全球与中国 AI 动态，调用 ai_news_event 写入候选事件；"
+                    + "优先使用 feishu（飞书）渠道把摘要发送到已配置会话。只发现和核验线索，不生成或发表内容。";
+    private static final String RADAR_REQUEST_BODY =
+            "每日按来源白名单检索全球与中国 AI 动态。先调用 ai_news_query（省略 scanRunId）读取"
+                    + " candidatePipelineEnabled、最近 run、inProgress、fresh 标记和记分卡；"
+                    + "latestRun.inProgress=true（RUNNING/CANDIDATES_PERSISTED/CAPTURE_PENDING 等）时等待后重查，"
+                    + "不得重复扫描；仅当 candidatePipelineEnabled=true 且 latestRun 缺失/过期/失败时调用"
+                    + " ai_news_scan，避免与每15分钟 scheduler 重复扫描，再按需调用 ai_news_review。"
+                    + "candidate 结果不得当作 event/evidence；本定时任务 candidatePipelineEnabled=false 或工具"
+                    + "不可用时必须记录 candidate_pipeline_disabled 并停止，禁止回退兼容 ai_news_event。"
+                    + "优先使用 feishu（飞书）渠道把摘要发送到已配置会话。只发现和核验线索，不生成或发表内容。";
+    private static final String BUILTIN_PROMPT_MARKER =
+            "newsclaw-ai-news-prompt@2026.08.29-v6";
     /**
      * A Web/WebChat row is not an IM delivery target.  If any real domestic
      * IM row already exists, its owner has made an explicit channel choice and
@@ -58,10 +77,28 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
      */
     private static final Set<String> DOMESTIC_IM_TYPES = Set.of(
             "feishu", "dingtalk", "wecom", "weixin", "qq");
+    /**
+     * V213 exposes three candidate callbacks from one Spring bean.  Bind the
+     * bean alias (rather than the DB display name {@code ai_news_pipeline}) so
+     * AgentToolSet can resolve all callbacks at runtime. The legacy event tool
+     * remains only as an explicit compatibility fallback; the candidate-to-event
+     * promotion bridge is the preferred path and direct platform publishing is
+     * disabled.
+     */
+    private static final String CANDIDATE_PIPELINE_TOOL = "aiNewsCandidateTool";
     private static final List<String> LEAD_REQUIRED_TOOLS = List.of(
+            "ai_news_event", CANDIDATE_PIPELINE_TOOL, "ai_news_review_card",
+            "TeamTasksTool", "ChannelMessageTool");
+    private static final Set<String> LEGACY_LEAD_REQUIRED_TOOLS = Set.of(
             "ai_news_event", "ai_news_review_card", "TeamTasksTool", "ChannelMessageTool");
+    private static final List<String> RADAR_REQUIRED_TOOLS = List.of(
+            "web_search", "browser_use", "ai_news_event", CANDIDATE_PIPELINE_TOOL,
+            "ai_news_review_card");
+    private static final Set<String> RADAR_AGENT_NAMES = Set.of(
+            "AI 动态主编", "热点发现员", "事实核查员");
 
     private final AgentMapper agentMapper;
+    private final AgentSkillBindingMapper agentSkillBindingMapper;
     private final AgentToolBindingMapper agentToolBindingMapper;
     private final ChannelMapper channelMapper;
     private final ChannelSessionMapper channelSessionMapper;
@@ -71,8 +108,14 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
     private final SkillMapper skillMapper;
     private final ToolMapper toolMapper;
 
+    /** Spring-bound candidate flag; the environment fallback supports legacy
+     * lightweight constructors used by migration/seed tests. */
+    @Autowired(required = false)
+    private AiNewsCandidatePipelineProperties candidatePipelineProperties;
+
     @Autowired
     public AiNewsOpsSeedRunner(AgentMapper agentMapper,
+                               AgentSkillBindingMapper agentSkillBindingMapper,
                                AgentToolBindingMapper agentToolBindingMapper,
                                ChannelMapper channelMapper,
                                ChannelSessionMapper channelSessionMapper,
@@ -82,6 +125,7 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
                                SkillMapper skillMapper,
                                ToolMapper toolMapper) {
         this.agentMapper = agentMapper;
+        this.agentSkillBindingMapper = agentSkillBindingMapper;
         this.agentToolBindingMapper = agentToolBindingMapper;
         this.channelMapper = channelMapper;
         this.channelSessionMapper = channelSessionMapper;
@@ -101,8 +145,22 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
                                CronJobMapper cronJobMapper,
                                SkillMapper skillMapper,
                                ToolMapper toolMapper) {
-        this(agentMapper, null, channelMapper, channelSessionMapper, teamMapper, teamService,
+        this(agentMapper, null, null, channelMapper, channelSessionMapper, teamMapper, teamService,
                 cronJobMapper, skillMapper, toolMapper);
+    }
+
+    /** Source-compatible constructor used by older callers with tool scopes. */
+    public AiNewsOpsSeedRunner(AgentMapper agentMapper,
+                               AgentToolBindingMapper agentToolBindingMapper,
+                               ChannelMapper channelMapper,
+                               ChannelSessionMapper channelSessionMapper,
+                               AgentTeamMapper teamMapper,
+                               TeamService teamService,
+                               CronJobMapper cronJobMapper,
+                               SkillMapper skillMapper,
+                               ToolMapper toolMapper) {
+        this(agentMapper, null, agentToolBindingMapper, channelMapper, channelSessionMapper,
+                teamMapper, teamService, cronJobMapper, skillMapper, toolMapper);
     }
 
     /** Source-compatible constructor used by older tests and embedders. */
@@ -113,7 +171,7 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
                                CronJobMapper cronJobMapper,
                                SkillMapper skillMapper,
                                ToolMapper toolMapper) {
-        this(agentMapper, null, channelMapper, null, teamMapper, teamService,
+        this(agentMapper, null, null, channelMapper, null, teamMapper, teamService,
                 cronJobMapper, skillMapper, toolMapper);
     }
 
@@ -123,6 +181,8 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
             disableUnrelatedProductSurface();
             List<AgentEntity> agents = ensureAgents();
             ensureLeadToolScope(agents.getFirst());
+            ensureRadarAgentScopes(agents);
+            ensureRadarSkillBindings(agents);
             ChannelEntity notificationChannel = resolveNotificationChannel(agents.get(0).getId());
             ensureTeam(agents);
             ensureCronJobs(agents.get(0).getId(), notificationChannel);
@@ -136,33 +196,105 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
 
     /**
      * Upgrade the legacy unscoped lead to the smallest tool surface required
-     * by its scheduled and interactive workflows. Any existing row means an
-     * operator has already made an explicit choice, so the seed leaves the
-     * entire binding set untouched.
+     * by its scheduled and interactive workflows. Existing custom scopes stay
+     * untouched; the exact four-tool historical seed receives only the new
+     * candidate callback bean.
      */
     private void ensureLeadToolScope(AgentEntity lead) {
-        if (agentToolBindingMapper == null || lead == null || lead.getId() == null) {
+        ensureToolScope(lead, LEAD_REQUIRED_TOOLS);
+    }
+
+    /**
+     * Give the discovery/verification path the smallest read-only radar
+     * surface when it has never been explicitly scoped. Existing rows are an
+     * operator choice and are therefore left untouched.
+     */
+    private void ensureRadarAgentScopes(List<AgentEntity> agents) {
+        if (agents == null) return;
+        for (AgentEntity agent : agents) {
+            if (agent != null && RADAR_AGENT_NAMES.contains(agent.getName())
+                    && !"AI 动态主编".equals(agent.getName())) {
+                ensureToolScope(agent, RADAR_REQUIRED_TOOLS);
+            }
+        }
+    }
+
+    private void ensureToolScope(AgentEntity agent, List<String> requiredTools) {
+        if (agentToolBindingMapper == null || agent == null || agent.getId() == null
+                || requiredTools == null || requiredTools.isEmpty()) {
             return;
         }
         List<AgentToolBinding> existing = agentToolBindingMapper.selectList(
                 Wrappers.<AgentToolBinding>lambdaQuery()
-                        .eq(AgentToolBinding::getAgentId, lead.getId()));
+                        .eq(AgentToolBinding::getAgentId, agent.getId())
+                        .eq(AgentToolBinding::getDeleted, 0));
         if (existing != null && !existing.isEmpty()) {
+            Set<String> enabledNames = existing.stream()
+                    .filter(binding -> Boolean.TRUE.equals(binding.getEnabled()))
+                    .map(AgentToolBinding::getToolName)
+                    .collect(java.util.stream.Collectors.toSet());
+            boolean exactLegacyLeadScope = "AI 动态主编".equals(agent.getName())
+                    && existing.size() == LEGACY_LEAD_REQUIRED_TOOLS.size()
+                    && enabledNames.equals(LEGACY_LEAD_REQUIRED_TOOLS);
+            if (exactLegacyLeadScope) {
+                insertToolBinding(agent.getId(), CANDIDATE_PIPELINE_TOOL, LocalDateTime.now());
+                log.info("[AiNewsOps] upgraded legacy lead tool scope with candidate pipeline callbacks");
+            }
             return;
         }
         LocalDateTime now = LocalDateTime.now();
-        for (String toolName : LEAD_REQUIRED_TOOLS) {
-            AgentToolBinding binding = new AgentToolBinding();
-            binding.setAgentId(lead.getId());
-            binding.setToolName(toolName);
-            binding.setEnabled(true);
-            binding.setCreateTime(now);
-            binding.setUpdateTime(now);
-            binding.setDeleted(0);
-            agentToolBindingMapper.insert(binding);
+        for (String toolName : requiredTools) {
+            insertToolBinding(agent.getId(), toolName, now);
         }
-        log.info("[AiNewsOps] scoped lead agent {} to {} required tools",
-                lead.getId(), LEAD_REQUIRED_TOOLS.size());
+        log.info("[AiNewsOps] scoped agent '{}' ({}) to {} required tools",
+                agent.getName(), agent.getId(), requiredTools.size());
+    }
+
+    private void insertToolBinding(Long agentId, String toolName, LocalDateTime now) {
+        AgentToolBinding binding = new AgentToolBinding();
+        binding.setAgentId(agentId);
+        binding.setToolName(toolName);
+        binding.setEnabled(true);
+        binding.setCreateTime(now);
+        binding.setUpdateTime(now);
+        binding.setDeleted(0);
+        agentToolBindingMapper.insert(binding);
+    }
+
+    /**
+     * Bind the radar skill only for an agent that has no skill rows yet. This
+     * preserves explicit operator allowlists (including an intentional empty
+     * scope) while making a fresh vertical installation able to load the
+     * workflow instructions.
+     */
+    private void ensureRadarSkillBindings(List<AgentEntity> agents) {
+        if (agentSkillBindingMapper == null || skillMapper == null || agents == null) return;
+        SkillEntity radar = skillMapper.selectOne(Wrappers.<SkillEntity>lambdaQuery()
+                .eq(SkillEntity::getName, "ai_news_radar")
+                .eq(SkillEntity::getDeleted, 0));
+        if (radar == null || radar.getId() == null || !Boolean.TRUE.equals(radar.getEnabled())) {
+            log.warn("[AiNewsOps] ai_news_radar skill is unavailable; vertical skill binding skipped");
+            return;
+        }
+        for (AgentEntity agent : agents) {
+            if (agent == null || agent.getId() == null || !RADAR_AGENT_NAMES.contains(agent.getName())) {
+                continue;
+            }
+            List<AgentSkillBinding> existing = agentSkillBindingMapper.selectList(
+                    Wrappers.<AgentSkillBinding>lambdaQuery()
+                            .eq(AgentSkillBinding::getAgentId, agent.getId()));
+            if (existing != null && !existing.isEmpty()) continue;
+            AgentSkillBinding binding = new AgentSkillBinding();
+            binding.setAgentId(agent.getId());
+            binding.setSkillId(radar.getId());
+            binding.setEnabled(true);
+            binding.setCreateTime(LocalDateTime.now());
+            binding.setUpdateTime(LocalDateTime.now());
+            binding.setDeleted(0);
+            agentSkillBindingMapper.insert(binding);
+            log.info("[AiNewsOps] bound ai_news_radar to agent '{}' ({})",
+                    agent.getName(), agent.getId());
+        }
     }
 
     /**
@@ -295,7 +427,7 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
                     agent.setEnabled(true);
                     changed = true;
                 }
-                if (isLegacyVerticalPrompt(agent.getSystemPrompt())) {
+                if (isLegacyVerticalPrompt(agent.getSystemPrompt(), spec)) {
                     agent.setSystemPrompt(promptFor(spec));
                     changed = true;
                 }
@@ -324,7 +456,7 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
     private void ensureCronJobs(Long leadAgentId, ChannelEntity notificationChannel) {
         boolean radarReady = radarReady();
         ensureCron(RADAR_CRON_NAME, "0 8 * * *",
-                "每日按来源白名单检索全球与中国 AI 动态，调用 ai_news_event 写入候选事件；优先使用 feishu（飞书）渠道把摘要发送到已配置会话。只发现和核验线索，不生成或发表内容。",
+                RADAR_REQUEST_BODY,
                 leadAgentId, radarReady, notificationChannel);
         ensureCron(WEEKLY_CRON_NAME, "0 9 * * 1",
                 "从最近已核验且未生产的 AI 动态中选择主题，先在 IM/工作台请求确认；确认后使用 Team Run 并行生成公众号文章和小红书卡片，完成合规扫描后进入人工审批。未经确认不得交付。",
@@ -345,6 +477,11 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
         if (!EnvironmentConfig.aiNewsRadarEnabled()) {
             return false;
         }
+        if (!candidatePipelineEnabled()) {
+            log.info("[AiNewsOps] AI news radar remains disabled: candidate pipeline is not explicitly enabled; "
+                    + "legacy ai_news_event discovery is manual-only");
+            return false;
+        }
         boolean modelReady = EnvironmentConfig.configuredModelChain().stream()
                 .anyMatch(selection -> EnvironmentConfig.providerApiKey(selection.providerId()) != null);
         if (!modelReady) {
@@ -363,6 +500,12 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
         return domesticImReady;
     }
 
+    private boolean candidatePipelineEnabled() {
+        return candidatePipelineProperties != null
+                ? candidatePipelineProperties.isEnabled()
+                : EnvironmentConfig.aiNewsCandidatePipelineEnabled();
+    }
+
     private void ensureCron(String name, String expression, String requestBody,
                             Long agentId, boolean enabledByDefault,
                             ChannelEntity notificationChannel) {
@@ -371,21 +514,30 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
                 .eq(CronJobEntity::getName, name)
                 .eq(CronJobEntity::getDeleted, 0));
         if (existing != null) {
-            // Upgrade the idempotently seeded radar after credentials are
-            // added. A temporary outage must not erase an operator's state;
-            // only an explicit env opt-out disables it automatically.
+            // Never auto-enable an existing row.  A disabled value may be an
+            // operator's deliberate pause, and readiness can change on every
+            // restart.  The seed only fails closed when the deployment says
+            // the radar must not run; an operator can explicitly re-enable it
+            // after the candidate pipeline is ready.
             boolean explicitlyDisabled = RADAR_CRON_NAME.equals(name)
-                    && !EnvironmentConfig.aiNewsRadarEnabled();
-            if (RADAR_CRON_NAME.equals(name)
-                    && enabledByDefault
-                    && !Boolean.TRUE.equals(existing.getEnabled())) {
-                existing.setEnabled(true);
-                existing.setUpdateTime(LocalDateTime.now());
-                cronJobMapper.updateById(existing);
-            } else if (explicitlyDisabled && Boolean.TRUE.equals(existing.getEnabled())) {
+                    && (!EnvironmentConfig.aiNewsRadarEnabled()
+                    || !candidatePipelineEnabled());
+            boolean changed = false;
+            if (explicitlyDisabled && Boolean.TRUE.equals(existing.getEnabled())) {
                 existing.setEnabled(false);
-                existing.setUpdateTime(LocalDateTime.now());
-                cronJobMapper.updateById(existing);
+                changed = true;
+            }
+            if (RADAR_CRON_NAME.equals(name)
+                    && (existing.getTriggerMessage() == null || existing.getTriggerMessage().isBlank())) {
+                // Keep the managed identity out of the model-facing request
+                // body; the inert triggerMessage field is metadata for gates.
+                existing.setTriggerMessage(EnvironmentConfig.AI_NEWS_DAILY_RADAR_MARKER);
+                changed = true;
+            }
+            if (RADAR_CRON_NAME.equals(name)
+                    && LEGACY_RADAR_REQUEST_BODY.equals(existing.getRequestBody())) {
+                existing.setRequestBody(RADAR_REQUEST_BODY);
+                changed = true;
             }
             // A seeded job may have been created before the IM channel existed.
             // Bind it once a domestic channel is available, while preserving an
@@ -394,10 +546,13 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
                     && Boolean.TRUE.equals(notificationChannel.getEnabled())) {
                 existing.setChannelId(notificationChannel.getId());
                 existing.setDeliveryConfig(deliveryConfigFor(notificationChannel.getId()));
-                existing.setUpdateTime(LocalDateTime.now());
-                cronJobMapper.updateById(existing);
+                changed = true;
                 log.info("[AiNewsOps] bound cron '{}' to channel={} targetBound={}", name,
                         notificationChannel.getId(), hasDeliveryTarget(existing.getDeliveryConfig()));
+            }
+            if (changed) {
+                existing.setUpdateTime(LocalDateTime.now());
+                cronJobMapper.updateById(existing);
             }
             return;
         }
@@ -408,6 +563,9 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
         cron.setTimezone("Asia/Shanghai");
         cron.setAgentId(agentId);
         cron.setTaskType("agent");
+        if (RADAR_CRON_NAME.equals(name)) {
+            cron.setTriggerMessage(EnvironmentConfig.AI_NEWS_DAILY_RADAR_MARKER);
+        }
         cron.setRequestBody(requestBody);
         cron.setEnabled(enabledByDefault);
         if (notificationChannel != null && Boolean.TRUE.equals(notificationChannel.getEnabled())) {
@@ -506,14 +664,36 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
     private void disableLegacyCrons() {
         Set<String> legacyNames = Set.of(
                 "每日问候", "每周工作总结", "每日选题雷达", "每周公众号入草稿箱",
-                "Daily Greeting", "Weekly Work Summary", "Daily Topic Radar",
+                "Daily Greeting", "Weekly Work Summary", "Daily Topic Radar", "Daily AI News Radar",
                 "Weekly WeChat Draft");
         for (CronJobEntity cron : cronJobMapper.selectList(Wrappers.<CronJobEntity>lambdaQuery()
                 .eq(CronJobEntity::getWorkspaceId, WORKSPACE_ID)
-                .in(CronJobEntity::getName, legacyNames)
                 .eq(CronJobEntity::getDeleted, 0))) {
+            boolean legacyRadarBody = "agent".equalsIgnoreCase(cron.getTaskType())
+                    && LEGACY_RADAR_REQUEST_BODY.equals(cron.getRequestBody());
+            boolean knownLegacy = legacyNames.contains(cron.getName())
+                    || Long.valueOf(LEGACY_TOPIC_RADAR_CRON_ID).equals(cron.getId())
+                    || legacyRadarBody;
+            if (!knownLegacy) continue;
+            boolean changed = false;
+            if (legacyRadarBody) {
+                cron.setRequestBody(RADAR_REQUEST_BODY);
+                changed = true;
+            }
+            if (("每日选题雷达".equals(cron.getName())
+                    || "Daily Topic Radar".equals(cron.getName())
+                    || "Daily AI News Radar".equals(cron.getName())
+                    || Long.valueOf(LEGACY_TOPIC_RADAR_CRON_ID).equals(cron.getId())
+                    || legacyRadarBody)
+                    && (cron.getTriggerMessage() == null || cron.getTriggerMessage().isBlank())) {
+                cron.setTriggerMessage(EnvironmentConfig.AI_NEWS_DAILY_RADAR_MARKER);
+                changed = true;
+            }
             if (Boolean.TRUE.equals(cron.getEnabled())) {
                 cron.setEnabled(false);
+                changed = true;
+            }
+            if (changed) {
                 cron.setUpdateTime(LocalDateTime.now());
                 cronJobMapper.updateById(cron);
                 log.info("[AiNewsOps] disabled legacy cron '{}' ({})", cron.getName(), cron.getId());
@@ -540,17 +720,28 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
     }
 
     private static String promptFor(AgentSpec spec) {
-        String base = "你是 NewsClaw AI 动态内容运营团队的" + spec.name() + "。"
+        String base = "[" + BUILTIN_PROMPT_MARKER + ":" + spec.tag() + "] "
+                + "你是 NewsClaw AI 动态内容运营团队的" + spec.name() + "。"
                 + "主线是追踪全球与中国 AI 模型、具身智能、机器人、芯片和大厂 AI 产品动态。"
-                + "所有事实必须来自实际阅读的来源；官方来源优先，媒体只能补充；冲突就保留冲突，传闻标记未证实。"
-                + "只有来源注册表中的可信媒体才贡献交叉核验；403 只代表抓取受阻，不能表述为官方未发布。"
-                + "通过 ai_news_event 保存结构化事件和证据，不把未经核验的内容交给内容生产。"
-                + "当当前请求来自飞书人工会话时，候选写入后调用 ai_news_review_card 并直接传事件 ID，让用户通过卡片决策。"
+                + "所有事实必须来自实际阅读的来源；搜索摘要只是线索，403 只代表抓取受阻，不能表述为官方未发布。"
+                + "发现任务必须二选一且不能混用：候选分支是优先路径；先调用 ai_news_query（省略 scanRunId）查看 candidatePipelineEnabled、latestRun、inProgress、fresh 标记和记分卡；latestRun.inProgress=true（RUNNING/CANDIDATES_PERSISTED/CAPTURE_PENDING 等）时等待后重查，不得重复扫描；仅当 candidatePipelineEnabled=true 且 latestRun 缺失/过期/失败时才调用 ai_news_scan，避免与 scheduler 重复扫描，再用 ai_news_query 分页查看候选，人工决定时调用 ai_news_review。candidateId 不能当 eventId；该分支只管理候选和抓取，不能声称已核验或发布。只有 selected、人工 ACCEPTED 且 capture SUCCESS 的候选，才可用 ai_news_promote 提交原子 claim、逐字 quote 和语义关系，显式创建 candidate 状态事件；promotion 不核验、不发布。条件不足或入口不可用时立即报告阻断，不要再调用兼容事件 discover/capture/upsert 或重复计数。"
+                + "仅当 candidatePipelineEnabled=false，或 ai_news_scan 返回未启用/不可用时，才记录 candidate_pipeline_fallback 原因并进入兼容分支：在该分支冻结窗口，调用兼容 ai_news_event(action=discover) 做五条分组官方检索与五条垂类新闻检索（含可信媒体限定通道），合并部署方配置的零 Web 搜索额度 RSS/Atom 结构化候选，再做 RRF 融合和缺口补检索。"
+                + "候选 publishedAtHint（包括 feed 时间）仅用于筛选，明显越界者后置；时效和主题相关性优先于来源等级，不能让旧官方常驻页挤掉当前媒体新闻；有抓取上限时先覆盖带窗口内结构化时间且标题明确为新闻动作的候选，再把剩余额度用于无时间提示的官方页，最终时间仍只认 capture。"
+                + "兼容分支终答前调用 ai_news_event action=window_summary；候选分支只引用 ai_news_query 的后端记分卡。两种分支都不得自行估算数量和状态。"
+                + "对每条 Evidence 只判断 quote 对完整 claim 的 semanticRelation：entails、contradicts、partial、unrelated 或 hedged，"
+                + "并给出 relationConfidence。来源声誉、证据数量、是否想通过核验或是否要拒绝都不能改变这项逐条语义判断；"
+                + "不同产品、文档、受众、功能限定或时间点默认不是冲突，不确定时不得伪装成 entails。"
+                + "来源等级、独立媒体计数、高风险、可信冲突、核验资格、允许引用 ID 和人工复核由后端按 URL 注册表确定性计算，"
+                + "不得由模型或 publisher 文本覆盖；Evidence Packet 外、改写或重复的引用 ID 一律不可用。"
+                + "严格 upsert 只接受一条不超过 512 字符的原子 claim，卡片标题摘要由 claim 派生；模型 relation 不能单独通过上线核验，须人工复核或 claim 与 quote 完全相同。"
+                + "在兼容分支通过 ai_news_event 保存结构化事件、claim、quote、semanticRelation 和置信度；定时任务或 Agent 不得调用 mark_verified，只有可归因的人工上下文才能完成核验。"
+                + "unknown、partial、hedged、unrelated、可信冲突或证据不足时不得把内容交给生产。"
+                + "当当前请求来自飞书人工会话时，只有兼容事件分支在 ai_news_event upsert 成功并拿到真实 eventId 后，才调用 ai_news_review_card 让用户通过卡片决策；候选分支没有 eventId 时只能调用 ai_news_review，不能把 candidateId 传给 review_card，并须明确报告尚未形成事件卡片。"
                 + "遵守 workspace 隔离、人工审批和公众号草稿箱/小红书素材包边界。"
                 + "你的职责是：" + spec.description();
         return switch (spec.tag()) {
             case "discover" -> base
-                    + " 证据归档的完成定义是实际调用 wiki_create_page，把事件、来源 URL、sourceTier、claim、quote、置信度和冲突状态写入 AI 动态证据 Wiki，"
+                    + " 证据归档的完成定义是实际调用 wiki_create_page，把事件、来源 URL、后端来源等级、claim、quote、semanticRelation、置信度和冲突状态写入 AI 动态证据 Wiki，"
                     + "并随后调用 ai_news_event action=link_wiki 绑定 pageId。工具不可见时先 enable_tool(\"wiki_create_page\")；"
                     + "DOCX、普通文件或只给出页面建议不能替代 Wiki 页面。";
             case "edit" -> base
@@ -572,8 +763,12 @@ public class AiNewsOpsSeedRunner implements ApplicationRunner {
         };
     }
 
-    private static boolean isLegacyVerticalPrompt(String prompt) {
+    private static boolean isLegacyVerticalPrompt(String prompt, AgentSpec spec) {
         if (prompt == null || prompt.isBlank()) return true;
+        if (prompt.contains("newsclaw-ai-news-prompt@")) {
+            String marker = BUILTIN_PROMPT_MARKER + ":" + spec.tag() + "]";
+            return !prompt.contains(marker);
+        }
         return prompt.startsWith("你是 NewsClaw AI 动态内容运营团队的")
                 && !prompt.contains("gzh_package")
                 && !prompt.contains("xhs_package")

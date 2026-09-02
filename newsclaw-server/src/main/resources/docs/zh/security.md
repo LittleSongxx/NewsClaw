@@ -43,7 +43,7 @@ Agent 想删文件、发邮件、跑写入型 SQL、调付费 API——任何一
 ```bash
 curl -X POST http://localhost:18088/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin123"}'
+  -d '{"username": "admin", "password": "$BOOTSTRAP_PASSWORD"}'
 ```
 
 响应：
@@ -94,7 +94,7 @@ newsclaw:
 
 ### 默认凭证
 
-NewsClaw 出厂带 `admin` / `admin123`。**除了你自己笔记本之外的任何部署都必须立刻改。**
+生产环境使用 `admin` + 部署者提供的一次性 bootstrap secret。**登录后立即修改并删除该环境变量。**
 
 ### Spring Security 配置
 

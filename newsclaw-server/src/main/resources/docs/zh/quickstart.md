@@ -67,8 +67,8 @@ docker compose ps
 curl -fsS http://localhost:18080/actuator/health
 ~~~
 
-预期健康接口返回 UP。访问 <http://localhost:18080>，开发引导账号是
-admin / admin123，登录后先改密码。
+预期健康接口返回 UP。访问 <http://localhost:18080/showcase> 查看静态作品集；
+控制台使用一次性 `NEWSCLAW_BOOTSTRAP_PASSWORD` 登录，登录后先改密码。
 
 docker-compose.yml 的 Compose 项目名为 newsclaw，以保持已验证的容器、网络与
 数据卷命名；这不是产品名。产品对外名称为 NewsClaw。

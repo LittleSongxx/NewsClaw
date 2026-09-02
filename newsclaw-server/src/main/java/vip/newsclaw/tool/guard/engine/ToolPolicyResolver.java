@@ -30,6 +30,9 @@ public class ToolPolicyResolver {
 
     public GuardDecision resolve(List<GuardFinding> findings, ToolInvocationContext context) {
         if (findings == null || findings.isEmpty()) {
+            if (context != null && "runSkillScript".equals(context.toolName())) {
+                return GuardDecision.NEEDS_APPROVAL;
+            }
             return GuardDecision.ALLOW;
         }
 

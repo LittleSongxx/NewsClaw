@@ -27,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -50,7 +51,7 @@ class GoalControllerTest {
     @BeforeEach
     void setUp() {
         controller = new GoalController(goalService, conversationService);
-        when(auth.getName()).thenReturn("alice");
+        lenient().when(auth.getName()).thenReturn("alice");
     }
 
     private GoalEntity goal(Long id, String convId, GoalStatus status) {
@@ -160,6 +161,13 @@ class GoalControllerTest {
         assertEquals(400, ex.getCode());
     }
 
+    @Test
+    void create_returns400_whenBodyMissing() {
+        NewsClawException ex = assertThrows(NewsClawException.class,
+                () -> controller.create(null, auth));
+        assertEquals(400, ex.getCode());
+    }
+
     // ==================== find / get ====================
 
     @Test
@@ -176,6 +184,15 @@ class GoalControllerTest {
         NewsClawException ex = assertThrows(NewsClawException.class,
                 () -> controller.get(1L, auth));
         assertEquals(403, ex.getCode());
+    }
+
+    @Test
+    void get_returns404_whenGoalMissing() {
+        when(goalService.getById(404L)).thenReturn(null);
+        NewsClawException ex = assertThrows(NewsClawException.class,
+                () -> controller.get(404L, auth));
+        assertEquals(404, ex.getCode());
+        verify(conversationService, never()).isConversationOwner(anyString(), anyString());
     }
 
     // ==================== state machine ====================

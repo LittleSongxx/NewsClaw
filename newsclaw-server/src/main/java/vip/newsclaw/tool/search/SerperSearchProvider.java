@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import vip.newsclaw.system.model.SystemSettingsDTO;
 
 import java.net.URI;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -63,11 +64,13 @@ public class SerperSearchProvider implements SearchProvider {
         }
 
         JSONObject reqBody = new JSONObject()
-                .set("q", searchQuery.query())
+                .set("q", scopedQuery(searchQuery))
                 .set("num", searchQuery.resolvedCount());
 
         // Serper freshness: tbs=qdr:d (day), qdr:w (week), qdr:m (month), qdr:y (year)
-        if (searchQuery.hasFreshness()) {
+        if (searchQuery.hasAbsoluteDateRange()) {
+            reqBody.set("tbs", customDateRange(searchQuery));
+        } else if (searchQuery.hasFreshness()) {
             String tbs = mapFreshnessToTbs(searchQuery.freshness());
             if (tbs != null) reqBody.set("tbs", tbs);
         }
@@ -83,16 +86,51 @@ public class SerperSearchProvider implements SearchProvider {
             }
         }
 
-        String response = HttpUtil.createPost(baseUrl)
+        cn.hutool.http.HttpResponse httpResponse = HttpUtil.createPost(baseUrl)
                 .header("X-API-KEY", apiKey)
                 .header("Content-Type", "application/json")
                 .body(JSONUtil.toJsonStr(reqBody))
                 .timeout(15000)
-                .execute()
-                .body();
+                .execute();
+        try {
+            int status = httpResponse.getStatus();
+            String response = httpResponse.body();
+            if (status < 200 || status >= 300) {
+                throw new IllegalStateException("Serper HTTP " + status);
+            }
+            log.debug("Serper result for '{}': {}", searchQuery.query(), response);
+            return parseResponse(response, searchQuery.resolvedCount());
+        } finally {
+            httpResponse.close();
+        }
+    }
 
-        log.debug("Serper result for '{}': {}", searchQuery.query(), response);
-        return parseResponse(response, searchQuery.resolvedCount());
+    static String scopedQuery(SearchQuery query) {
+        StringBuilder value = new StringBuilder(query.query());
+        if (query.hasIncludeDomains()) {
+            value.append(" (");
+            for (int i = 0; i < query.includeDomains().size(); i++) {
+                if (i > 0) value.append(" OR ");
+                value.append("site:").append(query.includeDomains().get(i));
+            }
+            value.append(')');
+        }
+        if (query.hasExcludeDomains()) {
+            query.excludeDomains().forEach(domain -> value.append(" -site:").append(domain));
+        }
+        return value.toString();
+    }
+
+    static String customDateRange(SearchQuery query) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM/dd/yyyy");
+        StringBuilder tbs = new StringBuilder("cdr:1");
+        if (query.startDate() != null) {
+            tbs.append(",cd_min:").append(query.startDate().format(formatter));
+        }
+        if (query.endDate() != null) {
+            tbs.append(",cd_max:").append(query.endDate().minusDays(1).format(formatter));
+        }
+        return tbs.toString();
     }
 
     private String mapFreshnessToTbs(String freshness) {
@@ -126,7 +164,7 @@ public class SerperSearchProvider implements SearchProvider {
                         .build());
             }
         } catch (Exception e) {
-            log.warn("Serper 结果解析失败: {}", e.getMessage());
+            throw new IllegalStateException("Serper 结果解析失败: " + e.getMessage(), e);
         }
         return results;
     }

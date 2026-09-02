@@ -4,10 +4,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.acp.model.AcpEndpointEntity;
+import vip.newsclaw.tool.guard.WorkspacePathGuard;
 import vip.newsclaw.workspace.core.model.WorkspaceEntity;
 import vip.newsclaw.workspace.core.service.WorkspaceService;
 
-import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Locale;
 
 /**
@@ -22,8 +26,8 @@ import java.util.Locale;
  *       Zed's ACP Zod schema marks {@code cwd} as a required string and
  *       returns {@code -32602 Invalid params} when it's missing. We
  *       prefer the endpoint's bound workspace {@code base_path} (per-
- *       workspace context) and fall back to the JVM working directory
- *       only as a last resort. Never returns null/blank.</li>
+ *       workspace context) and otherwise use the configured global sandbox.
+ *       Arbitrary caller paths are rejected when they escape that boundary.</li>
  *
  *   <li>{@link #translateAuthError} — turn upstream JSON-RPC noise like
  *       {@code "API Error: 403 {...forbidden...}"} into an actionable
@@ -47,29 +51,71 @@ public class AcpRuntimeSupport {
      *       wrapper tool {@code cwd} arg, or explicit override).</li>
      *   <li>Workspace {@code base_path} when the endpoint is bound to a
      *       workspace and the workspace declares one.</li>
-     *   <li>{@code System.getProperty("user.dir")} — the JVM working
-     *       directory at server launch. Reasonable for a single-user
-     *       desktop install, but exposes the server's launch dir to the
-     *       upstream agent, which is why it's last.</li>
+     *   <li>the configured global fallback sandbox root</li>
      * </ol>
      */
     public String resolveCwd(AcpEndpointEntity endpoint, String callerHint) {
-        if (callerHint != null && !callerHint.isBlank()) {
-            return callerHint;
-        }
+        Path workspaceRoot = null;
         if (endpoint != null && endpoint.getWorkspaceId() != null) {
             try {
                 WorkspaceEntity ws = workspaceService.getById(endpoint.getWorkspaceId());
                 if (ws != null && ws.getBasePath() != null && !ws.getBasePath().isBlank()) {
-                    File f = new File(ws.getBasePath());
-                    if (f.isDirectory()) return f.getAbsolutePath();
+                    Path candidate = Paths.get(ws.getBasePath()).toAbsolutePath().normalize();
+                    if (Files.isDirectory(candidate)) workspaceRoot = canonicalDirectory(candidate);
                 }
             } catch (Exception e) {
                 log.debug("Workspace lookup failed for ACP cwd default (id={}): {}",
                         endpoint.getWorkspaceId(), e.getMessage());
             }
         }
-        return System.getProperty("user.dir", ".");
+
+        // A manifest/tool may suggest a cwd, but it must remain inside the
+        // endpoint workspace.  Passing an arbitrary path here would let a
+        // normal workspace member make the globally configured ACP process
+        // inspect / modify unrelated host files.
+        Path allowedRoot = workspaceRoot != null ? workspaceRoot : WorkspacePathGuard.getDefaultRoot();
+        if (callerHint != null && !callerHint.isBlank()) {
+            if (allowedRoot == null) {
+                throw new IllegalArgumentException("ACP cwd is unavailable without a workspace sandbox root");
+            }
+            Path requested = Paths.get(callerHint.trim());
+            if (!requested.isAbsolute()) requested = allowedRoot.resolve(requested);
+            return requireChildDirectory(requested, allowedRoot).toString();
+        }
+        if (workspaceRoot != null) return workspaceRoot.toString();
+        if (allowedRoot != null) {
+            try {
+                return canonicalDirectory(allowedRoot).toString();
+            } catch (IOException e) {
+                throw new IllegalArgumentException("ACP cwd cannot be resolved safely", e);
+            }
+        }
+        throw new IllegalArgumentException("ACP cwd is unavailable without a workspace sandbox root");
+    }
+
+    private static Path requireChildDirectory(Path requested, Path allowedRoot) {
+        try {
+            Path root = canonicalDirectory(allowedRoot);
+            Path candidate = requested.toAbsolutePath().normalize();
+            if (!Files.isDirectory(candidate)) {
+                throw new IllegalArgumentException("ACP cwd is not an existing directory");
+            }
+            Path real = candidate.toRealPath();
+            if (!real.startsWith(root)) {
+                throw new IllegalArgumentException("ACP cwd is outside the workspace boundary");
+            }
+            return real;
+        } catch (IOException e) {
+            throw new IllegalArgumentException("ACP cwd cannot be resolved safely", e);
+        }
+    }
+
+    private static Path canonicalDirectory(Path path) throws IOException {
+        Path absolute = path.toAbsolutePath().normalize();
+        if (!Files.isDirectory(absolute)) {
+            throw new IOException("not a directory");
+        }
+        return absolute.toRealPath();
     }
 
     /**

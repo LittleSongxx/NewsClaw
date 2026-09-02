@@ -116,16 +116,18 @@ class WikiRawMaterialCancelTest {
     @Test
     @DisplayName("claimForProcessing clears a stale cancel flag from a previous run")
     void claim_clearsStaleCancelFlag() {
-        when(rawMapper.selectById(ID)).thenReturn(row("pending", Boolean.TRUE));
+        when(rawMapper.claimPending(ID)).thenReturn(1);
 
         boolean claimed = service.claimForProcessing(ID);
 
         assertTrue(claimed);
-        ArgumentCaptor<WikiRawMaterialEntity> captor = ArgumentCaptor.forClass(WikiRawMaterialEntity.class);
-        verify(rawMapper).updateById(captor.capture());
-        WikiRawMaterialEntity persisted = captor.getValue();
-        assertEquals("processing", persisted.getProcessingStatus());
-        assertEquals(Boolean.FALSE, persisted.getCancelRequested());
+        verify(rawMapper).claimPending(ID);
+    }
+
+    @Test
+    void claim_losesWhenAnotherWorkerAlreadyClaimed() {
+        when(rawMapper.claimPending(ID)).thenReturn(0);
+        assertFalse(service.claimForProcessing(ID));
     }
 
     @ParameterizedTest(name = "updateProcessingStatus({0}) clears cancel flag")

@@ -81,12 +81,13 @@
         </div>
       </div>
 
-      <i18n-t v-if="defaultCredentials" keypath="login.hint" tag="p" class="login-hint">
-        <template #username><code>{{ defaultCredentials.username }}</code></template>
-        <template #password><code>{{ defaultCredentials.password }}</code></template>
-      </i18n-t>
     </div>
   </div>
+  <ChangePasswordDialog
+    v-model:visible="forcePasswordChange"
+    forced
+    @changed="finishForcedLogin"
+  />
 </template>
 
 <script setup lang="ts">
@@ -96,21 +97,19 @@ import { useI18n } from 'vue-i18n'
 import { authApi, ssoApi } from '@/api/index'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { useSystemSettingsStore } from '@/stores/useSystemSettingsStore'
+import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
 
 interface SsoProvider { id: string; displayName: string }
 
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n()
-// Default credentials are a local-development convenience, not production UI.
-const defaultCredentials = import.meta.env.DEV
-  ? { username: 'admin', password: 'admin123' }
-  : null
 const workspaceStore = useWorkspaceStore()
 const systemSettingsStore = useSystemSettingsStore()
 const loading = ref(false)
 const showPassword = ref(false)
 const errorMsg = ref('')
+const forcePasswordChange = ref(false)
 const form = reactive({ username: '', password: '' })
 
 const ssoProviders = ref<SsoProvider[]>([])
@@ -141,11 +140,19 @@ onMounted(async () => {
 })
 
 /** Shared login-success flow: write localStorage + navigate. */
-async function applyLogin(data: { token: string; id: string | number; username: string; role: string }) {
+async function applyLogin(data: { token: string; id: string | number; username: string; role: string; mustChangePassword?: boolean }) {
   localStorage.setItem('token', data.token)
   localStorage.setItem('userId', String(data.id || '1'))
   localStorage.setItem('username', data.username)
   localStorage.setItem('role', data.role || 'user')
+  if (data.mustChangePassword) {
+    forcePasswordChange.value = true
+    return
+  }
+  await enterApplication()
+}
+
+async function enterApplication() {
   systemSettingsStore.load()
   try {
     await workspaceStore.fetchWorkspaces()
@@ -154,6 +161,11 @@ async function applyLogin(data: { token: string; id: string | number; username: 
   }
   const target = workspaceStore.can('view:dashboard') ? '/dashboard' : '/chat'
   router.push(target)
+}
+
+async function finishForcedLogin() {
+  forcePasswordChange.value = false
+  await enterApplication()
 }
 
 async function handleLogin() {

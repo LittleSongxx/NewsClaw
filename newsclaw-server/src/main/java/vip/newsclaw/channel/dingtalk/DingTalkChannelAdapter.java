@@ -19,11 +19,17 @@ import vip.newsclaw.channel.model.ChannelEntity;
 import vip.newsclaw.workspace.conversation.model.MessageContentPart;
 
 import java.net.URI;
+import java.net.URLDecoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Base64;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -84,6 +90,13 @@ public class DingTalkChannelAdapter extends AbstractChannelAdapter implements St
         this.generatedFileCache = generatedFileCache;
         // 钉钉 Stream 重连：2s→4s→8s→16s→30s，无限重试
         this.backoff = new ExponentialBackoff(2000, 30000, 2.0, -1);
+    }
+
+    /** Compatibility constructor for webhook-only callers that do not render generated files. */
+    public DingTalkChannelAdapter(ChannelEntity channelEntity,
+                                  ChannelMessageRouter messageRouter,
+                                  ObjectMapper objectMapper) {
+        this(channelEntity, messageRouter, objectMapper, null);
     }
 
     /**
@@ -347,6 +360,32 @@ public class DingTalkChannelAdapter extends AbstractChannelAdapter implements St
         String configured = getConfigString("robot_code");
         if (configured != null && !configured.isBlank()) return configured;
         return getConfigString("client_id");
+    }
+
+    /** Verify DingTalk callback timestamp/signature before parsing the body. */
+    public boolean acceptsWebhook(String timestamp, String signature) {
+        String secret = getConfigString("client_secret");
+        if (secret == null || secret.isBlank() || timestamp == null || signature == null) return false;
+        try {
+            long ts = Long.parseLong(timestamp);
+            if (Math.abs(System.currentTimeMillis() - ts) > 5 * 60_000L) return false;
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            String expected = Base64.getEncoder().encodeToString(
+                    mac.doFinal((timestamp + "\n" + secret).getBytes(StandardCharsets.UTF_8)));
+            // Servlet/query binding may already have decoded %XX escapes. A
+            // raw Base64 signature legitimately contains '+', which
+            // URLDecoder would turn into a space and reject. Decode only when
+            // an escape is present, preserving raw '+'; protect '+' while
+            // decoding a still-encoded value as well.
+            String presented = signature.indexOf('%') >= 0
+                    ? URLDecoder.decode(signature.replace("+", "%2B"), StandardCharsets.UTF_8)
+                    : signature;
+            return MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
+                    presented.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception invalid) {
+            return false;
+        }
     }
 
     // ==================== StreamingChannelAdapter ====================

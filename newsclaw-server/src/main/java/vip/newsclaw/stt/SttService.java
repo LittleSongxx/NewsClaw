@@ -16,10 +16,18 @@ import java.util.*;
 @RequiredArgsConstructor
 public class SttService {
 
+    private static final int MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+
     private final SystemSettingService systemSettingService;
     private final SttProviderRegistry providerRegistry;
 
     public Map<String, Object> transcribe(byte[] audioData, String fileName, String contentType, String language) {
+        if (audioData == null || audioData.length == 0) {
+            return Map.of("success", false, "error", "音频数据为空");
+        }
+        if (audioData.length > MAX_AUDIO_BYTES) {
+            return Map.of("success", false, "error", "音频文件超过 25 MB 限制");
+        }
         SystemSettingsDTO config = systemSettingService.getAllSettings();
 
         if (!Boolean.TRUE.equals(config.getSttEnabled())) {

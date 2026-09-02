@@ -194,7 +194,7 @@ cron 表达式不必手写。点表达式输入框旁的编辑按钮打开**分�
 | `GET` | `/api/v1/triggers/{id}` | 获取详情 |
 | `POST` | `/api/v1/triggers` | 新建 trigger；若 `enabled=true` 立即注册到 scheduler / 路由 |
 | `PUT` | `/api/v1/triggers/{id}` | 更新（包括启用 / 禁用——改 `enabled` 字段即可）；`pattern_json` 改动时 `pattern_version++`，跨实例自取消旧 future |
-| `DELETE` | `/api/v1/triggers/{id}` | 软删（等同禁用） |
+| `DELETE` | `/api/v1/triggers/{id}` | 物理删除并注销调度；如需暂时停用请使用 `enabled=false` |
 | `POST` | `/api/v1/triggers/events` | **统一事件入口**——任何 webhook / channel adapter / 内部模块送一份 envelope 进来；引擎做 dedup / bot-self / rate limit / pattern match / dispatch；返回 per-trigger 命中 / 丢弃汇总 |
 
 ---
@@ -247,7 +247,7 @@ v1.3.0 之前 NewsClaw 已经有一个独立的 cron 子系统（`mate_cron_job`
 | `fire_count` | bigint | 有效 dispatch 次数（不计去重 / 限速过滤掉的） |
 | `last_error` | varchar | 最近一次失败原因（含 `"rate-limited"` / 异常 message） |
 | `enabled` | bool | 软启停开关 |
-| `deleted` | int | 软删标志 |
+| `deleted` | int | 兼容字段；触发器删除走物理删除，运行时仅接受 `deleted=0` |
 
 ### `mate_trigger_event` —— 去重元数据
 

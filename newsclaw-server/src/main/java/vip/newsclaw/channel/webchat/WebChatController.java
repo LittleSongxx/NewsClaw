@@ -3,11 +3,13 @@ package vip.newsclaw.channel.webchat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PreDestroy;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -45,7 +47,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
@@ -68,6 +75,7 @@ import vip.newsclaw.agent.context.ChatOrigin;
 @Tag(name = "WebChat 嵌入式对话")
 @Slf4j
 @RestController
+@ConditionalOnProperty(name = "newsclaw.webchat.public-enabled", havingValue = "true", matchIfMissing = true)
 @RequestMapping("/api/v1/channels/webchat")
 @RequiredArgsConstructor
 public class WebChatController {
@@ -102,7 +110,7 @@ public class WebChatController {
      * Server-only secret used to sign per-visitor tokens. Reuses the JWT secret so no extra
      * config/migration is needed; it is never sent to the client (unlike the public channel API key).
      */
-    @Value("${newsclaw.jwt.secret:NewsClaw-JWT-Secret-Key-2024-Please-Change-In-Production}")
+    @Value("${newsclaw.jwt.secret:}")
     private String visitorTokenSecret;
 
     /**
@@ -115,11 +123,80 @@ public class WebChatController {
     @Value("${newsclaw.webchat.sse-timeout-minutes:10}")
     private int webchatSseTimeoutMinutes;
 
+    @Value("${newsclaw.webchat.max-concurrent-streams-per-key:4}")
+    private int maxConcurrentStreamsPerKey = 4;
+
+    @Value("${newsclaw.webchat.requests-per-minute-per-key:30}")
+    private int requestsPerMinutePerKey = 30;
+
+    @Value("${newsclaw.webchat.max-message-chars:16000}")
+    private int maxMessageChars = 16_000;
+
     private long sseTimeoutMillis() {
         return (long) webchatSseTimeoutMinutes * 60_000L;
     }
 
-    private final ExecutorService sseExecutor = Executors.newCachedThreadPool();
+    /** Public WebChat must never create one platform thread per request. */
+    private final ExecutorService sseExecutor = new ThreadPoolExecutor(
+            4, 32, 60L, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(256),
+            new ThreadPoolExecutor.AbortPolicy());
+    private final ConcurrentHashMap<Long, Semaphore> streamPermits = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, MinuteWindow> requestWindows = new ConcurrentHashMap<>();
+    /** Small critical section closing the empty-session quota check/insert race. */
+    private final Object sessionCreationLock = new Object();
+    /** Closes the gap between the running check and executor registration. */
+    private final ConcurrentHashMap<String, Boolean> pendingStreams = new ConcurrentHashMap<>();
+
+    private static final class MinuteWindow {
+        final long minute;
+        final int count;
+
+        MinuteWindow(long minute, int count) {
+            this.minute = minute;
+            this.count = count;
+        }
+    }
+
+    private final class StreamAdmission implements AutoCloseable {
+        private final Semaphore permit;
+        private final AtomicBoolean closed = new AtomicBoolean();
+
+        private StreamAdmission(Semaphore permit) {
+            this.permit = permit;
+        }
+
+        @Override
+        public void close() {
+            if (closed.compareAndSet(false, true)) permit.release();
+        }
+    }
+
+    @PreDestroy
+    void shutdownExecutor() {
+        sseExecutor.shutdownNow();
+    }
+
+    private boolean tryConsumeRequest(Long channelId) {
+        if (channelId == null) return false;
+        int limit = Math.max(1, requestsPerMinutePerKey);
+        long minute = System.currentTimeMillis() / 60_000L;
+        AtomicBoolean allowed = new AtomicBoolean();
+        requestWindows.compute(channelId, (ignored, current) -> {
+            int count = current == null || current.minute != minute ? 0 : current.count;
+            if (count >= limit) return current;
+            allowed.set(true);
+            return new MinuteWindow(minute, count + 1);
+        });
+        return allowed.get();
+    }
+
+    private StreamAdmission tryAcquireStream(Long channelId) {
+        if (channelId == null) return null;
+        Semaphore permit = streamPermits.computeIfAbsent(channelId,
+                ignored -> new Semaphore(Math.max(1, maxConcurrentStreamsPerKey)));
+        return permit.tryAcquire() ? new StreamAdmission(permit) : null;
+    }
 
     /**
      * WebChat SSE 流式对话
@@ -128,6 +205,7 @@ public class WebChatController {
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatStream(
             @RequestHeader("X-MC-Key") String apiKey,
+            @RequestHeader(value = "X-MC-Visitor-Token", required = false) String presentedVisitorToken,
             @RequestBody WebChatRequest request) {
 
         // RFC-058 PR-1: Utf8SseEmitter 显式 charset=UTF-8，防止中文 SSE 乱码
@@ -139,23 +217,44 @@ public class WebChatController {
             sendErrorAndComplete(emitter, "Invalid API Key");
             return emitter;
         }
+        if (request == null) {
+            sendErrorAndComplete(emitter, "Request body is required");
+            return emitter;
+        }
 
-        // Resolve the target agent: an explicit request agentId overrides the channel's
-        // bound agent, but must belong to the channel's workspace (anti privilege-escalation:
-        // a shared channel Key must not be able to drive arbitrary agents in other workspaces).
-        Long agentId = channel.getAgentId();
-        if (request.getAgentId() != null) {
-            var requested = agentService.getAgent(request.getAgentId());
-            if (requested == null) {
-                sendErrorAndComplete(emitter, "Requested agent not found");
-                return emitter;
+        // A visitor id without its server-issued token proves nothing. First
+        // contact therefore gets a server-generated id; later calls may retain
+        // it only by presenting the matching HMAC token.
+        final String visitorId;
+        final String effectiveSessionId;
+        try {
+            if (presentedVisitorToken != null && !presentedVisitorToken.isBlank()) {
+                String requestedVisitorId = requireVisitorId(request.getVisitorId());
+                if (!verifyVisitorTokenForRenewal(channel.getId(),
+                        requestedVisitorId, presentedVisitorToken)) {
+                    sendErrorAndComplete(emitter, "Invalid or expired visitor token");
+                    return emitter;
+                }
+                visitorId = requestedVisitorId;
+            } else {
+                visitorId = UUID.randomUUID().toString();
             }
-            if (channel.getWorkspaceId() != null && requested.getWorkspaceId() != null
-                    && !channel.getWorkspaceId().equals(requested.getWorkspaceId())) {
-                sendErrorAndComplete(emitter, "Requested agent does not belong to this channel's workspace");
-                return emitter;
-            }
-            agentId = request.getAgentId();
+            effectiveSessionId = normalizeSessionId(request.getSessionId());
+        } catch (IllegalArgumentException ex) {
+            sendErrorAndComplete(emitter, ex.getMessage());
+            return emitter;
+        }
+        String conversationId = resolveConversationId(
+                channel, apiKey, visitorId, effectiveSessionId);
+        // The public channel key authorizes exactly the channel-bound agent.
+        // Existing sessions remain pinned to the agent recorded at creation;
+        // request.agentId is accepted only as a matching assertion.
+        ConversationEntity existingConversation = conversationService.findByConversationId(conversationId);
+        Long agentId = existingConversation != null
+                ? existingConversation.getAgentId() : channel.getAgentId();
+        if (request.getAgentId() != null && !request.getAgentId().equals(agentId)) {
+            sendErrorAndComplete(emitter, "Requested agent is not bound to this WebChat session");
+            return emitter;
         }
         if (agentId == null) {
             sendErrorAndComplete(emitter, "No agent configured for this WebChat channel");
@@ -163,19 +262,6 @@ public class WebChatController {
         }
         final Long resolvedAgentId = agentId;
 
-        // Optional sessionId lets one visitor hold multiple isolated threads. It is only ever
-        // composed into the server-derived conversationId (kept under the key+visitor namespace),
-        // never accepted as a raw conversationId — so a caller can't reach another tenant's history.
-        final String visitorId;
-        final String effectiveSessionId;
-        try {
-            visitorId = normalizeVisitorId(request.getVisitorId());
-            effectiveSessionId = normalizeSessionId(request.getSessionId());
-        } catch (IllegalArgumentException ex) {
-            sendErrorAndComplete(emitter, ex.getMessage());
-            return emitter;
-        }
-        String conversationId = deriveConversationId(apiKey, visitorId, effectiveSessionId);
         // Server-issued, unforgeable proof that this caller owns this visitorId. Returned in the
         // meta event below; the session-management endpoints require it back (see verifyVisitorToken).
         final String visitorToken = computeVisitorToken(visitorTokenSecret, channel.getId(), visitorId);
@@ -183,6 +269,25 @@ public class WebChatController {
 
         if (message.isBlank()) {
             sendErrorAndComplete(emitter, "Message is required");
+            return emitter;
+        }
+        if (message.length() > Math.max(1, maxMessageChars)) {
+            sendErrorAndComplete(emitter, "Message exceeds " + Math.max(1, maxMessageChars) + " characters");
+            return emitter;
+        }
+        if (!tryConsumeRequest(channel.getId())) {
+            sendErrorAndComplete(emitter, "WebChat rate limit exceeded; retry next minute");
+            return emitter;
+        }
+        final StreamAdmission admission = tryAcquireStream(channel.getId());
+        if (admission == null) {
+            sendErrorAndComplete(emitter, "Too many concurrent WebChat streams for this key");
+            return emitter;
+        }
+        if (streamTracker.isRunning(conversationId)
+                || pendingStreams.putIfAbsent(conversationId, Boolean.TRUE) != null) {
+            admission.close();
+            sendErrorAndComplete(emitter, "A stream is already running for this session");
             return emitter;
         }
 
@@ -224,7 +329,9 @@ public class WebChatController {
             streamTracker.detach(runHandleRef.get(), emitter);
         });
 
-        sseExecutor.execute(() -> {
+        try {
+            sseExecutor.execute(() -> {
+            boolean subscribed = false;
             try {
                 // 创建或获取会话（workspace 从 agent 获取）
                 var webAgent = agentService.getAgent(resolvedAgentId);
@@ -248,6 +355,10 @@ public class WebChatController {
                 ChatStreamTracker.RunHandle runHandle = streamTracker.register(conversationId);
                 runHandleRef.set(runHandle);
                 streamTracker.attach(runHandle, emitter);
+                // The tracker now owns the atomic running-state check; a
+                // concurrent request can no longer slip between admission and
+                // registration.
+                pendingStreams.remove(conversationId);
                 if (disconnected.get()) {
                     streamTracker.detach(runHandle, emitter);
                 }
@@ -257,6 +368,7 @@ public class WebChatController {
                 // visitorToken must be stored by the caller and sent back on list/messages/delete.
                 streamTracker.broadcast(runHandle, "meta",
                         "{\"sessionId\":" + escapeJson(effectiveSessionId)
+                                + ",\"visitorId\":" + escapeJson(visitorId)
                                 + ",\"conversationId\":" + escapeJson(conversationId)
                                 + ",\"visitorToken\":" + escapeJson(visitorToken) + "}");
 
@@ -349,7 +461,9 @@ public class WebChatController {
                             streamTracker.closeSubscribers(runHandle);
                             streamTracker.complete(runHandle);
                         })
+                        .doFinally(signal -> admission.close())
                         .subscribe();
+                subscribed = true;
                 // Bind the subscription's Disposable so requestStop() (invoked by
                 // POST /sessions/stop) can actually dispose the Flux and interrupt
                 // the LLM stream. Without this, stopRequested is set but the underlying
@@ -363,6 +477,8 @@ public class WebChatController {
                 registerEmergencySave(runHandle, conversationId, assistantReply, usage, modelInfo);
 
             } catch (Exception e) {
+                pendingStreams.remove(conversationId);
+                if (!subscribed) admission.close();
                 log.error("[WebChat] Error: {}", e.getMessage(), e);
                 try {
                     emitter.send(SseEmitter.event().name("error")
@@ -373,8 +489,22 @@ public class WebChatController {
                 }
             }
         });
+        } catch (RejectedExecutionException rejected) {
+            pendingStreams.remove(conversationId);
+            admission.close();
+            sendErrorAndComplete(emitter, "WebChat server is busy; retry later");
+        }
 
         return emitter;
+    }
+
+    /** Source-compatible internal/test entry; public HTTP callers use the token-aware overload. */
+    public SseEmitter chatStream(String apiKey, WebChatRequest request) {
+        ChannelEntity channel = resolveChannel(apiKey);
+        String visitor = request == null ? null : request.getVisitorId();
+        String token = channel != null && visitor != null && !visitor.isBlank()
+                ? computeVisitorToken(visitorTokenSecret, channel.getId(), visitor.trim()) : null;
+        return chatStream(apiKey, token, request);
     }
 
     /**
@@ -404,8 +534,7 @@ public class WebChatController {
      * 图标,不暴露 SKILL.md 正文、config、安全扫描结果等内部字段。
      * <p>
      * 鉴权链跟 {@link #listSessions} 一致:API Key 解析 channel + visitorToken
-     * HMAC 校验。{@code agentId} 可选,缺省回落到 channel 绑定的 agent;
-     * 必须属于该 channel 的 workspace(沿用 {@code /stream} 的反越权路径)。
+     * HMAC 校验。{@code agentId} 仅可作为 channel 绑定 Agent 的一致性断言。
      * <p>
      * 可见范围 = 显式绑定到该 agent 的 enabled 技能。无显式绑定的 agent
      * (意为"用全局默认")返回空清单——visitor 看不到候选,但仍可走自然语言
@@ -425,19 +554,9 @@ public class WebChatController {
         if (!verifyVisitorToken(visitorTokenSecret, channel.getId(), visitorId, visitorToken)) {
             return R.fail(401, "Invalid or missing visitor token");
         }
-        // Resolve the target agent: same anti-escalation rule as /stream — an
-        // explicit agentId must belong to the channel's workspace.
         Long resolvedAgentId = channel.getAgentId();
-        if (agentId != null) {
-            var requested = agentService.getAgent(agentId);
-            if (requested == null) {
-                return R.fail(404, "Requested agent not found");
-            }
-            if (channel.getWorkspaceId() != null && requested.getWorkspaceId() != null
-                    && !channel.getWorkspaceId().equals(requested.getWorkspaceId())) {
-                return R.fail(403, "Requested agent does not belong to this channel's workspace");
-            }
-            resolvedAgentId = agentId;
+        if (agentId != null && !agentId.equals(resolvedAgentId)) {
+            return R.fail(403, "Requested agent is not bound to this WebChat channel");
         }
         if (resolvedAgentId == null) {
             return R.ok(List.of());
@@ -464,8 +583,7 @@ public class WebChatController {
      * 列出访客可见的 wiki 页面，供下游自建「`[[slug]]` 引用 picker」UI。
      * <p>
      * 鉴权链跟 {@link #listSkills} 一致：API Key 解析 channel + visitorToken
-     * HMAC 校验。{@code agentId} 可选，缺省回落到 channel 绑定的 agent；
-     * 必须属于该 channel 的 workspace（沿用 {@code /stream} 的反越权路径）。
+     * HMAC 校验。{@code agentId} 仅可作为 channel 绑定 Agent 的一致性断言。
      * <p>
      * 可见范围 = agent 绑定的 KB（无显式绑定时回落到 workspace 内全部 KB）
      * 下的所有 page，排除 {@code pageType=synthesis}（LLM 中间产物）。
@@ -489,19 +607,9 @@ public class WebChatController {
         if (!verifyVisitorToken(visitorTokenSecret, channel.getId(), visitorId, visitorToken)) {
             return R.fail(401, "Invalid or missing visitor token");
         }
-        // Resolve the target agent — same anti-escalation rule as /stream and
-        // /skills: an explicit agentId must belong to the channel's workspace.
         Long resolvedAgentId = channel.getAgentId();
-        if (agentId != null) {
-            var requested = agentService.getAgent(agentId);
-            if (requested == null) {
-                return R.fail(404, "Requested agent not found");
-            }
-            if (channel.getWorkspaceId() != null && requested.getWorkspaceId() != null
-                    && !channel.getWorkspaceId().equals(requested.getWorkspaceId())) {
-                return R.fail(403, "Requested agent does not belong to this channel's workspace");
-            }
-            resolvedAgentId = agentId;
+        if (agentId != null && !agentId.equals(resolvedAgentId)) {
+            return R.fail(403, "Requested agent is not bound to this WebChat channel");
         }
         if (resolvedAgentId == null) {
             return R.ok(List.of());
@@ -644,37 +752,41 @@ public class WebChatController {
     @PostMapping("/sessions")
     public R<Map<String, Object>> createSession(
             @RequestHeader("X-MC-Key") String apiKey,
+            @RequestHeader(value = "X-MC-Visitor-Token", required = false) String presentedVisitorToken,
             @RequestBody(required = false) WebChatCreateSessionRequest request) {
+        return createSessionInternal(apiKey, presentedVisitorToken, request, false);
+    }
+
+    private R<Map<String, Object>> createSessionInternal(
+            String apiKey, String presentedVisitorToken,
+            WebChatCreateSessionRequest request, boolean preferLegacyNamespace) {
 
         ChannelEntity channel = resolveChannel(apiKey);
         if (channel == null) {
             return R.fail(401, "Invalid API Key");
         }
 
-        // Resolve agent: explicit request.agentId overrides channel's bound agent,
-        // but must belong to channel's workspace (mirrors /stream).
-        final Long agentId;
-        if (request != null && request.getAgentId() != null) {
-            var requested = agentService.getAgent(request.getAgentId());
-            if (requested == null) {
-                return R.fail(400, "Requested agent not found");
-            }
-            if (channel.getWorkspaceId() != null && requested.getWorkspaceId() != null
-                    && !channel.getWorkspaceId().equals(requested.getWorkspaceId())) {
-                return R.fail(400, "Requested agent does not belong to this channel's workspace");
-            }
-            agentId = request.getAgentId();
-        } else {
-            agentId = channel.getAgentId();
-            if (agentId == null) {
-                return R.fail(400, "No agent configured for this WebChat channel");
-            }
+        final Long agentId = channel.getAgentId();
+        if (agentId == null) {
+            return R.fail(400, "No agent configured for this WebChat channel");
+        }
+        if (request != null && request.getAgentId() != null
+                && !request.getAgentId().equals(agentId)) {
+            return R.fail(403, "Requested agent is not bound to this WebChat channel");
         }
 
         final String visitorId;
         final String sessionId;
         try {
-            visitorId = normalizeVisitorId(request != null ? request.getVisitorId() : null);
+            if (presentedVisitorToken != null && !presentedVisitorToken.isBlank()) {
+                visitorId = requireVisitorId(request != null ? request.getVisitorId() : null);
+                if (!verifyVisitorTokenForRenewal(channel.getId(),
+                        visitorId, presentedVisitorToken)) {
+                    return R.fail(401, "Invalid or expired visitor token");
+                }
+            } else {
+                visitorId = UUID.randomUUID().toString();
+            }
             sessionId = normalizeSessionId(request != null ? request.getSessionId() : null);
         } catch (IllegalArgumentException ex) {
             return R.fail(400, ex.getMessage());
@@ -685,34 +797,49 @@ public class WebChatController {
             return R.fail(400, "title 不合法（1-100 字）");
         }
 
-        String conversationId = deriveConversationId(apiKey, visitorId, sessionId);
+        String conversationId = preferLegacyNamespace && legacyNamespaceAllowed(channel)
+                ? deriveConversationId(apiKey, visitorId, sessionId)
+                : resolveConversationId(channel, apiKey, visitorId, sessionId);
         String owner = webchatUsername(visitorId);
 
-        // Idempotency: existing thread is returned as-is. Title and every other
-        // field are left untouched — a re-create call must not clobber a previously
-        // set title. Existing rows are exempt from the empty-session quota.
-        ConversationEntity existing = conversationService.findByConversationId(conversationId);
-        if (existing != null && owner.equals(existing.getUsername())) {
+        synchronized (sessionCreationLock) {
+            // Idempotency: existing thread is returned as-is. Title and every
+            // other field are left untouched — a re-create call must not
+            // clobber a previously set title. Existing rows are exempt from
+            // the empty-session quota.
+            ConversationEntity existing = conversationService.findByConversationId(conversationId);
+            if (existing != null && owner.equals(existing.getUsername())) {
+                audit(channel, visitorId, "webchat.create-session", conversationId,
+                        "{\"sessionId\":\"" + sessionId + "\",\"idempotent\":true}");
+                return R.ok(buildCreateSessionResponse(existing, sessionId, channel.getId(), visitorId));
+            }
+
+            // Quota and insert share one short critical section. This is a
+            // node-local guard; the database's unique conversation id still
+            // protects idempotency across nodes.
+            long emptyCount = loadVisitorSessions(channel, apiKey, visitorId).stream()
+                    .filter(s -> s.getMessageCount() == null || s.getMessageCount() == 0)
+                    .count();
+            if (emptyCount >= MAX_EMPTY_SESSIONS_PER_VISITOR) {
+                return R.fail(409, "未活跃会话数已达上限（" + MAX_EMPTY_SESSIONS_PER_VISITOR
+                        + "），请先发送消息或删除旧会话");
+            }
+
+            ConversationEntity conv = conversationService.getOrCreateWebchatConversation(
+                    conversationId, agentId, owner, channel.getWorkspaceId(), sessionId, title);
             audit(channel, visitorId, "webchat.create-session", conversationId,
-                    "{\"sessionId\":\"" + sessionId + "\",\"idempotent\":true}");
-            return R.ok(buildCreateSessionResponse(existing, sessionId, channel.getId(), visitorId));
+                    "{\"sessionId\":\"" + sessionId + "\",\"idempotent\":false}");
+            return R.ok(buildCreateSessionResponse(conv, sessionId, channel.getId(), visitorId));
         }
+    }
 
-        // Quota: count empty threads this visitor already holds on this channel.
-        // loadVisitorSessions already scopes to (channel prefix ∩ visitor owner).
-        long emptyCount = loadVisitorSessions(apiKey, visitorId).stream()
-                .filter(s -> s.getMessageCount() == null || s.getMessageCount() == 0)
-                .count();
-        if (emptyCount >= MAX_EMPTY_SESSIONS_PER_VISITOR) {
-            return R.fail(409, "未活跃会话数已达上限（" + MAX_EMPTY_SESSIONS_PER_VISITOR
-                    + "），请先发送消息或删除旧会话");
-        }
-
-        ConversationEntity conv = conversationService.getOrCreateWebchatConversation(
-                conversationId, agentId, owner, channel.getWorkspaceId(), sessionId, title);
-        audit(channel, visitorId, "webchat.create-session", conversationId,
-                "{\"sessionId\":\"" + sessionId + "\",\"idempotent\":false}");
-        return R.ok(buildCreateSessionResponse(conv, sessionId, channel.getId(), visitorId));
+    /** Source-compatible internal/test entry; public HTTP callers use the token-aware overload. */
+    public R<Map<String, Object>> createSession(String apiKey, WebChatCreateSessionRequest request) {
+        ChannelEntity channel = resolveChannel(apiKey);
+        String visitor = request == null ? null : request.getVisitorId();
+        String token = channel != null && visitor != null && !visitor.isBlank()
+                ? computeVisitorToken(visitorTokenSecret, channel.getId(), visitor.trim()) : null;
+        return createSessionInternal(apiKey, token, request, true);
     }
 
     private Map<String, Object> buildCreateSessionResponse(ConversationEntity conv, String sessionId,
@@ -723,6 +850,7 @@ public class WebChatController {
         Map<String, Object> m = new java.util.LinkedHashMap<>();
         m.put("sessionId", sessionId != null ? sessionId : "");
         m.put("conversationId", conv.getConversationId());
+        m.put("visitorId", visitorId);
         m.put("visitorToken", visitorToken);
         m.put("title", conv.getTitle() != null ? conv.getTitle() : "");
         m.put("createTime", conv.getCreateTime());
@@ -762,7 +890,7 @@ public class WebChatController {
         if (!verifyVisitorToken(visitorTokenSecret, channel.getId(), visitorId, visitorToken)) {
             return R.fail(401, "Invalid or missing visitor token");
         }
-        return R.ok(loadVisitorSessions(apiKey, visitorId, includeArchived));
+        return R.ok(loadVisitorSessions(channel, apiKey, visitorId, includeArchived));
     }
 
     /**
@@ -835,7 +963,7 @@ public class WebChatController {
         } catch (IllegalArgumentException ex) {
             return R.fail(400, ex.getMessage());
         }
-        String conversationId = deriveConversationId(apiKey, visitorId, sid);
+        String conversationId = resolveConversationId(channel, apiKey, visitorId, sid);
         if (!ownsConversation(conversationId, visitorId)) {
             return R.fail(404, "Session not found");
         }
@@ -874,7 +1002,7 @@ public class WebChatController {
         } catch (IllegalArgumentException ex) {
             return R.fail(400, ex.getMessage());
         }
-        String conversationId = deriveConversationId(apiKey, visitorId, sid);
+        String conversationId = resolveConversationId(channel, apiKey, visitorId, sid);
         if (!ownsConversation(conversationId, visitorId)) {
             return R.fail(404, "Session not found");
         }
@@ -913,7 +1041,7 @@ public class WebChatController {
         } catch (IllegalArgumentException ex) {
             return R.fail(400, ex.getMessage());
         }
-        String conversationId = deriveConversationId(apiKey, visitorId, sid);
+        String conversationId = resolveConversationId(channel, apiKey, visitorId, sid);
         if (!ownsConversation(conversationId, visitorId)) {
             return R.fail(404, "Session not found");
         }
@@ -939,8 +1067,9 @@ public class WebChatController {
      * column (set on creation) and only falls back to parsing the conversationId
      * for legacy rows created before that column existed.
      */
-    private List<WebChatSessionView> loadVisitorSessions(String apiKey, String visitorId) {
-        return loadVisitorSessions(apiKey, visitorId, false);
+    private List<WebChatSessionView> loadVisitorSessions(ChannelEntity channel, String apiKey,
+                                                         String visitorId) {
+        return loadVisitorSessions(channel, apiKey, visitorId, false);
     }
 
     /**
@@ -951,10 +1080,13 @@ public class WebChatController {
      * against the "≤ 5 empty threads" quota (the visitor already declared
      * they're done with them).
      */
-    private List<WebChatSessionView> loadVisitorSessions(String apiKey, String visitorId,
+    private List<WebChatSessionView> loadVisitorSessions(ChannelEntity channel, String apiKey, String visitorId,
                                                          boolean includeArchived) {
-        String base = deriveConversationId(apiKey, visitorId, null);
-        String channelPrefix = "webchat:" + apiKey.substring(0, Math.min(8, apiKey.length())) + ":";
+        String base = deriveConversationId(channel.getId(), visitorId, null);
+        String channelPrefix = "webchat:" + channel.getId() + ":";
+        String legacyBase = deriveConversationId(apiKey, visitorId, null);
+        String legacyPrefix = "webchat:" + apiKey.substring(0, Math.min(8, apiKey.length())) + ":";
+        boolean includeLegacy = legacyNamespaceAllowed(channel);
         String owner = webchatUsername(visitorId);
         // Query is scoped to this visitor's own rows only (no system rows), so
         // listing a visitor's threads doesn't load every IM/cron conversation.
@@ -962,12 +1094,15 @@ public class WebChatController {
         // '_' / '%' in the api key's first 8 chars can't act as a LIKE wildcard.
         return conversationService.listWebchatConversations(owner).stream()
                 .filter(c -> c.getConversationId() != null
-                        && c.getConversationId().startsWith(channelPrefix))
+                        && (c.getConversationId().startsWith(channelPrefix)
+                        || includeLegacy && c.getConversationId().startsWith(legacyPrefix)))
                 .filter(c -> includeArchived
                         || c.getArchived() == null
                         || c.getArchived() == 0)
                 .map(c -> {
-                    String sid = recoverSessionId(c, base);
+                    String cid = c.getConversationId();
+                    String sid = recoverSessionId(c,
+                            cid != null && cid.startsWith(channelPrefix) ? base : legacyBase);
                     return new WebChatSessionView(sid, c.getTitle(), c.getLastActiveTime(),
                             c.getMessageCount(),
                             c.getPinned() != null ? c.getPinned() : 0,
@@ -1025,7 +1160,7 @@ public class WebChatController {
         } catch (IllegalArgumentException ex) {
             return R.fail(400, ex.getMessage());
         }
-        String conversationId = deriveConversationId(apiKey, visitorId, sid);
+        String conversationId = resolveConversationId(channel, apiKey, visitorId, sid);
         if (!ownsConversation(conversationId, visitorId)) {
             return R.fail(404, "Session not found");
         }
@@ -1079,7 +1214,7 @@ public class WebChatController {
         } catch (IllegalArgumentException ex) {
             return R.fail(400, ex.getMessage());
         }
-        String conversationId = deriveConversationId(apiKey, visitorId, sid);
+        String conversationId = resolveConversationId(channel, apiKey, visitorId, sid);
         if (!ownsConversation(conversationId, visitorId)) {
             return R.fail(404, "Session not found");
         }
@@ -1124,7 +1259,7 @@ public class WebChatController {
         } catch (IllegalArgumentException ex) {
             return R.fail(400, ex.getMessage());
         }
-        String conversationId = deriveConversationId(apiKey, visitorId, sid);
+        String conversationId = resolveConversationId(channel, apiKey, visitorId, sid);
         // ownsConversation is the existence + ownership guard: an unknown sessionId
         // maps to a conversationId that either doesn't exist or belongs to someone
         // else — both return 404 so the caller can't probe the namespace.
@@ -1200,7 +1335,7 @@ public class WebChatController {
         } catch (IllegalArgumentException ex) {
             return R.fail(400, ex.getMessage());
         }
-        String conversationId = deriveConversationId(apiKey, visitorId, sid);
+        String conversationId = resolveConversationId(channel, apiKey, visitorId, sid);
         if (!ownsConversation(conversationId, visitorId)) {
             return R.fail(404, "Session not found");
         }
@@ -1268,7 +1403,7 @@ public class WebChatController {
             sendErrorAndComplete(emitter, ex.getMessage());
             return emitter;
         }
-        String conversationId = deriveConversationId(apiKey, visitorId, sid);
+        String conversationId = resolveConversationId(channel, apiKey, visitorId, sid);
         if (!ownsConversation(conversationId, visitorId)) {
             sendErrorAndComplete(emitter, "Session not found");
             return emitter;
@@ -1280,6 +1415,15 @@ public class WebChatController {
         if (ownedApprovalOpt.isEmpty()
                 || !conversationId.equals(ownedApprovalOpt.get().getConversationId())) {
             sendErrorAndComplete(emitter, "Pending approval not found for this session");
+            return emitter;
+        }
+        if (!tryConsumeRequest(channel.getId())) {
+            sendErrorAndComplete(emitter, "WebChat rate limit exceeded; retry next minute");
+            return emitter;
+        }
+        final StreamAdmission approvalAdmission = tryAcquireStream(channel.getId());
+        if (approvalAdmission == null) {
+            sendErrorAndComplete(emitter, "Too many concurrent WebChat streams for this key");
             return emitter;
         }
 
@@ -1308,7 +1452,9 @@ public class WebChatController {
         });
 
         String actor = webchatUsername(visitorId);
+        try {
         sseExecutor.execute(() -> {
+            boolean subscribed = false;
             // Register + attach the emitter FIRST so every downstream branch
             // (already-resolved, no-agent, error, replay) can broadcast a
             // terminal event the SDK actually receives. Doing this after
@@ -1430,10 +1576,13 @@ public class WebChatController {
                             streamTracker.closeSubscribers(runHandle);
                             streamTracker.complete(runHandle);
                         })
+                        .doFinally(signal -> approvalAdmission.close())
                         .subscribe();
+                subscribed = true;
                 streamTracker.setDisposable(runHandle, disposable);
                 registerEmergencySave(runHandle, conversationId, assistantReply, usage, modelInfo);
             } catch (Exception e) {
+                if (!subscribed) approvalAdmission.close();
                 log.error("[WebChat] approve failed for {}: {}", conversationId, e.getMessage());
                 try {
                     streamTracker.broadcast(runHandle, "error",
@@ -1443,6 +1592,10 @@ public class WebChatController {
                 streamTracker.complete(runHandle);
             }
         });
+        } catch (RejectedExecutionException rejected) {
+            approvalAdmission.close();
+            sendErrorAndComplete(emitter, "WebChat server is busy; retry later");
+        }
         audit(channel, visitorId, "webchat.approve-approval", conversationId,
                 "{\"pendingId\":\"" + escapeJson(pendingId) + "\",\"replay\":true}");
         return emitter;
@@ -1544,7 +1697,7 @@ public class WebChatController {
             sendErrorAndComplete(emitter, ex.getMessage());
             return emitter;
         }
-        String conversationId = deriveConversationId(apiKey, visitorId, sid);
+        String conversationId = resolveConversationId(channel, apiKey, visitorId, sid);
         if (!ownsConversation(conversationId, visitorId)) {
             sendErrorAndComplete(emitter, "Session not found");
             return emitter;
@@ -1577,7 +1730,7 @@ public class WebChatController {
         req.setSessionId(sid);
         req.setInternalSkipUserPersist(true);
         req.setInternalOriginMessageId(seed.seedMessageId());
-        return chatStream(apiKey, req);
+        return chatStream(apiKey, visitorToken, req);
     }
 
     /**
@@ -1612,7 +1765,7 @@ public class WebChatController {
         } catch (IllegalArgumentException ex) {
             return R.fail(400, ex.getMessage());
         }
-        String conversationId = deriveConversationId(apiKey, vid, sid);
+        String conversationId = resolveConversationId(channel, apiKey, vid, sid);
         try {
             WebChatFileService.StagedFile stored = fileService.store(conversationId, file);
             audit(channel, vid, "webchat.upload-file", conversationId,
@@ -1657,7 +1810,7 @@ public class WebChatController {
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().build();
         }
-        String conversationId = deriveConversationId(apiKey, visitorId, sid);
+        String conversationId = resolveConversationId(channel, apiKey, visitorId, sid);
         if (!ownsConversation(conversationId, visitorId)) {
             return ResponseEntity.status(404).build();
         }
@@ -1820,7 +1973,33 @@ public class WebChatController {
         return s;
     }
 
+    private String requireVisitorId(String raw) {
+        if (raw == null || raw.trim().isEmpty()) {
+            throw new IllegalArgumentException("visitorId is required with X-MC-Visitor-Token");
+        }
+        return normalizeVisitorId(raw);
+    }
+
     /**
+     * Current namespace: the persistent channel id, not a public-key prefix.
+     * Every generated WebChat key starts with {@code mc_webchat_}, so using
+     * its first eight characters made every channel collide deterministically.
+     */
+    static String deriveConversationId(Long channelId, String visitorId, String sessionId) {
+        if (channelId == null) throw new IllegalArgumentException("channelId is required");
+        String prefix = "webchat:" + channelId + ":";
+        String variable = visitorId + (sessionId != null ? ":" + sessionId : "");
+        String full = prefix + variable;
+        if (full.length() <= 64) return full;
+        int hashChars = Math.max(8, 64 - prefix.length() - 1);
+        return prefix + "#" + sha256Hex(visitorId + "\0" + (sessionId == null ? "" : sessionId))
+                .substring(0, Math.min(40, hashChars));
+    }
+
+    /**
+     * Legacy namespace retained only for safe, single-channel compatibility
+     * reads. New rows must use {@link #deriveConversationId(Long, String, String)}.
+     *
      * 由服务端拼装 conversationId，始终钳在 key + visitor 命名空间内。
      * 绝不接受调用方传入的裸 conversationId。
      * <p>conversation_id 列为 VARCHAR(64)；当 visitorId + sessionId 过长导致超出列宽时，
@@ -1834,6 +2013,26 @@ public class WebChatController {
         }
         return "webchat:" + key8 + ":#"
                 + sha256Hex(visitorId + "\0" + (sessionId == null ? "" : sessionId)).substring(0, 40);
+    }
+
+    private String resolveConversationId(ChannelEntity channel, String apiKey,
+                                         String visitorId, String sessionId) {
+        String current = deriveConversationId(channel.getId(), visitorId, sessionId);
+        if (conversationService.findByConversationId(current) != null) return current;
+        if (!legacyNamespaceAllowed(channel)) return current;
+        String legacy = deriveConversationId(apiKey, visitorId, sessionId);
+        ConversationEntity row = conversationService.findByConversationId(legacy);
+        if (row == null || !webchatUsername(visitorId).equals(row.getUsername())) return current;
+        if (channel.getWorkspaceId() != null && row.getWorkspaceId() != null
+                && !channel.getWorkspaceId().equals(row.getWorkspaceId())) return current;
+        return legacy;
+    }
+
+    private boolean legacyNamespaceAllowed(ChannelEntity channel) {
+        if (channel == null || channel.getWorkspaceId() == null) return false;
+        return channelService.listChannelsByTypeAndWorkspace("webchat", channel.getWorkspaceId()).stream()
+                .filter(c -> Boolean.TRUE.equals(c.getEnabled()))
+                .count() == 1;
     }
 
     /**
@@ -1937,6 +2136,27 @@ public class WebChatController {
             return false;
         }
         return true;
+    }
+
+    /** Possession of a recently-expired valid token is sufficient to rotate it
+     * through /stream; arbitrary visitorId claims still cannot mint one. */
+    private boolean verifyVisitorTokenForRenewal(Long channelId, String visitorId, String presented) {
+        if (verifyVisitorToken(visitorTokenSecret, channelId, visitorId, presented)) return true;
+        if (presented == null || channelId == null || visitorId == null) return false;
+        int dot = presented.lastIndexOf('.');
+        if (dot <= 0 || dot == presented.length() - 1) return false;
+        try {
+            long exp = Long.parseLong(presented.substring(dot + 1));
+            long age = java.time.Instant.now().getEpochSecond() - exp;
+            if (age < 0 || age > 30L * 24 * 3600) return false;
+            String expected = computeVisitorToken(visitorTokenSecret, channelId, visitorId, exp);
+            boolean signatureOk = MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
+                    presented.getBytes(StandardCharsets.UTF_8));
+            return signatureOk && (tokenRevocationService == null
+                    || !tokenRevocationService.isRevoked(channelId, visitorId));
+        } catch (NumberFormatException invalid) {
+            return false;
+        }
     }
 
     /**
@@ -2084,11 +2304,7 @@ public class WebChatController {
     public static class WebChatRequest {
         private String message;
         private String visitorId;
-        /** Optional: route this call to a specific agent instead of the channel's bound agent.
-         *  Must belong to the channel's workspace.
-         *  <p>Only applied when the (visitorId + sessionId) conversation is first created. Once that
-         *  conversation exists, its agent is fixed: a different agentId on later requests is silently
-         *  ignored. To talk to another agent, use a new sessionId (or a new visitorId). */
+        /** Optional consistency assertion; must equal the channel/session-bound agent. */
         private Long agentId;
         /** Optional: open a distinct conversation thread for the same visitor.
          *  Composed into the server-derived conversationId; never used as a raw conversationId. */
@@ -2104,6 +2320,7 @@ public class WebChatController {
          */
         @JsonIgnore
         private boolean internalSkipUserPersist;
+        @JsonIgnore
         private Long internalOriginMessageId;
     }
 
@@ -2195,9 +2412,7 @@ public class WebChatController {
         /** Optional; 1–100 chars when non-blank, otherwise left null so the first
          *  /stream message still derives the title (mirrors PUT /sessions/title rules). */
         private String title;
-        /** Optional; override the channel's bound agent. Must belong to the channel's
-         *  workspace. Only applied on first creation — once the thread exists, a
-         *  different agentId is ignored. */
+        /** Optional consistency assertion; must equal the channel-bound agent. */
         private Long agentId;
     }
 }

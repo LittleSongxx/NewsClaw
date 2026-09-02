@@ -132,6 +132,47 @@ class WorkspaceMemoryArchiveServiceTest {
         assertThat(manifest).containsKey("exportedAt");
     }
 
+    @Test
+    void ownerExportUsesPersonalOverrideOnceAndRecordsItsScope() throws Exception {
+        wireAgent(1L, 10L);
+        WorkspaceFileEntity shared = stubMeta("MEMORY.md");
+        shared.setScope(vip.newsclaw.memory.identity.MemoryScope.TEAM);
+        WorkspaceFileEntity personal = stubFile("MEMORY.md", "alice private memory");
+        personal.setScope(vip.newsclaw.memory.identity.MemoryScope.PERSONAL);
+        personal.setOwnerKey("user:alice");
+        when(workspaceFileService.listVisibleFiles(1L, "user:alice"))
+                .thenReturn(List.of(shared, personal));
+        when(workspaceFileService.getVisibleFile(1L, "MEMORY.md", "user:alice"))
+                .thenReturn(personal);
+
+        Map<String, byte[]> entries = readZip(service.export(1L, 10L, "user:alice"));
+
+        assertThat(new String(entries.get("MEMORY.md"), StandardCharsets.UTF_8))
+                .isEqualTo("alice private memory");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> manifest = objectMapper.readValue(
+                entries.get(WorkspaceMemoryArchiveService.MANIFEST_NAME), Map.class);
+        assertThat((Map<String, String>) manifest.get("fileScopes"))
+                .containsEntry("MEMORY.md", vip.newsclaw.memory.identity.MemoryScope.PERSONAL);
+    }
+
+    @Test
+    void ownerImportRestoresPersonalEntriesIntoCurrentOwnerBucket() throws Exception {
+        wireAgent(1L, 10L);
+        String manifest = objectMapper.writeValueAsString(Map.of(
+                "version", 1,
+                "fileScopes", Map.of("MEMORY.md", "PERSONAL")));
+        byte[] zip = makeZip(Map.of(
+                WorkspaceMemoryArchiveService.MANIFEST_NAME, manifest,
+                "MEMORY.md", "restored private"));
+
+        service.apply(1L, 10L, zip, "user:alice");
+
+        verify(workspaceFileService).saveMemoryFile(
+                1L, "MEMORY.md", "restored private", "user:alice");
+        verify(workspaceFileService, never()).saveFile(1L, "MEMORY.md", "restored private");
+    }
+
     // ---------- preview ----------
 
     @Test

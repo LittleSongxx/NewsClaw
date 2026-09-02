@@ -642,6 +642,23 @@ public class SkillWorkspaceManager {
             return null;
         }
 
+        // The lexical check above does not stop an existing symlink (or a
+        // symlinked parent) from redirecting the write outside the skill
+        // workspace. Resolve the nearest existing ancestor and compare its
+        // real path to the workspace's real path before creating anything.
+        try {
+            Path realWorkspace = workspaceDir.toRealPath();
+            Path existing = resolved;
+            while (existing != null && !Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
+                existing = existing.getParent();
+            }
+            if (existing == null || !existing.toRealPath().startsWith(realWorkspace)) {
+                return null;
+            }
+        } catch (IOException | SecurityException e) {
+            return null;
+        }
+
         return resolved;
     }
 

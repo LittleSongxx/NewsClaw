@@ -24,6 +24,7 @@ import vip.newsclaw.approval.grant.WorkspaceLookupCache;
 import vip.newsclaw.approval.grant.service.ApprovalGrantResolver;
 import vip.newsclaw.channel.web.ChatStreamTracker;
 import vip.newsclaw.tool.ToolInputValidationException;
+import vip.newsclaw.common.text.SecretRedactor;
 import vip.newsclaw.tool.guard.ToolExecutionGuardHelper;
 import vip.newsclaw.tool.guard.ToolGuard;
 import vip.newsclaw.tool.guard.ToolGuardResult;
@@ -34,6 +35,7 @@ import vip.newsclaw.tool.guard.service.ToolGuardService;
 import java.util.*;
 import java.util.Collections;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
 /**
@@ -53,12 +55,53 @@ import java.util.regex.Pattern;
 public class ToolExecutionExecutor {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    // JDK 21 virtual threads: no blocking stall for I/O-bound tools.
-    // Each tool invocation gets its own lightweight carrier thread.
-    // Named threads (matching HookDispatcher convention) for log traceability.
-    private static final ExecutorService TOOL_EXECUTOR =
-            Executors.newThreadPerTaskExecutor(
-                    Thread.ofVirtual().name("tool-executor-", 0).factory());
+    /**
+     * I/O-bound tools run on virtual threads. Admission is bounded separately
+     * so a model cannot turn the cheap virtual-thread primitive into an
+     * unbounded downstream request flood.
+     */
+    private static final int MAX_IN_FLIGHT_TOOLS = 160;
+    private static final Semaphore TOOL_ADMISSION = new Semaphore(MAX_IN_FLIGHT_TOOLS);
+    private static final ExecutorService TOOL_EXECUTOR = Executors.newThreadPerTaskExecutor(
+            Thread.ofVirtual().name("tool-executor-", 0).factory());
+
+    /** Application-shutdown hook invoked by AgentGraphBuilder. */
+    public static void shutdownSharedExecutor() {
+        TOOL_EXECUTOR.shutdownNow();
+    }
+
+    private static <T> Future<T> submitTool(Callable<T> callable) {
+        if (!TOOL_ADMISSION.tryAcquire()) {
+            throw new RejectedExecutionException("tool admission limit reached");
+        }
+        AdmittedFuture<T> future = new AdmittedFuture<>(callable);
+        try {
+            TOOL_EXECUTOR.execute(future);
+            return future;
+        } catch (RuntimeException e) {
+            future.releasePermit();
+            throw e;
+        }
+    }
+
+    private static final class AdmittedFuture<T> extends FutureTask<T> {
+        private final AtomicBoolean released = new AtomicBoolean();
+
+        private AdmittedFuture(Callable<T> callable) {
+            super(callable);
+        }
+
+        @Override
+        protected void done() {
+            releasePermit();
+        }
+
+        private void releasePermit() {
+            if (released.compareAndSet(false, true)) {
+                TOOL_ADMISSION.release();
+            }
+        }
+    }
 
     /**
      * Legacy hardcoded unsafe set, kept as a fallback when no
@@ -830,6 +873,7 @@ public class ToolExecutionExecutor {
             String result = callback.call(callArguments, toolContextWithScopedCatalog(replayOrigin));
             throwIfStopRequested(conversationId);
             int rawLen = result != null ? result.length() : 0;
+            boolean succeeded = isSuccessfulToolResult(result);
 
             // RFC-052: pre-approved tool may itself be returnDirect — in that
             // case its result must take the direct path (no spill, no LLM).
@@ -858,7 +902,7 @@ public class ToolExecutionExecutor {
                     result, toolName, toolCall.id(), conversationId, workspaceBasePath);
             log.info("[ToolExecutor] Pre-approved tool {} returned {} chars{}", toolName, rawLen,
                     result != null && result.length() < rawLen ? " (now " + result.length() + " after spill/truncate)" : "");
-            events.add(GraphEventPublisher.toolComplete(toolCall.id(), toolName, result, true));
+            events.add(GraphEventPublisher.toolComplete(toolCall.id(), toolName, result, succeeded));
             // Append the card-rendering directive to the LLM-facing response only,
             // leaving the broadcast tool-result panel unchanged.
             return new ToolResponseMessage.ToolResponse(
@@ -866,7 +910,7 @@ public class ToolExecutionExecutor {
         } catch (CancellationException e) {
             throw e;
         } catch (Exception e) {
-            log.error("[ToolExecutor] Pre-approved tool {} failed: {}", toolName, e.getMessage());
+            log.error("[ToolExecutor] Pre-approved tool {} failed: {}", toolName, safeDiagnosticForLog(e));
             String validationError = safeInputValidationMessage(e);
             String safeError = validationError != null
                     ? validationError
@@ -922,9 +966,11 @@ public class ToolExecutionExecutor {
         for (List<PreparedToolCall> batch : batches) {
             throwIfStopRequested(preparedCalls.isEmpty() ? null : preparedCalls.get(0).conversationId);
             if (batch.size() == 1) {
-                // 单个工具（safe 或 unsafe），直接执行
+                // Single and parallel calls share the exact same timeout /
+                // cancellation boundary. Calling executeSingleTool inline here
+                // previously made every unsafe tool effectively unbounded.
                 PreparedToolCall pc = batch.get(0);
-                ToolResponseMessage.ToolResponse response = executeSingleTool(pc, events, directOutputs);
+                ToolResponseMessage.ToolResponse response = executeTimedSingle(pc, events, directOutputs);
                 allResponses.set(pc.resultIndex, response);
             } else {
                 // 多个 safe 工具，并行执行
@@ -978,50 +1024,111 @@ public class ToolExecutionExecutor {
                 batch.size(), batch.stream().map(pc -> pc.toolCall.name()).toList());
         long batchStartMs = System.currentTimeMillis();
 
-        Map<Integer, CompletableFuture<ToolResponseMessage.ToolResponse>> futures = new LinkedHashMap<>();
+        record TimedFuture(PreparedToolCall call,
+                           Future<ToolResponseMessage.ToolResponse> future,
+                           long deadlineNanos,
+                           Runnable removeCancellationHook) {}
+        Map<Integer, TimedFuture> futures = new LinkedHashMap<>();
         for (PreparedToolCall pc : batch) {
-            CompletableFuture<ToolResponseMessage.ToolResponse> future =
-                    CompletableFuture.supplyAsync(() -> executeSingleTool(pc, events, directOutputs), TOOL_EXECUTOR);
-            futures.put(pc.resultIndex, future);
+            try {
+                Future<ToolResponseMessage.ToolResponse> future = submitTool(
+                        () -> executeSingleTool(pc, events, directOutputs));
+                Runnable removeHook = streamTracker != null
+                        ? streamTracker.registerCancellationHook(pc.conversationId,
+                                () -> future.cancel(true))
+                        : () -> { };
+                futures.put(pc.resultIndex, new TimedFuture(pc, future,
+                        System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(
+                                getToolTimeoutMs(pc.toolCall.name())), removeHook));
+            } catch (RejectedExecutionException rejected) {
+                allResponses.set(pc.resultIndex, failedToolResponse(pc,
+                        "Tool execution rejected: server is busy", events));
+            }
         }
 
         // 等待所有并行工具完成，按原始顺序填入结果
         for (var entry : futures.entrySet()) {
+            TimedFuture timed = entry.getValue();
             try {
                 String conversationId = batch.isEmpty() ? null : batch.get(0).conversationId;
                 if (streamTracker != null && streamTracker.isStopRequested(conversationId)) {
-                    futures.values().forEach(future -> future.cancel(true));
+                    futures.values().forEach(value -> value.future().cancel(true));
                     throw new CancellationException("Stream stopped by user during tool execution");
                 }
-                // 按工具名查找配置的超时时间
-                PreparedToolCall matchedPc = batch.stream()
-                        .filter(p -> p.resultIndex == entry.getKey()).findFirst().orElse(null);
-                long timeoutMs = getToolTimeoutMs(matchedPc != null ? matchedPc.toolCall.name() : null);
-                ToolResponseMessage.ToolResponse response = entry.getValue().get(timeoutMs, TimeUnit.MILLISECONDS);
+                long remainingNanos = timed.deadlineNanos() - System.nanoTime();
+                if (remainingNanos <= 0) throw new TimeoutException("tool execution timed out");
+                ToolResponseMessage.ToolResponse response = timed.future().get(
+                        remainingNanos, TimeUnit.NANOSECONDS);
                 allResponses.set(entry.getKey(), response);
             } catch (CancellationException e) {
-                futures.values().forEach(future -> future.cancel(true));
+                futures.values().forEach(value -> value.future().cancel(true));
                 throw e;
             } catch (Exception e) {
+                timed.future().cancel(true);
                 String conversationId = batch.isEmpty() ? null : batch.get(0).conversationId;
                 if (streamTracker != null && streamTracker.isStopRequested(conversationId)) {
-                    futures.values().forEach(future -> future.cancel(true));
+                    futures.values().forEach(value -> value.future().cancel(true));
                     throw new CancellationException("Stream stopped by user during tool execution");
                 }
                 // 超时或异常 — 填入错误响应
-                PreparedToolCall pc = batch.stream()
-                        .filter(p -> p.resultIndex == entry.getKey())
-                        .findFirst().orElse(null);
-                String toolName = pc != null ? pc.responseName : "unknown";
-                String toolId = pc != null ? pc.toolCall.id() : "";
-                log.error("[ToolExecutor] Parallel tool {} failed: {}", toolName, e.getMessage());
-                allResponses.set(entry.getKey(), new ToolResponseMessage.ToolResponse(
-                        toolId, toolName, normalizeToolExecutionError(
-                        e instanceof ExecutionException ? (Exception) e.getCause() : (Exception) e)));
+                PreparedToolCall pc = timed.call();
+                String toolName = pc.responseName;
+                Exception failure = e instanceof ExecutionException && e.getCause() instanceof Exception cause
+                        ? cause : e;
+                log.error("[ToolExecutor] Parallel tool {} failed: {}", toolName, safeDiagnosticForLog(failure));
+                allResponses.set(entry.getKey(), failedToolResponse(pc,
+                        normalizeToolExecutionError(failure), events));
+            } finally {
+                timed.removeCancellationHook().run();
             }
         }
         log.info("[ToolExecutor] Parallel batch completed: {} tools in {}ms",
                 batch.size(), System.currentTimeMillis() - batchStartMs);
+    }
+
+    private ToolResponseMessage.ToolResponse executeTimedSingle(
+            PreparedToolCall pc, List<GraphEventPublisher.GraphEvent> events,
+            List<DirectToolOutput> directOutputs) {
+        Future<ToolResponseMessage.ToolResponse> future;
+        try {
+            future = submitTool(() -> executeSingleTool(pc, events, directOutputs));
+        } catch (RejectedExecutionException rejected) {
+            return failedToolResponse(pc, "Tool execution rejected: server is busy", events);
+        }
+        Runnable removeHook = streamTracker != null
+                ? streamTracker.registerCancellationHook(pc.conversationId, () -> future.cancel(true))
+                : () -> { };
+        try {
+            return future.get(getToolTimeoutMs(pc.toolCall.name()), TimeUnit.MILLISECONDS);
+        } catch (CancellationException cancelled) {
+            throw cancelled;
+        } catch (Exception error) {
+            future.cancel(true);
+            if (streamTracker != null && streamTracker.isStopRequested(pc.conversationId)) {
+                throw new CancellationException("Stream stopped by user during tool execution");
+            }
+            Exception failure = error instanceof ExecutionException
+                    && error.getCause() instanceof Exception cause ? cause : error;
+            return failedToolResponse(pc, normalizeToolExecutionError(failure), events);
+        } finally {
+            removeHook.run();
+        }
+    }
+
+    private ToolResponseMessage.ToolResponse failedToolResponse(
+            PreparedToolCall pc, String message,
+            List<GraphEventPublisher.GraphEvent> events) {
+        String toolName = resolveToolName(pc.toolCall.name());
+        GraphEventPublisher.GraphEvent completed = GraphEventPublisher.toolComplete(
+                pc.toolCall.id(), toolName, message, false);
+        events.add(completed);
+        if (streamTracker != null) {
+            streamTracker.broadcastObject(pc.conversationId,
+                    GraphEventPublisher.EVENT_TOOL_COMPLETE, completed.data());
+            streamTracker.updateRunningTool(pc.conversationId, null);
+        }
+        return new ToolResponseMessage.ToolResponse(
+                pc.toolCall.id(), pc.responseName, message);
     }
 
     private ToolResponseMessage.ToolResponse executeSingleTool(PreparedToolCall pc,
@@ -1045,9 +1152,8 @@ public class ToolExecutionExecutor {
                 streamTracker.broadcastObject(pc.conversationId, GraphEventPublisher.EVENT_TOOL_START,
                         GraphEventPublisher.toolStart(pc.toolCall.id(), toolName, pc.arguments).data());
             }
-            log.info("[ToolExecutor] Executing tool: {} with args: {}",
-                    toolName, pc.arguments != null && pc.arguments.length() > 200
-                            ? pc.arguments.substring(0, 200) + "..." : pc.arguments);
+            log.info("[ToolExecutor] Executing tool: {} (argsChars={})", toolName,
+                    pc.arguments == null ? 0 : pc.arguments.length());
 
             // load_skill is deliberately an unsafe (serial) tool. This lets a
             // later call in the same model response see a successful earlier
@@ -1107,6 +1213,10 @@ public class ToolExecutionExecutor {
             }
 
             int rawLen = result != null ? result.length() : 0;
+            // Classify the callback's original wire result before spill/truncate
+            // can replace a long Error: body with a successful-looking preview.
+            boolean succeeded = isSuccessfulToolResult(result)
+                    && (requestedSkill == null || isSuccessfulSkillLoadResult(result));
             // RFC-052: returnDirect tools bypass spill / truncation / LLM context.
             // Their full text goes to the user verbatim and is never persisted to
             // a workspace cache file (spill could leak sensitive data).
@@ -1125,7 +1235,7 @@ public class ToolExecutionExecutor {
                     streamTracker.broadcastObject(pc.conversationId,
                             GraphEventPublisher.EVENT_TOOL_COMPLETE,
                             GraphEventPublisher.toolComplete(pc.toolCall.id(), toolName,
-                                    DIRECT_TOOL_PLACEHOLDER, true).data());
+                                    DIRECT_TOOL_PLACEHOLDER, succeeded).data());
                     streamTracker.updateRunningTool(pc.conversationId, null);
                 }
                 // The stream terminal marker above closes the live tool card.
@@ -1169,7 +1279,6 @@ public class ToolExecutionExecutor {
                     result, toolName, pc.toolCall.id(), pc.conversationId, pc.workspaceBasePath);
             log.info("[ToolExecutor] Tool {} returned {} chars{}", toolName, rawLen,
                     result != null && result.length() < rawLen ? " (now " + result.length() + " after spill/truncate)" : "");
-            boolean succeeded = requestedSkill == null || isSuccessfulSkillLoadResult(result);
             if (succeeded && requestedSkill != null) {
                 pc.skillLoadTracker.markLoaded(requestedSkill);
             }
@@ -1190,7 +1299,12 @@ public class ToolExecutionExecutor {
             }
             throw e;
         } catch (Exception e) {
-            log.error("[ToolExecutor] Tool {} execution failed: {}", toolName, e.getMessage(), e);
+            // Tool/provider exceptions frequently contain connection strings,
+            // bearer tokens, or SQL fragments. Never copy the raw message or
+            // throwable (whose stack trace repeats it) into the application log.
+            log.error("[ToolExecutor] Tool {} execution failed: {} ({})", toolName,
+                    safeDiagnosticForLog(e),
+                    e.getClass().getSimpleName());
             // RFC-052: for returnDirect tools, even the error message is
             // suspect — exception text may carry stack traces, SQL fragments,
             // or other sensitive substrings that should not enter LLM context.
@@ -1222,7 +1336,23 @@ public class ToolExecutionExecutor {
     }
 
     private static boolean isSuccessfulSkillLoadResult(String result) {
-        return result != null && !result.stripLeading().toLowerCase(Locale.ROOT).startsWith("error:");
+        return result != null && isSuccessfulToolResult(result);
+    }
+
+    /**
+     * A number of legacy callbacks return an actionable {@code Error: ...}
+     * string instead of throwing. Treat that established wire convention as a
+     * failed receipt so SSE, execution ledgers, and benchmark traces do not
+     * report a business error as a successful tool execution. Spring's method
+     * callback may JSON-encode a returned String, hence the optional quote.
+     */
+    static boolean isSuccessfulToolResult(String result) {
+        if (result == null) return true; // preserve legacy void/null callback semantics
+        String normalized = result.stripLeading();
+        if (normalized.startsWith("\"")) {
+            normalized = normalized.substring(1).stripLeading();
+        }
+        return !normalized.regionMatches(true, 0, "Error:", 0, "Error:".length());
     }
 
     private void throwIfStopRequested(String conversationId) {
@@ -1427,8 +1557,20 @@ public class ToolExecutionExecutor {
         return "Tool execution failed: " + message;
     }
 
+    /** Keep credentials and provider internals out of logs; validation text is explicitly safe. */
+    private static String safeDiagnosticForLog(Throwable error) {
+        String validation = safeInputValidationMessage(error);
+        if (validation == null) {
+            return error == null ? "<unknown>" : "<" + error.getClass().getSimpleName() + ">";
+        }
+        String redacted = SecretRedactor.redact(validation);
+        return redacted == null || redacted.isBlank()
+                ? "<validation error>"
+                : (redacted.length() > 2000 ? redacted.substring(0, 2000) + "…" : redacted);
+    }
+
     /** Return only explicitly safe, model-correctable validation details. */
-    private String safeInputValidationMessage(Throwable error) {
+    private static String safeInputValidationMessage(Throwable error) {
         Throwable current = error;
         while (current != null) {
             if (current instanceof ToolInputValidationException validation) {

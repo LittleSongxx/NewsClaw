@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.scheduling.annotation.Scheduled;
+import jakarta.annotation.PostConstruct;
 import vip.newsclaw.memory.MemoryProperties;
 
 import java.nio.charset.StandardCharsets;
@@ -42,6 +44,32 @@ public class MemoryWriteGovernanceService {
 
     private final MemoryWriteLedgerMapper ledgerMapper;
     private final MemoryProperties properties;
+
+    @PostConstruct
+    public void recoverPendingOnStartup() {
+        rejectStalePending();
+    }
+
+    @Scheduled(fixedDelayString = "${newsclaw.memory.governance-pending-sweep-ms:300000}")
+    public void sweepStalePending() {
+        rejectStalePending();
+    }
+
+    private void rejectStalePending() {
+        if (!properties.isGovernanceEnabled()) return;
+        int ttl = Math.max(1, properties.getGovernancePendingTtlMinutes());
+        int recovered = ledgerMapper.update(null,
+                new LambdaUpdateWrapper<MemoryWriteLedgerEntity>()
+                        .eq(MemoryWriteLedgerEntity::getStatus, STATUS_PENDING)
+                        .lt(MemoryWriteLedgerEntity::getCreateTime,
+                                java.time.LocalDateTime.now().minusMinutes(ttl))
+                        .set(MemoryWriteLedgerEntity::getStatus, STATUS_REJECTED)
+                        .set(MemoryWriteLedgerEntity::getRejectionReason,
+                                "Writer did not confirm before pending TTL; recovered after interruption"));
+        if (recovered > 0) {
+            log.warn("[MemoryGovernance] Recovered {} stale PENDING ledger row(s)", recovered);
+        }
+    }
 
     /**
      * Create a pending ledger row only when the candidate is suitable for

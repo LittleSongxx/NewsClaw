@@ -109,9 +109,16 @@ public class AvailableProviderPool {
      * so recovery needs no scheduler thread and no user action.
      */
     public boolean contains(String providerId) {
-        if (providerId == null) return false;
+        if (providerId == null || providerId.isBlank()) return false;
         if (members.contains(providerId)) return true;
         RemovalReason reason = removalReasons.get(providerId);
+        // Startup/config-change window: no probe decision exists yet. Fail
+        // open so an early request builds a complete fallback graph instead
+        // of caching an empty chain for the lifetime of the agent instance.
+        // Once the probe records a removal reason, the runtime gate below is
+        // authoritative; a later successful probe simply add()s the provider
+        // and existing graphs can use their already-built fallback entry.
+        if (reason == null) return true;
         if (reason != null && reason.readmitAtMs() > 0
                 && Instant.now().toEpochMilli() >= reason.readmitAtMs()) {
             log.info("[Pool] readmitting provider={} — {} removal TTL expired (removed {}s ago)",

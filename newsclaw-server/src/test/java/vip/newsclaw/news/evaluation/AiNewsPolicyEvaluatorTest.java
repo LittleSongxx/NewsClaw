@@ -41,6 +41,14 @@ class AiNewsPolicyEvaluatorTest {
                 List.of("https://openai.com/index/release/")));
     }
 
+    @Test
+    void emptyFixtureCollectionDoesNotPassOrEmitPerfectRatios() {
+        AiNewsPolicyEvaluator.EvaluationReport report = evaluator.evaluate(List.of(), "test", "unit");
+
+        assertFalse(report.passed());
+        assertTrue(report.manifest().metrics().isEmpty());
+    }
+
     private static AiNewsPolicyEvaluator.EvidenceCase evidence(String url) {
         return new AiNewsPolicyEvaluator.EvidenceCase(
                 "case", "verified", url.contains("openai") ? "official" : "community", url,

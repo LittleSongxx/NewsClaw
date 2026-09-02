@@ -83,12 +83,20 @@ public class WorkspaceMemoryArchiveService {
      *  literal {@code memory/YYYY-MM-DD.md}. */
     private static final Pattern DAILY_FILENAME =
             Pattern.compile("^memory/\\d{4}-\\d{2}-\\d{2}\\.md$");
+    private static final Pattern DREAM_ARCHIVE_FILENAME =
+            Pattern.compile("^memory/dreams/\\d{4}-\\d{2}\\.md$");
+    private static final Pattern STRUCTURED_FILENAME =
+            Pattern.compile("^structured/(user|feedback|project|reference)\\.md$");
 
     /** Top-level whitelist. Anything outside lands in the skip list with reason
      *  {@code "not in whitelist"} so the user can see why their {@code secrets.txt}
      *  was ignored. */
     private static final Set<String> TOP_LEVEL_WHITELIST = Set.of(
             "AGENTS.md", "MEMORY.md", "PROFILE.md", "SOUL.md", "KNOWLEDGE.md");
+
+    /** Files a normal end-user may restore into their PERSONAL bucket. */
+    private static final Set<String> PERSONAL_TOP_LEVEL_WHITELIST = Set.of(
+            "MEMORY.md", "PROFILE.md", "SOUL.md");
 
     /** Per-entry decompressed-size cap. 1 MB comfortably covers a heavy
      *  Markdown memory file but rejects pathological "1 GB of zeroes"
@@ -124,21 +132,28 @@ public class WorkspaceMemoryArchiveService {
     // ==================== Export ====================
 
     public byte[] export(Long agentId, Long workspaceId) {
+        return export(agentId, workspaceId, null);
+    }
+
+    public byte[] export(Long agentId, Long workspaceId, String ownerKey) {
         AgentEntity agent = assertOwnership(agentId, workspaceId);
 
-        List<WorkspaceFileEntity> all = workspaceFileService.listFiles(agentId);
-        // listFiles strips content for transport — re-fetch each allowed file
-        // by name so we can write its body into the archive.
-        List<WorkspaceFileEntity> exportable = new ArrayList<>();
+        List<WorkspaceFileEntity> all = ownerKey == null || ownerKey.isBlank()
+                ? workspaceFileService.listFiles(agentId)
+                : workspaceFileService.listVisibleFiles(agentId, ownerKey);
+        Map<String, WorkspaceFileEntity> byName = new LinkedHashMap<>();
         for (WorkspaceFileEntity meta : all) {
             String name = meta.getFilename();
             if (name != null && isAllowedFilename(name)) {
-                WorkspaceFileEntity full = workspaceFileService.getFile(agentId, name);
+                WorkspaceFileEntity full = ownerKey == null || ownerKey.isBlank()
+                        ? workspaceFileService.getFile(agentId, name)
+                        : workspaceFileService.getVisibleFile(agentId, name, ownerKey);
                 if (full != null && full.getContent() != null) {
-                    exportable.add(full);
+                    byName.put(name, full);
                 }
             }
         }
+        List<WorkspaceFileEntity> exportable = new ArrayList<>(byName.values());
         exportable.sort(Comparator.comparing(WorkspaceFileEntity::getFilename));
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -150,6 +165,9 @@ public class WorkspaceMemoryArchiveService {
             manifest.put("exportedAt", Instant.now().toString());
             manifest.put("agentId", agentId);
             manifest.put("agentName", agent.getName());
+            Map<String, String> fileScopes = new LinkedHashMap<>();
+            exportable.forEach(file -> fileScopes.put(file.getFilename(), file.getScope()));
+            manifest.put("fileScopes", fileScopes);
             writeZipEntry(zip, MANIFEST_NAME,
                     objectMapper.writeValueAsBytes(manifest));
 
@@ -173,19 +191,29 @@ public class WorkspaceMemoryArchiveService {
     // ==================== Preview ====================
 
     public ImportPreview previewImport(Long agentId, Long workspaceId, byte[] zipBytes) {
+        return previewImport(agentId, workspaceId, zipBytes, null);
+    }
+
+    public ImportPreview previewImport(Long agentId, Long workspaceId, byte[] zipBytes, String ownerKey) {
         assertOwnership(agentId, workspaceId);
         Map<String, byte[]> entries = readAndValidateZip(zipBytes);
-        return classify(agentId, entries, /* applyWrites */ false, null);
+        return classify(agentId, entries, manifestScopes(entries), ownerKey, false, null);
     }
 
     // ==================== Apply ====================
 
     @Transactional
     public ImportResult apply(Long agentId, Long workspaceId, byte[] zipBytes) {
+        return apply(agentId, workspaceId, zipBytes, null);
+    }
+
+    @Transactional
+    public ImportResult apply(Long agentId, Long workspaceId, byte[] zipBytes, String ownerKey) {
         assertOwnership(agentId, workspaceId);
         Map<String, byte[]> entries = readAndValidateZip(zipBytes);
         int[] counter = new int[]{0};
-        ImportPreview preview = classify(agentId, entries, /* applyWrites */ true, counter);
+        ImportPreview preview = classify(
+                agentId, entries, manifestScopes(entries), ownerKey, true, counter);
         return new ImportResult(counter[0], preview.willSkip.size());
     }
 
@@ -213,6 +241,10 @@ public class WorkspaceMemoryArchiveService {
 
     private static boolean isAllowedFilename(String name) {
         if (TOP_LEVEL_WHITELIST.contains(name)) {
+            return true;
+        }
+        if (STRUCTURED_FILENAME.matcher(name).matches()
+                || DREAM_ARCHIVE_FILENAME.matcher(name).matches()) {
             return true;
         }
         if (!DAILY_FILENAME.matcher(name).matches()) {
@@ -299,6 +331,7 @@ public class WorkspaceMemoryArchiveService {
      * incremented per persisted row.
      */
     private ImportPreview classify(Long agentId, Map<String, byte[]> entries,
+                                    Map<String, String> fileScopes, String ownerKey,
                                     boolean applyWrites, int[] counter) {
         List<String> willCreate = new ArrayList<>();
         List<FileDiff> willUpdate = new ArrayList<>();
@@ -321,11 +354,25 @@ public class WorkspaceMemoryArchiveService {
             String newContent = new String(body, StandardCharsets.UTF_8);
             String newHash = sha256Hex(body);
 
-            WorkspaceFileEntity existing = workspaceFileService.getFile(agentId, name);
+            // Never trust fileScopes from an uploaded manifest: it is user
+            // supplied JSON and can be changed to TEAM to overwrite shared
+            // configuration.  The service chooses the destination from the
+            // authenticated owner context.  Owner-scoped imports are limited
+            // to memory material; AGENTS/KNOWLEDGE are shared instructions
+            // and are intentionally not writable by this endpoint.
+            boolean ownerImport = ownerKey != null && !ownerKey.isBlank();
+            if (ownerImport && !isPersonalImportFilename(name)) {
+                willSkip.add(new SkipEntry(name, "shared configuration is not writable from a personal import"));
+                continue;
+            }
+            boolean personal = ownerImport;
+            WorkspaceFileEntity existing = personal
+                    ? workspaceFileService.getMemoryFile(agentId, name, ownerKey)
+                    : workspaceFileService.getFile(agentId, name);
             if (existing == null) {
                 willCreate.add(name);
                 if (applyWrites) {
-                    workspaceFileService.saveFile(agentId, name, newContent);
+                    saveImported(agentId, name, newContent, ownerKey, personal);
                     counter[0]++;
                 }
                 continue;
@@ -340,11 +387,42 @@ public class WorkspaceMemoryArchiveService {
             }
             willUpdate.add(new FileDiff(name, existingBytes.length, body.length, oldHash, newHash));
             if (applyWrites) {
-                workspaceFileService.saveFile(agentId, name, newContent);
+                saveImported(agentId, name, newContent, ownerKey, personal);
                 counter[0]++;
             }
         }
         return new ImportPreview(willCreate, willUpdate, willSkip);
+    }
+
+    private void saveImported(Long agentId, String name, String content,
+                              String ownerKey, boolean personal) {
+        if (personal) workspaceFileService.saveMemoryFile(agentId, name, content, ownerKey);
+        else workspaceFileService.saveFile(agentId, name, content);
+    }
+
+    private static boolean isPersonalImportFilename(String name) {
+        return PERSONAL_TOP_LEVEL_WHITELIST.contains(name)
+                || DAILY_FILENAME.matcher(name).matches()
+                || DREAM_ARCHIVE_FILENAME.matcher(name).matches()
+                || STRUCTURED_FILENAME.matcher(name).matches();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, String> manifestScopes(Map<String, byte[]> entries) {
+        byte[] manifest = entries.get(MANIFEST_NAME);
+        if (manifest == null) return Map.of();
+        try {
+            Map<String, Object> root = objectMapper.readValue(manifest, Map.class);
+            Object raw = root.get("fileScopes");
+            if (!(raw instanceof Map<?, ?> map)) return Map.of();
+            Map<String, String> out = new LinkedHashMap<>();
+            map.forEach((k, v) -> {
+                if (k != null && v != null) out.put(String.valueOf(k), String.valueOf(v));
+            });
+            return out;
+        } catch (Exception e) {
+            return Map.of();
+        }
     }
 
     private static String sha256Hex(byte[] body) {

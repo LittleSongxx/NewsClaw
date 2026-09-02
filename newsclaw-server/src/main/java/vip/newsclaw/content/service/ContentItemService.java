@@ -6,8 +6,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import vip.newsclaw.content.model.ContentItemEntity;
 import vip.newsclaw.content.repository.ContentItemMapper;
+import vip.newsclaw.tool.document.GeneratedFileCache;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -27,7 +29,7 @@ import java.util.Map;
 public class ContentItemService {
 
     /** Statuses that count as "already covered" for dedup — a discarded draft doesn't. */
-    private static final List<String> COMMITTED_STATUSES = List.of("packaged", "published");
+    private static final List<String> COMMITTED_STATUSES = List.of("packaged", "operator_acknowledged", "published");
     /** Ignore same-topic rows created within this window, so a record→check in one
      *  run doesn't flag itself as a repeat. */
     private static final long SELF_MATCH_GUARD_MINUTES = 2;
@@ -37,12 +39,17 @@ public class ContentItemService {
 
     private final ContentItemMapper contentItemMapper;
 
+    /** Optional in narrow unit tests; production binds approvals to the cached artifact bytes. */
+    @Autowired(required = false)
+    private GeneratedFileCache generatedFileCache;
+
     /**
      * Recent committed items with the same topic fingerprint on this platform,
      * within {@code days}, excluding just-created rows (self-match guard). Empty
      * means "not a repeat".
      */
     public List<ContentItemEntity> findRecent(Long workspaceId, String platform, String topic, int days) {
+        if (isBlank(platform) || isBlank(topic)) return List.of();
         LocalDateTime now = LocalDateTime.now();
         return contentItemMapper.selectList(new LambdaQueryWrapper<ContentItemEntity>()
                 .eq(ContentItemEntity::getWorkspaceId, normalizeWorkspace(workspaceId))
@@ -68,9 +75,18 @@ public class ContentItemService {
      */
     public Long record(Long workspaceId, String platform, String topic, String title,
                        String status, String previewUrl, String externalRef) {
+        if (isBlank(platform) || isBlank(topic)) {
+            throw new IllegalArgumentException("platform and topic are required");
+        }
         String plat = platform.trim().toLowerCase();
         String fp = fingerprint(topic != null ? topic : title);
         String resolvedStatus = status == null || status.isBlank() ? "packaged" : status.trim().toLowerCase();
+        if (!List.of("draft", "packaged", "failed").contains(resolvedStatus)) {
+            throw new IllegalArgumentException("unsupported content lifecycle status");
+        }
+        if ("published".equals(resolvedStatus) || "operator_acknowledged".equals(resolvedStatus)) {
+            throw new IllegalArgumentException("delivery status must pass the explicit acknowledgement gate");
+        }
 
         ContentItemEntity existing = contentItemMapper.selectOne(new LambdaQueryWrapper<ContentItemEntity>()
                 .eq(ContentItemEntity::getWorkspaceId, normalizeWorkspace(workspaceId))
@@ -82,17 +98,21 @@ public class ContentItemService {
                 .orderByDesc(ContentItemEntity::getCreateTime)
                 .last("LIMIT 1"));
         if (existing != null) {
-            if (title != null && !title.isBlank()) {
-                existing.setTitle(title.trim());
+            boolean protectedDelivery = "operator_acknowledged".equalsIgnoreCase(existing.getStatus())
+                    || "published".equalsIgnoreCase(existing.getStatus());
+            if (!protectedDelivery) {
+                if (title != null && !title.isBlank()) {
+                    existing.setTitle(title.trim());
+                }
+                if (previewUrl != null) {
+                    existing.setPreviewUrl(previewUrl);
+                }
+                if (externalRef != null) {
+                    existing.setExternalRef(externalRef);
+                }
+                existing.setStatus(resolvedStatus);
+                contentItemMapper.updateById(existing);
             }
-            if (previewUrl != null) {
-                existing.setPreviewUrl(previewUrl);
-            }
-            if (externalRef != null) {
-                existing.setExternalRef(externalRef);
-            }
-            existing.setStatus(resolvedStatus);
-            contentItemMapper.updateById(existing);
             log.info("[ContentItem] re-package dedup: updated id={} platform={} topic='{}'",
                     existing.getId(), plat, topic);
             return existing.getId();
@@ -115,6 +135,7 @@ public class ContentItemService {
 
     /** Flip an item to published. Returns false if the id is unknown. */
     public boolean markPublished(Long workspaceId, Long id, String externalRef) {
+        if (isBlank(externalRef)) return false;
         ContentItemEntity e = contentItemMapper.selectOne(new LambdaQueryWrapper<ContentItemEntity>()
                 .eq(ContentItemEntity::getId, id)
                 .eq(ContentItemEntity::getWorkspaceId, normalizeWorkspace(workspaceId))
@@ -122,13 +143,42 @@ public class ContentItemService {
         if (e == null) {
             return false;
         }
+        if ("published".equalsIgnoreCase(e.getStatus())) {
+            return !isBlank(e.getExternalRef()) && !isBlank(e.getArtifactHash());
+        }
+        if (!"operator_acknowledged".equalsIgnoreCase(e.getStatus())
+                || isBlank(e.getArtifactHash())) {
+            return false;
+        }
+        if (generatedFileCache != null
+                && !artifactMatches(e, normalizeWorkspace(workspaceId), e.getArtifactHash())) {
+            return false;
+        }
         e.setStatus("published");
         e.setPublishTime(LocalDateTime.now());
-        if (externalRef != null && !externalRef.isBlank()) {
-            e.setExternalRef(externalRef);
-        }
+        e.setExternalRef(externalRef.trim());
+        e.setPlatformPublishedAt(LocalDateTime.now());
         contentItemMapper.updateById(e);
         log.info("[ContentItem] item {} marked published (ref={})", id, externalRef);
+        return true;
+    }
+
+    /** Record a human approval without claiming that a platform accepted the item. */
+    public boolean acknowledge(Long workspaceId, Long id, String artifactHash) {
+        if (isBlank(artifactHash) || !artifactHash.trim().matches("(?i)[0-9a-f]{64}")) return false;
+        ContentItemEntity e = contentItemMapper.selectOne(new LambdaQueryWrapper<ContentItemEntity>()
+                .eq(ContentItemEntity::getId, id)
+                .eq(ContentItemEntity::getWorkspaceId, normalizeWorkspace(workspaceId))
+                .eq(ContentItemEntity::getDeleted, 0));
+        if (e == null || (!"packaged".equalsIgnoreCase(e.getStatus())
+                && !"operator_acknowledged".equalsIgnoreCase(e.getStatus()))) return false;
+        if (generatedFileCache != null && !artifactMatches(e, normalizeWorkspace(workspaceId), artifactHash)) {
+            return false;
+        }
+        e.setStatus("operator_acknowledged");
+        e.setArtifactHash(artifactHash.trim().toLowerCase());
+        e.setOperatorAcknowledgedAt(LocalDateTime.now());
+        contentItemMapper.updateById(e);
         return true;
     }
 
@@ -163,7 +213,7 @@ public class ContentItemService {
     public Map<String, Long> summary(Long workspaceId) {
         Map<String, Long> m = new LinkedHashMap<>();
         long ws = normalizeWorkspace(workspaceId);
-        for (String s : List.of("draft", "packaged", "published", "failed")) {
+        for (String s : List.of("draft", "packaged", "operator_acknowledged", "published", "failed")) {
             m.put(s, contentItemMapper.selectCount(
                             new LambdaQueryWrapper<ContentItemEntity>()
                             .eq(ContentItemEntity::getWorkspaceId, ws)
@@ -184,6 +234,30 @@ public class ContentItemService {
 
     private static long normalizeWorkspace(Long workspaceId) {
         return workspaceId == null || workspaceId <= 0 ? 1L : workspaceId;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private boolean artifactMatches(ContentItemEntity item, long workspaceId, String suppliedHash) {
+        if (item.getPreviewUrl() == null) return false;
+        java.util.regex.Matcher matcher = GeneratedFileCache.GENERATED_URL_PATTERN.matcher(item.getPreviewUrl());
+        if (!matcher.find()) return false;
+        return generatedFileCache.getForWorkspace(matcher.group(1), workspaceId)
+                .map(entry -> sha256(entry.bytes()).equalsIgnoreCase(suppliedHash.trim()))
+                .orElse(false);
+    }
+
+    private static String sha256(byte[] bytes) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes == null ? new byte[0] : bytes);
+            StringBuilder out = new StringBuilder(64);
+            for (byte value : digest) out.append(String.format("%02x", value));
+            return out.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
     }
 
     /** Stable 32-hex fingerprint of the normalized topic (lowercased, alnum/CJK only). */

@@ -102,14 +102,30 @@ public class WikiTransformationExecutor {
 
     public CompletableFuture<WikiTransformationRunEntity> runOnRawAsync(
             WikiTransformationEntity transformation, Long rawId, String triggeredBy) {
+        return runOnRawAsync(transformation, rawId, triggeredBy, null);
+    }
+
+    /**
+     * Async entry point with a caller-assigned id.  Assigning the id before
+     * handing work to the virtual-thread executor lets HTTP callers receive a
+     * stable runId immediately; the worker still owns the insert and execution
+     * so model calls never run on the request thread.
+     */
+    public CompletableFuture<WikiTransformationRunEntity> runOnRawAsync(
+            WikiTransformationEntity transformation, Long rawId, String triggeredBy, Long runId) {
         return CompletableFuture.supplyAsync(
-                () -> runOnRawSync(transformation, rawId, triggeredBy), WORKER);
+                () -> runOnRawSync(transformation, rawId, triggeredBy, runId), WORKER);
     }
 
     public CompletableFuture<WikiTransformationRunEntity> runOnPageAsync(
             WikiTransformationEntity transformation, Long pageId, String triggeredBy) {
+        return runOnPageAsync(transformation, pageId, triggeredBy, null);
+    }
+
+    public CompletableFuture<WikiTransformationRunEntity> runOnPageAsync(
+            WikiTransformationEntity transformation, Long pageId, String triggeredBy, Long runId) {
         return CompletableFuture.supplyAsync(
-                () -> runOnPageSync(transformation, pageId, triggeredBy), WORKER);
+                () -> runOnPageSync(transformation, pageId, triggeredBy, runId), WORKER);
     }
 
     /**
@@ -122,6 +138,11 @@ public class WikiTransformationExecutor {
      */
     public WikiTransformationRunEntity runOnPageSync(
             WikiTransformationEntity transformation, Long pageId, String triggeredBy) {
+        return runOnPageSync(transformation, pageId, triggeredBy, null);
+    }
+
+    private WikiTransformationRunEntity runOnPageSync(
+            WikiTransformationEntity transformation, Long pageId, String triggeredBy, Long preassignedRunId) {
         if (transformation == null) {
             throw new IllegalArgumentException("transformation is required");
         }
@@ -135,6 +156,7 @@ public class WikiTransformationExecutor {
         if (page == null) {
             throw new IllegalArgumentException("Page not found: " + pageId);
         }
+        requireTemplateTarget(transformation, page.getKbId());
         if (Boolean.FALSE.equals(transformation.getEnabled())) {
             log.debug("[WikiTransformation] skipping disabled template id={} name={}",
                     transformation.getId(), transformation.getName());
@@ -143,6 +165,7 @@ public class WikiTransformationExecutor {
 
         long startNanos = System.nanoTime();
         WikiTransformationRunEntity run = new WikiTransformationRunEntity();
+        if (preassignedRunId != null) run.setId(preassignedRunId);
         run.setTransformationId(transformation.getId());
         run.setKbId(page.getKbId());
         // Global templates have a null workspace_id; the run row requires one, so
@@ -403,6 +426,11 @@ public class WikiTransformationExecutor {
      */
     public WikiTransformationRunEntity runOnRawSync(
             WikiTransformationEntity transformation, Long rawId, String triggeredBy) {
+        return runOnRawSync(transformation, rawId, triggeredBy, null);
+    }
+
+    private WikiTransformationRunEntity runOnRawSync(
+            WikiTransformationEntity transformation, Long rawId, String triggeredBy, Long preassignedRunId) {
         if (transformation == null) {
             throw new IllegalArgumentException("transformation is required");
         }
@@ -413,6 +441,7 @@ public class WikiTransformationExecutor {
         if (raw == null) {
             throw new IllegalArgumentException("Raw material not found: " + rawId);
         }
+        requireTemplateTarget(transformation, raw.getKbId());
         if (Boolean.FALSE.equals(transformation.getEnabled())) {
             log.debug("[WikiTransformation] skipping disabled template id={} name={}",
                     transformation.getId(), transformation.getName());
@@ -421,6 +450,7 @@ public class WikiTransformationExecutor {
 
         long startNanos = System.nanoTime();
         WikiTransformationRunEntity run = new WikiTransformationRunEntity();
+        if (preassignedRunId != null) run.setId(preassignedRunId);
         run.setTransformationId(transformation.getId());
         run.setKbId(raw.getKbId());
         // Global templates have a null workspace_id; the run row requires one, so
@@ -521,6 +551,12 @@ public class WikiTransformationExecutor {
             throw new IllegalStateException("No model bound on transformation and ModelRoutingService unavailable");
         }
         return modelRoutingService.selectModelId(kbId, "heavy_ingest", WikiJobStep.CREATE_PAGE);
+    }
+
+    private static void requireTemplateTarget(WikiTransformationEntity transformation, Long targetKbId) {
+        if (transformation.getKbId() != null && !transformation.getKbId().equals(targetKbId)) {
+            throw new IllegalArgumentException("Transformation is not available to target knowledge base " + targetKbId);
+        }
     }
 
     private ChatModel buildChatModel(Long modelId) {

@@ -57,6 +57,7 @@ public class CronJobController {
     @RequireWorkspaceRole("member")
     public R<CronJobDTO> create(@RequestBody CronJobDTO dto,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        if (dto == null) return R.fail(400, "request body is required");
         return R.ok(cronJobService.create(dto, resolve(workspaceId)));
     }
 
@@ -65,6 +66,7 @@ public class CronJobController {
     @RequireWorkspaceRole("member")
     public R<CronJobDTO> update(@PathVariable Long id, @RequestBody CronJobDTO dto,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        if (dto == null) return R.fail(400, "request body is required");
         return R.ok(cronJobService.update(id, dto, resolve(workspaceId)));
     }
 
@@ -105,8 +107,9 @@ public class CronJobController {
     @GetMapping("/active-runs")
     @RequireWorkspaceRole("member")
     public R<List<ActiveCronRunVO>> activeRuns(
-            @RequestParam("conversationId") String conversationId) {
-        return R.ok(cronJobRunService.listActiveByConversation(conversationId));
+            @RequestParam("conversationId") String conversationId,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        return R.ok(cronJobRunService.listActiveByConversation(conversationId, resolve(workspaceId)));
     }
 
     private static long resolve(Long headerWorkspaceId) {

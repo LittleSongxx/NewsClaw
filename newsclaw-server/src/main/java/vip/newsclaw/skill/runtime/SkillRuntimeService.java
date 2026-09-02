@@ -303,6 +303,13 @@ public class SkillRuntimeService {
         return resolved;
     }
 
+    /** Workspace-scoped status view for management endpoints. */
+    public List<ResolvedSkill> resolveAllSkillsStatus(Long workspaceId) {
+        return resolveAllSkillsStatus().stream()
+                .filter(skill -> matchesWorkspace(skill, workspaceId))
+                .collect(Collectors.toList());
+    }
+
     /**
      * Rescan one skill on demand (RFC-042 §2.3.4) — runs the full resolver
      * pipeline (content + security + dependency), which writes the updated

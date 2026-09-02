@@ -19,6 +19,9 @@ public class DreamReportEntity {
 
     private Long agentId;
 
+    /** PERSONAL memory owner; null denotes the legacy/shared dream timeline. */
+    private String ownerKey;
+
     /** NIGHTLY | FOCUSED */
     private String mode;
 

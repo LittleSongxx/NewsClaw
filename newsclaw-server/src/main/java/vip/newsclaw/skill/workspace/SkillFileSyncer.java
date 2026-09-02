@@ -65,7 +65,14 @@ public class SkillFileSyncer {
 
     /** Sync every active skill once. Idempotent. */
     public SyncReport syncAll() {
-        List<SkillEntity> skills = skillService.listSkills();
+        return syncAll(null);
+    }
+
+    /** Workspace-scoped on-demand sync; null is reserved for startup/global maintenance. */
+    public SyncReport syncAll(Long workspaceId) {
+        List<SkillEntity> skills = workspaceId == null
+                ? skillService.listSkills()
+                : skillService.listSkills(workspaceId);
         int considered = 0;
         int backfilled = 0;
         int materialized = 0;

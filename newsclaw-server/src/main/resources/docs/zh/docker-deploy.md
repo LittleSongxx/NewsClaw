@@ -188,6 +188,7 @@ vi .env   # 见下方必填表
 | `DB_ADMIN_PASSWORD` | PostgreSQL 引导超级账号密码，仅用于首次初始化与运维，**与上面不同** |
 | `JWT_SECRET` | JWT 签名密钥，Compose 强制要求，使用 `openssl rand -base64 48` 生成 |
 | `NEWSCLAW_ENCRYPT_KEY` | Skill Secret / 数据源密码加密密钥，Compose 强制要求并需长期备份 |
+| `NEWSCLAW_BOOTSTRAP_PASSWORD` | 首次启动或数据库仍含旧 seed 时必填；32–72 UTF-8 bytes，使用 `openssl rand -base64 36` 生成，改密后删除 |
 
 **强烈建议**（不填不会报错，但不能解密历史设置）：
 
@@ -204,9 +205,9 @@ docker compose up -d --build   # 首次构建，约 3-10 分钟
 docker compose logs -f newsclaw-server
 ```
 
-首次启动会跑 Flyway 迁移（~5 秒）+ 应用内种子数据（~3 秒），然后绑 `0.0.0.0:18080`。
+首次启动会跑 Flyway 迁移（~5 秒）+ 应用内种子数据（~3 秒），应用端口强制只绑定 `127.0.0.1`。公网请另设 HTTPS 443 反向代理，不要直接暴露 Spring Boot 或桌面端口。
 
-浏览器打开 `http://localhost:18080`，`admin / admin123` 登录，**立刻在「设置 → 安全」改密码**。
+浏览器打开 `http://localhost:18080/showcase` 查看作品集；控制台使用部署者提供的一次性 `NEWSCLAW_BOOTSTRAP_PASSWORD` 登录 `admin`，**立刻在「设置 → 安全」改密码并删除该变量**。
 
 ---
 
@@ -308,7 +309,9 @@ docker compose build newsclaw-server   # 只重建后端
 docker compose up -d newsclaw-server
 ```
 
-PostgreSQL 数据卷（`newsclaw-postgres-data`）不会动，Flyway 自动跑增量迁移 + 自愈 checksum 变化。**版本号写在 `newsclaw-server/pom.xml` 和 git tag**，生产环境建议钉 tag 而不是 `dev` 分支。
+PostgreSQL 数据卷（`newsclaw-postgres-data`）不会动，Flyway 会校验迁移 checksum 并自动运行增量迁移。checksum 漂移默认会阻止启动；只有在审查后进行一次性恢复时才设置 `newsclaw.flyway.auto-repair=true`，完成后立即关闭。**版本号写在 `newsclaw-server/pom.xml` 和 git tag**，生产环境建议钉 tag 而不是 `dev` 分支。
+
+数据库与 `/app/data` 的一致性备份、校验和恢复步骤见 [备份与恢复](./backup-restore.md)。
 
 ---
 

@@ -16,7 +16,9 @@ public class A2aTaskStore {
     private final Duration ttl;
     private final Clock clock;
     private final ConcurrentMap<String, A2aTask> tasks = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, Map<String, Object>> rpcSnapshots = new ConcurrentHashMap<>();
+    private record RpcSnapshot(Map<String, Object> value, Instant updatedAt) {}
+
+    private final ConcurrentMap<String, RpcSnapshot> rpcSnapshots = new ConcurrentHashMap<>();
 
     public A2aTaskStore(int maxTasks, Duration ttl) {
         this(maxTasks, ttl, Clock.systemUTC());
@@ -28,12 +30,18 @@ public class A2aTaskStore {
         this.clock = clock == null ? Clock.systemUTC() : clock;
     }
 
-    public boolean putIfAbsent(String tenant, A2aTask task) {
+    public synchronized boolean putIfAbsent(String tenant, A2aTask task) {
         if (task == null || task.id() == null || task.id().isBlank()) {
             return false;
         }
         if (tasks.size() >= maxTasks) {
             sweepExpired();
+            if (tasks.size() >= maxTasks) {
+                // A non-blocking request can leave a task non-terminal forever
+                // if its bridge disappears. Evict stale active rows only under
+                // admission pressure so normal long-running tasks keep working.
+                evictStaleTasks(clock.instant().minus(ttl));
+            }
             if (tasks.size() >= maxTasks) {
                 throw new IllegalStateException("too many A2A tasks");
             }
@@ -55,18 +63,27 @@ public class A2aTaskStore {
         return Optional.ofNullable(updated);
     }
 
-    public boolean rememberRpcSnapshot(String tenant, String rpcId, Map<String, Object> snapshot) {
+    public synchronized boolean rememberRpcSnapshot(String tenant, String rpcId, Map<String, Object> snapshot) {
         if (rpcId == null || snapshot == null) {
             return true;
         }
-        return rpcSnapshots.putIfAbsent(rpcKey(tenant, rpcId), Map.copyOf(snapshot)) == null;
+        sweepRpcSnapshots();
+        return rpcSnapshots.putIfAbsent(rpcKey(tenant, rpcId),
+                new RpcSnapshot(Map.copyOf(snapshot), clock.instant())) == null;
     }
 
     public Optional<Map<String, Object>> rpcSnapshot(String tenant, String rpcId) {
         if (rpcId == null) {
             return Optional.empty();
         }
-        return Optional.ofNullable(rpcSnapshots.get(rpcKey(tenant, rpcId)));
+        String key = rpcKey(tenant, rpcId);
+        RpcSnapshot snapshot = rpcSnapshots.get(key);
+        if (snapshot == null) return Optional.empty();
+        if (snapshot.updatedAt().isBefore(clock.instant().minus(ttl))) {
+            rpcSnapshots.remove(key, snapshot);
+            return Optional.empty();
+        }
+        return Optional.of(snapshot.value());
     }
 
     public int sweepExpired() {
@@ -81,7 +98,27 @@ public class A2aTaskStore {
                 removed++;
             }
         }
+        sweepRpcSnapshots(cutoff);
         return removed;
+    }
+
+    private void sweepRpcSnapshots() {
+        sweepRpcSnapshots(clock.instant().minus(ttl));
+    }
+
+    private void sweepRpcSnapshots(Instant cutoff) {
+        rpcSnapshots.entrySet().removeIf(entry -> entry.getValue().updatedAt().isBefore(cutoff));
+        // Keep replay de-duplication bounded even when callers use a unique RPC
+        // id for every request. The task cap is the existing memory budget.
+        while (rpcSnapshots.size() > maxTasks) {
+            rpcSnapshots.entrySet().stream()
+                    .min(Map.Entry.comparingByValue(java.util.Comparator.comparing(RpcSnapshot::updatedAt)))
+                    .ifPresent(oldest -> rpcSnapshots.remove(oldest.getKey(), oldest.getValue()));
+        }
+    }
+
+    private void evictStaleTasks(Instant cutoff) {
+        tasks.entrySet().removeIf(entry -> entry.getValue().updatedAt().isBefore(cutoff));
     }
 
     private static String taskKey(String tenant, String taskId) {

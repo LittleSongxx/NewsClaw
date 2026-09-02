@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.workspace.core.service.ChatUploadLocationResolver;
+import vip.newsclaw.tool.browser.UrlSafetyChecker;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,6 +25,11 @@ public class Model3dFileDownloader {
 
     public Path download(String modelUrl, String conversationId, String taskId,
                           String preferredExtension) throws IOException {
+        try {
+            UrlSafetyChecker.check(modelUrl);
+        } catch (SecurityException e) {
+            throw new IOException("Refusing to download model from unsafe URL", e);
+        }
         Path dir = uploadLocationResolver.resolveWriteDir(conversationId);
         Files.createDirectories(dir);
 

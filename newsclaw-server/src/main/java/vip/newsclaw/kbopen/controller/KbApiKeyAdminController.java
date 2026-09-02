@@ -51,6 +51,7 @@ public class KbApiKeyAdminController {
             @RequestBody CreateKeyRequest req,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
             Authentication auth) {
+        if (req == null) return R.fail(400, "request body is required");
         UserEntity user = requireUser(auth);
         long wsId = workspaceId != null ? workspaceId : 1L;
         CreatedKey created = keyService.create(
@@ -79,7 +80,7 @@ public class KbApiKeyAdminController {
         long wsId = workspaceId != null ? workspaceId : 1L;
         KbApiKeyEntity entity = keyService.getById(id);
         if (entity == null || (entity.getDeleted() != null && entity.getDeleted() == 1)
-                || !entity.getWorkspaceId().equals(wsId)) {
+                || !java.util.Objects.equals(entity.getWorkspaceId(), wsId)) {
             throw new NewsClawException(404, "API key not found: " + id);
         }
         Set<Long> kbIds = keyService.loadBoundKbIds(id);
@@ -103,6 +104,7 @@ public class KbApiKeyAdminController {
             @PathVariable Long id,
             @RequestBody UpdateKeyRequest req,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        if (req == null) return R.fail(400, "request body is required");
         long wsId = workspaceId != null ? workspaceId : 1L;
         keyService.update(id, wsId, req.name(), req.scopes(), req.kbIds(), req.expiresAt());
         return R.ok();

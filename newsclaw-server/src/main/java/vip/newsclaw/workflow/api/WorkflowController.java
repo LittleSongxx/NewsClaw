@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
 import vip.newsclaw.common.result.R;
 import vip.newsclaw.workflow.compiler.PublishContext;
 import vip.newsclaw.workflow.compiler.WorkflowAclPort;
@@ -23,6 +24,7 @@ import vip.newsclaw.workflow.service.WorkflowService;
 
 import java.util.List;
 import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
+import vip.newsclaw.auth.service.AuthService;
 
 /**
  * REST surface for workflow CRUD + draft / publish / run inspection.
@@ -49,6 +51,9 @@ public class WorkflowController {
     private vip.newsclaw.workflow.draftgen.WorkflowDraftGenerator draftGenerator;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private vip.newsclaw.workflow.draftgen.WorkflowDraftTemplateLibrary draftTemplates;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private AuthService authService;
 
     @Operation(summary = "List workflows in the workspace")
     @GetMapping
@@ -98,7 +103,16 @@ public class WorkflowController {
     public R<WorkflowEntity> saveDraft(@PathVariable long id,
                                        @RequestBody WorkflowDraftRequest body,
                                        @RequestParam(value = "userId", required = false) Long userId,
-                                       @RequestHeader("X-Workspace-Id") long workspaceId) {
+                                       @RequestHeader("X-Workspace-Id") long workspaceId,
+                                       Authentication authentication) {
+        if (body == null || body.draftJson() == null) {
+            return R.fail(400, "draftJson is required");
+        }
+        return R.ok(workflowService.saveDraft(id, workspaceId, body.draftJson(), authenticatedUserId(authentication)));
+    }
+
+    /** Source-compatible direct-call overload; HTTP requests use the authenticated identity above. */
+    public R<WorkflowEntity> saveDraft(long id, WorkflowDraftRequest body, Long userId, long workspaceId) {
         return R.ok(workflowService.saveDraft(id, workspaceId, body.draftJson(), userId));
     }
 
@@ -145,9 +159,11 @@ public class WorkflowController {
     public ResponseEntity<?> publish(@PathVariable long id,
                                      @RequestBody(required = false) WorkflowPublishRequest body,
                                      @RequestParam(value = "userId", required = false) Long userId,
-                                     @RequestHeader("X-Workspace-Id") long workspaceId) {
+                                     @RequestHeader("X-Workspace-Id") long workspaceId,
+                                     Authentication authentication) {
         try {
-            WorkflowService.PublishOutcome outcome = workflowService.publish(id, workspaceId, userId,
+            WorkflowService.PublishOutcome outcome = workflowService.publish(id, workspaceId,
+                    authenticatedUserId(authentication),
                     body == null ? null : body.note());
             return ResponseEntity.ok(R.ok(outcome));
         } catch (WorkflowCompileFailedException e) {
@@ -158,6 +174,22 @@ public class WorkflowController {
             return ResponseEntity.unprocessableEntity().body(buildCompileFailure(List.of(
                     new vip.newsclaw.workflow.compiler.CompileError(
                             "graph.parse_failed", "/", e.getMessage()))));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(R.fail(e.getMessage()));
+        }
+    }
+
+    /** Source-compatible direct-call overload; never selected as an MVC handler. */
+    public ResponseEntity<?> publish(long id, WorkflowPublishRequest body, Long userId, long workspaceId) {
+        try {
+            WorkflowService.PublishOutcome outcome = workflowService.publish(id, workspaceId, userId,
+                    body == null ? null : body.note());
+            return ResponseEntity.ok(R.ok(outcome));
+        } catch (WorkflowCompileFailedException e) {
+            return ResponseEntity.unprocessableEntity().body(buildCompileFailure(e.errors()));
+        } catch (vip.newsclaw.workflow.compiler.WorkflowParseException e) {
+            return ResponseEntity.unprocessableEntity().body(buildCompileFailure(List.of(
+                    new vip.newsclaw.workflow.compiler.CompileError("graph.parse_failed", "/", e.getMessage()))));
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(R.fail(e.getMessage()));
         }
@@ -322,5 +354,14 @@ public class WorkflowController {
         r.setMsg("compile failed");
         r.setData(CompileErrorResponse.of(errors));
         return r;
+    }
+
+    private Long authenticatedUserId(Authentication authentication) {
+        if (authentication == null) return null;
+        Object details = authentication.getDetails();
+        if (details instanceof Number number) return number.longValue();
+        if (authService == null || authentication.getName() == null) return null;
+        var user = authService.findByUsername(authentication.getName());
+        return user == null ? null : user.getId();
     }
 }

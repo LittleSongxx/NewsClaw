@@ -294,7 +294,7 @@ public class ChannelMessageRouter {
         // early on a missing agent below without publishing, the workflow
         // side would silently lose every channel-event that doesn't also
         // route to a chat agent.
-        publishChannelEvent(message, adapter, channelEntity);
+        publishChannelEvent(message, adapter, channelEntity, conversationId);
 
         Long agentId = channelEntity.getAgentId();
         if (agentId == null) {
@@ -383,7 +383,7 @@ public class ChannelMessageRouter {
      * the same trigger.
      */
     private void publishChannelEvent(ChannelMessage message, ChannelAdapter adapter,
-                                     ChannelEntity channelEntity) {
+                                     ChannelEntity channelEntity, String conversationId) {
         if (events == null || message == null || adapter == null || channelEntity == null) return;
         try {
             long ws = channelEntity.getWorkspaceId() == null ? 0L : channelEntity.getWorkspaceId();
@@ -407,7 +407,9 @@ public class ChannelMessageRouter {
                     message.getSenderId(),
                     message.getSenderName(),
                     message.getChatId(),
-                    message.getContent()));
+                    message.getContent(),
+                    conversationId,
+                    channelEntity.getId()));
         } catch (Exception e) {
             log.warn("[ChannelMessageRouter] event publish failed for sender {}: {}",
                     message.getSenderId(), e.getMessage());

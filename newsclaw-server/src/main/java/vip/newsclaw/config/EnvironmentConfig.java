@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Runtime configuration sourced from the process environment.
@@ -19,6 +20,13 @@ import java.util.Map;
 public final class EnvironmentConfig {
 
     private static final String ENABLED = "NEWSCLAW_ENV_CONFIG_ENABLED";
+
+    /** Immutable marker copied into seeded schedules; display names are editable. */
+    public static final String AI_NEWS_DAILY_RADAR_MANAGED_KEY = "ai-news.daily-radar.v1";
+    public static final String AI_NEWS_DAILY_RADAR_MARKER =
+            "__newsclaw_managed_key__=" + AI_NEWS_DAILY_RADAR_MANAGED_KEY;
+    private static final Set<String> LEGACY_AI_NEWS_RADAR_NAMES = Set.of(
+            "每日 AI 动态雷达", "每日选题雷达", "Daily AI News Radar", "Daily Topic Radar");
 
     /**
      * One environment-owned model chain shared by the default-model resolver
@@ -66,6 +74,23 @@ public final class EnvironmentConfig {
      */
     public static boolean aiNewsRadarEnabled() {
         return enabled() && booleanValue("NEWSCLAW_AI_NEWS_RADAR_ENABLED", true);
+    }
+
+    /**
+     * Scheduled radar runs only on the backend-owned candidate mainline.
+     * Legacy ai_news_event discovery remains an explicit manual/tool path.
+     */
+    public static boolean aiNewsCandidatePipelineEnabled() {
+        return enabled() && booleanValue("NEWSCLAW_AI_NEWS_CANDIDATE_PIPELINE_ENABLED", false);
+    }
+
+    /**
+     * Compatibility names for seeded AI-news discovery jobs. A managed marker
+     * is preferred by callers; this set only protects old rows until they are
+     * rewritten by the seed.
+     */
+    public static boolean isLegacyAiNewsRadarName(String name) {
+        return name != null && LEGACY_AI_NEWS_RADAR_NAMES.contains(name.trim());
     }
 
     /** Return a non-blank environment value, with a system-property fallback. */
@@ -274,10 +299,17 @@ public final class EnvironmentConfig {
         if (!enabled() || settingKey == null || settingKey.isBlank()) {
             return null;
         }
+        // Prefer the plural pool variable while retaining the legacy single
+        // key variable and generic setting alias as fallbacks.
+        if ("tavilyApiKey".equals(settingKey)) {
+            return firstNonBlank(
+                    "TAVILY_API_KEYS",
+                    "TAVILY_API_KEY",
+                    "NEWSCLAW_SETTING_" + normalize(settingKey));
+        }
         String alias = switch (settingKey) {
             case "serperApiKey" -> "SERPER_API_KEY";
             case "serperBaseUrl" -> "SERPER_BASE_URL";
-            case "tavilyApiKey" -> "TAVILY_API_KEY";
             case "tavilyBaseUrl" -> "TAVILY_BASE_URL";
             case "searchProvider" -> "NEWSCLAW_SEARCH_PROVIDER";
             case "searchEnabled" -> "NEWSCLAW_SEARCH_ENABLED";

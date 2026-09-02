@@ -108,8 +108,15 @@ public class AuditEventService {
      */
     public void recordSync(String action, String resourceType, String resourceId,
                            String resourceName, String detailJson) {
+        recordSync(action, resourceType, resourceId, resourceName, detailJson, null);
+    }
+
+    /** Synchronous workspace-scoped audit for state transitions that must not outlive their audit. */
+    public void recordSync(String action, String resourceType, String resourceId,
+                           String resourceName, String detailJson, Long workspaceId) {
         AuditEventEntity event = buildEvent(action, resourceType, resourceId, resourceName, detailJson);
         if (event != null) {
+            if (workspaceId != null) event.setWorkspaceId(workspaceId);
             auditEventMapper.insert(event);
         }
     }

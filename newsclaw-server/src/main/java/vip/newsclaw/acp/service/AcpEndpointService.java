@@ -43,8 +43,9 @@ public class AcpEndpointService {
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
 
-    public List<AcpEndpointEntity> list() {
+    public List<AcpEndpointEntity> list(Long workspaceId) {
         return mapper.selectList(new LambdaQueryWrapper<AcpEndpointEntity>()
+                .eq(AcpEndpointEntity::getWorkspaceId, requireWorkspaceId(workspaceId))
                 .orderByDesc(AcpEndpointEntity::getBuiltin)
                 .orderByAsc(AcpEndpointEntity::getName));
     }
@@ -60,10 +61,29 @@ public class AcpEndpointService {
                 .orderByAsc(AcpEndpointEntity::getName));
     }
 
+    /** Workspace-scoped enabled endpoints for virtual tools and runtime wrappers. */
+    public List<AcpEndpointEntity> listEnabled(Long workspaceId) {
+        return mapper.selectList(new LambdaQueryWrapper<AcpEndpointEntity>()
+                .eq(AcpEndpointEntity::getWorkspaceId, requireWorkspaceId(workspaceId))
+                .eq(AcpEndpointEntity::getEnabled, true)
+                .orderByAsc(AcpEndpointEntity::getName));
+    }
+
+    /** Internal runtime lookup; management HTTP paths must use the scoped overload. */
     public AcpEndpointEntity get(Long id) {
         AcpEndpointEntity ep = mapper.selectById(id);
         if (ep == null) throw new NewsClawException("err.acp.endpoint_not_found",
                 "ACP endpoint not found: " + id);
+        return ep;
+    }
+
+    public AcpEndpointEntity get(Long id, Long workspaceId) {
+        AcpEndpointEntity ep = get(id);
+        if (!Long.valueOf(requireWorkspaceId(workspaceId)).equals(ep.getWorkspaceId())) {
+            // Use the same not-found response for missing and cross-workspace ids.
+            throw new NewsClawException("err.acp.endpoint_not_found",
+                    "ACP endpoint not found: " + id);
+        }
         return ep;
     }
 
@@ -72,7 +92,14 @@ public class AcpEndpointService {
                 .eq(AcpEndpointEntity::getName, name));
     }
 
-    public AcpEndpointEntity create(AcpEndpointEntity input) {
+    public AcpEndpointEntity findByName(String name, Long workspaceId) {
+        return mapper.selectOne(new LambdaQueryWrapper<AcpEndpointEntity>()
+                .eq(AcpEndpointEntity::getName, name)
+                .eq(AcpEndpointEntity::getWorkspaceId, requireWorkspaceId(workspaceId))
+                .last("LIMIT 1"));
+    }
+
+    public AcpEndpointEntity create(AcpEndpointEntity input, Long workspaceId) {
         if (input.getName() == null || input.getName().isBlank()) {
             throw new NewsClawException("err.acp.name_required", "ACP endpoint name is required");
         }
@@ -95,15 +122,17 @@ public class AcpEndpointService {
             input.setStdioBufferLimitBytes(50L * 1024L * 1024L);
         }
         input.setPromptTimeoutSeconds(normalizePromptTimeoutSeconds(input.getPromptTimeoutSeconds()));
-        if (input.getWorkspaceId() == null) input.setWorkspaceId(1L);
+        // Ownership always comes from the authenticated request context, never
+        // from a workspaceId smuggled in the JSON body.
+        input.setWorkspaceId(requireWorkspaceId(workspaceId));
         mapper.insert(input);
         log.info("Created ACP endpoint: {}", input.getName());
         publish(input, AcpEndpointChangedEvent.Type.CREATED);
         return input;
     }
 
-    public AcpEndpointEntity update(Long id, AcpEndpointEntity patch) {
-        AcpEndpointEntity existing = get(id);
+    public AcpEndpointEntity update(Long id, AcpEndpointEntity patch, Long workspaceId) {
+        AcpEndpointEntity existing = get(id, workspaceId);
         if (Boolean.TRUE.equals(existing.getBuiltin())
                 && patch.getCommand() != null
                 && !patch.getCommand().equals(existing.getCommand())) {
@@ -130,8 +159,8 @@ public class AcpEndpointService {
         return existing;
     }
 
-    public void delete(Long id) {
-        AcpEndpointEntity existing = get(id);
+    public void delete(Long id, Long workspaceId) {
+        AcpEndpointEntity existing = get(id, workspaceId);
         if (Boolean.TRUE.equals(existing.getBuiltin())) {
             throw new NewsClawException("err.acp.builtin_readonly",
                     "Builtin ACP endpoint cannot be deleted: " + existing.getName());
@@ -141,8 +170,8 @@ public class AcpEndpointService {
         publish(existing, AcpEndpointChangedEvent.Type.DELETED);
     }
 
-    public AcpEndpointEntity toggle(Long id, boolean enabled) {
-        AcpEndpointEntity existing = get(id);
+    public AcpEndpointEntity toggle(Long id, boolean enabled, Long workspaceId) {
+        AcpEndpointEntity existing = get(id, workspaceId);
         existing.setEnabled(enabled);
         mapper.updateById(existing);
         publish(existing, AcpEndpointChangedEvent.Type.TOGGLED);
@@ -192,6 +221,14 @@ public class AcpEndpointService {
             return DEFAULT_PROMPT_TIMEOUT_SECONDS;
         }
         return Math.min(seconds, MAX_PROMPT_TIMEOUT_SECONDS);
+    }
+
+    private static long requireWorkspaceId(Long workspaceId) {
+        if (workspaceId == null || workspaceId <= 0) {
+            throw new NewsClawException("err.common.workspace_required", 400,
+                    "A valid workspace id is required");
+        }
+        return workspaceId;
     }
 
     private List<String> parseStringList(String json) {

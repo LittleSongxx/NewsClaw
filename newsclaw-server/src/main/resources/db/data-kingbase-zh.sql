@@ -1,6 +1,6 @@
 -- NewsClaw 初始数据 - 中文版（KingbaseES / PostgreSQL 语法，ON CONFLICT DO UPDATE）
 
--- 默认管理员（密码：admin123，BCrypt加密）
+-- Legacy administrator seed hash; production bootstrap rotates it before serving traffic.
 INSERT INTO mate_user (id, username, password, nickname, role, enabled, create_time, update_time, deleted)
 VALUES (1, 'admin', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', 'NewsClaw Admin', 'admin', TRUE, NOW(), NOW(), 0)
 ON CONFLICT (id) DO UPDATE SET username=EXCLUDED.username, password=EXCLUDED.password, nickname=EXCLUDED.nickname, role=EXCLUDED.role, enabled=EXCLUDED.enabled, update_time=EXCLUDED.update_time, deleted=EXCLUDED.deleted;
@@ -1846,7 +1846,7 @@ INSERT INTO mate_tool (id, name, display_name, description, tool_type, bean_name
 VALUES (1000000630, 'WechatArticleExtractTool', '公众号文章抓取', '抓取微信公众号文章：输入文章 URL，返回清洗后的标题/作者/时间/正文(Markdown)/图片。用于「参考公众号信息抓取汇总」，比 browser_use 更适合 mp.weixin.qq.com 文章页。', 'builtin', 'wechatArticleExtractTool', '📰', TRUE, TRUE, NOW(), NOW(), 0)
 ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, display_name=EXCLUDED.display_name, description=EXCLUDED.description, tool_type=EXCLUDED.tool_type, bean_name=EXCLUDED.bean_name, icon=EXCLUDED.icon, enabled=EXCLUDED.enabled, builtin=EXCLUDED.builtin, update_time=EXCLUDED.update_time, deleted=EXCLUDED.deleted;
 INSERT INTO mate_tool (id, name, display_name, description, tool_type, bean_name, icon, enabled, builtin, create_time, update_time, deleted)
-VALUES (1000000631, 'GzhPublishTool', '公众号发布', '将生成的图文发布到微信公众号：action=draft 上传封面并存入草稿箱（推荐）；action=publish 为认证号群发，需显式确认。需在系统设置配置 weixinoa.app_id / weixinoa.app_secret。', 'builtin', 'gzhPublishTool', '📤', TRUE, TRUE, NOW(), NOW(), 0)
+VALUES (1000000631, 'GzhPublishTool', '公众号发布', '将生成的图文推进微信公众号草稿箱：action=draft 上传封面并存入草稿。直接 action=publish 已禁用，最终发表必须由账号 owner 在公众号后台人工完成。需在系统设置配置 weixinoa.app_id / weixinoa.app_secret。', 'builtin', 'gzhPublishTool', '📤', TRUE, TRUE, NOW(), NOW(), 0)
 ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, display_name=EXCLUDED.display_name, description=EXCLUDED.description, tool_type=EXCLUDED.tool_type, bean_name=EXCLUDED.bean_name, icon=EXCLUDED.icon, enabled=EXCLUDED.enabled, builtin=EXCLUDED.builtin, update_time=EXCLUDED.update_time, deleted=EXCLUDED.deleted;
 INSERT INTO mate_agent (id, name, description, agent_type, system_prompt, model_name, max_iterations, enabled, icon, tags, create_time, update_time, deleted)
 VALUES (1000000640, '内容工作室', '端到端创作公众号与小红书图文：选题搜集、成文、配图、去AI化、排版、入草稿箱发布。', 'react', '你是 NewsClaw 的「内容工作室」——专门端到端创作微信公众号（公众号）与小红书图文。
@@ -1862,7 +1862,7 @@ VALUES (1000000640, '内容工作室', '端到端创作公众号与小红书图�
 
 每次任务开始先 recall_structured 这些键并遵循：content_persona、writing_style_gzh、writing_style_xhs、topic_interests、banned_words、signature_blocks。若缺少必要项，向用户询问一次并 remember_structured。
 
-发布是外向且不可逆的动作：调用 gzh_publish 前必须展示最终内容并获得用户明确确认；未经 confirmPublish=true 与用户认可，绝不群发。遵守 banned_words 与广告法限制；所有内容保持原创。
+发布是外向且不可逆的动作：NewsClaw 只负责生成草稿，直接群发入口已禁用；账号 owner 必须在公众号后台核对并人工发表。遵守 banned_words 与广告法限制；所有内容保持原创。
 ', NULL, 100, TRUE, 'pi:pen-nib', 'content,gzh,xhs,writing', NOW(), NOW(), 0)
 ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, description=EXCLUDED.description, agent_type=EXCLUDED.agent_type, system_prompt=EXCLUDED.system_prompt, model_name=EXCLUDED.model_name, max_iterations=EXCLUDED.max_iterations, enabled=EXCLUDED.enabled, icon=EXCLUDED.icon, tags=EXCLUDED.tags, update_time=EXCLUDED.update_time, deleted=EXCLUDED.deleted;
 

@@ -134,6 +134,15 @@ class MemoryWriteGovernanceServiceTest {
         assertEquals(2, MemoryWriteGovernanceService.estimateTokens("abcdef"));
     }
 
+    @Test
+    void startupRejectsStalePendingRowsLeftByAnInterruptedWriter() {
+        when(ledgerMapper.update(any(), any())).thenReturn(2);
+
+        service.recoverPendingOnStartup();
+
+        verify(ledgerMapper).update(any(), any());
+    }
+
     private MemoryWriteRequest request(String type, String key, String content, String source, String sourceRef) {
         return new MemoryWriteRequest(7L, 3L, "owner-7", type, key, content, source, "conv-1", sourceRef);
     }

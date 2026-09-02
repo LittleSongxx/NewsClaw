@@ -9,6 +9,7 @@ import vip.newsclaw.agent.AgentService;
 import vip.newsclaw.agent.model.AgentEntity;
 import vip.newsclaw.memory.MemoryProperties;
 import vip.newsclaw.memory.service.MemoryEmergenceService;
+import vip.newsclaw.workspace.document.WorkspaceFileService;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,6 +30,7 @@ public class DreamingScheduler {
     private final AgentService agentService;
     private final MemoryEmergenceService emergenceService;
     private final MemoryProperties properties;
+    private final WorkspaceFileService workspaceFileService;
 
     /** 上次 dreaming 执行时间（供状态 API 读取） */
     @Getter
@@ -54,6 +56,16 @@ public class DreamingScheduler {
             try {
                 emergenceService.consolidate(agent.getId(), vip.newsclaw.memory.service.DreamMode.NIGHTLY, null);
                 success++;
+                long ownerLimit = properties.getStructuredConsolidationMaxOwnersPerRun() > 0
+                        ? properties.getStructuredConsolidationMaxOwnersPerRun() : Long.MAX_VALUE;
+                workspaceFileService.listPersonalFiles(agent.getId()).stream()
+                        .map(file -> file.getOwnerKey())
+                        .filter(java.util.Objects::nonNull)
+                        .filter(owner -> !owner.isBlank())
+                        .distinct()
+                        .limit(ownerLimit)
+                        .forEach(owner -> emergenceService.consolidate(
+                                agent.getId(), vip.newsclaw.memory.service.DreamMode.NIGHTLY, null, owner));
             } catch (Exception e) {
                 failed++;
                 log.warn("[Dreaming] Failed for agent={} ({}): {}",

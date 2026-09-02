@@ -14,6 +14,7 @@ import vip.newsclaw.memory.event.ConversationCompletionPublisher;
 import vip.newsclaw.tool.document.preview.OfficePreviewService;
 import vip.newsclaw.workspace.conversation.ConversationService;
 import vip.newsclaw.workspace.core.service.ChatUploadLocationResolver;
+import vip.newsclaw.workspace.core.service.WorkspaceService;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -32,6 +33,7 @@ class ChatControllerWorkerReadOnlyTest {
     @Mock private MemoryOwnerResolver memoryOwnerResolver;
     @Mock private ChatUploadLocationResolver uploadLocationResolver;
     @Mock private OfficePreviewService officePreviewService;
+    @Mock private WorkspaceService workspaceService;
     @Mock private Authentication authentication;
 
     private ChatController controller;
@@ -40,7 +42,7 @@ class ChatControllerWorkerReadOnlyTest {
     void setUp() {
         controller = new ChatController(agentService, conversationService, approvalService,
                 streamTracker, objectMapper, completionPublisher, memoryOwnerResolver,
-                uploadLocationResolver, officePreviewService);
+                uploadLocationResolver, officePreviewService, workspaceService);
     }
 
     @Test
@@ -49,6 +51,8 @@ class ChatControllerWorkerReadOnlyTest {
         request.setConversationId("worker-conversation");
         request.setMessage("try to continue");
         when(authentication.getName()).thenReturn("alice");
+        when(authentication.getDetails()).thenReturn(7L);
+        when(workspaceService.hasPermission(1L, 7L, "viewer")).thenReturn(true);
         when(conversationService.isUserMessageAllowed("worker-conversation")).thenReturn(false);
 
         controller.chatStream(request, 1L, authentication);
@@ -64,6 +68,8 @@ class ChatControllerWorkerReadOnlyTest {
         request.setConversationId("team-task-legacy");
         request.setMessage("try to continue");
         when(authentication.getName()).thenReturn("alice");
+        when(authentication.getDetails()).thenReturn(7L);
+        when(workspaceService.hasPermission(1L, 7L, "viewer")).thenReturn(true);
         when(conversationService.isUserMessageAllowed("team-task-legacy")).thenReturn(false);
 
         controller.chatStream(request, 1L, authentication);

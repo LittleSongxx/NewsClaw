@@ -1,18 +1,15 @@
 package vip.newsclaw.skill.secret;
 
-import cn.hutool.crypto.SecureUtil;
-import cn.hutool.crypto.symmetric.AES;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import vip.newsclaw.common.crypto.VersionedAesGcmCrypto;
 import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.skill.repository.SkillSecretMapper;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,10 +22,12 @@ import java.util.stream.Collectors;
  * tied to a skill.
  *
  * <p>Storage: {@code mate_skill_secret} (one row per skill_id + key).
- * Encryption uses Hutool AES with a 16-byte key derived from the
- * configured master key; the same property already encrypts datasource
- * passwords ({@code newsclaw.datasource.encrypt-key}) so operators only
- * have one secret to rotate.
+ * New writes use versioned AES-256-GCM with a fresh random nonce. Unprefixed
+ * Hutool AES values remain readable for rolling upgrades and are replaced by
+ * GCM on the next write. The same configured master key encrypts datasource
+ * passwords ({@code newsclaw.datasource.encrypt-key}) so operators only have
+ * one secret to rotate; purpose-bound AAD prevents ciphertext substitution
+ * between the two stores.
  *
  * <p>Logging policy: never log raw values. Any code path that touches
  * decrypted plaintext goes through {@link #mask} first.
@@ -40,6 +39,7 @@ public class SkillSecretService {
 
     /** Allow letters, digits, and underscore — env-var-shaped keys only. */
     private static final Pattern KEY_PATTERN = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,127}$");
+    private static final String CRYPTO_PURPOSE = "skill-secret";
 
     private final SkillSecretMapper skillSecretMapper;
 
@@ -48,7 +48,7 @@ public class SkillSecretService {
      * {@code NEWSCLAW_ENCRYPT_KEY} env var rotates everything that
      * stores secrets at rest.
      */
-    @Value("${newsclaw.datasource.encrypt-key:NewsClaw@2024Key!}")
+    @Value("${newsclaw.datasource.encrypt-key:}")
     private String encryptKey;
 
     // ==================== read ====================
@@ -63,12 +63,13 @@ public class SkillSecretService {
         List<SkillSecretEntity> rows = skillSecretMapper.selectList(
                 new LambdaQueryWrapper<SkillSecretEntity>()
                         .eq(SkillSecretEntity::getSkillId, skillId)
+                        .eq(SkillSecretEntity::getDeleted, 0)
                         .orderByAsc(SkillSecretEntity::getSecretKey));
         Map<String, String> out = new LinkedHashMap<>();
-        AES aes = aes();
+        VersionedAesGcmCrypto crypto = crypto();
         for (SkillSecretEntity row : rows) {
             try {
-                out.put(row.getSecretKey(), aes.decryptStr(row.getEncryptedValue()));
+                out.put(row.getSecretKey(), crypto.decrypt(row.getEncryptedValue()));
             } catch (Exception e) {
                 // Defensive: a stale ciphertext from a rotated key shouldn't
                 // crash the runtime. Log key (not value) and skip — the user
@@ -86,12 +87,13 @@ public class SkillSecretService {
         List<SkillSecretEntity> rows = skillSecretMapper.selectList(
                 new LambdaQueryWrapper<SkillSecretEntity>()
                         .eq(SkillSecretEntity::getSkillId, skillId)
+                        .eq(SkillSecretEntity::getDeleted, 0)
                         .orderByAsc(SkillSecretEntity::getSecretKey));
-        AES aes = aes();
+        VersionedAesGcmCrypto crypto = crypto();
         return rows.stream().map(row -> {
             String preview;
             try {
-                preview = mask(aes.decryptStr(row.getEncryptedValue()));
+                preview = mask(crypto.decrypt(row.getEncryptedValue()));
             } catch (Exception e) {
                 preview = "<decryption failed>";
             }
@@ -108,11 +110,12 @@ public class SkillSecretService {
             remove(skillId, key);
             return;
         }
-        String encrypted = aes().encryptHex(plaintext);
+        String encrypted = crypto().encrypt(plaintext);
         SkillSecretEntity existing = skillSecretMapper.selectOne(
                 new LambdaQueryWrapper<SkillSecretEntity>()
                         .eq(SkillSecretEntity::getSkillId, skillId)
-                        .eq(SkillSecretEntity::getSecretKey, key));
+                        .eq(SkillSecretEntity::getSecretKey, key)
+                        .eq(SkillSecretEntity::getDeleted, 0));
         LocalDateTime now = LocalDateTime.now();
         if (existing == null) {
             SkillSecretEntity row = new SkillSecretEntity();
@@ -137,7 +140,8 @@ public class SkillSecretService {
         validate(skillId, key);
         skillSecretMapper.delete(new LambdaQueryWrapper<SkillSecretEntity>()
                 .eq(SkillSecretEntity::getSkillId, skillId)
-                .eq(SkillSecretEntity::getSecretKey, key));
+                .eq(SkillSecretEntity::getSecretKey, key)
+                .eq(SkillSecretEntity::getDeleted, 0));
         log.info("Skill secret removed skill_id={} key={}", skillId, key);
     }
 
@@ -161,11 +165,8 @@ public class SkillSecretService {
         }
     }
 
-    /** Shared AES instance is cheap to build; keeping it stateless avoids
-     *  any thread-visibility worries with the cached key bytes. */
-    private AES aes() {
-        byte[] keyBytes = Arrays.copyOf(encryptKey.getBytes(StandardCharsets.UTF_8), 16);
-        return SecureUtil.aes(keyBytes);
+    private VersionedAesGcmCrypto crypto() {
+        return new VersionedAesGcmCrypto(encryptKey, CRYPTO_PURPOSE);
     }
 
     /**

@@ -46,6 +46,9 @@ public class OAuthController {
     @PostMapping("/callback-paste")
     @RequireGlobalAdmin
     public R<Void> callbackPaste(@RequestBody PasteRequest request) {
+        if (request == null || request.callbackUrl() == null || request.callbackUrl().isBlank()) {
+            return R.fail(400, "callbackUrl is required");
+        }
         oauthService.completeFromPastedUrl(request.callbackUrl());
         return R.ok();
     }
@@ -64,6 +67,9 @@ public class OAuthController {
     @PostMapping("/device/poll")
     @RequireGlobalAdmin
     public R<DeviceCodePollResult> devicePoll(@RequestBody DeviceRequest request) {
+        if (request == null || request.deviceAuthId() == null || request.deviceAuthId().isBlank()) {
+            return R.fail(400, "deviceAuthId is required");
+        }
         return R.ok(deviceCodeService.poll(request.deviceAuthId()));
     }
 
@@ -71,6 +77,9 @@ public class OAuthController {
     @PostMapping("/device/cancel")
     @RequireGlobalAdmin
     public R<Void> deviceCancel(@RequestBody DeviceRequest request) {
+        if (request == null || request.deviceAuthId() == null || request.deviceAuthId().isBlank()) {
+            return R.fail(400, "deviceAuthId is required");
+        }
         deviceCodeService.cancel(request.deviceAuthId());
         return R.ok();
     }

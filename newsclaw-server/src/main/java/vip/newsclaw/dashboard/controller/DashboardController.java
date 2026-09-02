@@ -36,7 +36,7 @@ public class DashboardController {
     @RequireWorkspaceRole("member")
     public R<Map<String, Object>> overview(
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
-        return R.ok(dashboardService.getOverview(workspaceId));
+        return R.ok(dashboardService.getOverview(resolveWorkspace(workspaceId)));
     }
 
     @Operation(summary = "获取日用量趋势")
@@ -45,7 +45,7 @@ public class DashboardController {
     public R<List<Map<String, Object>>> trend(
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
             @RequestParam(defaultValue = "30") int days) {
-        return R.ok(dashboardService.getTrend(workspaceId, Math.min(days, 90)));
+        return R.ok(dashboardService.getTrend(resolveWorkspace(workspaceId), Math.min(days, 90)));
     }
 
     @Operation(summary = "获取 CronJob 执行历史")
@@ -59,13 +59,15 @@ public class DashboardController {
         // against the job's own workspace_id so agent-less system jobs
         // (e.g. wiki_process) verify the same way as agent-bound jobs.
         CronJobEntity job = cronJobMapper.selectById(cronJobId);
-        if (job != null && job.getWorkspaceId() != null) {
-            long wsId = workspaceId != null ? workspaceId : 1L;
-            if (!job.getWorkspaceId().equals(wsId)) {
-                throw new NewsClawException("err.common.wrong_workspace", 403, "资源不属于当前工作区");
-            }
+        if (job == null) {
+            return R.fail(404, "Cron job not found");
         }
-        return R.ok(cronJobRunService.listByJobId(cronJobId, Math.min(limit, 100)));
+        long wsId = resolveWorkspace(workspaceId);
+        long jobWorkspaceId = job.getWorkspaceId() == null ? 1L : job.getWorkspaceId();
+        if (jobWorkspaceId != wsId) {
+            throw new NewsClawException("err.common.wrong_workspace", 403, "资源不属于当前工作区");
+        }
+        return R.ok(cronJobRunService.listByJobId(cronJobId, Math.min(Math.max(limit, 1), 100)));
     }
 
     @Operation(summary = "获取最近执行记录（当前 workspace 关联的 CronJob）")
@@ -74,7 +76,11 @@ public class DashboardController {
     public R<List<CronJobRunEntity>> recentRuns(
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
             @RequestParam(defaultValue = "20") int limit) {
-        long wsId = workspaceId != null ? workspaceId : 1L;
+        long wsId = resolveWorkspace(workspaceId);
         return R.ok(cronJobRunService.listRecentByWorkspace(wsId, Math.min(limit, 100)));
+    }
+
+    private static long resolveWorkspace(Long workspaceId) {
+        return workspaceId == null || workspaceId <= 0 ? 1L : workspaceId;
     }
 }

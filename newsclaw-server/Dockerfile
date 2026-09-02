@@ -4,7 +4,8 @@
 #   Builds the Vue 3 admin SPA and emits static files to /static inside the
 #   build container. These files are later copied into the JAR's classpath so
 #   Spring Boot serves the SPA at the root URL.
-FROM node:22-alpine AS frontend-builder
+# Pin the release inputs; update the digest deliberately when upgrading Node.
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS frontend-builder
 # Pin pnpm to a major version so the Docker build doesn't break when the npm
 # `latest` tag jumps majors. pnpm v10+ blocks dependency lifecycle scripts by
 # default; the allowed packages live under `pnpm.onlyBuiltDependencies` in
@@ -31,7 +32,8 @@ COPY newsclaw-ui/ ./
 RUN NODE_OPTIONS=--max-old-space-size=6144 pnpm exec vite build --outDir /static --emptyOutDir
 
 # Stage 2 — Backend (Maven)
-FROM maven:3.9-eclipse-temurin-21 AS builder
+# Maven toolchain is pinned so the byte-level release inputs are reviewable.
+FROM maven:3.9-eclipse-temurin-21@sha256:8f6ac126f7810bb5549c4cd122d2bf0e9cda5bdeb0838aa928f09e779fd8bef8 AS builder
 
 # Optional Maven extra flags passed at build time.
 # Set MAVEN_FLAGS=-Paliyun-first in .env (or via --build-arg) to put Aliyun
@@ -78,7 +80,7 @@ RUN mvn -pl newsclaw-server -am package -Dmaven.test.skip=true -q ${MAVEN_FLAGS}
 # bump the Java dependency, bump this tag in lockstep — Microsoft rebuilds each
 # tag with the matching driver, so mismatched versions cause the java driver to
 # re-download browsers at runtime (defeating the whole point of this image).
-FROM mcr.microsoft.com/playwright:v1.62.0-noble
+FROM mcr.microsoft.com/playwright:v1.62.0-noble@sha256:baed2032d533817f3dbe6425de795788430ba345e819a1201337009ba17c9d07
 WORKDIR /app
 
 # JDK 21 is NOT part of the base image (it ships Node for the JS driver).
@@ -135,7 +137,17 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
 # silently pin the profile regardless of what compose passes.
 ENV SPRING_PROFILES_ACTIVE=mysql
 
-COPY --from=builder /build/newsclaw-server/target/*.jar app.jar
+# Runtime code execution must not inherit container root privileges. Creating
+# /app/data before the named volume is first mounted also seeds the volume with
+# writable ownership for the unprivileged service account.
+RUN groupadd --system --gid 10001 newsclaw \
+    && useradd --system --uid 10001 --gid newsclaw --home-dir /home/newsclaw --create-home newsclaw \
+    && mkdir -p /app/data \
+    && chown -R newsclaw:newsclaw /app /home/newsclaw
+
+COPY --chown=newsclaw:newsclaw --from=builder /build/newsclaw-server/target/*.jar app.jar
+
+USER 10001:10001
 
 EXPOSE 18088
 EXPOSE 1455

@@ -300,6 +300,7 @@ public class ApprovalWorkflowService implements ApplicationRunner {
                                         Integer timeoutSecs) {
         try {
             ToolApprovalEntity entity = new ToolApprovalEntity();
+            entity.setWorkspaceId(workspaceId > 0 ? workspaceId : 1L);
             // pendingId is the string handle the existing approval pipeline
             // uses for resolve / get; "wf-" prefix lets future code branch
             // on workflow-scoped vs tool-scoped approvals at a glance. The
@@ -332,6 +333,8 @@ public class ApprovalWorkflowService implements ApplicationRunner {
             entity.setCreatedAt(LocalDateTime.now());
             entity.setExpireAt(LocalDateTime.now().plusSeconds(
                     timeoutSecs != null && timeoutSecs > 0 ? timeoutSecs : 30 * 60));
+            entity.setChatOrigin(objectMapper.writeValueAsString(
+                    java.util.Map.of("workspaceId", entity.getWorkspaceId())));
             approvalMapper.insert(entity);
             log.info("[ApprovalWorkflow] requested workflow approval row id={}, runId={}, workspace={}, kind={}",
                     entity.getId(), runId, workspaceId, kind);
@@ -594,10 +597,16 @@ public class ApprovalWorkflowService implements ApplicationRunner {
      * notification summary endpoint; cheap enough to call on every poll.
      */
     public long countPendingFromDb() {
+        return countPendingFromDb(null);
+    }
+
+    /** Count pending approvals, optionally restricted to one workspace. */
+    public long countPendingFromDb(Long workspaceId) {
         try {
             Long n = approvalMapper.selectCount(
                     new LambdaQueryWrapper<ToolApprovalEntity>()
                             .eq(ToolApprovalEntity::getStatus, "PENDING")
+                            .eq(workspaceId != null, ToolApprovalEntity::getWorkspaceId, workspaceId)
             );
             return n == null ? 0L : n;
         } catch (Exception e) {
@@ -839,6 +848,9 @@ public class ApprovalWorkflowService implements ApplicationRunner {
             // RFC-063r §2.12: persist Memento snapshot. Null when the entry
             // path didn't supply an origin — replay falls back to ChatOrigin.EMPTY.
             entity.setChatOrigin(chatOriginJson);
+            ChatOrigin origin = ChatOriginHolder.get();
+            entity.setWorkspaceId(origin != null && origin.workspaceId() != null
+                    && origin.workspaceId() > 0 ? origin.workspaceId() : 1L);
 
             if (evaluation != null) {
                 entity.setFindingsJson(serializeFindings(evaluation.findings()));

@@ -24,15 +24,18 @@ public class AgentTeamEntity {
     private String description;
 
     /** Owning workspace. Team data is never shared across workspaces. */
+    @TableField("workspace_id")
     private Long workspaceId;
 
     /** Agent that orchestrates this team; exactly one per team. */
+    @TableField("lead_agent_id")
     private Long leadAgentId;
 
     /** Team lifecycle status: active / paused. */
     private String status;
 
     /** Monotonic per-team counter backing human-readable task numbers. */
+    @TableField("task_seq")
     private Integer taskSeq;
 
     /** Team-level settings as a JSON object (notification switches, escalation, ...). */
@@ -41,10 +44,10 @@ public class AgentTeamEntity {
     /** Username of the admin who created the team. */
     private String createdBy;
 
-    @TableField(fill = FieldFill.INSERT)
+    @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
-    @TableField(fill = FieldFill.INSERT_UPDATE)
+    @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
     @TableLogic

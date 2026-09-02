@@ -31,6 +31,7 @@ public class AuthController {
     @Operation(summary = "用户登录")
     @PostMapping("/login")
     public R<LoginResponse> login(@RequestBody LoginRequest request) {
+        if (request == null) return R.fail(400, "login request is required");
         return R.ok(authService.login(request));
     }
 
@@ -45,6 +46,7 @@ public class AuthController {
     @PostMapping("/users")
     @RequireGlobalAdmin
     public R<UserEntity> createUser(@RequestBody UserEntity user) {
+        if (user == null) return R.fail(400, "user is required");
         return R.ok(authService.createUser(user));
     }
 
@@ -57,6 +59,9 @@ public class AuthController {
             Authentication auth) {
         // Resolve user from the JWT principal — the {id} path segment is
         // informational. A user may only change their own password.
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            throw new NewsClawException("err.auth.unauthenticated", 401, "Authentication required");
+        }
         UserEntity me = authService.findByUsername(auth.getName());
         if (me == null) {
             throw new NewsClawException("err.auth.user_not_found", "用户不存在");

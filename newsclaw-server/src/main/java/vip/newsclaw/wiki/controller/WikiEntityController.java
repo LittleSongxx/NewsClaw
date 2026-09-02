@@ -100,7 +100,7 @@ public class WikiEntityController {
             throw new NewsClawException(404, "Knowledge base not found");
         }
         long wsId = headerWorkspaceId != null ? headerWorkspaceId : 1L;
-        if (kb.getWorkspaceId() != null && !kb.getWorkspaceId().equals(wsId)) {
+        if (kb.getWorkspaceId() == null || !kb.getWorkspaceId().equals(wsId)) {
             throw new NewsClawException("err.common.wrong_workspace", 403, "资源不属于当前工作区");
         }
     }

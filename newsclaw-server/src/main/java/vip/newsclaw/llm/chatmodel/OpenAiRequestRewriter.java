@@ -692,6 +692,21 @@ final class OpenAiRequestRewriter {
         if (!isBailianQwen(request, provider) || !isForcedToolChoice(request.toolChoice())) {
             return request;
         }
+        return withThinkingDisabled(request);
+    }
+
+    /** Honor the request-scoped {@code thinkingLevel=off} switch on Bailian Qwen's wire protocol. */
+    static OpenAiApi.ChatCompletionRequest applyBailianQwenThinkingLevel(
+            OpenAiApi.ChatCompletionRequest request, ModelProviderEntity provider) {
+        if (!isBailianQwen(request, provider)
+                || !"off".equalsIgnoreCase(ThinkingLevelHolder.get())) {
+            return request;
+        }
+        return withThinkingDisabled(request);
+    }
+
+    private static OpenAiApi.ChatCompletionRequest withThinkingDisabled(
+            OpenAiApi.ChatCompletionRequest request) {
         Map<String, Object> extraBody = request.extraBody() == null
                 ? new LinkedHashMap<>()
                 : new LinkedHashMap<>(request.extraBody());

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vip.newsclaw.common.result.R;
 import vip.newsclaw.system.featureflag.repository.FeatureFlagMapper;
+import vip.newsclaw.workspace.core.annotation.RequireGlobalAdmin;
 
 import java.util.List;
 import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
@@ -38,7 +39,7 @@ public class FeatureFlagController {
 
     /** Lists every flag currently registered, including disabled and whitelisted ones. */
     @GetMapping
-    @RequireWorkspaceRole("admin")
+    @RequireGlobalAdmin
     public R<List<FeatureFlagEntity>> list() {
         return R.ok(mapper.selectList(null));
     }
@@ -48,9 +49,10 @@ public class FeatureFlagController {
      * body are touched; unspecified fields preserve their current values.
      */
     @PutMapping("/{flagKey}")
-    @RequireWorkspaceRole("admin")
+    @RequireGlobalAdmin
     public R<Void> update(@PathVariable @NotBlank String flagKey,
                            @RequestBody UpdateRequest req) {
+        if (req == null) return R.fail(400, "request body is required");
         FeatureFlagEntity flag = mapper.selectOne(
                 new LambdaQueryWrapper<FeatureFlagEntity>()
                         .eq(FeatureFlagEntity::getFlagKey, flagKey));

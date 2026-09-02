@@ -3,6 +3,7 @@ package vip.newsclaw.channel.tool;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
+import vip.newsclaw.agent.context.ChatOrigin;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -35,5 +36,19 @@ class ChannelToolCallbackTest {
         assertEquals("feishu_doc_read_c42", renamed.getToolDefinition().name());
         assertEquals("read doc", renamed.getToolDefinition().description());
         assertEquals("READ:abc", renamed.call("abc"));
+    }
+
+    @Test
+    @DisplayName("channel callbacks require the originating workspace context")
+    void workspaceScopeRejectsCrossTenantCalls() {
+        ChannelToolService service = new ChannelToolService(
+                java.util.List.of(), null, null, null, null, null, null);
+        ToolCallback scoped = service.workspaceScoped(new ChannelToolCallback(
+                "feishu_doc_read", "read doc", "{}", in -> "ok"), 7L);
+
+        assertEquals("ok", scoped.call("{}", ChatOrigin.web("c", "u", 7L, null).toToolContext()));
+        org.junit.jupiter.api.Assertions.assertTrue(scoped.call(
+                "{}", ChatOrigin.web("c", "u", 8L, null).toToolContext()).contains("matching workspace"));
+        org.junit.jupiter.api.Assertions.assertTrue(scoped.call("{}").contains("matching workspace"));
     }
 }

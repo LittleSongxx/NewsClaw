@@ -64,8 +64,14 @@ public class GitSkillFetcher {
             // 定位 skill 根目录
             Path skillRoot = tempDir;
             if (subPath != null && !subPath.isBlank()) {
-                skillRoot = tempDir.resolve(subPath);
-                if (!Files.exists(skillRoot)) {
+                Path candidateRoot = tempDir.resolve(subPath.replace('\\', '/')).normalize();
+                if (!candidateRoot.startsWith(tempDir.toAbsolutePath().normalize())
+                        || Files.isSymbolicLink(candidateRoot)) {
+                    log.error("Unsafe subPath '{}' rejected", subPath);
+                    return null;
+                }
+                skillRoot = candidateRoot;
+                if (!Files.exists(skillRoot) || !Files.isDirectory(skillRoot)) {
                     log.error("subPath '{}' not found in cloned repo", subPath);
                     return null;
                 }
@@ -129,6 +135,10 @@ public class GitSkillFetcher {
         command.add("--depth");
         command.add("1");
         if (ref != null && !ref.isBlank()) {
+            if (ref.length() > 256 || ref.startsWith("-")
+                    || ref.chars().anyMatch(Character::isISOControl)) {
+                throw new IllegalArgumentException("invalid git ref");
+            }
             command.add("--branch");
             command.add(ref);
         }

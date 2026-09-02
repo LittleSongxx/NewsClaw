@@ -57,7 +57,7 @@ public class WikiRelationController {
             @RequestParam(defaultValue = "5") int topK,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
-        return relationService.relatedPages(kbId, slug, Math.min(topK, 20));
+        return relationService.relatedPages(kbId, slug, Math.min(Math.max(1, topK), 20));
     }
 
     @RequireWorkspaceRole("viewer")
@@ -184,7 +184,7 @@ public class WikiRelationController {
         WikiPageEntity page = pageService.getBySlug(kbId, slug);
         if (page == null) return Map.of("error", "Page not found: " + slug);
 
-        Long rawId = 0L;
+        Long rawId = null;
         try {
             List<Long> rawIds = objectMapper.readValue(
                     page.getSourceRawIds() != null ? page.getSourceRawIds() : "[]",
@@ -192,6 +192,7 @@ public class WikiRelationController {
             if (!rawIds.isEmpty()) rawId = rawIds.get(0);
         } catch (Exception ignored) {}
 
+        if (rawId == null) return Map.of("error", "Page has no source material");
         WikiProcessingJobEntity job = jobService.createLightEnrich(kbId, rawId);
         eventPublisher.publishEvent(new WikiJobCreatedEvent(job.getId()));
         return Map.of("jobId", job.getId());
@@ -207,7 +208,7 @@ public class WikiRelationController {
         WikiPageEntity page = pageService.getBySlug(kbId, slug);
         if (page == null) return Map.of("error", "Page not found: " + slug);
 
-        Long rawId = 0L;
+        Long rawId = null;
         try {
             List<Long> rawIds = objectMapper.readValue(
                     page.getSourceRawIds() != null ? page.getSourceRawIds() : "[]",
@@ -215,6 +216,7 @@ public class WikiRelationController {
             if (!rawIds.isEmpty()) rawId = rawIds.get(0);
         } catch (Exception ignored) {}
 
+        if (rawId == null) return Map.of("error", "Page has no source material");
         WikiProcessingJobEntity job = jobService.createLocalRepair(kbId, rawId, page.getId());
         eventPublisher.publishEvent(new WikiJobCreatedEvent(job.getId()));
         return Map.of("jobId", job.getId());
@@ -229,10 +231,11 @@ public class WikiRelationController {
             @RequestBody Map<String, Object> body,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         verifyKBWorkspace(kbId, workspaceId);
-        String query = (String) body.getOrDefault("query", "");
-        String mode = (String) body.getOrDefault("mode", "hybrid");
-        int topK = body.containsKey("topK") ? ((Number) body.get("topK")).intValue() : 5;
-        return hybridRetriever.search(kbId, query, mode, Math.min(topK, 20));
+        if (body == null) return List.of();
+        String query = String.valueOf(body.getOrDefault("query", ""));
+        String mode = String.valueOf(body.getOrDefault("mode", "hybrid"));
+        int topK = body.get("topK") instanceof Number n ? n.intValue() : 5;
+        return hybridRetriever.search(kbId, query, mode, Math.min(Math.max(1, topK), 20));
     }
 
     // ==================== Workspace Verification ====================
@@ -243,6 +246,10 @@ public class WikiRelationController {
             throw new NewsClawException(404, "Knowledge base not found");
         }
         long wsId = headerWorkspaceId != null ? headerWorkspaceId : 1L;
+        // Rows created before workspace scoping was introduced have a null
+        // workspace_id and are intentionally treated as legacy shared KBs.
+        // New rows are NOT NULL at the schema boundary and still require an
+        // exact workspace match.
         if (kb.getWorkspaceId() != null && !kb.getWorkspaceId().equals(wsId)) {
             throw new NewsClawException("err.common.wrong_workspace", 403, "资源不属于当前工作区");
         }

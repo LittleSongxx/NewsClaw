@@ -56,8 +56,9 @@ public class SearchProviderRegistry {
      * 注册一个插件提供的 provider。
      *
      * <p>id 规则：不允许为空或含首尾空白（拒绝而非 trim——注册键必须与
-     * {@code provider.id()} 完全一致，反注册才能对得上）；存储与查找大小写敏感，
-     * 但冲突检测大小写不敏感，防止 "Serper" 这类变体在 UI 上与内置 "serper" 混淆。
+     * {@code provider.id()} 完全一致，反注册才能对得上）；存储保留原始大小写，
+     * 但存取统一大小写不敏感，防止环境变量中的 "Serper" 变体被错误地当成
+     * 不存在的 provider。
      *
      * @throws IllegalArgumentException id 为空、含首尾空白，或与内置/已注册插件 provider 冲突
      */
@@ -90,20 +91,21 @@ public class SearchProviderRegistry {
 
     /** 反注册插件 provider（disable / rollback 路径调用；id 不存在时静默） */
     public void unregisterPluginProvider(String id) {
-        if (pluginProviders.remove(id) != null) {
-            log.info("插件搜索提供商已反注册: {}", id);
+        String storedId = findKeyIgnoreCase(pluginProviders, id);
+        if (storedId != null && pluginProviders.remove(storedId) != null) {
+            log.info("插件搜索提供商已反注册: {}", storedId);
         }
     }
 
     /** 判断某个 id 是否由插件注册（而非内置 Spring bean） */
     public boolean isPluginProvider(String id) {
-        return pluginProviders.containsKey(id);
+        return findIgnoreCase(pluginProviders, id) != null;
     }
 
     /** 按 ID 获取指定 provider（内置优先，其次插件注册区） */
     public SearchProvider getById(String id) {
-        SearchProvider builtin = providerMap.get(id);
-        return builtin != null ? builtin : pluginProviders.get(id);
+        SearchProvider builtin = findIgnoreCase(providerMap, id);
+        return builtin != null ? builtin : findIgnoreCase(pluginProviders, id);
     }
 
     /**
@@ -137,7 +139,7 @@ public class SearchProviderRegistry {
         String configuredId = config.getSearchProvider();
         if (configuredId != null && !configuredId.isBlank()) {
             SearchProvider configured = getById(configuredId);
-            if (configured != null && configured.isAvailable(config)) {
+            if (configured != null && isAvailable(configured, config)) {
                 return new ResolvedProvider(configured, "configured");
             }
         }
@@ -147,12 +149,12 @@ public class SearchProviderRegistry {
         for (SearchProvider p : allSorted()) {
             if (!p.requiresCredential()) {
                 // 记住第一个可用的 keyless provider
-                if (keylessFallback == null && p.isAvailable(config)) {
+                if (keylessFallback == null && isAvailable(p, config)) {
                     keylessFallback = p;
                 }
                 continue;
             }
-            if (p.isAvailable(config)) {
+            if (isAvailable(p, config)) {
                 return new ResolvedProvider(p, "auto-detect");
             }
         }
@@ -165,9 +167,37 @@ public class SearchProviderRegistry {
         return null;
     }
 
+    private boolean isAvailable(SearchProvider provider, SystemSettingsDTO config) {
+        try {
+            return provider.isAvailable(config);
+        } catch (RuntimeException error) {
+            log.warn("搜索 provider 可用性检查失败，已跳过 provider={}: {}",
+                    provider.id(), error.getMessage());
+            return false;
+        }
+    }
+
     /**
      * 解析结果
      */
     public record ResolvedProvider(SearchProvider provider, String source) {
+    }
+
+    private static <T> T findIgnoreCase(Map<String, T> values, String id) {
+        if (id == null || id.isBlank() || values == null || values.isEmpty()) return null;
+        T direct = values.get(id);
+        if (direct != null) return direct;
+        return values.entrySet().stream()
+                .filter(entry -> entry.getKey() != null && entry.getKey().equalsIgnoreCase(id))
+                .map(Map.Entry::getValue)
+                .findFirst().orElse(null);
+    }
+
+    private static String findKeyIgnoreCase(Map<String, ?> values, String id) {
+        if (id == null || id.isBlank() || values == null || values.isEmpty()) return null;
+        if (values.containsKey(id)) return id;
+        return values.keySet().stream()
+                .filter(key -> key != null && key.equalsIgnoreCase(id))
+                .findFirst().orElse(null);
     }
 }

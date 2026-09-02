@@ -188,13 +188,16 @@ public class HybridRetriever {
     public List<ChunkHit> searchChunks(Long kbId, String query, int topK) {
         if (!embeddingService.isAvailable()) return List.of();
 
-        float[] queryVec = embeddingService.embedQuery(kbId, query);
-        if (queryVec == null) return List.of();
+        WikiEmbeddingService.QueryEmbedding queryEmbedding =
+                embeddingService.embedQueryWithIdentity(kbId, query);
+        if (queryEmbedding == null) return List.of();
+        float[] queryVec = queryEmbedding.vector();
 
         List<WikiChunkEntity> allChunks = chunkService.listByKbId(kbId);
 
         return allChunks.stream()
-                .filter(c -> c.getEmbedding() != null)
+                .filter(c -> currentEmbedding(c.getEmbedding(), c.getEmbeddingModel(),
+                        c.getEmbeddingTextVersion(), queryEmbedding))
                 .map(c -> {
                     float[] chunkVec = WikiEmbeddingService.bytesToFloats(c.getEmbedding());
                     float score = WikiEmbeddingService.cosine(queryVec, chunkVec);
@@ -216,14 +219,18 @@ public class HybridRetriever {
      *  The page-level signal covers synthesis pages whose vocabulary doesn't
      *  appear in any source raw's chunks. */
     private List<RankedItem> semanticSearch(Long kbId, String query, int limit) {
-        float[] queryVec = embeddingService.embedQuery(kbId, query);
-        if (queryVec == null) return List.of();
+        WikiEmbeddingService.QueryEmbedding queryEmbedding =
+                embeddingService.embedQueryWithIdentity(kbId, query);
+        if (queryEmbedding == null) return List.of();
+        float[] queryVec = queryEmbedding.vector();
 
         List<WikiChunkEntity> allChunks = chunkService.listByKbId(kbId);
 
         Map<Long, Float> chunkScores = new HashMap<>();
         for (WikiChunkEntity chunk : allChunks) {
-            if (chunk.getEmbedding() == null || chunk.getRawId() == null) continue;
+            if (chunk.getRawId() == null || !currentEmbedding(
+                    chunk.getEmbedding(), chunk.getEmbeddingModel(),
+                    chunk.getEmbeddingTextVersion(), queryEmbedding)) continue;
             float[] vec = WikiEmbeddingService.bytesToFloats(chunk.getEmbedding());
             float score = WikiEmbeddingService.cosine(queryVec, vec);
             chunkScores.merge(chunk.getRawId(), score, Math::max);
@@ -234,7 +241,8 @@ public class HybridRetriever {
         for (WikiPageEntity page : allPages) {
             // Direct page-level signal: the page carries its own embedding
             // (typical for transformation synthesis pages).
-            if (page.getEmbedding() != null) {
+            if (currentEmbedding(page.getEmbedding(), page.getEmbeddingModel(),
+                    page.getEmbeddingTextVersion(), queryEmbedding)) {
                 float[] pageVec = WikiEmbeddingService.bytesToFloats(page.getEmbedding());
                 float pageScore = WikiEmbeddingService.cosine(queryVec, pageVec);
                 pageScores.merge(page.getId(), (double) pageScore, Math::max);
@@ -408,6 +416,12 @@ public class HybridRetriever {
             case "semantic" -> Mode.SEMANTIC;
             default -> Mode.HYBRID;
         };
+    }
+
+    private static boolean currentEmbedding(byte[] bytes, String model, String version,
+                                            WikiEmbeddingService.QueryEmbedding query) {
+        return bytes != null && java.util.Objects.equals(model, query.modelName())
+                && java.util.Objects.equals(version, query.inputVersion());
     }
 
     /**

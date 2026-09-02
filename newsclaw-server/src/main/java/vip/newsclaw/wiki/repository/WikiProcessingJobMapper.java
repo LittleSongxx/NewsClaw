@@ -18,6 +18,14 @@ public interface WikiProcessingJobMapper extends BaseMapper<WikiProcessingJobEnt
             "ORDER BY create_time ASC LIMIT #{limit}")
     List<WikiProcessingJobEntity> listQueued(@Param("kbId") Long kbId, @Param("limit") int limit);
 
+    @Select("SELECT * FROM mate_wiki_processing_job "
+            + "WHERE status = 'queued' AND deleted = 0 ORDER BY create_time ASC LIMIT #{limit}")
+    List<WikiProcessingJobEntity> listAllQueued(@Param("limit") int limit);
+
+    @Update("UPDATE mate_wiki_processing_job SET status = 'running', update_time = CURRENT_TIMESTAMP "
+            + "WHERE id = #{jobId} AND status = 'queued' AND deleted = 0")
+    int claimQueued(@Param("jobId") Long jobId);
+
     @Select("SELECT * FROM mate_wiki_processing_job " +
             "WHERE raw_id = #{rawId} AND deleted = 0 ORDER BY create_time DESC LIMIT 1")
     Optional<WikiProcessingJobEntity> findLatestByRawId(@Param("rawId") Long rawId);
@@ -37,6 +45,6 @@ public interface WikiProcessingJobMapper extends BaseMapper<WikiProcessingJobEnt
             "SET status = 'queued', " +
             "    stage  = COALESCE(resume_from_stage, 'queued'), " +
             "    update_time = CURRENT_TIMESTAMP(3) " +
-            "WHERE (stage = 'routing' OR stage LIKE '%_running') AND deleted = 0")
+            "WHERE status = 'running' AND stage NOT IN ('completed','failed','partial') AND deleted = 0")
     int recoverStuckJobs();
 }

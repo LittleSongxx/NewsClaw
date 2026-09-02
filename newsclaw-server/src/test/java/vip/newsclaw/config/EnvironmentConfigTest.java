@@ -42,6 +42,8 @@ class EnvironmentConfigTest {
             "MIMO_BASE_URL",
             "OPENCODE_BASE_URL",
             "SERPER_API_KEY",
+            "TAVILY_API_KEYS",
+            "TAVILY_API_KEY",
             "FEISHU_APP_ID",
             "FEISHU_APP_SECRET",
             "NEWSCLAW_CHANNEL_FEISHU_APP_ID",
@@ -111,6 +113,15 @@ class EnvironmentConfigTest {
 
         assertEquals("env-app-id", config.get("app_id"));
         assertEquals("env-app-secret", config.get("app_secret"));
+    }
+
+    @Test
+    void tavilyPoolVariableTakesPriorityWithLegacySingleKeyFallback() {
+        System.setProperty("TAVILY_API_KEY", "legacy-key");
+        assertEquals("legacy-key", EnvironmentConfig.systemSetting("tavilyApiKey"));
+
+        System.setProperty("TAVILY_API_KEYS", "pool-key-a,pool-key-b");
+        assertEquals("pool-key-a,pool-key-b", EnvironmentConfig.systemSetting("tavilyApiKey"));
     }
 
     @Test

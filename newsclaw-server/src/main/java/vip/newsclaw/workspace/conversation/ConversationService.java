@@ -365,8 +365,21 @@ public class ConversationService {
                         conversationId, conv.getWorkspaceId(), workspaceId);
                 throw new IllegalArgumentException("会话不属于当前工作区");
             }
+            if (agentId != null && conv.getAgentId() != null
+                    && !conv.getAgentId().equals(agentId)) {
+                log.warn("[Conversation] Agent mismatch for conversationId={}: existing={}, requested={}",
+                        conversationId, conv.getAgentId(), agentId);
+                throw new IllegalArgumentException("会话已绑定其他 Agent");
+            }
             if (!conv.getUsername().equals(username)) {
                 throw new IllegalArgumentException("无权操作该会话");
+            }
+            // A pre-message attachment may create an owner-bound conversation
+            // without an agent. Bind the first subsequent agent request once,
+            // but never replace an already-bound agent.
+            if (agentId != null && conv.getAgentId() == null) {
+                conv.setAgentId(agentId);
+                conversationMapper.updateById(conv);
             }
         }
         return conv;
@@ -670,7 +683,7 @@ public class ConversationService {
         ConversationEntity conv = conversationMapper.selectOne(new LambdaQueryWrapper<ConversationEntity>()
                 .eq(ConversationEntity::getConversationId, conversationId));
         if (conv != null) {
-            conv.setMessageCount(conv.getMessageCount() + 1);
+            conv.setMessageCount((conv.getMessageCount() == null ? 0 : conv.getMessageCount()) + 1);
             conv.setLastActiveTime(LocalDateTime.now());
             String summary = summarizeMessage(content, parts);
             // Derive the conversation title from the first user message
@@ -1861,6 +1874,11 @@ public class ConversationService {
         // (so ids like "wecom:XXXX" clean correctly on Windows) and also probes
         // the raw-id dir for pre-fix Linux uploads.
         for (Path dir : chatUploadLocationResolver.resolveCandidateConversationDirs(conversationId)) {
+            if (!chatUploadLocationResolver.isSafeConversationDir(conversationId, dir)) {
+                log.warn("Refusing unsafe attachment cleanup target for conversation {}: {}",
+                        conversationId, dir);
+                continue;
+            }
             if (!Files.exists(dir)) {
                 continue;
             }

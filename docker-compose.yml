@@ -21,6 +21,23 @@ name: newsclaw
 #  SPRING_PROFILES_ACTIVE=mysql (the mysql Spring profile remains supported).
 # ============================================================================
 services:
+  # One-time ownership migration for volumes created by older root-running
+  # images. The marker keeps subsequent starts O(1).
+  newsclaw-data-init:
+    image: busybox:1.36
+    container_name: newsclaw-data-init
+    user: "0:0"
+    command:
+      - sh
+      - -c
+      - >-
+        if [ ! -f /app/data/.owner-v10001 ]; then
+          chown -R 10001:10001 /app/data && touch /app/data/.owner-v10001;
+        fi
+    volumes:
+      - newsclaw-server-data:/app/data
+    restart: "no"
+
   # PostgreSQL 数据库
   #
   # ⚠️ 密码通过环境变量传入，必须从 .env 文件提供。首次部署前：
@@ -85,6 +102,36 @@ services:
     networks:
       - newsclaw-network
 
+  # Mature main-content extraction for evidence captures. The service has no
+  # URL-fetching endpoint: it only processes HTML already fetched and bounded
+  # by the Java SSRF guard.
+  newsclaw-content-extractor:
+    build:
+      context: ./docker/content-extractor
+    image: newsclaw-content-extractor:local
+    container_name: newsclaw-content-extractor
+    restart: unless-stopped
+    environment:
+      NEWSCLAW_EXTRACTOR_MAX_HTML_BYTES: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_REQUEST_BYTES:-1048576}
+      NEWSCLAW_EXTRACTOR_MAX_OUTPUT_CHARS: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_OUTPUT_CHARS:-1048576}
+      NEWSCLAW_EXTRACTOR_MAX_CONCURRENCY: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_CONCURRENCY:-4}
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/healthz', timeout=2).read()"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    networks:
+      - newsclaw-extraction-network
+
   # NewsClaw 后端服务
   newsclaw-server:
     build:
@@ -92,13 +139,24 @@ services:
       dockerfile: newsclaw-server/Dockerfile
       args:
         MAVEN_FLAGS: ${MAVEN_FLAGS:-}
-    image: newsclaw-server:local
+    image: ${NEWSCLAW_SERVER_IMAGE:-newsclaw-server:local}
     container_name: newsclaw-server
     restart: unless-stopped
+    init: true
+    stop_grace_period: 40s
+    pids_limit: ${NEWSCLAW_SERVER_PIDS_LIMIT:-1024}
+    mem_limit: ${NEWSCLAW_SERVER_MEMORY_LIMIT:-4g}
+    cpus: ${NEWSCLAW_SERVER_CPUS:-4.0}
+    security_opt:
+      - no-new-privileges:true
     depends_on:
+      newsclaw-data-init:
+        condition: service_completed_successfully
       newsclaw-postgres:
         condition: service_healthy
       newsclaw-searxng:
+        condition: service_healthy
+      newsclaw-content-extractor:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: postgres
@@ -109,11 +167,25 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required in .env}
       # Environment-backed runtime configuration.  Non-blank values take
       # precedence over the corresponding database/UI value; blank values keep
-      # the existing database behavior.  Do not use env_file here: database
-      # bootstrap credentials must not be copied into the application process.
+      # the existing database behavior. Keep this explicit instead of using
+      # env_file so only reviewed runtime variables enter the app process.
       NEWSCLAW_ENV_CONFIG_ENABLED: ${NEWSCLAW_ENV_CONFIG_ENABLED:-true}
-      NEWSCLAW_SETTING_KEY: ${NEWSCLAW_SETTING_KEY:-}
+      NEWSCLAW_PRODUCTION_MODE: ${NEWSCLAW_PRODUCTION_MODE:-true}
+      NEWSCLAW_SETUP_ALLOW_ANONYMOUS: ${NEWSCLAW_SETUP_ALLOW_ANONYMOUS:-false}
+      NEWSCLAW_SCREENSHOT_ENABLED: ${NEWSCLAW_SCREENSHOT_ENABLED:-false}
+      NEWSCLAW_AI_NEWS_REQUIRE_EVENT_CONTEXT: ${NEWSCLAW_AI_NEWS_REQUIRE_EVENT_CONTEXT:-true}
+      NEWSCLAW_AI_NEWS_STRICT_EVIDENCE_BOUNDARY: ${NEWSCLAW_AI_NEWS_STRICT_EVIDENCE_BOUNDARY:-true}
+      NEWSCLAW_EXTERNAL_PUBLISH_ENABLED: ${NEWSCLAW_EXTERNAL_PUBLISH_ENABLED:-false}
+      NEWSCLAW_WEBCHAT_PUBLIC_ENABLED: ${NEWSCLAW_WEBCHAT_PUBLIC_ENABLED:-false}
+      # Empty after the first rotation; the server only needs this variable
+      # while it is replacing the legacy seed hash.
+      NEWSCLAW_BOOTSTRAP_PASSWORD: ${NEWSCLAW_BOOTSTRAP_PASSWORD:-}
+      NEWSCLAW_SETTING_KEY: ${NEWSCLAW_SETTING_KEY:?NEWSCLAW_SETTING_KEY is required in .env}
       NEWSCLAW_ENCRYPT_KEY: ${NEWSCLAW_ENCRYPT_KEY:?NEWSCLAW_ENCRYPT_KEY is required in .env}
+      # Migration integrity: repair is an explicit one-off switch; checksum
+      # validation stays enabled by default for PostgreSQL/Kingbase.
+      NEWSCLAW_FLYWAY_AUTO_REPAIR: ${NEWSCLAW_FLYWAY_AUTO_REPAIR:-false}
+      NEWSCLAW_FLYWAY_VALIDATE_ON_MIGRATE: ${NEWSCLAW_FLYWAY_VALIDATE_ON_MIGRATE:-true}
       # Deployment-owned primary model and ordered fallback chain. These are
       # intentionally separate from provider credentials so a model switch
       # never requires editing the database or rebuilding the image.
@@ -122,12 +194,90 @@ services:
       NEWSCLAW_FALLBACK_MODEL_CHAIN: ${NEWSCLAW_FALLBACK_MODEL_CHAIN:-}
       NEWSCLAW_MODEL_CHAIN: ${NEWSCLAW_MODEL_CHAIN:-}
       NEWSCLAW_AI_NEWS_RADAR_ENABLED: ${NEWSCLAW_AI_NEWS_RADAR_ENABLED:-true}
+      # Optional OTLP/HTTP metric export to an operator-provided collector.
+      NEWSCLAW_OTLP_METRICS_ENABLED: ${NEWSCLAW_OTLP_METRICS_ENABLED:-false}
+      NEWSCLAW_OTLP_METRICS_URL: ${NEWSCLAW_OTLP_METRICS_URL:-http://otel-collector:4318/v1/metrics}
+      NEWSCLAW_OTLP_METRICS_STEP: ${NEWSCLAW_OTLP_METRICS_STEP:-60s}
+      NEWSCLAW_OTLP_METRICS_CONNECT_TIMEOUT: ${NEWSCLAW_OTLP_METRICS_CONNECT_TIMEOUT:-3s}
+      NEWSCLAW_OTLP_METRICS_READ_TIMEOUT: ${NEWSCLAW_OTLP_METRICS_READ_TIMEOUT:-10s}
+      # Optional operator-reviewed RSS/Atom feeds. Discovery provenance and
+      # timestamps remain hints until the article passes evidence capture.
+      NEWSCLAW_AI_NEWS_RSS_FEEDS: ${NEWSCLAW_AI_NEWS_RSS_FEEDS:-}
+      # Optional operator-reviewed Google News Sitemap or sitemap-index endpoints.
+      NEWSCLAW_AI_NEWS_SITEMAPS: ${NEWSCLAW_AI_NEWS_SITEMAPS:-}
+      # Endpoint ids from the versioned catalog; every catalog endpoint is off by default.
+      NEWSCLAW_AI_NEWS_SOURCE_ENDPOINT_IDS: ${NEWSCLAW_AI_NEWS_SOURCE_ENDPOINT_IDS:-}
+      # Durable structured-source ingestion. Request-time refresh stays off by
+      # default so discovery latency is independent of publisher availability.
+      NEWSCLAW_AI_NEWS_INGESTION_ENABLED: ${NEWSCLAW_AI_NEWS_INGESTION_ENABLED:-true}
+      NEWSCLAW_AI_NEWS_INGESTION_SCAN_INTERVAL_MS: ${NEWSCLAW_AI_NEWS_INGESTION_SCAN_INTERVAL_MS:-60000}
+      NEWSCLAW_AI_NEWS_INGESTION_INITIAL_DELAY_MS: ${NEWSCLAW_AI_NEWS_INGESTION_INITIAL_DELAY_MS:-15000}
+      NEWSCLAW_AI_NEWS_INGESTION_ON_DEMAND_REFRESH_IF_EMPTY: ${NEWSCLAW_AI_NEWS_INGESTION_ON_DEMAND_REFRESH_IF_EMPTY:-false}
+      NEWSCLAW_AI_NEWS_INGESTION_MAX_POLLS_PER_CYCLE: ${NEWSCLAW_AI_NEWS_INGESTION_MAX_POLLS_PER_CYCLE:-50}
+      NEWSCLAW_AI_NEWS_INGESTION_STALE_RUN_MINUTES: ${NEWSCLAW_AI_NEWS_INGESTION_STALE_RUN_MINUTES:-30}
+      NEWSCLAW_AI_NEWS_INGESTION_CANDIDATE_LOOKBACK_DAYS: ${NEWSCLAW_AI_NEWS_INGESTION_CANDIDATE_LOOKBACK_DAYS:-31}
+      # V213 shadow candidate pipeline. Both switches remain explicit opt-ins;
+      # the scheduled radar is disabled when the candidate switch is false.
+      NEWSCLAW_AI_NEWS_CANDIDATE_PIPELINE_ENABLED: ${NEWSCLAW_AI_NEWS_CANDIDATE_PIPELINE_ENABLED:-false}
+      NEWSCLAW_AI_NEWS_CANDIDATE_CAPTURE_ENABLED: ${NEWSCLAW_AI_NEWS_CANDIDATE_CAPTURE_ENABLED:-false}
+      NEWSCLAW_AI_NEWS_CANDIDATE_SCAN_INTERVAL_MS: ${NEWSCLAW_AI_NEWS_CANDIDATE_SCAN_INTERVAL_MS:-900000}
+      NEWSCLAW_AI_NEWS_CANDIDATE_CAPTURE_INTERVAL_MS: ${NEWSCLAW_AI_NEWS_CANDIDATE_CAPTURE_INTERVAL_MS:-60000}
+      NEWSCLAW_AI_NEWS_CANDIDATE_INITIAL_DELAY_MS: ${NEWSCLAW_AI_NEWS_CANDIDATE_INITIAL_DELAY_MS:-60000}
+      NEWSCLAW_AI_NEWS_CANDIDATE_WORKSPACE_ID: ${NEWSCLAW_AI_NEWS_CANDIDATE_WORKSPACE_ID:-1}
+      NEWSCLAW_AI_NEWS_CANDIDATE_LOOKBACK_HOURS: ${NEWSCLAW_AI_NEWS_CANDIDATE_LOOKBACK_HOURS:-24}
+      NEWSCLAW_AI_NEWS_CANDIDATE_MAX_CANDIDATES: ${NEWSCLAW_AI_NEWS_CANDIDATE_MAX_CANDIDATES:-30}
+      NEWSCLAW_AI_NEWS_CANDIDATE_MAX_CAPTURES_PER_SCAN: ${NEWSCLAW_AI_NEWS_CANDIDATE_MAX_CAPTURES_PER_SCAN:-10}
+      NEWSCLAW_AI_NEWS_CANDIDATE_MAX_CAPTURE_ATTEMPTS: ${NEWSCLAW_AI_NEWS_CANDIDATE_MAX_CAPTURE_ATTEMPTS:-3}
+      NEWSCLAW_AI_NEWS_CANDIDATE_CAPTURE_RETRY_MINUTES: ${NEWSCLAW_AI_NEWS_CANDIDATE_CAPTURE_RETRY_MINUTES:-15}
+      NEWSCLAW_AI_NEWS_CANDIDATE_STALE_CAPTURE_MINUTES: ${NEWSCLAW_AI_NEWS_CANDIDATE_STALE_CAPTURE_MINUTES:-30}
+      NEWSCLAW_AI_NEWS_CANDIDATE_CONFIG_VERSION: ${NEWSCLAW_AI_NEWS_CANDIDATE_CONFIG_VERSION:-candidate-pipeline-v2-bocha}
+      NEWSCLAW_AI_NEWS_DISCOVERY_PROVIDER_IDS: ${NEWSCLAW_AI_NEWS_DISCOVERY_PROVIDER_IDS:-}
+      NEWSCLAW_AI_NEWS_CHINA_SEARCH_ENABLED: ${NEWSCLAW_AI_NEWS_CHINA_SEARCH_ENABLED:-false}
+      NEWSCLAW_AI_NEWS_CHINA_SEARCH_API_KEY: ${NEWSCLAW_AI_NEWS_CHINA_SEARCH_API_KEY:-}
+      NEWSCLAW_AI_NEWS_CHINA_SEARCH_BASE_URL: ${NEWSCLAW_AI_NEWS_CHINA_SEARCH_BASE_URL:-https://api.bochaai.com/v1/web-search}
+      NEWSCLAW_AI_NEWS_CHINA_SEARCH_COUNT: ${NEWSCLAW_AI_NEWS_CHINA_SEARCH_COUNT:-20}
+      NEWSCLAW_AI_NEWS_CHINA_SEARCH_TIMEOUT_SECONDS: ${NEWSCLAW_AI_NEWS_CHINA_SEARCH_TIMEOUT_SECONDS:-15}
+      # Precision-first discovery admission. It may intentionally return fewer
+      # than Top-K after temporal, host, story, and exploration quotas.
+      NEWSCLAW_AI_NEWS_DISCOVERY_MAX_CANDIDATES_PER_HOST: ${NEWSCLAW_AI_NEWS_DISCOVERY_MAX_CANDIDATES_PER_HOST:-4}
+      NEWSCLAW_AI_NEWS_DISCOVERY_MAX_CANDIDATES_PER_STORY: ${NEWSCLAW_AI_NEWS_DISCOVERY_MAX_CANDIDATES_PER_STORY:-2}
+      NEWSCLAW_AI_NEWS_DISCOVERY_CURRENT_OPEN_WEB_PERCENT: ${NEWSCLAW_AI_NEWS_DISCOVERY_CURRENT_OPEN_WEB_PERCENT:-20}
+      NEWSCLAW_AI_NEWS_DISCOVERY_MAX_UNKNOWN_PERCENT: ${NEWSCLAW_AI_NEWS_DISCOVERY_MAX_UNKNOWN_PERCENT:-0}
+      NEWSCLAW_AI_NEWS_DISCOVERY_UNKNOWN_OFFICIAL_PERCENT: ${NEWSCLAW_AI_NEWS_DISCOVERY_UNKNOWN_OFFICIAL_PERCENT:-20}
+      NEWSCLAW_AI_NEWS_DISCOVERY_UNKNOWN_MEDIA_PERCENT: ${NEWSCLAW_AI_NEWS_DISCOVERY_UNKNOWN_MEDIA_PERCENT:-20}
+      NEWSCLAW_AI_NEWS_DISCOVERY_UNKNOWN_OPEN_WEB_PERCENT: ${NEWSCLAW_AI_NEWS_DISCOVERY_UNKNOWN_OPEN_WEB_PERCENT:-0}
       # Official evidence capture stays a narrow GET-only operation. Keep its
       # deployment bounds in .env so production can tighten them without an image rebuild.
       NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_ENABLED: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_ENABLED:-true}
-      NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_BYTES: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_BYTES:-524288}
+      NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_BYTES: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_BYTES:-1048576}
+      NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MIN_TEXT_CHARS: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MIN_TEXT_CHARS:-200}
       NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_TIMEOUT_SECONDS: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_TIMEOUT_SECONDS:-15}
       NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_REDIRECTS: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_REDIRECTS:-5}
+      NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_ATTEMPTS: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_MAX_ATTEMPTS:-2}
+      NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_RETRY_BASE_DELAY_MILLIS: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_RETRY_BASE_DELAY_MILLIS:-250}
+      NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_RETRY_MAX_DELAY_MILLIS: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_RETRY_MAX_DELAY_MILLIS:-5000}
+      NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_PROXY_URL: ${NEWSCLAW_AI_NEWS_OFFICIAL_CAPTURE_PROXY_URL:-}
+      # Compose enables the mature fetch-free extractor and fails evidence
+      # capture closed when it is unavailable. Standalone JAR deployments may
+      # point this at an operator-owned equivalent service.
+      NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_ENABLED: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_ENABLED:-true}
+      NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_REQUIRED: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_REQUIRED:-true}
+      NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_ENDPOINT: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_ENDPOINT:-http://newsclaw-content-extractor:8090}
+      NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_EXPECTED_NAME: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_EXPECTED_NAME:-trafilatura}
+      NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_EXPECTED_VERSION: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_EXPECTED_VERSION:-2.2.0}
+      NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_EXPECTED_CONFIG_HASH: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_EXPECTED_CONFIG_HASH:-0235b7bf49c3c80ea6a52aee9f413fa2d4e4e1f5196af87278c48e558c7d0400}
+      NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_TIMEOUT_MILLIS: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_TIMEOUT_MILLIS:-5000}
+      NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_REQUEST_BYTES: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_REQUEST_BYTES:-1048576}
+      NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_RESPONSE_BYTES: ${NEWSCLAW_AI_NEWS_CONTENT_EXTRACTION_MAX_RESPONSE_BYTES:-1572864}
+      # Conservative TDT-style online event clustering. Borderline pairs stay
+      # separate and are exposed through the operator review API/UI.
+      NEWSCLAW_AI_NEWS_CLUSTERING_ENABLED: ${NEWSCLAW_AI_NEWS_CLUSTERING_ENABLED:-true}
+      NEWSCLAW_AI_NEWS_CLUSTERING_MAX_CANDIDATES: ${NEWSCLAW_AI_NEWS_CLUSTERING_MAX_CANDIDATES:-300}
+      NEWSCLAW_AI_NEWS_CLUSTERING_MAX_CANDIDATE_AGE_HOURS: ${NEWSCLAW_AI_NEWS_CLUSTERING_MAX_CANDIDATE_AGE_HOURS:-168}
+      NEWSCLAW_AI_NEWS_CLUSTERING_MIN_TITLE_BLOCKING_SIMILARITY: ${NEWSCLAW_AI_NEWS_CLUSTERING_MIN_TITLE_BLOCKING_SIMILARITY:-0.12}
+      NEWSCLAW_AI_NEWS_CLUSTERING_AUTO_LINK_THRESHOLD: ${NEWSCLAW_AI_NEWS_CLUSTERING_AUTO_LINK_THRESHOLD:-0.80}
+      NEWSCLAW_AI_NEWS_CLUSTERING_REVIEW_THRESHOLD: ${NEWSCLAW_AI_NEWS_CLUSTERING_REVIEW_THRESHOLD:-0.62}
+      NEWSCLAW_AI_NEWS_CLUSTERING_MIN_AUTO_TITLE_SIMILARITY: ${NEWSCLAW_AI_NEWS_CLUSTERING_MIN_AUTO_TITLE_SIMILARITY:-0.45}
       # Spring AI Alibaba eagerly creates optional DashScope modality beans and
       # rejects an explicitly empty key.  Compose substitutes this bootstrap
       # sentinel only when no real key is supplied; EnvironmentConfig ignores
@@ -211,6 +361,7 @@ services:
       DSH_INSTALL_ROOT: ${DSH_INSTALL_ROOT:-}
       SERPER_API_KEY: ${SERPER_API_KEY:-}
       SERPER_BASE_URL: ${SERPER_BASE_URL:-}
+      TAVILY_API_KEYS: ${TAVILY_API_KEYS:-}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
       TAVILY_BASE_URL: ${TAVILY_BASE_URL:-}
       NEWSCLAW_SEARCH_PROVIDER: ${NEWSCLAW_SEARCH_PROVIDER:-}
@@ -266,6 +417,9 @@ services:
       SSO_FEISHU_REDIRECT_URI: ${SSO_FEISHU_REDIRECT_URI:-}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required in .env}
       NEWSCLAW_CORS_ALLOWED_ORIGINS: ${NEWSCLAW_CORS_ALLOWED_ORIGINS:-}
+      NEWSCLAW_WEBCHAT_MAX_CONCURRENT_STREAMS_PER_KEY: ${NEWSCLAW_WEBCHAT_MAX_CONCURRENT_STREAMS_PER_KEY:-4}
+      NEWSCLAW_WEBCHAT_REQUESTS_PER_MINUTE_PER_KEY: ${NEWSCLAW_WEBCHAT_REQUESTS_PER_MINUTE_PER_KEY:-30}
+      NEWSCLAW_WEBCHAT_MAX_MESSAGE_CHARS: ${NEWSCLAW_WEBCHAT_MAX_MESSAGE_CHARS:-16000}
       NEWSCLAW_PUBLIC_BASE_URL: ${NEWSCLAW_PUBLIC_BASE_URL:-}
       NEWSCLAW_OPENAPI_EXPOSE_UI: ${NEWSCLAW_OPENAPI_EXPOSE_UI:-false}
       # SearXNG: tell the app where to reach the sidecar container
@@ -372,15 +526,24 @@ services:
     # recommendation for Playwright / headless chrome.
     shm_size: 2gb
     ports:
-      - "18080:18088"   # host:container — app listens on 18088 inside the container
-      - "1455:1455"
+      # Keep both application and desktop callback ports host-local. Public
+      # traffic must terminate at an HTTPS reverse proxy on 443.
+      - "127.0.0.1:${NEWSCLAW_HTTP_PORT:-18080}:18088"
+      - "127.0.0.1:${NEWSCLAW_DESKTOP_PORT:-1455}:1455"
     volumes:
       # newsclaw-server-data covers /app/data — wiki-uploads AND the skill workspace
       # (NEWSCLAW_SKILL_WORKSPACE_ROOT=/app/data/skills above), so a single
       # volume persists everything. No separate skills volume needed.
       - newsclaw-server-data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18088/actuator/health/readiness').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     networks:
       - newsclaw-network
+      - newsclaw-extraction-network
 
 volumes:
   newsclaw-postgres-data:
@@ -392,3 +555,9 @@ networks:
   newsclaw-network:
     name: newsclaw-network
     driver: bridge
+  # The extractor needs to receive bounded HTML from the Java service, but it
+  # never needs internet egress or access to the database/search containers.
+  newsclaw-extraction-network:
+    name: newsclaw-extraction-network
+    driver: bridge
+    internal: true

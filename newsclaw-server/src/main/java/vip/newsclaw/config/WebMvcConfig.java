@@ -10,6 +10,8 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import vip.newsclaw.kbopen.auth.KbScopeInterceptor;
 
+import java.util.Arrays;
+
 /**
  * Web MVC 配置（跨域、拦截器等）
  *
@@ -24,8 +26,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
     private final WorkspaceAccessInterceptor workspaceAccessInterceptor;
     private final KbScopeInterceptor kbScopeInterceptor;
 
-    /** CORS allowed origins, comma-separated. Default "*" for dev, restrict in production. */
-    @Value("${newsclaw.cors.allowed-origins:*}")
+    /** CORS allowed origins, comma-separated. Empty means same-origin only. */
+    @Value("${newsclaw.cors.allowed-origins:}")
     private String allowedOrigins;
 
     @Override
@@ -40,8 +42,13 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        String[] origins = Arrays.stream(allowedOrigins == null ? new String[0] : allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty() && !"*".equals(origin))
+                .toArray(String[]::new);
+        if (origins.length == 0) return;
         registry.addMapping("/api/**")
-                .allowedOriginPatterns(allowedOrigins.split(","))
+                .allowedOrigins(origins)
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true)
@@ -59,6 +66,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
      */
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        registry.addResourceHandler("/showcase/**")
+                .addResourceLocations("classpath:/static/showcase/")
+                .setCachePeriod(86400);
         registry.addResourceHandler("/skill-assets/**")
                 .addResourceLocations("classpath:/skills/")
                 .setCachePeriod(86400);

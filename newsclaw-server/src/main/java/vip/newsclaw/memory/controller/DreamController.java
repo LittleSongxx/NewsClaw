@@ -49,11 +49,19 @@ public class DreamController {
     public R<Map<String, Object>> listReports(
             @PathVariable Long agentId,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            Authentication auth) {
+        String ownerKey = currentWebOwner(auth);
         Page<DreamReportEntity> pageParam = new Page<>(page, size);
         Page<DreamReportEntity> result = dreamReportMapper.selectPage(pageParam,
                 new LambdaQueryWrapper<DreamReportEntity>()
                         .eq(DreamReportEntity::getAgentId, agentId)
+                        // Show the user's PERSONAL timeline together with the
+                        // shared/system timeline.  The latter is intentionally
+                        // owner_key IS NULL and is visible to every workspace
+                        // member; personal reports remain owner-filtered.
+                        .and(w -> w.eq(DreamReportEntity::getOwnerKey, ownerKey)
+                                .or().isNull(DreamReportEntity::getOwnerKey))
                         .eq(DreamReportEntity::getDeleted, 0)
                         .orderByDesc(DreamReportEntity::getStartedAt));
 
@@ -70,11 +78,14 @@ public class DreamController {
     @RequireWorkspaceRole("member")
     public R<DreamReportEntity> getReport(
             @PathVariable Long agentId,
-            @PathVariable Long reportId) {
+            @PathVariable Long reportId,
+            Authentication auth) {
         DreamReportEntity entity = dreamReportMapper.selectOne(
                 new LambdaQueryWrapper<DreamReportEntity>()
                         .eq(DreamReportEntity::getId, reportId)
                         .eq(DreamReportEntity::getAgentId, agentId)
+                        .and(w -> w.eq(DreamReportEntity::getOwnerKey, currentWebOwner(auth))
+                                .or().isNull(DreamReportEntity::getOwnerKey))
                         .eq(DreamReportEntity::getDeleted, 0));
         if (entity == null) {
             return R.fail("Report not found");
@@ -87,8 +98,8 @@ public class DreamController {
     @Operation(summary = "Subscribe to dream events (SSE)")
     @GetMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @RequireWorkspaceRole("member")
-    public SseEmitter subscribeDreamEvents(@PathVariable Long agentId) {
-        return eventBroadcaster.register(agentId);
+    public SseEmitter subscribeDreamEvents(@PathVariable Long agentId, Authentication auth) {
+        return eventBroadcaster.register(agentId, currentWebOwner(auth));
     }
 
     // ==================== Morning Card ====================
@@ -98,7 +109,8 @@ public class DreamController {
     @RequireWorkspaceRole("member")
     public R<Map<String, Object>> getMorningCard(@PathVariable Long agentId, Authentication auth) {
         Long userId = resolveUserId(auth);
-        Map<String, Object> card = morningCardService.getCardFor(userId, agentId);
+        Map<String, Object> card = morningCardService.getCardFor(
+                userId, agentId, currentWebOwner(auth));
         return R.ok(card); // null = no card to show
     }
 
@@ -109,7 +121,7 @@ public class DreamController {
                                         @RequestBody Map<String, Object> body,
                                         Authentication auth) {
         Long userId = resolveUserId(auth);
-        Long reportId = body.get("reportId") != null
+        Long reportId = body != null && body.get("reportId") != null
                 ? Long.valueOf(body.get("reportId").toString()) : null;
         morningCardService.markSeen(userId, agentId, reportId);
         return R.ok(null);
@@ -133,10 +145,12 @@ public class DreamController {
     public R<Void> editEntry(@PathVariable Long agentId,
                               @PathVariable Long reportId,
                               @PathVariable String key,
-                              @RequestBody Map<String, String> body) {
+                              @RequestBody Map<String, String> body,
+                              Authentication auth) {
         String decodedKey = java.net.URLDecoder.decode(key, java.nio.charset.StandardCharsets.UTF_8);
+        String ownerKey = currentWebOwner(auth);
 
-        String newContent = body.get("content");
+        String newContent = body == null ? null : body.get("content");
         if (newContent == null || newContent.isBlank()) {
             return R.fail("content is required");
         }
@@ -150,6 +164,7 @@ public class DreamController {
                     new LambdaQueryWrapper<DreamReportEntity>()
                             .eq(DreamReportEntity::getId, reportId)
                             .eq(DreamReportEntity::getAgentId, agentId)
+                            .eq(DreamReportEntity::getOwnerKey, ownerKey)
                             .eq(DreamReportEntity::getDeleted, 0));
             if (report == null) {
                 return R.fail("Report not found or does not belong to this agent");
@@ -159,6 +174,8 @@ public class DreamController {
             List<MemoryRecallEntity> candidates = recallMapper.selectList(
                     new LambdaQueryWrapper<MemoryRecallEntity>()
                             .eq(MemoryRecallEntity::getAgentId, agentId)
+                            .eq(MemoryRecallEntity::getScope, vip.newsclaw.memory.identity.MemoryScope.PERSONAL)
+                            .eq(MemoryRecallEntity::getOwnerKey, ownerKey)
                             .ge(MemoryRecallEntity::getLastRecalledAt, report.getStartedAt())
                             .le(MemoryRecallEntity::getLastRecalledAt, report.getFinishedAt())
                             .eq(MemoryRecallEntity::getDeleted, 0));
@@ -176,16 +193,16 @@ public class DreamController {
         } else {
             // Direct edit (reportId=0, from MemoryBrowser): the target file comes
             // from the request body and must be an editable memory file.
-            filename = body.getOrDefault("filename", "MEMORY.md");
+            filename = body == null ? "MEMORY.md" : body.getOrDefault("filename", "MEMORY.md");
             if (!isMemoryFile(filename)) {
                 return R.fail("Unsupported memory file: " + filename);
             }
-            if (!hilService.sectionExists(agentId, filename, decodedKey)) {
+            if (!hilService.sectionExists(agentId, filename, decodedKey, ownerKey)) {
                 return R.fail("Section '" + decodedKey + "' not found in " + filename);
             }
         }
 
-        hilService.editMemoryEntry(agentId, filename, decodedKey, newContent);
+        hilService.editMemoryEntry(agentId, filename, decodedKey, newContent, ownerKey);
         return R.ok(null);
     }
 
@@ -200,6 +217,7 @@ public class DreamController {
         return "MEMORY.md".equals(filename)
                 || "PROFILE.md".equals(filename)
                 || "SOUL.md".equals(filename)
+                || filename.matches("memory/\\d{4}-\\d{2}-\\d{2}\\.md")
                 || (filename.startsWith("structured/") && filename.endsWith(".md"));
     }
 
@@ -217,5 +235,12 @@ public class DreamController {
             throw new NewsClawException("err.auth.user_not_found", 401, "User not found: " + auth.getName());
         }
         return user.getId();
+    }
+
+    private String currentWebOwner(Authentication auth) {
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            throw new NewsClawException("err.auth.unauthenticated", 401, "Not authenticated");
+        }
+        return "user:" + auth.getName();
     }
 }

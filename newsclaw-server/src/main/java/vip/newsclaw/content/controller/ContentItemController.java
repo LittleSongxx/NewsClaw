@@ -8,6 +8,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import vip.newsclaw.common.result.R;
 import vip.newsclaw.content.model.ContentItemEntity;
@@ -17,10 +20,10 @@ import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
 import java.util.Map;
 
 /**
- * Read-only content calendar API — lists produced 公众号 / 小红书 pieces and their
+ * Content calendar API — lists produced 公众号 / 小红书 pieces and their
  * lifecycle status, so operators can see what's drafted / packaged / published /
- * pending. Writes happen through the tools ({@code content_item} + auto-record on
- * delivery), not here.
+ * pending. The explicit acknowledgement endpoint only records human approval;
+ * platform publication still requires a non-empty external receipt.
  */
 @Tag(name = "内容日历")
 @RestController
@@ -49,4 +52,17 @@ public class ContentItemController {
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
         return R.ok(contentItemService.summary(workspaceId));
     }
+
+    @Operation(summary = "人工确认内容工件")
+    @RequireWorkspaceRole("member")
+    @PostMapping("/{id}/acknowledge")
+    public R<Boolean> acknowledge(
+            @PathVariable Long id,
+            @RequestBody AcknowledgeRequest request,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId) {
+        String hash = request == null ? null : request.artifactHash();
+        return R.ok(contentItemService.acknowledge(workspaceId, id, hash));
+    }
+
+    public record AcknowledgeRequest(String artifactHash) {}
 }

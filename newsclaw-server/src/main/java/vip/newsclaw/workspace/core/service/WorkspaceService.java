@@ -19,6 +19,11 @@ import vip.newsclaw.workspace.core.model.WorkspaceWithRoleVO;
 import vip.newsclaw.workspace.core.repository.WorkspaceMapper;
 import vip.newsclaw.workspace.core.repository.WorkspaceMemberMapper;
 import vip.newsclaw.workspace.core.security.RoleCapabilities;
+import vip.newsclaw.agent.repository.AgentMapper;
+import vip.newsclaw.agent.model.AgentEntity;
+import vip.newsclaw.cron.repository.CronJobMapper;
+import vip.newsclaw.cron.model.CronJobEntity;
+import vip.newsclaw.workspace.conversation.ConversationService;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -42,6 +47,14 @@ public class WorkspaceService {
     private final ConversationMapper conversationMapper;
     private final WikiKnowledgeBaseService wikiKnowledgeBaseService;
     private final I18nService i18n;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private AgentMapper agentMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private CronJobMapper cronJobMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.context.annotation.Lazy
+    private ConversationService conversationService;
 
     /** 默认工作区 slug */
     public static final String DEFAULT_SLUG = "default";
@@ -229,6 +242,7 @@ public class WorkspaceService {
         return entity;
     }
 
+    @Transactional
     public void delete(Long id) {
         WorkspaceEntity existing = getById(id);
         if (DEFAULT_SLUG.equals(existing.getSlug())) {
@@ -242,6 +256,34 @@ public class WorkspaceService {
             throw new NewsClawException("err.workspace.not_empty", 409,
                     "工作区下还有 " + kbCount + " 个知识库，请先删除知识库再删除工作区");
         }
+        long agentCount = agentMapper == null ? 0 : agentMapper.selectCount(
+                new LambdaQueryWrapper<AgentEntity>().eq(AgentEntity::getWorkspaceId, id));
+        long cronCount = cronJobMapper == null ? 0 : cronJobMapper.selectCount(
+                new LambdaQueryWrapper<CronJobEntity>().eq(CronJobEntity::getWorkspaceId, id));
+        String tasksConversationId = "tasks_" + id;
+        long conversationCount = conversationMapper.selectCount(
+                new LambdaQueryWrapper<ConversationEntity>()
+                        .eq(ConversationEntity::getWorkspaceId, id)
+                        .ne(ConversationEntity::getConversationId, tasksConversationId));
+        if (agentCount + cronCount + conversationCount > 0) {
+            throw new NewsClawException("err.workspace.not_empty", 409,
+                    "工作区仍有活跃资源：Agent=" + agentCount + "，定时任务=" + cronCount
+                            + "，会话=" + conversationCount + "；请先删除这些资源");
+        }
+
+        if (conversationMapper.selectCount(new LambdaQueryWrapper<ConversationEntity>()
+                .eq(ConversationEntity::getConversationId, tasksConversationId)) > 0) {
+            if (conversationService != null) {
+                conversationService.deleteConversation(tasksConversationId);
+            } else {
+                conversationMapper.delete(new LambdaQueryWrapper<ConversationEntity>()
+                        .eq(ConversationEntity::getConversationId, tasksConversationId));
+            }
+        }
+        List<WorkspaceMemberEntity> members = listMembers(id);
+        memberMapper.delete(new LambdaQueryWrapper<WorkspaceMemberEntity>()
+                .eq(WorkspaceMemberEntity::getWorkspaceId, id));
+        members.forEach(member -> evictMembershipCache(id, member.getUserId()));
         workspaceMapper.deleteById(id);
         log.info("Deleted workspace: {} (id={})", existing.getName(), id);
     }

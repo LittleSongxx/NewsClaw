@@ -47,7 +47,8 @@ public class ContentItemTool {
           - record: log a produced piece (platform, topic, title, status). NOTE:
             gzh_package / xhs_package already auto-record on delivery, so you rarely
             need this by hand.
-          - mark_published: set item `id` to published with optional externalRef.
+          - mark_published: set item `id` to published only after an operator
+            acknowledgement and a non-empty platform externalRef.
         """)
     public String content_item(
             @ToolParam(description = "Action: check_recent | record | mark_published")
@@ -124,7 +125,21 @@ public class ContentItemTool {
                 : contentItemService.markPublished(workspaceFromContext(ctx), id, externalRef);
         return marked
                 ? "✅ 已标记为已发布。item id: " + id
-                : "Error: content item " + id + " not found.";
+                : "Error: content item " + id + " not found or delivery gate is incomplete (operator acknowledgement, artifact hash, and platform ref are required).";
+    }
+
+    /** Separate approval action; it never claims that the platform accepted the item. */
+    @Tool(name = "content_item_acknowledge", description = "记录人工审核通过的内容工件哈希；不会将内容标记为平台已发布。")
+    public String acknowledge(
+            @ToolParam(description = "内容条目 id") Long id,
+            @ToolParam(description = "已审核工件的 SHA-256（64 位十六进制）") String artifactHash,
+            @Nullable ToolContext ctx) {
+        if (id == null || artifactHash == null || artifactHash.isBlank()) {
+            return "Error: id and artifactHash are required.";
+        }
+        boolean ok = contentItemService.acknowledge(workspaceFromContext(ctx), id, artifactHash);
+        return ok ? "✅ 已记录人工审核（operator_acknowledged），等待平台回执。"
+                : "Error: content item not found, already published, or artifactHash invalid.";
     }
 
     private static Long workspaceFromContext(@Nullable ToolContext ctx) {

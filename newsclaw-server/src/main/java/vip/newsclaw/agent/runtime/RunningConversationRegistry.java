@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Tracks which conversations are currently in-flight (a chat turn is actively
@@ -59,8 +60,10 @@ public class RunningConversationRegistry {
 
     /**
      * Mark a conversation as actively running. Idempotent — if already
-     * registered (e.g. concurrent sub-agent delegation into the same
-     * conversation), only refreshes {@code lastActiveAt}.
+     * registered (e.g. a Flux is resubscribed while a previous wrapper is
+     * still unwinding), increments a reference count.  The conversation is
+     * removed only after the matching number of unregister calls, so an inner
+     * lifecycle wrapper cannot make an outer turn look idle.
      */
     public void register(String conversationId, Long agentId) {
         if (conversationId == null || conversationId.isBlank()) {
@@ -69,22 +72,25 @@ public class RunningConversationRegistry {
         active.compute(conversationId, (k, existing) -> {
             Instant now = Instant.now();
             if (existing == null) {
-                return new ConversationHandle(agentId, now, now, new ConcurrentLinkedQueue<>());
+                return new ConversationHandle(agentId, now, now, new ConcurrentLinkedQueue<>(), 1);
             }
+            existing.references.incrementAndGet();
             existing.lastActiveAt = now;
             return existing;
         });
     }
 
     /**
-     * Mark a conversation as no longer running. Safe to call multiple times
-     * and on never-registered ids. Any pending notifications are discarded.
+     * Mark one lifecycle registration as no longer running. Safe to call
+     * multiple times and on never-registered ids. Any pending notifications
+     * are discarded only when the final matching registration unwinds.
      */
     public void unregister(String conversationId) {
         if (conversationId == null || conversationId.isBlank()) {
             return;
         }
-        active.remove(conversationId);
+        active.computeIfPresent(conversationId, (id, handle) ->
+                handle.references.decrementAndGet() <= 0 ? null : handle);
     }
 
     /** @return true iff a turn is currently in-flight for this conversation. */
@@ -216,12 +222,15 @@ public class RunningConversationRegistry {
         final Long agentId;
         volatile Instant lastActiveAt;
         final ConcurrentLinkedQueue<EnvironmentNotification> notifications;
+        final AtomicInteger references;
 
         ConversationHandle(Long agentId, Instant startedAt, Instant lastActiveAt,
-                           ConcurrentLinkedQueue<EnvironmentNotification> notifications) {
+                           ConcurrentLinkedQueue<EnvironmentNotification> notifications,
+                           int references) {
             this.agentId = agentId;
             this.lastActiveAt = lastActiveAt;
             this.notifications = notifications;
+            this.references = new AtomicInteger(Math.max(1, references));
         }
     }
 }

@@ -58,6 +58,30 @@ class OpenApiLockedDownAccessTest {
     }
 
     @Test
+    @DisplayName("Anonymous Agent SSE is blocked before controller execution")
+    void anonymousAgentStreamBlocked() {
+        ResponseEntity<String> resp = rest.getForEntity(
+                "/api/v1/agents/1/chat/stream?message=hello", String.class);
+        assertEquals(HttpStatus.UNAUTHORIZED, resp.getStatusCode());
+    }
+
+    @Test
+    @DisplayName("Anonymous stop cannot cancel another conversation")
+    void anonymousStopBlocked() {
+        ResponseEntity<String> resp = rest.postForEntity(
+                "/api/v1/chat/victim/stop", null, String.class);
+        assertEquals(HttpStatus.UNAUTHORIZED, resp.getStatusCode());
+    }
+
+    @Test
+    @DisplayName("Anonymous onboarding probe is blocked")
+    void anonymousOnboardingStatusBlocked() {
+        ResponseEntity<String> resp = rest.getForEntity(
+                "/api/v1/setup/onboarding-status", String.class);
+        assertEquals(HttpStatus.UNAUTHORIZED, resp.getStatusCode());
+    }
+
+    @Test
     @DisplayName("A genuinely public endpoint stays reachable when Swagger is locked")
     void publicEndpointStillReachable() {
         // GET /api/v1/settings/language is permitAll (first-paint i18n); proves

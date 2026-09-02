@@ -61,6 +61,11 @@ public class AcpDelegationService {
      * JSON error.
      */
     public String prompt(String endpointName, String userPrompt, String cwdHint) {
+        return prompt(endpointName, userPrompt, cwdHint, null);
+    }
+
+    /** Workspace-scoped runtime entry used by ACP skill wrappers. */
+    public String prompt(String endpointName, String userPrompt, String cwdHint, Long workspaceId) {
         if (endpointName == null || endpointName.isBlank()) {
             throw new NewsClawException("err.acp.endpoint_required",
                     "ACP endpoint name is required");
@@ -70,7 +75,9 @@ public class AcpDelegationService {
                     "ACP prompt is required");
         }
 
-        AcpEndpointEntity endpoint = endpointService.findByName(endpointName);
+        AcpEndpointEntity endpoint = workspaceId == null
+                ? endpointService.findByName(endpointName)
+                : endpointService.findByName(endpointName, workspaceId);
         if (endpoint == null) {
             throw new NewsClawException("err.acp.endpoint_not_found",
                     "ACP endpoint not found: " + endpointName);
@@ -93,7 +100,7 @@ public class AcpDelegationService {
         AcpStdioClient client;
         try {
             client = AcpStdioClient.spawn(objectMapper, endpoint.getCommand(),
-                    args, env, resolvedCwd);
+                    args, env, resolvedCwd, stdioLimit(endpoint));
         } catch (IOException e) {
             throw new NewsClawException("err.acp.spawn_failed",
                     "Failed to spawn ACP agent '" + endpointName + "': " + e.getMessage());
@@ -143,6 +150,11 @@ public class AcpDelegationService {
         int seconds = AcpEndpointService.normalizePromptTimeoutSeconds(
                 endpoint != null ? endpoint.getPromptTimeoutSeconds() : null);
         return seconds * 1000L;
+    }
+
+    private static long stdioLimit(AcpEndpointEntity endpoint) {
+        Long configured = endpoint != null ? endpoint.getStdioBufferLimitBytes() : null;
+        return configured != null && configured > 0 ? configured : 50L * 1024L * 1024L;
     }
 
     private void wireHandlers(AcpStdioClient client, StringBuilder buf,

@@ -14,6 +14,8 @@ public class InstallTask {
 
     private String taskId;
     private String bundleUrl;
+    /** Workspace that owns this task; prevents status/cancel IDOR. */
+    private Long workspaceId;
     private InstallStatus status;
     private String error;
     private InstallResult result;
@@ -32,9 +34,14 @@ public class InstallTask {
     }
 
     public static InstallTask create(String taskId, String bundleUrl) {
+        return create(taskId, bundleUrl, null);
+    }
+
+    public static InstallTask create(String taskId, String bundleUrl, Long workspaceId) {
         InstallTask task = new InstallTask();
         task.setTaskId(taskId);
         task.setBundleUrl(bundleUrl);
+        task.setWorkspaceId(workspaceId);
         task.setStatus(InstallStatus.PENDING);
         task.setCreatedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());

@@ -1,0 +1,115 @@
+version: 3
+policy:
+  default_enabled: false
+  unreviewed_endpoint_policy: reject
+  evidence_requires_article_capture: true
+  # A structured timestamp may supplement a separately captured article body
+  # only when the exact canonical URL and publisher owner match, the endpoint
+  # transport has a complete SHA-256 audit record, and these reviewed statuses
+  # accompany evidence_eligible: true.
+  structured_time_attestation:
+    allowed_rights_statuses: [approved, licensed, publisher_authorized, public_metadata]
+    allowed_robots_statuses: [allowed, not_applicable, publisher_authorized]
+    conflict_policy: reject
+
+# This catalog is transport configuration, not an assertion that feed content
+# may be republished. Every endpoint is disabled until an operator explicitly
+# enables its id after reviewing the publisher's current terms and robots rules.
+# Enabling discovery is separate from setting evidence_eligible and reviewed
+# governance statuses in this versioned file.
+endpoints:
+  - endpoint_id: openai-news-rss
+    source_key: openai
+    adapter: feed
+    url: https://openai.com/news/rss.xml
+    enabled_by_default: false
+    languages: [en]
+    categories: [model, product, research, security]
+    poll_interval_seconds: 900
+    evidence_eligible: false
+    rights:
+      status: review_required
+      raw_retention: metadata_only
+      usage_terms_url: https://openai.com/policies/terms-of-use/
+    robots_status: review_required
+    last_verified_at: 2026-08-27T09:00:00Z
+
+  - endpoint_id: nvidia-newsroom-releases-rss
+    source_key: nvidia
+    adapter: feed
+    url: https://nvidianews.nvidia.com/releases.xml
+    enabled_by_default: false
+    languages: [en]
+    categories: [model, product, infrastructure, robotics]
+    poll_interval_seconds: 900
+    evidence_eligible: false
+    rights:
+      status: review_required
+      raw_retention: metadata_only
+      usage_terms_url: https://www.nvidia.com/en-us/about-nvidia/legal-info/
+    robots_status: review_required
+    last_verified_at: 2026-08-27T09:00:00Z
+
+  - endpoint_id: nvidia-generative-ai-rss
+    source_key: nvidia
+    adapter: feed
+    url: https://nvidianews.nvidia.com/cats/generative_al.xml
+    enabled_by_default: false
+    languages: [en]
+    categories: [model, product, infrastructure]
+    poll_interval_seconds: 900
+    evidence_eligible: false
+    rights:
+      status: review_required
+      raw_retention: metadata_only
+      usage_terms_url: https://www.nvidia.com/en-us/about-nvidia/legal-info/
+    robots_status: review_required
+    last_verified_at: 2026-08-27T09:00:00Z
+
+  - endpoint_id: techcrunch-ai-rss
+    source_key: techcrunch
+    adapter: feed
+    url: https://techcrunch.com/category/artificial-intelligence/feed/
+    enabled_by_default: false
+    languages: [en]
+    categories: [model, product, funding, security, infrastructure, robotics]
+    poll_interval_seconds: 900
+    evidence_eligible: false
+    rights:
+      status: restricted_review_required
+      raw_retention: metadata_only
+      usage_terms_url: https://techcrunch.com/rss-terms-of-use/
+    robots_status: review_required
+    last_verified_at: 2026-08-27T09:00:00Z
+
+  - endpoint_id: 36kr-article-rss
+    source_key: 36kr
+    adapter: feed
+    url: https://36kr.com/feed-article
+    enabled_by_default: false
+    languages: [zh]
+    categories: [model, product, funding, infrastructure, robotics]
+    poll_interval_seconds: 900
+    evidence_eligible: false
+    rights:
+      status: review_required
+      raw_retention: metadata_only
+      usage_terms_url: https://www.36kr.com/rss-center
+    robots_status: review_required
+    last_verified_at: 2026-08-28T08:55:00Z
+
+  - endpoint_id: farms-news-all-rss
+    source_key: farms
+    adapter: feed
+    url: https://www.farms.com/Portals/_default/RSS_Portal/News_All.xml
+    enabled_by_default: false
+    languages: [en]
+    categories: [product, robotics]
+    poll_interval_seconds: 1800
+    evidence_eligible: false
+    rights:
+      status: written_permission_required
+      raw_retention: metadata_only
+      usage_terms_url: https://www.farms.com/terms-of-access.aspx
+    robots_status: written_permission_required
+    last_verified_at: 2026-08-28T08:57:00Z

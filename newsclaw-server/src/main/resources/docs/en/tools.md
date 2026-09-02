@@ -123,7 +123,7 @@ Content tools support [AI-news production](./content-studio): Xiaohongshu packag
 |------|--------------|-----------|
 | `wechat_article_extract` | Clean a `mp.weixin.qq.com` article into `{title, author, time, body, images}` (SSRF-limited to that host) | — |
 | `gzh_package` | Package a WeChat Official Account article (inline HTML + cover); runs compliance scan + records to the content calendar | — |
-| `gzh_publish` | Push the article to the WeChat **draft box** (`draft`); optional `publish` is approval-gated | ⚠️ |
+| `gzh_publish` | Push the article to the WeChat **draft box** (`draft`); direct `publish` is disabled and must be completed manually | ⚠️ |
 | `xhs_package` | Package a Xiaohongshu note; hard-validates 3-18 portrait cards, event evidence, and compliance; scans + records | — |
 | `xhs_publish` | Not exposed in the NewsClaw mainline; upload the ZIP material package manually | — |
 | `content_item` | Content calendar: `check_recent` (topic-fingerprint dedup), `record`, `mark_published` | — |

@@ -59,7 +59,7 @@ public class SsoStateService {
 
     private final SsoStateMapper stateMapper;
 
-    @Value("${newsclaw.jwt.secret:NewsClaw-JWT-Secret-Key-2024-Please-Change-In-Production}")
+    @Value("${newsclaw.jwt.secret:}")
     private String jwtSecret;
 
     // ==================== State (OAuth2 CSRF) ====================
@@ -87,6 +87,10 @@ public class SsoStateService {
      * 校验 state 签名 + 过期 + 一次性消费。校验失败抛 400。
      */
     public void verifyState(String state) {
+        verifyState(state, null);
+    }
+
+    public void verifyState(String state, String expectedProvider) {
         if (state == null || state.isBlank()) {
             throw new NewsClawException("err.sso.state_missing", 400, "缺少 state 参数");
         }
@@ -107,11 +111,15 @@ public class SsoStateService {
         // 加 created_at 条件让 5min TTL 在消费阶段强制生效 —— 否则未消费的 state
         // 只在 1h purge 后才物理删除, /authorize 后 30min 的 /callback 仍能通过。
         LocalDateTime cutoff = LocalDateTime.now().minusSeconds(STATE_TTL_SECONDS);
-        int rows = stateMapper.update(null, new LambdaUpdateWrapper<SsoStateEntity>()
+        LambdaUpdateWrapper<SsoStateEntity> consume = new LambdaUpdateWrapper<SsoStateEntity>()
                 .eq(SsoStateEntity::getToken, state)
                 .eq(SsoStateEntity::getConsumed, 0)
                 .gt(SsoStateEntity::getCreatedAt, cutoff)
-                .set(SsoStateEntity::getConsumed, 1));
+                .set(SsoStateEntity::getConsumed, 1);
+        if (expectedProvider != null && !expectedProvider.isBlank()) {
+            consume.eq(SsoStateEntity::getProvider, expectedProvider);
+        }
+        int rows = stateMapper.update(null, consume);
         if (rows == 0) {
             throw new NewsClawException("err.sso.state_expired_or_used",
                     400, "state 已过期或已被使用, 请重新登录");

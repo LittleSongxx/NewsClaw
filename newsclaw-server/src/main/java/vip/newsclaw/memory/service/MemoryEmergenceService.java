@@ -69,31 +69,42 @@ public class MemoryEmergenceService {
      * @return structured DreamReport (never null)
      */
     public DreamReport consolidate(Long agentId, DreamMode mode, String topic) {
+        return consolidate(agentId, mode, topic, null);
+    }
+
+    /** Consolidate the shared bucket or one concrete PERSONAL owner bucket. */
+    public DreamReport consolidate(Long agentId, DreamMode mode, String topic, String ownerKey) {
         LocalDateTime startedAt = LocalDateTime.now();
         String triggerSource = mode == DreamMode.NIGHTLY ? "cron" : "user";
 
         if (!properties.isEmergenceEnabled()) {
             log.debug("[Memory] Emergence is disabled, skipping for agent={}", agentId);
-            return buildSkippedReport(agentId, mode, topic, triggerSource, startedAt, "emergence disabled");
+            return buildSkippedReport(agentId, ownerKey, mode, topic, triggerSource, startedAt, "emergence disabled");
         }
 
         // 1. Load daily notes
-        List<WorkspaceFileEntity> allFiles = workspaceFileService.listFiles(agentId);
+        boolean personal = ownerKey != null && !ownerKey.isBlank();
+        List<WorkspaceFileEntity> allFiles = personal
+                ? workspaceFileService.listVisibleFiles(agentId, ownerKey)
+                : workspaceFileService.listFiles(agentId);
         List<String> dailyFilenames = allFiles.stream()
                 .map(WorkspaceFileEntity::getFilename)
                 .filter(f -> f.startsWith("memory/") && f.endsWith(".md"))
+                .distinct()
                 .sorted(Comparator.reverseOrder())
                 .limit(properties.getEmergenceDayRange())
                 .toList();
 
         if (dailyFilenames.isEmpty()) {
             log.info("[Memory] No daily notes found for agent={}, skipping emergence", agentId);
-            return buildSkippedReport(agentId, mode, topic, triggerSource, startedAt, "no daily notes");
+            return buildSkippedReport(agentId, ownerKey, mode, topic, triggerSource, startedAt, "no daily notes");
         }
 
         StringBuilder dailyNotesBuilder = new StringBuilder();
         for (String filename : dailyFilenames) {
-            WorkspaceFileEntity file = workspaceFileService.getFile(agentId, filename);
+            WorkspaceFileEntity file = personal
+                    ? workspaceFileService.getVisibleFile(agentId, filename, ownerKey)
+                    : workspaceFileService.getFile(agentId, filename);
             if (file != null && file.getContent() != null && !file.getContent().isBlank()) {
                 dailyNotesBuilder.append("### ").append(filename).append("\n");
                 dailyNotesBuilder.append(file.getContent().trim()).append("\n\n");
@@ -103,18 +114,21 @@ public class MemoryEmergenceService {
 
         if (dailyNotes.isEmpty()) {
             log.info("[Memory] All daily notes are empty for agent={}, skipping emergence", agentId);
-            return buildSkippedReport(agentId, mode, topic, triggerSource, startedAt, "all daily notes empty");
+            return buildSkippedReport(agentId, ownerKey, mode, topic, triggerSource, startedAt, "all daily notes empty");
         }
 
         // 2. Read existing MEMORY.md (for diff later)
-        String oldMemoryContent = readFileContentSafe(agentId, "MEMORY.md");
+        String oldMemoryContent = readFileContentSafe(agentId, "MEMORY.md", ownerKey);
 
         // 3. Score candidates (must happen before resetDailyCounts)
-        List<MemoryRecallEntity> scoredCandidates = recallService.computeScores(agentId);
+        List<MemoryRecallEntity> scoredCandidates = personal
+                ? recallService.computeScores(agentId, ownerKey)
+                : recallService.computeScores(agentId);
         boolean hasScoredCandidates = !scoredCandidates.isEmpty();
 
         // 4. Reset daily counts for next accumulation cycle
-        recallService.resetDailyCounts(agentId);
+        if (personal) recallService.resetDailyCounts(agentId, ownerKey);
+        else recallService.resetDailyCounts(agentId);
 
         // 5. Build prompt based on mode
         String systemPrompt = PromptLoader.loadPrompt("memory/emergence-system");
@@ -136,7 +150,7 @@ public class MemoryEmergenceService {
             llmResponse = response.getResult().getOutput().getText();
         } catch (Exception e) {
             log.warn("[Memory] Emergence LLM call failed for agent={}: {}", agentId, e.getMessage());
-            return buildFailedReport(agentId, mode, topic, triggerSource, startedAt,
+            return buildFailedReport(agentId, ownerKey, mode, topic, triggerSource, startedAt,
                     scoredCandidates.size(), e.getMessage());
         }
 
@@ -146,24 +160,27 @@ public class MemoryEmergenceService {
             if (root == null || !root.path("should_update").asBoolean(false)) {
                 String reason = root != null ? root.path("reason").asText("") : "parse failed";
                 log.info("[Memory] No emergence update needed for agent={}: {}", agentId, reason);
-                return buildSkippedReport(agentId, mode, topic, triggerSource, startedAt, reason);
+                return buildSkippedReport(agentId, ownerKey, mode, topic, triggerSource, startedAt, reason);
             }
 
             JsonNode memoryNode = root.path("memory_content");
             if (memoryNode.isNull() || !memoryNode.isTextual()) {
-                return buildSkippedReport(agentId, mode, topic, triggerSource, startedAt, "no memory_content in response");
+                return buildSkippedReport(agentId, ownerKey, mode, topic, triggerSource, startedAt, "no memory_content in response");
             }
 
             String newContent = memoryNode.asText().trim();
             if (newContent.isEmpty()) {
-                return buildSkippedReport(agentId, mode, topic, triggerSource, startedAt, "empty memory_content");
+                return buildSkippedReport(agentId, ownerKey, mode, topic, triggerSource, startedAt, "empty memory_content");
             }
 
             // Deterministic backstop so the always-on MEMORY.md stays bounded even
             // if the LLM rewrite ignores the "keep concise" instruction.
             newContent = AlwaysOnFileBudget.enforce(newContent, properties.getMemoryMdMaxChars());
-            workspaceFileService.saveFile(agentId, "MEMORY.md", newContent);
-            eventPublisher.publishEvent(new MemoryWriteEvent(agentId, "MEMORY.md", "consolidate", newContent));
+            if (personal) workspaceFileService.saveMemoryFile(agentId, "MEMORY.md", newContent, ownerKey);
+            else workspaceFileService.saveFile(agentId, "MEMORY.md", newContent);
+            if (!personal) {
+                eventPublisher.publishEvent(new MemoryWriteEvent(agentId, "MEMORY.md", "consolidate", newContent));
+            }
             String llmReason = root.path("reason").asText("");
             log.info("[Memory] Emergence completed for agent={}: {}", agentId, llmReason);
 
@@ -198,14 +215,14 @@ public class MemoryEmergenceService {
                         promotedIds.size(), scoredCandidates.size(), agentId);
 
                 // Append dream diary
-                appendDreamDiary(agentId, scoredCandidates, new ArrayList<>(promotedIds), mode, topic);
+                appendDreamDiary(agentId, scoredCandidates, new ArrayList<>(promotedIds), mode, topic, ownerKey);
             }
 
             // Compute diff
             String memoryDiff = computeDiff(oldMemoryContent, newContent);
 
             // Build and persist report
-            DreamReport report = buildSuccessReport(agentId, mode, topic, triggerSource, startedAt,
+            DreamReport report = buildSuccessReport(agentId, ownerKey, mode, topic, triggerSource, startedAt,
                     scoredCandidates.size(), promotedEntries, rejectedEntries, memoryDiff,
                     truncate(llmReason, 500));
             persistReport(report);
@@ -221,7 +238,7 @@ public class MemoryEmergenceService {
 
         } catch (Exception e) {
             log.warn("[Memory] Failed to parse/apply emergence result for agent={}: {}", agentId, e.getMessage());
-            return buildFailedReport(agentId, mode, topic, triggerSource, startedAt,
+            return buildFailedReport(agentId, ownerKey, mode, topic, triggerSource, startedAt,
                     scoredCandidates.size(), e.getMessage());
         }
     }
@@ -267,6 +284,11 @@ public class MemoryEmergenceService {
      */
     void appendDreamDiary(Long agentId, List<MemoryRecallEntity> allCandidates,
                           List<Long> promotedIds, DreamMode mode, String topic) {
+        appendDreamDiary(agentId, allCandidates, promotedIds, mode, topic, null);
+    }
+
+    void appendDreamDiary(Long agentId, List<MemoryRecallEntity> allCandidates,
+                          List<Long> promotedIds, DreamMode mode, String topic, String ownerKey) {
         try {
             Set<Long> promotedSet = new HashSet<>(promotedIds);
 
@@ -311,7 +333,7 @@ public class MemoryEmergenceService {
             }
 
             // Read existing DREAMS.md, append new diary
-            String existing = readFileContentSafe(agentId, "DREAMS.md");
+            String existing = readFileContentSafe(agentId, "DREAMS.md", ownerKey);
             String newContent = existing.isBlank()
                     ? "# Dreaming 整合日记\n\n" + diary
                     : existing + "\n" + diary;
@@ -329,11 +351,15 @@ public class MemoryEmergenceService {
                 }
             }
 
-            workspaceFileService.saveFile(agentId, "DREAMS.md", newContent);
+            if (ownerKey != null && !ownerKey.isBlank()) {
+                workspaceFileService.saveMemoryFile(agentId, "DREAMS.md", newContent, ownerKey);
+            } else {
+                workspaceFileService.saveFile(agentId, "DREAMS.md", newContent);
+            }
             log.info("[Memory] Dream diary appended for agent={}", agentId);
 
             // Archive old entries or fall back to 20KB truncation
-            if (properties.getDream().isArchiveEnabled()) {
+            if ((ownerKey == null || ownerKey.isBlank()) && properties.getDream().isArchiveEnabled()) {
                 archiveService.archiveOldDreams(agentId);
             }
         } catch (Exception e) {
@@ -343,32 +369,32 @@ public class MemoryEmergenceService {
 
     // ==================== Report builders ====================
 
-    private DreamReport buildSuccessReport(Long agentId, DreamMode mode, String topic,
+    private DreamReport buildSuccessReport(Long agentId, String ownerKey, DreamMode mode, String topic,
                                            String triggerSource, LocalDateTime startedAt,
                                            int candidateCount,
                                            List<PromotedEntry> promoted,
                                            List<RejectedEntry> rejected,
                                            String memoryDiff, String llmReason) {
-        return new DreamReport(null, agentId, mode, topic, triggerSource, "system",
+        return new DreamReport(null, agentId, ownerKey, mode, topic, triggerSource, "system",
                 startedAt, LocalDateTime.now(), candidateCount,
                 promoted.size(), rejected.size(), memoryDiff, llmReason,
                 DreamStatus.SUCCESS, null, promoted, rejected);
     }
 
-    private DreamReport buildSkippedReport(Long agentId, DreamMode mode, String topic,
+    private DreamReport buildSkippedReport(Long agentId, String ownerKey, DreamMode mode, String topic,
                                            String triggerSource, LocalDateTime startedAt,
                                            String reason) {
-        DreamReport report = new DreamReport(null, agentId, mode, topic, triggerSource, "system",
+        DreamReport report = new DreamReport(null, agentId, ownerKey, mode, topic, triggerSource, "system",
                 startedAt, LocalDateTime.now(), 0, 0, 0, null, reason,
                 DreamStatus.SKIPPED, null, List.of(), List.of());
         persistReport(report);
         return report;
     }
 
-    private DreamReport buildFailedReport(Long agentId, DreamMode mode, String topic,
+    private DreamReport buildFailedReport(Long agentId, String ownerKey, DreamMode mode, String topic,
                                           String triggerSource, LocalDateTime startedAt,
                                           int candidateCount, String errorMessage) {
-        DreamReport report = new DreamReport(null, agentId, mode, topic, triggerSource, "system",
+        DreamReport report = new DreamReport(null, agentId, ownerKey, mode, topic, triggerSource, "system",
                 startedAt, LocalDateTime.now(), candidateCount, 0, 0, null, null,
                 DreamStatus.FAILED, errorMessage, List.of(), List.of());
         persistReport(report);
@@ -379,6 +405,7 @@ public class MemoryEmergenceService {
         try {
             DreamReportEntity entity = new DreamReportEntity();
             entity.setAgentId(report.agentId());
+            entity.setOwnerKey(report.ownerKey());
             entity.setMode(report.mode().name());
             entity.setTopic(report.topic());
             entity.setTriggerSource(report.triggerSource());
@@ -488,8 +515,14 @@ public class MemoryEmergenceService {
     }
 
     String readFileContentSafe(Long agentId, String filename) {
+        return readFileContentSafe(agentId, filename, null);
+    }
+
+    String readFileContentSafe(Long agentId, String filename, String ownerKey) {
         try {
-            WorkspaceFileEntity file = workspaceFileService.getFile(agentId, filename);
+            WorkspaceFileEntity file = ownerKey != null && !ownerKey.isBlank()
+                    ? workspaceFileService.getVisibleFile(agentId, filename, ownerKey)
+                    : workspaceFileService.getFile(agentId, filename);
             return file != null && file.getContent() != null ? file.getContent() : "";
         } catch (Exception e) {
             return "";

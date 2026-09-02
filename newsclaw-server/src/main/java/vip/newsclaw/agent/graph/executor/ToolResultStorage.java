@@ -302,7 +302,8 @@ public class ToolResultStorage {
                 + " full_chars=" + fullResult.length()
                 + " path=" + spillFile.toAbsolutePath()
                 + "\n[Preview — first " + head.length() + " of " + fullResult.length()
-                + " chars. The preview is INCOMPLETE: use read_file with the path above to "
+                + " chars. The preview is INCOMPLETE: call read_file(filePath=\""
+                + spillFile.toAbsolutePath() + "\") to "
                 + "retrieve the full result. Do NOT infer or fabricate the omitted content.]\n"
                 + head
                 + "\n…[truncated]";

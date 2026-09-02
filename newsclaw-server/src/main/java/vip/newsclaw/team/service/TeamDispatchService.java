@@ -4,6 +4,7 @@ import cn.hutool.core.util.IdUtil;
 import cn.hutool.json.JSONUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.annotation.PreDestroy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.event.TransactionPhase;
@@ -28,6 +29,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -88,8 +92,15 @@ public class TeamDispatchService {
             "would you like");
 
     /** One JDK 21 virtual thread per member-agent run. */
-    private static final ExecutorService DISPATCH_EXECUTOR =
-            Executors.newVirtualThreadPerTaskExecutor();
+    private final ThreadPoolExecutor dispatchExecutor = new ThreadPoolExecutor(
+            8, 8, 60L, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(128),
+            r -> {
+                Thread t = new Thread(r, "team-dispatch");
+                t.setDaemon(true);
+                return t;
+            },
+            new ThreadPoolExecutor.AbortPolicy());
 
     /**
      * Lease-renewal cadence while a member run is in flight: a third of the
@@ -99,12 +110,18 @@ public class TeamDispatchService {
     private static final long HEARTBEAT_MINUTES = TeamTaskService.LOCK_MINUTES / 3;
 
     /** Single daemon thread firing lease-renewal heartbeats for all running tasks. */
-    private static final ScheduledExecutorService HEARTBEAT_SCHEDULER =
+    private final ScheduledExecutorService heartbeatScheduler =
             Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "team-task-heartbeat");
                 t.setDaemon(true);
                 return t;
             });
+
+    @PreDestroy
+    void shutdownExecutors() {
+        dispatchExecutor.shutdownNow();
+        heartbeatScheduler.shutdownNow();
+    }
 
     private final TeamService teamService;
     private final TeamTaskService taskService;
@@ -129,13 +146,17 @@ public class TeamDispatchService {
 
     /** Asynchronously sweep the team's board and dispatch whatever is eligible. */
     public void requestDispatch(Long teamId) {
-        DISPATCH_EXECUTOR.submit(() -> {
-            try {
-                sweep(teamId);
-            } catch (Exception e) {
-                log.warn("Team {} dispatch sweep failed: {}", teamId, e.getMessage());
-            }
-        });
+        try {
+            dispatchExecutor.submit(() -> {
+                try {
+                    sweep(teamId);
+                } catch (Exception e) {
+                    log.warn("Team {} dispatch sweep failed: {}", teamId, e.getMessage());
+                }
+            });
+        } catch (RejectedExecutionException busy) {
+            log.warn("Team {} dispatch queue full; scheduled sweep will retry", teamId);
+        }
     }
 
     /**
@@ -194,7 +215,13 @@ public class TeamDispatchService {
                     && task.getReason() != null && !task.getReason().isBlank()) {
                 assigned.setReason(task.getReason());
             }
-            DISPATCH_EXECUTOR.submit(() -> runTask(teamId, assigned));
+            try {
+                dispatchExecutor.submit(() -> runTask(teamId, assigned));
+            } catch (RejectedExecutionException busy) {
+                taskService.requeueUnusableResult(task.getId(),
+                        "dispatch executor busy; automatically requeued");
+                log.warn("Team task {} requeued because dispatch executor is full", task.getId());
+            }
         }
     }
 
@@ -222,7 +249,7 @@ public class TeamDispatchService {
             streamTracker.incrementFlux(childConvId);
             // Renew the execution lease while the member works; the conditional
             // UPDATE inside renewLock makes this a no-op once the task settles.
-            heartbeat = HEARTBEAT_SCHEDULER.scheduleAtFixedRate(
+            heartbeat = heartbeatScheduler.scheduleAtFixedRate(
                     () -> taskService.renewLock(task.getId()),
                     HEARTBEAT_MINUTES, HEARTBEAT_MINUTES, TimeUnit.MINUTES);
             broadcast(task, "team_task_dispatched", Map.of());

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import vip.newsclaw.wiki.model.WikiPageEntity;
 import vip.newsclaw.wiki.repository.WikiPageMapper;
 
@@ -16,7 +17,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -45,7 +48,7 @@ class WikiPageServiceTest {
         LocalDateTime oldUpdateTime = LocalDateTime.now().minusDays(1);
         page.setUpdateTime(oldUpdateTime);
         when(mapper.selectOne(any())).thenReturn(page);
-        when(mapper.updateById(any(WikiPageEntity.class))).thenReturn(1);
+        when(mapper.updateContentIfVersion(any(WikiPageEntity.class), anyInt())).thenReturn(1);
 
         ObjectMapper om = new ObjectMapper();
         WikiLinkService link = new WikiLinkService(om);
@@ -53,7 +56,39 @@ class WikiPageServiceTest {
                 .updatePageManually(7L, "page", "new body", null);
 
         assertTrue(page.getUpdateTime().isAfter(oldUpdateTime));
-        verify(mapper).updateById(page);
+        verify(mapper).updateContentIfVersion(page, 1);
+    }
+
+    @Test
+    void aiUpdateReloadsAndRetriesAfterVersionConflict() {
+        WikiPageMapper mapper = mock(WikiPageMapper.class);
+        WikiPageEntity first = page(99L, 7L, "page", 1, "[1]");
+        WikiPageEntity concurrent = page(99L, 7L, "page", 2, "[1,2]");
+        WikiPageEntity persisted = page(99L, 7L, "page", 3, "[1,2,3]");
+        when(mapper.selectOne(any())).thenReturn(first, concurrent, persisted);
+        when(mapper.selectList(any())).thenReturn(List.of());
+        when(mapper.updateContentIfVersion(any(WikiPageEntity.class), anyInt())).thenReturn(0, 1);
+        ObjectMapper om = new ObjectMapper();
+
+        WikiPageEntity result = new WikiPageService(mapper, om, new WikiLinkService(om))
+                .updatePageByAi(7L, "page", "merged", "summary", 3L);
+
+        assertEquals(persisted, result);
+        ArgumentCaptor<WikiPageEntity> writes = ArgumentCaptor.forClass(WikiPageEntity.class);
+        verify(mapper, times(2)).updateContentIfVersion(writes.capture(), anyInt());
+        assertTrue(writes.getAllValues().get(1).getSourceRawIds().contains("2"));
+        assertTrue(writes.getAllValues().get(1).getSourceRawIds().contains("3"));
+    }
+
+    private static WikiPageEntity page(long id, long kbId, String slug, int version, String rawIds) {
+        WikiPageEntity page = new WikiPageEntity();
+        page.setId(id);
+        page.setKbId(kbId);
+        page.setSlug(slug);
+        page.setVersion(version);
+        page.setSourceRawIds(rawIds);
+        page.setLastUpdatedBy("ai");
+        return page;
     }
 
     @Test

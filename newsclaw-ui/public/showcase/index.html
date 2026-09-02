@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="description" content="NewsClaw：候选优先、证据约束的 AI 新闻多智能体内容生产系统。查看可回查的流程、回归证据与发布边界。">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="NewsClaw · AI 新闻证据链">
+  <meta property="og:description" content="从候选、抓取、证据、审核到内容包的可回查工作流。">
+  <meta property="og:image" content="/showcase/assets/og.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="NewsClaw · AI 新闻证据链">
+  <meta name="twitter:description" content="一个把 AI 新闻生产做成可回查流水线的 Java + AI 项目。">
+  <meta name="twitter:image" content="/showcase/assets/og.svg">
+  <link rel="icon" href="/logo/newsclaw-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/showcase/showcase.css">
+  <title>NewsClaw · AI 新闻证据链</title>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="NewsClaw 首页">
+      <img src="/logo/newsclaw-mark.svg" width="32" height="32" alt="">
+      <span>NewsClaw</span>
+    </a>
+    <nav aria-label="主导航">
+      <a href="#workflow">工作流</a>
+      <a href="#evidence">证据</a>
+      <a href="#boundaries">边界</a>
+      <a class="nav-cta" href="#boundaries">部署边界</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero shell">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="dot"></span>公开作品集 · 静态可复现展示</p>
+        <h1>让 AI 新闻从<br><em>候选</em>走到可回查的内容包</h1>
+        <p class="lede">NewsClaw 是一个 Java / Spring Boot + Vue 的多智能体平台。这里聚焦一条真实可解释的主线：先保存候选，再抓取来源、绑定证据、人工审核，最后生成可交付的公众号 / 小红书内容包。</p>
+        <div class="hero-actions">
+          <a class="button primary" href="#workflow">看完整链路 <span aria-hidden="true">↓</span></a>
+          <a class="button quiet" href="#evidence">查看回归口径</a>
+        </div>
+        <p class="microcopy">本页不请求数据库、模型、搜索供应商或登录态；案例为合成离线 fixture。</p>
+      </div>
+      <div class="hero-card" aria-label="系统摘要">
+        <div class="hero-card-head"><span class="pulse"></span><span>AI NEWS / EVIDENCE LOOP</span><span class="chip">READ-ONLY</span></div>
+        <div class="signal-row"><strong>候选优先</strong><span>→</span><strong>证据约束</strong><span>→</span><strong>人工交付</strong></div>
+        <div class="mini-flow">
+          <div><b>10</b><small>raw</small></div><i>→</i><div><b>10</b><small>unique</small></div><i>→</i><div class="accent"><b>2</b><small>selected</small></div>
+        </div>
+        <div class="hero-card-foot"><span>fixture: example.invalid</span><span>policy: 30 / 30</span></div>
+      </div>
+    </section>
+
+    <section class="stats shell" aria-label="回归摘要">
+      <article><strong>30</strong><span>policy regression<br><small>0 bad case</small></span></article>
+      <article><strong>90</strong><span>focused backend tests<br><small>0 failure / error</small></span></article>
+      <article><strong>9</strong><span>故障与安全契约<br><small>covered pass</small></span></article>
+      <article><strong>5</strong><span>状态阶段<br><small>可追踪、可回收</small></span></article>
+    </section>
+
+    <section id="workflow" class="section shell">
+      <div class="section-heading"><p class="eyebrow">01 / WORKFLOW</p><h2>一条从发现到交付的证据链</h2><p>每一步都留下可审计的状态和来源关系；抓取失败不会把候选静默丢掉，发布也不会被“打包完成”冒充。</p></div>
+      <div class="pipeline" role="list" aria-label="AI 新闻流程">
+        <article class="stage" role="listitem"><span class="stage-no">01</span><h3>Candidate</h3><p>多 provider 结果先落库，run 内去重、排序、记录观测。</p><span class="stage-tag">候选可回查</span></article>
+        <span class="connector" aria-hidden="true">→</span>
+        <article class="stage" role="listitem"><span class="stage-no">02</span><h3>Capture</h3><p>有界 GET-only 抓取，带租约、CAS、重试和过期回收。</p><span class="stage-tag">失败可重试</span></article>
+        <span class="connector" aria-hidden="true">→</span>
+        <article class="stage" role="listitem"><span class="stage-no">03</span><h3>Evidence</h3><p>来源层级、时间窗口、正文 provenance 与冲突关系进入证据包。</p><span class="stage-tag">事实有出处</span></article>
+        <span class="connector" aria-hidden="true">→</span>
+        <article class="stage" role="listitem"><span class="stage-no">04</span><h3>Review</h3><p>确定性策略先拦截风险，再由人工确认是否进入内容生产。</p><span class="stage-tag">人工可介入</span></article>
+        <span class="connector" aria-hidden="true">→</span>
+        <article class="stage final" role="listitem"><span class="stage-no">05</span><h3>Package</h3><p>Team Run 生成公众号 / 小红书内容包，交付与平台发布分开记账。</p><span class="stage-tag">不自动群发</span></article>
+      </div>
+    </section>
+
+    <section id="evidence" class="section tinted">
+      <div class="shell">
+        <div class="section-heading"><p class="eyebrow">02 / EVIDENCE</p><h2>展示结果，也展示它的口径</h2><p>以下数据来自固定合成 fixture 与离线回归脚本。它们证明状态机和门禁可复现，不代表开放网络召回率或真实平台发布成功率。</p></div>
+        <div class="evidence-grid">
+          <article class="evidence-card wide"><div class="card-kicker">SYNTHETIC FIXTURE / V1</div><h3>候选选择结果</h3><div class="bar"><span style="width:100%"></span></div><div class="bar-labels"><span>10 raw candidates</span><b>10 unique</b><strong>2 selected</strong></div><p>所有 URL 使用 <code>example.invalid</code>，明确标为合成数据；没有把旧截图包装成线上新闻样本。</p></article>
+          <article class="evidence-card"><div class="card-kicker">STATE MACHINE</div><h3>可回收的抓取租约</h3><ul class="check-list"><li>数据库状态 + CAS</li><li>捕获租约与 fencing</li><li>有限重试 / 过期回收</li></ul></article>
+          <article class="evidence-card"><div class="card-kicker">POLICY REGRESSION</div><h3>坏例先拦截</h3><ul class="check-list"><li>30 cases / 0 bad case</li><li>盲审包 10 cases</li><li>evaluationEligible = false</li></ul></article>
+        </div>
+        <div class="screenshots">
+          <figure><img loading="lazy" src="/showcase/assets/ai-news-workbench.png" alt="AI 新闻工作台候选列表截图"><figcaption>候选与审核工作台（脱敏截图）</figcaption></figure>
+          <figure><img loading="lazy" src="/showcase/assets/team-run-detail.png" alt="Team Run 任务详情截图"><figcaption>Team Run 生产阶段与时间线（脱敏截图）</figcaption></figure>
+          <figure><img loading="lazy" src="/showcase/assets/xhs-content-current-template.png" alt="小红书内容包预览截图"><figcaption>内容包预览（人工交付前）</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="boundaries" class="section shell">
+      <div class="split-heading"><div><p class="eyebrow">03 / TRUST BOUNDARY</p><h2>可信，不靠一句“零幻觉”</h2></div><p>公开页面只展示已核对的工程事实，并把尚未完成的生产能力写在明面上。</p></div>
+      <div class="boundary-grid">
+        <article class="boundary yes"><h3><span aria-hidden="true">✓</span> 当前可宣称</h3><p>候选优先、证据约束、多智能体内容生产；持久化状态机、抓取租约 / 重试、来源治理、人工审核和可复现回归。</p></article>
+        <article class="boundary no"><h3><span aria-hidden="true">×</span> 当前不宣称</h3><p>全球实时全覆盖、开放网络 precision / recall、零幻觉、无人工自动发布、真实平台 ACK、生产级高可用。</p></article>
+      </div>
+      <div class="architecture"><img loading="lazy" src="/showcase/assets/architecture-tech-zh.svg" alt="NewsClaw 技术架构图"></div>
+    </section>
+
+    <section class="section dark-section">
+      <div class="shell dark-inner"><div><p class="eyebrow">04 / SAFE BY DEFAULT</p><h2>公开面只留下作品集</h2><p>展示站是静态只读页面。后台、数据库、搜索、正文抽取、OAuth 回调和外发渠道应留在内网或 IP 白名单之后；危险工具默认关闭。</p></div><div class="boundary-list"><span>HTTPS 443</span><span>无默认凭据</span><span>无真实 API key</span><span>人工审核后交付</span></div></div>
+    </section>
+
+    <section class="section shell stack-section">
+      <div class="section-heading"><p class="eyebrow">05 / IMPLEMENTATION</p><h2>技术栈与可解释设计</h2></div>
+      <div class="stack-grid"><div><b>后端</b><span>Java 21 · Spring Boot · MyBatis-Plus · PostgreSQL</span></div><div><b>前端</b><span>Vue 3 · Vite · TypeScript · Element Plus</span></div><div><b>智能体</b><span>候选流水线 · Team Run DAG · 工具分层披露</span></div><div><b>治理</b><span>workspace / RBAC · URL 安全 · 审计 · 回归 fixture</span></div></div>
+    </section>
+  </main>
+
+  <footer class="footer"><div class="shell footer-inner"><span>NewsClaw · AI 新闻证据链</span><span>静态展示 v1 · 2026-09-02</span><span>求职沟通请通过招聘平台联系</span></div></footer>
+</body>
+</html>

@@ -27,6 +27,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 /**
@@ -57,6 +58,7 @@ class ConversationServiceCleanAttachmentFilesTest {
         when(chatUploadLocationResolver.resolveCandidateConversationDirs(any()))
                 .thenAnswer(inv -> List.of(Paths.get("data", "chat-uploads")
                         .resolve(ChatUploadLocationResolver.sanitizeSegment(inv.getArgument(0)))));
+        when(chatUploadLocationResolver.isSafeConversationDir(any(), any())).thenReturn(true);
     }
 
     @AfterEach
@@ -102,5 +104,20 @@ class ConversationServiceCleanAttachmentFilesTest {
         service.cleanAttachmentFiles(convId);
 
         assertThat(Files.exists(createdDir)).isFalse();
+    }
+
+    @Test
+    @DisplayName("cleanup refuses a resolver result outside the upload root")
+    void unsafeCandidateIsNeverDeleted() throws IOException {
+        String convId = "../../outside";
+        createdDir = Files.createTempDirectory("newsclaw-cleanup-outside-");
+        Path sentinel = Files.writeString(createdDir.resolve("keep.txt"), "keep");
+        when(chatUploadLocationResolver.resolveCandidateConversationDirs(eq(convId)))
+                .thenReturn(List.of(createdDir));
+        when(chatUploadLocationResolver.isSafeConversationDir(convId, createdDir)).thenReturn(false);
+
+        service.cleanAttachmentFiles(convId);
+
+        assertThat(sentinel).exists();
     }
 }

@@ -1,0 +1,205 @@
+{
+  "schemaVersion": "1.0",
+  "datasetId": "newsclaw-ai-news-event-clustering-development",
+  "datasetVersion": "1",
+  "evaluationScope": "synthetic-domain-replay-contract-only",
+  "expectedConfigHash": "14991988d20492d9a7e68014bd732e6b650684791c3bc5201fde527025957967",
+  "provenance": {
+    "license": "Apache-2.0",
+    "construction": "manually reviewed synthetic AI-industry news scenarios",
+    "labelUnit": "one source observation mapped to one atomic real-world event identity",
+    "languageCoverage": "English and Simplified Chinese",
+    "frozenAt": "2026-08-27"
+  },
+  "observations": [
+    {
+      "caseId": "gpt6-official-en", "goldClusterId": "event-gpt6", "eventKey": "source-gpt6-en",
+      "title": "OpenAI releases GPT-6 reasoning model", "summary": "OpenAI released GPT-6 with new reasoning capabilities.",
+      "category": "model", "entities": ["OpenAI", "GPT-6"],
+      "urls": ["https://openai.example/news/gpt-6?utm_source=rss"],
+      "sourcePublishedAt": "2026-08-27T08:00:00", "discoveredAt": "2026-08-27T08:03:00",
+      "rankingScore": 0.98, "expectedDecision": "SINGLETON"
+    },
+    {
+      "caseId": "gpt6-official-zh", "goldClusterId": "event-gpt6", "eventKey": "source-gpt6-zh",
+      "title": "OpenAI 发布 GPT-6 推理模型", "summary": "OpenAI 正式推出 GPT-6，并介绍新的推理能力。",
+      "category": "model", "entities": ["OpenAI", "GPT-6"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T08:02:00", "discoveredAt": "2026-08-27T08:05:00",
+      "rankingScore": 0.90, "expectedDecision": "AUTO_LINK"
+    },
+    {
+      "caseId": "gpt6-media-en", "goldClusterId": "event-gpt6", "eventKey": "source-gpt6-media",
+      "title": "GPT-6 arrives with stronger reasoning", "summary": "The new OpenAI system adds improved reasoning.",
+      "category": "model", "entities": ["OpenAI", "GPT-6"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T08:12:00", "discoveredAt": "2026-08-27T08:15:00",
+      "rankingScore": 0.62, "expectedDecision": "REVIEW"
+    },
+    {
+      "caseId": "sora3-official-en", "goldClusterId": "event-sora3", "eventKey": "source-sora3-en",
+      "title": "OpenAI releases Sora 3 video model", "summary": "Sora 3 is a distinct video generation product launch.",
+      "category": "model", "entities": ["OpenAI", "Sora 3"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T09:00:00", "discoveredAt": "2026-08-27T09:03:00",
+      "rankingScore": 0.96, "expectedDecision": "REVIEW"
+    },
+    {
+      "caseId": "sora3-official-zh", "goldClusterId": "event-sora3", "eventKey": "source-sora3-zh",
+      "title": "OpenAI 发布 Sora 3 视频模型", "summary": "OpenAI 推出新一代视频生成产品 Sora 3。",
+      "category": "model", "entities": ["OpenAI", "Sora 3"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T09:01:00", "discoveredAt": "2026-08-27T09:04:00",
+      "rankingScore": 0.88, "expectedDecision": "AUTO_LINK"
+    },
+    {
+      "caseId": "claude5-official-en", "goldClusterId": "event-claude5", "eventKey": "source-claude5-en",
+      "title": "Anthropic launches Claude 5", "summary": "Anthropic launched the Claude 5 model.",
+      "category": "model", "entities": ["Anthropic", "Claude 5"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T10:00:00", "discoveredAt": "2026-08-27T10:04:00",
+      "rankingScore": 0.97, "expectedDecision": "SINGLETON"
+    },
+    {
+      "caseId": "claude5-official-zh", "goldClusterId": "event-claude5", "eventKey": "source-claude5-zh",
+      "title": "Anthropic 发布 Claude 5", "summary": "Anthropic 正式推出 Claude 5 模型。",
+      "category": "model", "entities": ["Anthropic", "Claude 5"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T10:03:00", "discoveredAt": "2026-08-27T10:06:00",
+      "rankingScore": 0.86, "expectedDecision": "AUTO_LINK"
+    },
+    {
+      "caseId": "mistral-funding-en", "goldClusterId": "event-mistral-funding", "eventKey": "source-mistral-funding-en",
+      "title": "Mistral AI raises 600 million euros in Series E", "summary": "Mistral AI completed a new funding round.",
+      "category": "funding", "entities": ["Mistral AI", "Series E"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T11:00:00", "discoveredAt": "2026-08-27T11:05:00",
+      "rankingScore": 0.94, "expectedDecision": "SINGLETON"
+    },
+    {
+      "caseId": "mistral-funding-zh", "goldClusterId": "event-mistral-funding", "eventKey": "source-mistral-funding-zh",
+      "title": "Mistral AI 完成 6 亿欧元 E 轮融资", "summary": "Mistral AI 宣布完成新一轮融资。",
+      "category": "funding", "entities": ["Mistral AI", "Series E"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T11:02:00", "discoveredAt": "2026-08-27T11:07:00",
+      "rankingScore": 0.82, "expectedDecision": "AUTO_LINK"
+    },
+    {
+      "caseId": "mosaic-acquisition-en", "goldClusterId": "event-mosaic-acquisition", "eventKey": "source-mosaic-acquisition-en",
+      "title": "Databricks acquires MosaicML", "summary": "Databricks announced its acquisition of MosaicML.",
+      "category": "partnership", "entities": ["Databricks", "MosaicML"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T12:00:00", "discoveredAt": "2026-08-27T12:04:00",
+      "rankingScore": 0.95, "expectedDecision": "SINGLETON"
+    },
+    {
+      "caseId": "mosaic-acquisition-zh", "goldClusterId": "event-mosaic-acquisition", "eventKey": "source-mosaic-acquisition-zh",
+      "title": "Databricks 宣布收购 MosaicML", "summary": "Databricks 完成对 MosaicML 的收购。",
+      "category": "partnership", "entities": ["Databricks", "MosaicML"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T12:02:00", "discoveredAt": "2026-08-27T12:05:00",
+      "rankingScore": 0.84, "expectedDecision": "AUTO_LINK"
+    },
+    {
+      "caseId": "llama5-open-en", "goldClusterId": "event-llama5-open", "eventKey": "source-llama5-open-en",
+      "title": "Meta open sources Llama 5 under Apache license", "summary": "Meta released Llama 5 as open source under an Apache license.",
+      "category": "open_source", "entities": ["Meta", "Llama 5"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T13:00:00", "discoveredAt": "2026-08-27T13:03:00",
+      "rankingScore": 0.96, "expectedDecision": "SINGLETON"
+    },
+    {
+      "caseId": "llama5-open-zh", "goldClusterId": "event-llama5-open", "eventKey": "source-llama5-open-zh",
+      "title": "Meta 以 Apache 许可证开源 Llama 5", "summary": "Meta 宣布开放 Llama 5 权重。",
+      "category": "open_source", "entities": ["Meta", "Llama 5"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T13:01:00", "discoveredAt": "2026-08-27T13:04:00",
+      "rankingScore": 0.85, "expectedDecision": "AUTO_LINK"
+    },
+    {
+      "caseId": "eu-code-en", "goldClusterId": "event-eu-code", "eventKey": "source-eu-code-en",
+      "title": "EU adopts AI Act code of practice", "summary": "European authorities adopted an AI Act policy code.",
+      "category": "policy", "entities": ["European Union", "AI Act"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T14:00:00", "discoveredAt": "2026-08-27T14:06:00",
+      "rankingScore": 0.93, "expectedDecision": "SINGLETON"
+    },
+    {
+      "caseId": "eu-code-zh", "goldClusterId": "event-eu-code", "eventKey": "source-eu-code-zh",
+      "title": "欧盟通过《人工智能法案》实践准则", "summary": "欧盟监管机构正式通过 AI Act 配套政策准则。",
+      "category": "policy", "entities": ["European Union", "AI Act"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T14:03:00", "discoveredAt": "2026-08-27T14:08:00",
+      "rankingScore": 0.83, "expectedDecision": "AUTO_LINK"
+    },
+    {
+      "caseId": "chatgpt-incident-en", "goldClusterId": "event-chatgpt-incident", "eventKey": "source-chatgpt-incident-en",
+      "title": "OpenAI reports ChatGPT security incident", "summary": "OpenAI reported a service security incident affecting ChatGPT.",
+      "category": "security", "entities": ["OpenAI", "ChatGPT"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T15:00:00", "discoveredAt": "2026-08-27T15:04:00",
+      "rankingScore": 0.97, "expectedDecision": "SINGLETON"
+    },
+    {
+      "caseId": "chatgpt-incident-zh", "goldClusterId": "event-chatgpt-incident", "eventKey": "source-chatgpt-incident-zh",
+      "title": "OpenAI 确认 ChatGPT 服务中断", "summary": "OpenAI 确认 ChatGPT 服务发生中断。",
+      "category": "security", "entities": ["OpenAI", "ChatGPT"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T15:02:00", "discoveredAt": "2026-08-27T15:06:00",
+      "rankingScore": 0.84, "expectedDecision": "REVIEW"
+    },
+    {
+      "caseId": "codex-enterprise-en", "goldClusterId": "event-codex-enterprise", "eventKey": "source-codex-enterprise-en",
+      "title": "OpenAI announces Codex Enterprise", "summary": "OpenAI announced a distinct enterprise coding product.",
+      "category": "product", "entities": ["OpenAI", "Codex Enterprise"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T16:00:00", "discoveredAt": "2026-08-27T16:05:00",
+      "rankingScore": 0.95, "expectedDecision": "SINGLETON"
+    },
+    {
+      "caseId": "codex-enterprise-zh", "goldClusterId": "event-codex-enterprise", "eventKey": "source-codex-enterprise-zh",
+      "title": "OpenAI 推出 Codex Enterprise", "summary": "OpenAI 面向企业发布 Codex Enterprise 编程产品。",
+      "category": "product", "entities": ["OpenAI", "Codex Enterprise"], "urls": [],
+      "sourcePublishedAt": "2026-08-27T16:02:00", "discoveredAt": "2026-08-27T16:06:00",
+      "rankingScore": 0.83, "expectedDecision": "AUTO_LINK"
+    },
+    {
+      "caseId": "rolling-page-later", "goldClusterId": "event-monthly-unrelated", "eventKey": "source-monthly-later",
+      "title": "OpenAI monthly developer newsletter", "summary": "A later newsletter covers unrelated developer resources.",
+      "category": "industry", "entities": ["OpenAI", "Developer Newsletter"],
+      "urls": ["https://openai.example/news/gpt-6"],
+      "sourcePublishedAt": "2026-09-16T08:00:00", "discoveredAt": "2026-09-16T08:05:00",
+      "rankingScore": 0.70, "expectedDecision": "SINGLETON"
+    }
+  ],
+  "replayOrders": [
+    {
+      "name": "primary-arrival-order",
+      "caseIds": [
+        "gpt6-official-en", "gpt6-official-zh", "gpt6-media-en",
+        "sora3-official-en", "sora3-official-zh",
+        "claude5-official-en", "claude5-official-zh",
+        "mistral-funding-en", "mistral-funding-zh",
+        "mosaic-acquisition-en", "mosaic-acquisition-zh",
+        "llama5-open-en", "llama5-open-zh",
+        "eu-code-en", "eu-code-zh",
+        "chatgpt-incident-en", "chatgpt-incident-zh",
+        "codex-enterprise-en", "codex-enterprise-zh", "rolling-page-later"
+      ]
+    },
+    {
+      "name": "same-window-source-order-variation",
+      "caseIds": [
+        "gpt6-official-zh", "gpt6-official-en", "gpt6-media-en",
+        "sora3-official-zh", "sora3-official-en",
+        "claude5-official-zh", "claude5-official-en",
+        "mistral-funding-zh", "mistral-funding-en",
+        "mosaic-acquisition-zh", "mosaic-acquisition-en",
+        "llama5-open-zh", "llama5-open-en",
+        "eu-code-zh", "eu-code-en",
+        "chatgpt-incident-zh", "chatgpt-incident-en",
+        "codex-enterprise-zh", "codex-enterprise-en", "rolling-page-later"
+      ]
+    }
+  ],
+  "gates": {
+    "clustering.bcubedPrecision": 0.98,
+    "clustering.bcubedRecall": 0.80,
+    "clustering.pairwisePrecision": 0.98,
+    "clustering.pairwiseRecall": 0.70,
+    "decision.autoLinkPrecision": 0.98,
+    "decision.assistedDuplicateRecall": 0.95,
+    "decision.firstStorySafety": 1.0,
+    "decision.reviewProposalPrecision": 0.60,
+    "stability.coClusterPairJaccard": 0.95
+  },
+  "limitations": [
+    "This is a small, synthetic, manually reviewed development contract; its scores are not NewsClaw production quality claims.",
+    "URLs use reserved example domains and no third-party article text is redistributed.",
+    "The replay evaluates the production scorer and bounded online decision policy, while database concurrency and lineage are covered by separate integration tests.",
+    "P0-E must calibrate thresholds on a time-split, independently dual-labeled corpus of real AI-industry observations and report confidence intervals and slices."
+  ]
+}

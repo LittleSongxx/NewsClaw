@@ -12,8 +12,6 @@ import vip.newsclaw.tool.document.GeneratedFileCache;
 import vip.newsclaw.tool.document.WorkspaceArtifactSurfacer;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -21,6 +19,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
+import vip.newsclaw.common.process.BoundedProcessOutput;
+import vip.newsclaw.common.process.ProcessTreeTerminator;
 
 /**
  * 内置工具：本地命令执行（跨平台）
@@ -88,9 +88,8 @@ public class ShellExecuteTool {
             return JSONUtil.toJsonPrettyStr(result);
         }
 
-        Path stdoutFile = null;
-        Path stderrFile = null;
         Process process = null;
+        BoundedProcessOutput output = null;
 
         try {
             // 处理命令中的嵌入换行符（LLM 生成的 JSON 解码后可能包含真实换行）
@@ -103,34 +102,33 @@ public class ShellExecuteTool {
                     key.contains("KEY") || key.contains("SECRET") || key.contains("TOKEN")
                             || key.contains("PASSWORD") || key.contains("CREDENTIAL"));
 
-            // 将 stdout/stderr 重定向到临时文件，而非通过管道读取。
-            // 这样 waitFor(timeout) 不会被管道阻塞：
-            //   旧方式：readStream(pipe) 阻塞 → waitFor 根本走不到 → timeout 失效
-            //   新方式：子进程直接写文件 → waitFor 立即生效 → 超时后读文件取已有输出
-            // 同时避免了 Windows 上子进程继承 pipe handle 导致的挂死问题。
-            stdoutFile = Files.createTempFile("mc_out_", ".tmp");
-            stderrFile = Files.createTempFile("mc_err_", ".tmp");
-            pb.redirectOutput(stdoutFile.toFile());
-            pb.redirectError(stderrFile.toFile());
-
             long runStart = System.currentTimeMillis();
             process = pb.start();
+            output = BoundedProcessOutput.start(process, MAX_OUTPUT_BYTES);
 
             boolean completed = process.waitFor(timeout, TimeUnit.SECONDS);
+            if (!completed && !output.exceeded()) ProcessTreeTerminator.kill(process);
+            output.await();
 
-            if (!completed) {
+            if (output.exceeded()) {
+                result.set("exitCode", -1);
+                result.set("stdout", output.stdout());
+                result.set("stderr", output.stderr());
+                result.set("timedOut", false);
+                result.set("outputLimitExceeded", true);
+                result.set("message", "Process output exceeded " + MAX_OUTPUT_BYTES + " bytes");
+            } else if (!completed) {
                 // 超时：强制终止进程（树）
-                killProcessTree(process);
                 log.warn("[ShellExecute] Command timed out after {}s: {}", timeout, truncateForLog(command));
                 result.set("exitCode", -1);
-                result.set("stdout", readFileTruncated(stdoutFile, MAX_OUTPUT_BYTES));
-                result.set("stderr", readFileTruncated(stderrFile, MAX_OUTPUT_BYTES));
+                result.set("stdout", output.stdout());
+                result.set("stderr", output.stderr());
                 result.set("timedOut", true);
                 result.set("message", i18n.msg("tool.shell.error.timeout", timeout));
             } else {
                 int exitCode = process.exitValue();
-                String stdout = readFileTruncated(stdoutFile, MAX_OUTPUT_BYTES);
-                String stderr = readFileTruncated(stderrFile, MAX_OUTPUT_BYTES);
+                String stdout = output.stdout();
+                String stderr = output.stderr();
                 log.info("[ShellExecute] Command completed: exitCode={}, stdout={}chars, stderr={}chars",
                         exitCode, stdout.length(), stderr.length());
                 result.set("exitCode", exitCode);
@@ -152,7 +150,7 @@ public class ShellExecuteTool {
             // subprocess tree before returning control; otherwise the Flux is
             // gone but the shell command keeps running in the background.
             if (process != null && process.isAlive()) {
-                killProcessTree(process);
+                ProcessTreeTerminator.kill(process);
             }
             Thread.currentThread().interrupt();
             log.info("[ShellExecute] Command interrupted by cancellation");
@@ -169,8 +167,7 @@ public class ShellExecuteTool {
             result.set("timedOut", false);
             result.set("error", e.getMessage());
         } finally {
-            deleteQuietly(stdoutFile);
-            deleteQuietly(stderrFile);
+            if (output != null) output.close();
         }
 
         return JSONUtil.toJsonPrettyStr(result);
@@ -302,56 +299,6 @@ public class ShellExecuteTool {
      * 注意：Windows 上如果 taskkill 失败，仍回退到 destroyForcibly()，
      * 极端情况下可能有子进程残留（如后台 detached 进程）。
      */
-    private static void killProcessTree(Process process) {
-        if (IS_WINDOWS) {
-            try {
-                new ProcessBuilder("taskkill", "/F", "/T", "/PID", String.valueOf(process.pid()))
-                        .redirectErrorStream(true)
-                        .start()
-                        .waitFor(10, TimeUnit.SECONDS);
-            } catch (Exception e) {
-                process.destroyForcibly();
-            }
-        } else {
-            process.destroyForcibly();
-        }
-        try {
-            process.waitFor(5, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    /**
-     * 从临时文件中读取输出，截断到 maxBytes 字节。
-     * 进程退出或被杀死后调用，读取子进程已写入文件的内容。
-     */
-    private static String readFileTruncated(Path file, int maxBytes) {
-        try {
-            if (file == null || !Files.exists(file)) return "";
-            long size = Files.size(file);
-            if (size == 0) return "";
-
-            boolean truncated = size > maxBytes;
-            try (InputStream is = Files.newInputStream(file)) {
-                byte[] data = is.readNBytes(maxBytes);
-                String content = new String(data, StandardCharsets.UTF_8);
-                if (truncated) {
-                    content += "\n... [output truncated, exceeds " + maxBytes + " byte limit]";
-                }
-                return content;
-            }
-        } catch (IOException e) {
-            return "[read output failed: " + e.getMessage() + "]";
-        }
-    }
-
-    private static void deleteQuietly(Path file) {
-        if (file != null) {
-            try { Files.deleteIfExists(file); } catch (IOException ignored) {}
-        }
-    }
-
     private String truncateForLog(String text) {
         if (text == null) return "null";
         return text.length() > 200 ? text.substring(0, 200) + "..." : text;

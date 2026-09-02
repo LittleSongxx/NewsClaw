@@ -49,7 +49,7 @@ public class SkillInstaller {
      */
     public InstallTask startInstall(InstallRequest request) {
         String taskId = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        InstallTask task = InstallTask.create(taskId, request.getBundleUrl());
+        InstallTask task = InstallTask.create(taskId, request.getBundleUrl(), request.getWorkspaceId());
         tasks.put(taskId, task);
 
         doInstallAsync(taskId, request);

@@ -1,0 +1,204 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" font-family="'Inter','PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f6f1ea"/>
+      <stop offset="100%" stop-color="#ebe3db"/>
+    </linearGradient>
+    <linearGradient id="primary" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d96d46"/>
+      <stop offset="100%" stop-color="#bb4f27"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e5a54"/>
+      <stop offset="100%" stop-color="#184a45"/>
+    </linearGradient>
+    <linearGradient id="warm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#fdfaf6"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#3a2013" flood-opacity="0.08"/>
+    </filter>
+    <filter id="shadowSm">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#3a2013" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="640" rx="20" fill="url(#bg)"/>
+
+  <!-- Title -->
+  <text x="480" y="42" text-anchor="middle" font-size="22" font-weight="800" fill="#1d1612" letter-spacing="-0.5">NewsClaw 技术架构</text>
+  <text x="480" y="62" text-anchor="middle" font-size="11" fill="#9b7d6c" letter-spacing="0.5">TECHNICAL ARCHITECTURE</text>
+
+  <!-- ===== Layer 1: Presentation ===== -->
+  <rect x="30" y="82" width="900" height="88" rx="14" fill="url(#warm)" stroke="#d9cec2" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="30" y="82" width="900" height="4" rx="2" fill="url(#primary)"/>
+  <text x="56" y="106" font-size="11" font-weight="700" fill="#d96d46" letter-spacing="1">表现层</text>
+
+  <!-- Presentation items -->
+  <g transform="translate(56, 118)">
+    <rect width="130" height="40" rx="8" fill="#f6e2d7" stroke="#ebb08f" stroke-width="0.5"/>
+    <text x="65" y="17" text-anchor="middle" font-size="11" font-weight="600" fill="#1d1612">Vue 3 SPA</text>
+    <text x="65" y="31" text-anchor="middle" font-size="9" fill="#9b7d6c">Element Plus + Tailwind</text>
+  </g>
+  <g transform="translate(200, 118)">
+    <rect width="130" height="40" rx="8" fill="#f6e2d7" stroke="#ebb08f" stroke-width="0.5"/>
+    <text x="65" y="17" text-anchor="middle" font-size="11" font-weight="600" fill="#1d1612">Electron 桌面端</text>
+    <text x="65" y="31" text-anchor="middle" font-size="9" fill="#9b7d6c">JRE 21 内嵌</text>
+  </g>
+  <g transform="translate(344, 118)">
+    <rect width="130" height="40" rx="8" fill="#f6e2d7" stroke="#ebb08f" stroke-width="0.5"/>
+    <text x="65" y="17" text-anchor="middle" font-size="11" font-weight="600" fill="#1d1612">SSE 流式传输</text>
+    <text x="65" y="31" text-anchor="middle" font-size="9" fill="#9b7d6c">实时对话 + 工具流</text>
+  </g>
+  <g transform="translate(488, 118)">
+    <rect width="130" height="40" rx="8" fill="#f6e2d7" stroke="#ebb08f" stroke-width="0.5"/>
+    <text x="65" y="17" text-anchor="middle" font-size="11" font-weight="600" fill="#1d1612">REST API</text>
+    <text x="65" y="31" text-anchor="middle" font-size="9" fill="#9b7d6c">SpringDoc OpenAPI</text>
+  </g>
+  <g transform="translate(632, 118)">
+    <rect width="130" height="40" rx="8" fill="#dce8e4" stroke="#5ca69d" stroke-width="0.5"/>
+    <text x="65" y="14" text-anchor="middle" font-size="11" font-weight="600" fill="#184a45">国内 IM (5)</text>
+    <text x="65" y="26" text-anchor="middle" font-size="9" fill="#665245">钉钉·飞书·企微</text>
+    <text x="65" y="37" text-anchor="middle" font-size="9" fill="#665245">微信·QQ</text>
+  </g>
+  <g transform="translate(776, 118)">
+    <rect width="130" height="40" rx="8" fill="#dce8e4" stroke="#5ca69d" stroke-width="0.5"/>
+    <text x="65" y="14" text-anchor="middle" font-size="11" font-weight="600" fill="#184a45">海外 IM (3)</text>
+    <text x="65" y="26" text-anchor="middle" font-size="9" fill="#665245">Telegram·Discord</text>
+    <text x="65" y="37" text-anchor="middle" font-size="9" fill="#665245">Slack</text>
+  </g>
+
+  <!-- ===== Layer 2: Agent Engine ===== -->
+  <rect x="30" y="186" width="900" height="118" rx="14" fill="url(#warm)" stroke="#d9cec2" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="30" y="186" width="900" height="4" rx="2" fill="url(#accent)"/>
+  <text x="56" y="210" font-size="11" font-weight="700" fill="#184a45" letter-spacing="1">数字员工运行时</text>
+
+  <g transform="translate(56, 222)">
+    <rect width="172" height="68" rx="10" fill="#dce8e4" stroke="#5ca69d" stroke-width="0.5" filter="url(#shadowSm)"/>
+    <text x="86" y="20" text-anchor="middle" font-size="12" font-weight="700" fill="#184a45">推理双引擎</text>
+    <text x="86" y="36" text-anchor="middle" font-size="9" fill="#665245">ReAct · 思考→行动→观察</text>
+    <text x="86" y="50" text-anchor="middle" font-size="9" fill="#665245">Plan-Execute · 计划分解</text>
+  </g>
+  <g transform="translate(244, 222)">
+    <rect width="172" height="68" rx="10" fill="#f6e2d7" stroke="#ebb08f" stroke-width="0.5" filter="url(#shadowSm)"/>
+    <text x="86" y="20" text-anchor="middle" font-size="12" font-weight="700" fill="#d96d46">团队 · 工作流 · 触发器</text>
+    <text x="86" y="36" text-anchor="middle" font-size="9" fill="#665245">任务板派发 + 并行（2.0.0+）</text>
+    <text x="86" y="50" text-anchor="middle" font-size="9" fill="#9b7d6c">7 step mode · 6 pattern</text>
+  </g>
+  <g transform="translate(432, 222)">
+    <rect width="172" height="68" rx="10" fill="#f6e2d7" stroke="#ebb08f" stroke-width="0.5" filter="url(#shadowSm)"/>
+    <text x="86" y="20" text-anchor="middle" font-size="12" font-weight="700" fill="#d96d46">技能 · 工具</text>
+    <text x="86" y="36" text-anchor="middle" font-size="9" fill="#665245">内置 · MCP · ACP · 技能</text>
+    <text x="86" y="50" text-anchor="middle" font-size="9" fill="#665245">SKILL.md + LESSONS + 审批</text>
+  </g>
+  <g transform="translate(620, 222)">
+    <rect width="172" height="68" rx="10" fill="#f6e2d7" stroke="#ebb08f" stroke-width="0.5" filter="url(#shadowSm)"/>
+    <text x="86" y="20" text-anchor="middle" font-size="12" font-weight="700" fill="#d96d46">记忆 · Dreaming</text>
+    <text x="86" y="36" text-anchor="middle" font-size="9" fill="#665245">短期上下文 + 长期提取</text>
+    <text x="86" y="50" text-anchor="middle" font-size="9" fill="#665245">夜里整合 · 你睡了它在工作</text>
+  </g>
+  <g transform="translate(808, 222)">
+    <rect width="108" height="68" rx="10" fill="#f6e2d7" stroke="#ebb08f" stroke-width="0.5" filter="url(#shadowSm)"/>
+    <text x="54" y="20" text-anchor="middle" font-size="12" font-weight="700" fill="#d96d46">Wiki KB</text>
+    <text x="54" y="36" text-anchor="middle" font-size="9" fill="#665245">知识消化</text>
+    <text x="54" y="50" text-anchor="middle" font-size="9" fill="#665245">+ 加工器（1.3.0）</text>
+  </g>
+
+  <!-- ===== Layer 3: Core Services ===== -->
+  <rect x="30" y="320" width="440" height="118" rx="14" fill="url(#warm)" stroke="#d9cec2" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="30" y="320" width="440" height="4" rx="2" fill="url(#primary)"/>
+  <text x="56" y="344" font-size="11" font-weight="700" fill="#d96d46" letter-spacing="1">核心服务层</text>
+
+  <g transform="translate(56, 356)">
+    <rect width="120" height="68" rx="10" fill="#fff" stroke="#d9cec2" stroke-width="0.5" filter="url(#shadowSm)"/>
+    <text x="60" y="20" text-anchor="middle" font-size="10" font-weight="600" fill="#1d1612">Spring Boot 3.5</text>
+    <text x="60" y="36" text-anchor="middle" font-size="9" fill="#9b7d6c">应用框架</text>
+    <text x="60" y="50" text-anchor="middle" font-size="8" fill="#9b7d6c">Spring MVC + SSE</text>
+  </g>
+  <g transform="translate(190, 356)">
+    <rect width="120" height="68" rx="10" fill="#fff" stroke="#d9cec2" stroke-width="0.5" filter="url(#shadowSm)"/>
+    <text x="60" y="20" text-anchor="middle" font-size="10" font-weight="600" fill="#1d1612">Spring Security</text>
+    <text x="60" y="36" text-anchor="middle" font-size="9" fill="#9b7d6c">认证授权</text>
+    <text x="60" y="50" text-anchor="middle" font-size="8" fill="#9b7d6c">JWT + RBAC</text>
+  </g>
+  <g transform="translate(324, 356)">
+    <rect width="130" height="68" rx="10" fill="#fff" stroke="#d9cec2" stroke-width="0.5" filter="url(#shadowSm)"/>
+    <text x="65" y="20" text-anchor="middle" font-size="10" font-weight="600" fill="#1d1612">MyBatis Plus</text>
+    <text x="65" y="36" text-anchor="middle" font-size="9" fill="#9b7d6c">数据持久层</text>
+    <text x="65" y="50" text-anchor="middle" font-size="8" fill="#9b7d6c">逻辑删除 + 自动映射</text>
+  </g>
+
+  <!-- ===== Layer 3b: Model Providers ===== -->
+  <rect x="490" y="320" width="440" height="118" rx="14" fill="url(#warm)" stroke="#d9cec2" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="490" y="320" width="440" height="4" rx="2" fill="url(#accent)"/>
+  <text x="516" y="344" font-size="11" font-weight="700" fill="#184a45" letter-spacing="1">模型供应层</text>
+
+  <g transform="translate(516, 356)">
+    <rect width="120" height="68" rx="10" fill="#dce8e4" stroke="#5ca69d" stroke-width="0.5" filter="url(#shadowSm)"/>
+    <text x="60" y="20" text-anchor="middle" font-size="10" font-weight="600" fill="#184a45">模型池 · Failover</text>
+    <text x="60" y="36" text-anchor="middle" font-size="9" fill="#665245">Spring AI 统一抽象</text>
+    <text x="60" y="50" text-anchor="middle" font-size="8" fill="#9b7d6c">健康追踪 · 自动切换</text>
+  </g>
+  <g transform="translate(650, 356)">
+    <rect width="130" height="68" rx="10" fill="#dce8e4" stroke="#5ca69d" stroke-width="0.5" filter="url(#shadowSm)"/>
+    <text x="65" y="20" text-anchor="middle" font-size="10" font-weight="600" fill="#184a45">云端模型</text>
+    <text x="65" y="36" text-anchor="middle" font-size="9" fill="#665245">DashScope · OpenAI</text>
+    <text x="65" y="50" text-anchor="middle" font-size="8" fill="#9b7d6c">Anthropic · Gemini · 更多</text>
+  </g>
+  <g transform="translate(794, 356)">
+    <rect width="120" height="68" rx="10" fill="#dce8e4" stroke="#5ca69d" stroke-width="0.5" filter="url(#shadowSm)"/>
+    <text x="60" y="20" text-anchor="middle" font-size="10" font-weight="600" fill="#184a45">本地模型</text>
+    <text x="60" y="36" text-anchor="middle" font-size="9" fill="#665245">Ollama · LM Studio</text>
+    <text x="60" y="50" text-anchor="middle" font-size="8" fill="#9b7d6c">MLX · llama.cpp</text>
+  </g>
+
+  <!-- ===== Layer 4: Data & Infra ===== -->
+  <rect x="30" y="454" width="900" height="88" rx="14" fill="url(#warm)" stroke="#d9cec2" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="30" y="454" width="900" height="4" rx="2" fill="#665245"/>
+  <text x="56" y="478" font-size="11" font-weight="700" fill="#665245" letter-spacing="1">数据与基础设施</text>
+
+  <g transform="translate(56, 488)">
+    <rect width="130" height="40" rx="8" fill="#fff" stroke="#d9cec2" stroke-width="0.5"/>
+    <text x="65" y="17" text-anchor="middle" font-size="11" font-weight="600" fill="#1d1612">H2 / MySQL 8</text>
+    <text x="65" y="31" text-anchor="middle" font-size="9" fill="#9b7d6c">关系型存储</text>
+  </g>
+  <g transform="translate(200, 488)">
+    <rect width="130" height="40" rx="8" fill="#fff" stroke="#d9cec2" stroke-width="0.5"/>
+    <text x="65" y="17" text-anchor="middle" font-size="11" font-weight="600" fill="#1d1612">文件系统</text>
+    <text x="65" y="31" text-anchor="middle" font-size="9" fill="#9b7d6c">记忆 + Wiki + 附件</text>
+  </g>
+  <g transform="translate(344, 488)">
+    <rect width="130" height="40" rx="8" fill="#fff" stroke="#d9cec2" stroke-width="0.5"/>
+    <text x="65" y="17" text-anchor="middle" font-size="11" font-weight="600" fill="#1d1612">MCP 协议</text>
+    <text x="65" y="31" text-anchor="middle" font-size="9" fill="#9b7d6c">stdio / SSE / HTTP</text>
+  </g>
+  <g transform="translate(488, 488)">
+    <rect width="130" height="40" rx="8" fill="#fff" stroke="#d9cec2" stroke-width="0.5"/>
+    <text x="65" y="17" text-anchor="middle" font-size="11" font-weight="600" fill="#1d1612">Docker Compose</text>
+    <text x="65" y="31" text-anchor="middle" font-size="9" fill="#9b7d6c">一键部署</text>
+  </g>
+  <g transform="translate(632, 488)">
+    <rect width="130" height="40" rx="8" fill="#fff" stroke="#d9cec2" stroke-width="0.5"/>
+    <text x="65" y="14" text-anchor="middle" font-size="11" font-weight="600" fill="#1d1612">Cron · 事件总线</text>
+    <text x="65" y="26" text-anchor="middle" font-size="9" fill="#665245">ShedLock 分布式锁</text>
+    <text x="65" y="37" text-anchor="middle" font-size="9" fill="#665245">主动交付 · Ambient AI</text>
+  </g>
+  <g transform="translate(776, 488)">
+    <rect width="130" height="40" rx="8" fill="#fff" stroke="#d9cec2" stroke-width="0.5"/>
+    <text x="65" y="17" text-anchor="middle" font-size="11" font-weight="600" fill="#1d1612">多模态引擎</text>
+    <text x="65" y="31" text-anchor="middle" font-size="9" fill="#9b7d6c">TTS / STT / 图 / 音 / 视</text>
+  </g>
+
+  <!-- Flow arrows -->
+  <line x1="480" y1="170" x2="480" y2="186" stroke="#d96d46" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5"/>
+  <line x1="480" y1="304" x2="480" y2="320" stroke="#184a45" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5"/>
+  <line x1="250" y1="438" x2="250" y2="454" stroke="#665245" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.4"/>
+  <line x1="710" y1="438" x2="710" y2="454" stroke="#665245" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.4"/>
+
+  <!-- Footer -->
+  <text x="480" y="575" text-anchor="middle" font-size="10" fill="#9b7d6c">Java 21+ · Spring Boot 3.5 · Spring AI Alibaba · Vue 3 · TypeScript · Vite · Electron</text>
+  <rect x="380" y="590" width="200" height="24" rx="12" fill="url(#primary)"/>
+  <text x="480" y="607" text-anchor="middle" font-size="11" font-weight="600" fill="#fff" letter-spacing="0.5">NewsClaw</text>
+</svg>

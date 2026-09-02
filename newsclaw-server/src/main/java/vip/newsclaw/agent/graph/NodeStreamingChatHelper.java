@@ -8,6 +8,8 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.ResponseFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -15,6 +17,10 @@ import vip.newsclaw.channel.web.ChatStreamTracker;
 import vip.newsclaw.llm.chatmodel.AssistantThinkingRelay;
 import vip.newsclaw.llm.chatmodel.ReasoningContentCache;
 import vip.newsclaw.llm.chatmodel.ThinkingLevelHolder;
+import vip.newsclaw.llm.chatmodel.StructuredOutputSchemaHolder;
+import vip.newsclaw.llm.chatmodel.StructuredJsonFenceNormalizer;
+import vip.newsclaw.news.contract.AiNewsDecisionContract;
+import vip.newsclaw.news.contract.AiNewsEvidenceAssessmentContract;
 
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -26,6 +32,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
@@ -223,6 +230,11 @@ public class NodeStreamingChatHelper {
                                        Long agentId, String modelName) {
         this.routingTraceService = traceService;
         this.routingAgentId = agentId;
+        this.primaryModelName = modelName;
+    }
+
+    /** Bind the configured primary model even when durable routing traces are disabled. */
+    public void setPrimaryModelName(String modelName) {
         this.primaryModelName = modelName;
     }
 
@@ -875,7 +887,8 @@ public class NodeStreamingChatHelper {
             llmCallCount++;
             if (attempt > 0) retryCount++;
             long attemptStartMs = System.currentTimeMillis();
-            lastResult = doStreamCall(chatModel, prompt, conversationId, phase, broadcast, attempt, true, retryType, retryHint);
+            lastResult = doStreamCall(chatModel, prompt, conversationId, phase, broadcast, attempt, true,
+                    primaryProviderId, primaryModelName, retryType, retryHint);
             traceRouting("PRIMARY", primaryProviderId, primaryModelName, conversationId, phase,
                     attempt, 0, routingOutcome(lastResult), routingFailure(lastResult, retryType.get()),
                     System.currentTimeMillis() - attemptStartMs);
@@ -998,6 +1011,7 @@ public class NodeStreamingChatHelper {
             long fallbackStartMs = System.currentTimeMillis();
             StreamResult fallbackResult = doStreamCall(fallback, prompt, conversationId,
                     phase + "_fallback_" + (i + 1), broadcast, 0, false,
+                    entry.providerId(), entry.modelName(),
                     new AtomicReference<>(), new AtomicReference<>(0L));
             traceRouting("FALLBACK", entry.providerId(), entry.modelName(), conversationId, phase,
                     0, i + 1, routingOutcome(fallbackResult), routingFailure(fallbackResult, null),
@@ -1078,10 +1092,11 @@ public class NodeStreamingChatHelper {
      * @return StreamResult 如果成功/降级/不可重试；null 如果应该重试
      */
     private StreamResult doStreamCall(ChatModel chatModel, Prompt prompt,
-                                       String conversationId, String phase,
-                                       boolean broadcast, int attempt, boolean primaryCall,
-                                       AtomicReference<ErrorType> retryTypeRef,
-                                       AtomicReference<Long> retryHintRef) {
+                                      String conversationId, String phase,
+                                      boolean broadcast, int attempt, boolean primaryCall,
+                                      String activeProviderId, String configuredModelName,
+                                      AtomicReference<ErrorType> retryTypeRef,
+                                      AtomicReference<Long> retryHintRef) {
         // Collapse every SystemMessage in the prompt into a single SystemMessage
         // at index 0. Some OpenAI-compatible providers (LM Studio's built-in
         // server, certain strict vLLM / SGLang deployments) reject 400
@@ -1133,8 +1148,14 @@ public class NodeStreamingChatHelper {
             }
         }
 
+        String activeModelName = configuredModelName == null || configuredModelName.isBlank()
+                ? identifyModel(chatModel) : configuredModelName;
+        boolean deferStructuredDecisionContent = shouldDeferStructuredDecisionContent(
+                outbound, activeProviderId, activeModelName);
         try {
-            return doStreamCallInner(chatModel, outbound, conversationId, phase, broadcast, attempt, primaryCall, retryTypeRef, retryHintRef);
+            return doStreamCallInner(chatModel, outbound, conversationId, phase, broadcast, attempt,
+                    primaryCall, retryTypeRef, retryHintRef, deferStructuredDecisionContent,
+                    activeProviderId, activeModelName);
         } finally {
             // Idempotent: if consumer already took the entry, discard is a no-op.
             if (relayToken != null) {
@@ -1165,10 +1186,12 @@ public class NodeStreamingChatHelper {
     }
 
     private StreamResult doStreamCallInner(ChatModel chatModel, Prompt prompt,
-                                            String conversationId, String phase,
-                                            boolean broadcast, int attempt, boolean primaryCall,
-                                            AtomicReference<ErrorType> retryTypeRef,
-                                            AtomicReference<Long> retryHintRef) {
+                                           String conversationId, String phase,
+                                           boolean broadcast, int attempt, boolean primaryCall,
+                                           AtomicReference<ErrorType> retryTypeRef,
+                                           AtomicReference<Long> retryHintRef,
+                                           boolean deferStructuredDecisionContent,
+                                           String activeProviderId, String activeModelName) {
         if (attempt > 0) {
             boolean overloaded = retryTypeRef.get() == ErrorType.OVERLOADED;
             boolean emptyResponse = retryTypeRef.get() == ErrorType.EMPTY_RESPONSE;
@@ -1391,7 +1414,7 @@ public class NodeStreamingChatHelper {
                             ));
                         }
                         contentAccum.append(contentDelta);
-                        if (broadcast) {
+                        if (broadcast && !deferStructuredDecisionContent) {
                             broadcastDelta(conversationId, "content_delta", contentDelta);
                         }
                     }
@@ -1528,10 +1551,13 @@ public class NodeStreamingChatHelper {
                                 phase, contentAccum.length(), thinkingAccum.length(),
                                 toolCallAccumulators.size(), conversationId);
                         drainThinkExtractor(thinkExtractor, contentAccum, thinkingAccum);
-                        return assembleStoppedResult(contentAccum, thinkingAccum, toolCallAccumulators,
-                                promptTokens.get(), completionTokens.get(),
-                                cacheReadTokens.get(), cacheWriteTokens.get(),
-                                reasoningTokens.get(), phase);
+                        return finishDeferredStructuredDecisionContent(
+                                assembleStoppedResult(contentAccum, thinkingAccum, toolCallAccumulators,
+                                        promptTokens.get(), completionTokens.get(),
+                                        cacheReadTokens.get(), cacheWriteTokens.get(),
+                                        reasoningTokens.get(), phase),
+                                deferStructuredDecisionContent, broadcast, conversationId,
+                                activeProviderId, activeModelName, phase);
                     }
                     log.info("[{}] Stop requested during LLM call, no content accumulated, aborting: conversationId={}",
                             phase, conversationId);
@@ -1540,12 +1566,32 @@ public class NodeStreamingChatHelper {
                 if (System.currentTimeMillis() > deadlineMs) {
                     subscription.dispose();
                     log.warn("[{}] Stream call timed out for conversation {}", phase, conversationId);
+                    if (!contentAccum.isEmpty() || !toolCallAccumulators.isEmpty()) {
+                        drainThinkExtractor(thinkExtractor, contentAccum, thinkingAccum);
+                        return finishDeferredStructuredDecisionContent(
+                                assemblePartialFailure(contentAccum, thinkingAccum,
+                                        promptTokens.get(), completionTokens.get(),
+                                        cacheReadTokens.get(), cacheWriteTokens.get(), reasoningTokens.get(),
+                                        phase, "stream_timeout", ErrorType.SERVER_ERROR),
+                                deferStructuredDecisionContent, broadcast, conversationId,
+                                activeProviderId, activeModelName, phase);
+                    }
                     return buildErrorResult("LLM 调用超时", conversationId, phase);
                 }
             }
         } catch (InterruptedException e) {
             subscription.dispose();
             Thread.currentThread().interrupt();
+            if (!contentAccum.isEmpty() || !toolCallAccumulators.isEmpty()) {
+                drainThinkExtractor(thinkExtractor, contentAccum, thinkingAccum);
+                return finishDeferredStructuredDecisionContent(
+                        assemblePartialFailure(contentAccum, thinkingAccum,
+                                promptTokens.get(), completionTokens.get(),
+                                cacheReadTokens.get(), cacheWriteTokens.get(), reasoningTokens.get(),
+                                phase, "stream_interrupted", ErrorType.SERVER_ERROR),
+                        deferStructuredDecisionContent, broadcast, conversationId,
+                        activeProviderId, activeModelName, phase);
+            }
             return buildErrorResult("LLM 调用被中断", conversationId, phase);
         }
 
@@ -1559,6 +1605,7 @@ public class NodeStreamingChatHelper {
             boolean hasAccumulatedContent = !contentAccum.isEmpty() || !toolCallAccumulators.isEmpty();
 
             if (hasAccumulatedContent) {
+                ErrorType partialErrorType = classifyError(error);
                 // ===== 优雅降级：LLM 已产出部分内容（如 engine_overloaded 在流尾部触发） =====
                 log.warn("[{}] Stream error after partial content ({} chars, {} tool calls), " +
                                 "using accumulated content as partial result: {}",
@@ -1567,11 +1614,14 @@ public class NodeStreamingChatHelper {
                     broadcastDelta(conversationId, "warning",
                             buildDeltaJson("LLM 响应中断，使用已生成的部分内容继续"));
                 }
-                return assembleResult(contentAccum, thinkingAccum, toolCallAccumulators,
-                        promptTokens.get(), completionTokens.get(),
-                        cacheReadTokens.get(), cacheWriteTokens.get(),
-                        reasoningTokens.get(),
-                        phase, true, error.getMessage());
+                return finishDeferredStructuredDecisionContent(
+                        assemblePartialFailure(contentAccum, thinkingAccum,
+                                promptTokens.get(), completionTokens.get(),
+                                cacheReadTokens.get(), cacheWriteTokens.get(),
+                                reasoningTokens.get(),
+                                phase, error.getMessage(), partialErrorType),
+                        deferStructuredDecisionContent, broadcast, conversationId,
+                        activeProviderId, activeModelName, phase);
             }
 
             // ===== 无内容：分类错误并决定是否重试 =====
@@ -1663,12 +1713,15 @@ public class NodeStreamingChatHelper {
         String truncationReason = truncatedByThinkingCap ? "thinking_only_no_content"
                 : truncatedByContentRepeat ? "content_repetition"
                 : null;
-        return assembleResult(contentAccum, thinkingAccum, toolCallAccumulators,
-                promptTokens.get(), completionTokens.get(),
-                cacheReadTokens.get(), cacheWriteTokens.get(),
-                reasoningTokens.get(), phase,
-                truncated,
-                truncationReason);
+        return finishDeferredStructuredDecisionContent(
+                assembleResult(contentAccum, thinkingAccum, toolCallAccumulators,
+                        promptTokens.get(), completionTokens.get(),
+                        cacheReadTokens.get(), cacheWriteTokens.get(),
+                        reasoningTokens.get(), phase,
+                        truncated,
+                        truncationReason),
+                deferStructuredDecisionContent, broadcast, conversationId,
+                activeProviderId, activeModelName, phase);
     }
 
     /** 组装 stopped partial 结果（用户主动停止，有已累积内容） */
@@ -1733,6 +1786,170 @@ public class NodeStreamingChatHelper {
         return new StreamResult(fullContent, fullThinking, assembledMessage,
                 finalToolCalls, !finalToolCalls.isEmpty(), promptTok, completionTok,
                 partial, errorMsg, ErrorType.NONE, false, cacheReadTok, cacheWriteTok, reasoningTok);
+    }
+
+    /**
+     * Build a non-executable partial result after timeout/network failure.
+     * Tool-call arguments may have ended mid-token, so even a parseable prefix
+     * is not authority to perform side effects. The typed failure lets the
+     * routing layer try another provider while the partial text remains useful
+     * if the whole chain is exhausted.
+     */
+    private StreamResult assemblePartialFailure(StringBuilder contentAccum,
+                                                StringBuilder thinkingAccum,
+                                                int promptTok, int completionTok,
+                                                int cacheReadTok, int cacheWriteTok,
+                                                int reasoningTok, String phase,
+                                                String errorMsg, ErrorType errorType) {
+        String fullContent = contentAccum.toString();
+        String fullThinking = thinkingAccum.toString();
+        if (fullThinking.isEmpty() && fullContent.contains("<think>")) {
+            var extracted = extractThinkTags(fullContent);
+            if (!extracted.thinking.isEmpty()) {
+                fullThinking = extracted.thinking;
+                fullContent = extracted.content;
+            }
+        }
+        AssistantMessage message = buildAssistantMessageWithThinking(
+                fullContent, fullThinking, List.of());
+        recordCacheMetrics(phase, promptTok, completionTok,
+                cacheReadTok, cacheWriteTok);
+        return new StreamResult(fullContent, fullThinking, message,
+                List.of(), false, promptTok, completionTok, true,
+                errorMsg, errorType == null ? ErrorType.UNKNOWN : errorType,
+                false, cacheReadTok, cacheWriteTok, reasoningTok);
+    }
+
+    /**
+     * A narrow workaround for Bailian Qwen's occasional divergence between a
+     * correct reasoning conclusion and a stale JSON-only terminal channel.
+     * Content is buffered only for an explicit AI-news decision request. The
+     * replacement itself needs two independently strict seven-field decisions;
+     * malformed terminal JSON is deliberately left intact for the server-side
+     * structured-output contract to reject.
+     */
+    private StreamResult finishDeferredStructuredDecisionContent(StreamResult result,
+                                                                   boolean deferred,
+                                                                   boolean broadcast,
+                                                                   String conversationId,
+                                                                   String activeProviderId,
+                                                                   String activeModelName,
+                                                                   String phase) {
+        if (!deferred || result == null) {
+            return result;
+        }
+
+        StreamResult resolved = result;
+        String reconciliationReason = null;
+        if (!result.partial() && !result.stopped() && !result.hasToolCalls()
+                && result.errorMessage() == null
+                && (result.errorType() == null || result.errorType() == ErrorType.NONE)) {
+            var terminalDecision = AiNewsDecisionContract.parseExactDecision(result.text());
+            var reasoningDecision = AiNewsDecisionContract.extractLastDecision(result.thinking());
+            if (terminalDecision.isPresent() && reasoningDecision.isPresent()
+                    && !terminalDecision.get().equals(reasoningDecision.get())) {
+                String reconciledContent = reasoningDecision.get().canonicalJson();
+                resolved = copyWithText(result, reconciledContent);
+                reconciliationReason = "thinking_terminal_decision_mismatch";
+                log.info("[{}] Reconciled Bailian Qwen structured decision from terminal-thinking mismatch "
+                                + "for conversation {} (provider={}, model={})",
+                        phase, conversationId, activeProviderId, activeModelName);
+            }
+
+            if (reconciliationReason == null) {
+                var normalized = StructuredJsonFenceNormalizer
+                        .normalizeSingleJsonObjectFence(result.text());
+                if (normalized.isPresent() && validForDeclaredSchema(normalized.get())) {
+                    resolved = copyWithText(result, normalized.get());
+                    reconciliationReason = "single_json_fence_validated";
+                    log.info("[{}] Removed one validated JSON fence for conversation {} "
+                                    + "(provider={}, model={}, schema={})",
+                            phase, conversationId, activeProviderId, activeModelName,
+                            StructuredOutputSchemaHolder.get().wireValue());
+                }
+            }
+        }
+
+        if (broadcast) {
+            if (reconciliationReason != null) {
+                broadcastStructuredOutputReconciled(conversationId, activeProviderId,
+                        activeModelName, reconciliationReason);
+            }
+            if (resolved.text() != null && !resolved.text().isBlank()) {
+                broadcastDelta(conversationId, "content_delta", resolved.text());
+            }
+        }
+        return resolved;
+    }
+
+    private static StreamResult copyWithText(StreamResult result, String text) {
+        return new StreamResult(text, result.thinking(),
+                buildAssistantMessageWithThinking(text, result.thinking(), result.toolCalls()),
+                result.toolCalls(), result.hasToolCalls(), result.promptTokens(), result.completionTokens(),
+                result.partial(), result.errorMessage(), result.errorType(), result.stopped(),
+                result.cacheReadTokens(), result.cacheWriteTokens(), result.reasoningTokens());
+    }
+
+    private static boolean shouldDeferStructuredDecisionContent(Prompt prompt,
+                                                                 String providerId,
+                                                                 String modelName) {
+        if (!isBailianQwen(providerId, modelName)
+                || !(prompt.getOptions() instanceof OpenAiChatOptions options)) {
+            return false;
+        }
+        ResponseFormat responseFormat = options.getResponseFormat();
+        if (responseFormat == null || responseFormat.getType() != ResponseFormat.Type.JSON_OBJECT) {
+            return false;
+        }
+        StringBuilder promptText = new StringBuilder();
+        for (Message message : prompt.getInstructions()) {
+            if (message.getText() != null) {
+                promptText.append(message.getText()).append('\n');
+            }
+        }
+        return StructuredOutputSchemaHolder.get().requiresAiNewsDecision()
+                || StructuredOutputSchemaHolder.get().requiresAiNewsEvidenceRelations()
+                || AiNewsDecisionContract.containsDecisionFieldSignature(promptText);
+    }
+
+    private static boolean validForDeclaredSchema(String content) {
+        var schema = StructuredOutputSchemaHolder.get();
+        if (schema.requiresAiNewsDecision()) {
+            return AiNewsDecisionContract.parseExactDecision(content).isPresent();
+        }
+        if (schema.requiresAiNewsEvidenceRelations()) {
+            return AiNewsEvidenceAssessmentContract.parseExact(content, null).valid();
+        }
+        return false;
+    }
+
+    private static boolean isBailianQwen(String providerId, String modelName) {
+        if (providerId == null || modelName == null) {
+            return false;
+        }
+        String provider = providerId.trim().toLowerCase(Locale.ROOT);
+        String model = modelName.trim().toLowerCase(Locale.ROOT);
+        return ("bailian".equals(provider) || "bailian-team".equals(provider))
+                && model.startsWith("qwen");
+    }
+
+    private void broadcastStructuredOutputReconciled(String conversationId,
+                                                     String providerId, String modelName,
+                                                     String reason) {
+        if (streamTracker == null || conversationId == null || conversationId.isEmpty()) {
+            return;
+        }
+        try {
+            streamTracker.broadcastObject(conversationId, "structured_output_reconciled", Map.of(
+                    "provider", providerId == null ? "" : providerId,
+                    "model", modelName == null ? "" : modelName,
+                    "reason", reason == null ? "unknown" : reason,
+                    "timestamp", System.currentTimeMillis()
+            ));
+        } catch (Exception e) {
+            log.debug("Failed to broadcast structured_output_reconciled for {}: {}",
+                    conversationId, e.getMessage());
+        }
     }
 
     /**

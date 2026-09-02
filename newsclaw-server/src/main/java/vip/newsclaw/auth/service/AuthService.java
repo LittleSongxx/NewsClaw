@@ -30,14 +30,20 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AuthService {
 
+    public static final String BOOTSTRAP_USERNAME = "admin";
+    private static final int MIN_PASSWORD_LENGTH = 8;
+
     private final UserMapper userMapper;
     private final BCryptPasswordEncoder passwordEncoder;
 
-    @Value("${newsclaw.jwt.secret:NewsClaw-Secret-Key-2024-Very-Long-String}")
+    @Value("${newsclaw.jwt.secret:}")
     private String jwtSecret;
 
     @Value("${newsclaw.jwt.expiration:86400000}")
     private long jwtExpiration;
+
+    @Value("${newsclaw.bootstrap.password:}")
+    private String bootstrapPassword;
 
     @Value("${newsclaw.jwt.renewal-threshold:7200000}")
     private long renewalThreshold;
@@ -46,6 +52,9 @@ public class AuthService {
      * 登录
      */
     public LoginResponse login(LoginRequest request) {
+        if (request == null || request.getUsername() == null || request.getPassword() == null) {
+            throw new NewsClawException("err.auth.invalid_credentials", 401, "用户名或密码错误");
+        }
         UserEntity user = userMapper.selectOne(new LambdaQueryWrapper<UserEntity>()
                 .eq(UserEntity::getUsername, request.getUsername())
                 .eq(UserEntity::getEnabled, true));
@@ -56,7 +65,8 @@ public class AuthService {
         }
 
         String token = generateToken(user);
-        return new LoginResponse(user.getId(), token, user.getUsername(), user.getNickname(), user.getRole());
+        return new LoginResponse(user.getId(), token, user.getUsername(), user.getNickname(),
+                user.getRole(), mustChangePassword(user));
     }
 
     /**
@@ -80,6 +90,7 @@ public class AuthService {
         if (user.getPassword() == null || user.getPassword().isBlank()) {
             throw new NewsClawException("err.auth.password_required", "Password is required");
         }
+        validatePassword(user, user.getPassword());
         user.setPassword(passwordEncoder.encode(user.getPassword().trim()));
         user.setEnabled(true);
         if (user.getRole() == null) {
@@ -95,13 +106,11 @@ public class AuthService {
      * Used when an admin wants to set/reset a member's password.
      */
     public void resetPassword(Long userId, String newPassword) {
-        if (newPassword == null || newPassword.isBlank()) {
-            throw new NewsClawException("err.auth.password_required", "Password is required");
-        }
         UserEntity user = userMapper.selectById(userId);
         if (user == null) {
             throw new NewsClawException("err.auth.user_not_found", "用户不存在");
         }
+        validatePassword(user, newPassword);
         user.setPassword(passwordEncoder.encode(newPassword.trim()));
         userMapper.updateById(user);
     }
@@ -112,8 +121,37 @@ public class AuthService {
     public void changePassword(Long userId, String oldPassword, String newPassword) {
         verifyCurrentUserPassword(userId, oldPassword);
         UserEntity user = userMapper.selectById(userId);
-        user.setPassword(passwordEncoder.encode(newPassword));
+        validatePassword(user, newPassword);
+        user.setPassword(passwordEncoder.encode(newPassword.trim()));
         userMapper.updateById(user);
+    }
+
+    public boolean mustChangePassword(String username) {
+        return mustChangePassword(findByUsername(username));
+    }
+
+    public boolean mustChangePassword(UserEntity user) {
+        return user != null && BOOTSTRAP_USERNAME.equals(user.getUsername())
+                && user.getPassword() != null && bootstrapPassword != null
+                && !bootstrapPassword.isBlank()
+                && passwordEncoder.matches(bootstrapPassword, user.getPassword());
+    }
+
+    private void validatePassword(UserEntity user, String rawPassword) {
+        if (rawPassword == null || rawPassword.isBlank()) {
+            throw new NewsClawException("err.auth.password_required", 400, "Password is required");
+        }
+        String password = rawPassword.trim();
+        if (password.length() < MIN_PASSWORD_LENGTH) {
+            throw new NewsClawException("err.auth.password_too_short", 400,
+                    "Password must contain at least " + MIN_PASSWORD_LENGTH + " characters");
+        }
+        if (user != null && BOOTSTRAP_USERNAME.equals(user.getUsername())
+                && bootstrapPassword != null && !bootstrapPassword.isBlank()
+                && bootstrapPassword.equals(password)) {
+            throw new NewsClawException("err.auth.bootstrap_password_forbidden", 400,
+                    "The bootstrap administrator password must be changed");
+        }
     }
 
     /**
@@ -228,6 +266,9 @@ public class AuthService {
     }
 
     private SecretKey getSignKey() {
+        if (jwtSecret == null || jwtSecret.isBlank()) {
+            throw new IllegalStateException("JWT secret is not configured");
+        }
         byte[] keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
         // 确保密钥长度至少 32 字节（HMAC-SHA256）
         if (keyBytes.length < 32) {

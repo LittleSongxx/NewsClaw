@@ -183,10 +183,12 @@ class WikiPageTypePermissionServiceTest {
     @Test
     void deleteRow_returnsTrueWhenRowRemoved() {
         WikiAgentPageTypePermissionMapper mapper = mock(WikiAgentPageTypePermissionMapper.class);
-        when(mapper.deleteById(5L)).thenReturn(1);
+        when(mapper.delete(any())).thenReturn(1);
         WikiPageTypePermissionService s = new WikiPageTypePermissionService(
                 mapper, mock(WikiKnowledgeBaseService.class), new ObjectMapper());
-        assertTrue(s.deleteRow(5L));
-        assertFalse(s.deleteRow(null));
+        assertTrue(s.deleteRow(5L, 7L, 9L));
+        assertFalse(s.deleteRow(null, 7L, 9L));
+        assertFalse(s.deleteRow(5L, null, 9L));
+        assertFalse(s.deleteRow(5L, 7L, null));
     }
 }

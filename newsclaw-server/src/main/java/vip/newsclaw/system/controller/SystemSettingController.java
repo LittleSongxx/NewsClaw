@@ -10,7 +10,6 @@ import vip.newsclaw.system.model.SearchProviderCatalogResponse;
 import vip.newsclaw.system.model.SystemSettingsDTO;
 import vip.newsclaw.system.service.SystemSettingService;
 import vip.newsclaw.workspace.core.annotation.RequireGlobalAdmin;
-import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
 
 @Tag(name = "系统设置")
 @RestController
@@ -22,21 +21,22 @@ public class SystemSettingController {
 
     @Operation(summary = "获取系统设置")
     @GetMapping
-    @RequireWorkspaceRole("admin")
+    @RequireGlobalAdmin
     public R<SystemSettingsDTO> getSettings() {
         return R.ok(systemSettingService.getSettings());
     }
 
     @Operation(summary = "保存系统设置")
     @PutMapping
-    @RequireWorkspaceRole("admin")
+    @RequireGlobalAdmin
     public R<SystemSettingsDTO> saveSettings(@RequestBody SystemSettingsDTO dto) {
+        if (dto == null) return R.fail(400, "request body is required");
         return R.ok(systemSettingService.saveSettings(dto));
     }
 
     @Operation(summary = "获取搜索 provider catalog（内置 + 插件），及当前实际生效的 provider")
     @GetMapping("/search-providers")
-    @RequireWorkspaceRole("admin")
+    @RequireGlobalAdmin
     public R<SearchProviderCatalogResponse> getSearchProviders() {
         return R.ok(systemSettingService.getSearchProviderCatalog());
     }
@@ -53,6 +53,9 @@ public class SystemSettingController {
     @RequireGlobalAdmin
     public R<String> saveLanguage(@RequestBody LanguageRequest request) {
         // System-wide setting; only the global admin may change it.
+        if (request == null || request.getLanguage() == null || request.getLanguage().isBlank()) {
+            return R.fail(400, "language is required");
+        }
         return R.ok(systemSettingService.saveLanguage(request.getLanguage()));
     }
 
@@ -68,8 +71,9 @@ public class SystemSettingController {
      */
     @Operation(summary = "更新多模态 sidecar 配置")
     @PutMapping("/sidecar")
-    @RequireWorkspaceRole("admin")
+    @RequireGlobalAdmin
     public R<SystemSettingsDTO> saveSidecar(@RequestBody SidecarRequest request) {
+        if (request == null) return R.fail(400, "request body is required");
         return R.ok(systemSettingService.updateSidecarSettings(
                 request.getDefaultVisionModelId(),
                 request.getDefaultVideoModelId()));

@@ -68,9 +68,25 @@ public class AvailableToolService {
             if ("channel".equals(t.getToolType())) {
                 out.add(AvailableToolDTO.fromChannel(t));
             } else {
-                out.add(AvailableToolDTO.fromBuiltin(t));
+                out.add(AvailableToolDTO.fromBuiltin(t, builtinBindingName(t)));
             }
         }
+    }
+
+    /**
+     * A single mate_tool row can represent a multi-method @Tool bean.  The
+     * persisted DB name is a display/catalog id in that case (for example
+     * V213's {@code ai_news_pipeline}), while the Spring bean alias is what
+     * AgentToolSet can resolve to all callbacks.  Expose that alias to the
+     * picker and binding validator; keep the DB name in {@code rawName} for
+     * display/backward diagnostics.
+     */
+    private static String builtinBindingName(ToolEntity tool) {
+        if (tool != null && tool.getBeanName() != null && !tool.getBeanName().isBlank()
+                && tool.getRuntimeNames() != null && tool.getRuntimeNames().size() > 1) {
+            return tool.getBeanName();
+        }
+        return tool == null ? null : tool.getName();
     }
 
     private void appendPluginTools(List<AvailableToolDTO> out) {

@@ -2,6 +2,8 @@ package vip.newsclaw.wiki.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +17,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Comparator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -48,11 +53,16 @@ public class WikiLintJobService {
     private final WikiPageService pageService;
     private final WikiLinkService linkService;
 
+    @Autowired(required = false)
+    private vip.newsclaw.wiki.WikiProperties wikiProperties;
+
+    private static final int MAX_RETAINED_JOB_IDS = 2_000;
+
     /**
      * Per-KB job state. The map holds the most recent job for each KB
      * regardless of status, so {@link #getLatestJob} can answer "did we ever
-     * finish a scan on this KB". Cleared only on completion of a newer scan
-     * for the same KB — no TTL, the cardinality is bounded by KB count.
+     * finish a scan on this KB". The job-id index below is bounded and swept;
+     * persisted page lint fields remain the source of truth after expiry.
      */
     private final ConcurrentHashMap<Long, LintJob> jobsByKb = new ConcurrentHashMap<>();
 
@@ -132,6 +142,62 @@ public class WikiLintJobService {
     }
 
     /**
+     * Bound the in-memory job-id index.  A KB may be scanned repeatedly over
+     * months, so retaining every terminal snapshot is an unbounded heap leak.
+     * Keep the latest job for each KB (used by the UI), never evict queued or
+     * running jobs, and remove old terminal entries first.
+     */
+    @Scheduled(fixedDelayString = "${newsclaw.wiki.lint-job-sweep-ms:3600000}")
+    public void sweepExpiredJobs() {
+        long ttlHours = wikiProperties == null ? 24L
+                : Math.max(1L, wikiProperties.getLintJobTtlHours());
+        long cutoff = System.currentTimeMillis()
+                - java.util.concurrent.TimeUnit.HOURS.toMillis(ttlHours);
+        Set<String> latestIds = new HashSet<>();
+        jobsByKb.values().forEach(job -> latestIds.add(job.jobId()));
+
+        List<Map.Entry<String, LintJob>> removable = new ArrayList<>();
+        for (Map.Entry<String, LintJob> entry : jobsById.entrySet()) {
+            LintJob job = entry.getValue();
+            if (job == null || latestIds.contains(job.jobId())
+                    || job.status() == JobStatus.QUEUED || job.status() == JobStatus.RUNNING) {
+                continue;
+            }
+            LocalDateTime at = job.completedAt() != null ? job.completedAt() : job.startedAt();
+            if (at != null && at.atZone(java.time.ZoneId.systemDefault()).toInstant()
+                    .toEpochMilli() < cutoff) {
+                removable.add(entry);
+            }
+        }
+        removable.sort(Comparator.comparing(
+                (Map.Entry<String, LintJob> e) -> jobTime(e.getValue()),
+                Comparator.nullsFirst(Comparator.naturalOrder())));
+        removable.forEach(entry -> jobsById.remove(entry.getKey(), entry.getValue()));
+
+        // A very busy operator can still create more than the TTL window's
+        // worth of jobs. Apply a hard cap without touching the current/latest
+        // or in-flight snapshot for any KB.
+        if (jobsById.size() > MAX_RETAINED_JOB_IDS) {
+            List<Map.Entry<String, LintJob>> candidates = new ArrayList<>();
+            for (Map.Entry<String, LintJob> entry : jobsById.entrySet()) {
+                LintJob job = entry.getValue();
+                if (job != null && !latestIds.contains(job.jobId())
+                        && job.status() != JobStatus.QUEUED && job.status() != JobStatus.RUNNING) {
+                    candidates.add(entry);
+                }
+            }
+            candidates.sort(Comparator.comparing(
+                    (Map.Entry<String, LintJob> e) -> jobTime(e.getValue()),
+                    Comparator.nullsFirst(Comparator.naturalOrder())));
+            int toRemove = jobsById.size() - MAX_RETAINED_JOB_IDS;
+            for (int i = 0; i < toRemove && i < candidates.size(); i++) {
+                Map.Entry<String, LintJob> entry = candidates.get(i);
+                jobsById.remove(entry.getKey(), entry.getValue());
+            }
+        }
+    }
+
+    /**
      * Aggregate the broken-link state for {@code kbId} from persisted
      * {@code broken_links} fields. Distinct from {@link #getLatestJob} —
      * this is "what does the data say RIGHT NOW", regardless of whether a
@@ -146,7 +212,8 @@ public class WikiLintJobService {
                         .select(WikiPageEntity::getId, WikiPageEntity::getSlug,
                                 WikiPageEntity::getTitle, WikiPageEntity::getBrokenLinks,
                                 WikiPageEntity::getBrokenLinksScannedAt)
-                        .eq(WikiPageEntity::getKbId, kbId));
+                        .eq(WikiPageEntity::getKbId, kbId)
+                        .ne(WikiPageEntity::getArchived, 1));
         if (pages.isEmpty()) return null;
         boolean anyScanned = pages.stream().anyMatch(p -> p.getBrokenLinksScannedAt() != null);
         if (!anyScanned) return null;
@@ -309,5 +376,9 @@ public class WikiLintJobService {
 
     private static String newJobId() {
         return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+    }
+
+    private static LocalDateTime jobTime(LintJob job) {
+        return job.completedAt() != null ? job.completedAt() : job.startedAt();
     }
 }

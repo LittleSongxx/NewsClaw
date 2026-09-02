@@ -14,7 +14,8 @@ It is not a generic news Q&A product. Every externally delivered topic passes
 this workflow:
 
 ```text
-candidate discovery -> event deduplication -> official evidence
+backend multi-source scan -> persisted candidates/observations -> governed capture
+-> human acceptance -> explicit event promotion
 -> claim verification / conflict gate -> Wiki evidence archive
 -> parallel Team Run -> compliance and human review
 -> Feishu notification / Xiaohongshu package -> memory and reviewed Skill proposal
@@ -31,7 +32,8 @@ candidate -> researching -> verified | conflicted | rejected
 
 - Official pages are primary factual evidence; media reports are discovery
   leads or supporting context.
-- Canonical URLs and hashes deduplicate repeated reports of one release.
+- URLs identify sources; separate atomic claim/quote packets from the same page
+  retain separate evidence identities and cannot overwrite one another.
 - Claims retain URL, source tier, excerpt, publication time, confidence, and
   conflict reason.
 - An event cannot become `verified` without a title, canonical URL, and valid
@@ -43,18 +45,19 @@ layer, never as long-term memory payloads.
 
 ## Structured sources
 
-Agents can use `source_health`, `search_sources`, and `fetch_source` through
-`ai_news_event` to read configured RSS, SearXNG, or official-API adapters.
-Every result retains provider ID, source tier, original URL, canonical URL,
-fetch time, HTTP status, and retrieval method so its discovery path can be
-reviewed later.
+Agents use `ai_news_scan` to start the backend candidate pipeline,
+`ai_news_query` to page through candidates and funnel metrics, and
+`ai_news_review` to record authenticated human decisions. Configured RSS,
+News Sitemap, SearXNG, search-provider, and official-API adapters retain
+provider, lane, original/canonical URL, rank, fetch time, and failures.
 
-Those operations are read-only candidate-material entry points. They do not
-create an event, mark a source verified, or trigger publication. An Agent must
-inspect the material and explicitly `upsert` a source-supported claim and
-quote; the normal multi-source, conflict, and `verified` gates still apply.
-This is not a whole-web crawler, and an unavailable or unconfigured provider
-does not establish that no relevant news exists.
+Every valid result first becomes a candidate/observation; capture failure or
+unknown time does not erase it. Only a same-window candidate that is selected,
+human-accepted, and successfully captured may be explicitly promoted into a
+`candidate/researching` event. Promotion is neither verification nor
+publication. The legacy `ai_news_event` chain remains a manual compatibility
+path and scheduled jobs cannot fall back to it. An unavailable provider does
+not establish that no relevant news exists.
 
 ## Team Run
 
@@ -70,8 +73,11 @@ or evidence.
 
 ## Feishu and scheduled radar
 
-The daily AI radar runs at `08:00 Asia/Shanghai`. It discovers candidates,
-performs initial deduplication, and notifies an operator. It does not
+The daily AI radar is scheduled for `08:00 Asia/Shanghai`. It remains
+unregistered by default and can be enabled only when both radar/candidate
+flags, a model credential, and a domestic IM channel are ready. Seed,
+scheduler, and runner checks fail closed when either mainline flag is off and
+never fall back to legacy `ai_news_event` on a scheduled run. It does not
 automatically publish content.
 
 Feishu uses a WebSocket long connection for inbound requests and stage progress.

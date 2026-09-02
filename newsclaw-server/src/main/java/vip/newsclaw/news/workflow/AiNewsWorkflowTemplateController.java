@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
 import vip.newsclaw.common.result.R;
 import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
 
@@ -33,9 +34,12 @@ public class AiNewsWorkflowTemplateController {
     @RequireWorkspaceRole("admin")
     public R<AiNewsWorkflowTemplateService.InstallationResult> install(
             @RequestHeader("X-Workspace-Id") long workspaceId,
-            @RequestBody(required = false) InstallRequest request) {
+            @RequestBody(required = false) InstallRequest request,
+            Authentication authentication) {
+        Long authenticatedUserId = authentication != null && authentication.getDetails() instanceof Number n
+                ? n.longValue() : null;
         return R.ok(templateService.install(workspaceId,
-                request == null ? null : request.createdBy(),
+                authenticatedUserId,
                 request != null && Boolean.TRUE.equals(request.enableTriggers())));
     }
 

@@ -7,6 +7,7 @@ import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.lang.Nullable;
 
 import java.util.function.Function;
+import java.util.function.BiFunction;
 
 /**
  * RFC-090 §14.4 — generic {@link ToolCallback} adapter for skill-scoped
@@ -26,18 +27,27 @@ import java.util.function.Function;
 public class SkillScopedToolCallback implements ToolCallback {
 
     private final ToolDefinition definition;
-    private final Function<String, String> handler;
+    private final BiFunction<String, ToolContext, String> contextHandler;
 
     public SkillScopedToolCallback(String name,
                                     String description,
                                     String inputSchema,
                                     Function<String, String> handler) {
+        this(name, description, inputSchema,
+                (input, ignored) -> handler.apply(input));
+    }
+
+    /** Context-aware variant used by wrappers whose backing resource is tenant-scoped. */
+    public SkillScopedToolCallback(String name,
+                                   String description,
+                                   String inputSchema,
+                                   BiFunction<String, ToolContext, String> handler) {
         this.definition = ToolDefinition.builder()
                 .name(name)
                 .description(description)
                 .inputSchema(inputSchema)
                 .build();
-        this.handler = handler;
+        this.contextHandler = handler;
     }
 
     @Override
@@ -52,15 +62,11 @@ public class SkillScopedToolCallback implements ToolCallback {
 
     @Override
     public String call(String toolInput) {
-        return handler.apply(toolInput);
+        return contextHandler.apply(toolInput, null);
     }
 
     @Override
     public String call(String toolInput, @Nullable ToolContext toolContext) {
-        // Skill-scoped tools intentionally don't read from ToolContext —
-        // the binding is in our captured state. We just forward to the
-        // single-arg handler so behaviour stays identical regardless of
-        // whether the framework supplies a context.
-        return handler.apply(toolInput);
+        return contextHandler.apply(toolInput, toolContext);
     }
 }

@@ -36,13 +36,12 @@ import java.util.List;
  *       bot identity, even if the trigger config has it disabled, because
  *       a runaway echo from our own outbound traffic is the worst-case
  *       failure and not worth a per-trigger opt-out.</li>
- *   <li>Dedup window — insert a {@code mate_trigger_event} row keyed on
- *       {@code (trigger_id, dedup_key)} where the dedup key is the envelope
- *       eventId or a SHA-256 of the payload data when the upstream channel
- *       did not provide a stable id. A duplicate-key error short-circuits
- *       the dispatch silently.</li>
  *   <li>Sliding-window rate limit — per-trigger 60s cap; an over-cap event
  *       is logged and dropped without dispatching.</li>
+ *   <li>Quota + dedup admission — reserve a max-fire slot, then insert a
+ *       {@code mate_trigger_event} row keyed on {@code (trigger_id,
+ *       dedup_key)}. Rejected reservations are rolled back so an event that
+ *       never dispatched cannot poison its dedup window.</li>
  * </ol>
  *
  * <p>Each accepted event is then handed to {@link TriggerDispatcher} which
@@ -77,9 +76,9 @@ public class TriggerEventIngestService {
     private int dispatchQueueCapacity;
 
     /** Lazy-built bounded thread pool used when {@link #asyncDispatch} is
-     *  true. CallerRunsPolicy is the back-pressure: when the queue is full
-     *  the calling thread runs the dispatch itself, which guarantees no
-     *  silent drop while still capping in-flight work. */
+     *  true. AbortPolicy is explicit back-pressure: a full queue rejects the
+     *  event, rolls back its reserved fire slot, and returns a visible error
+     *  instead of running an unbounded workflow on the webhook thread. */
     private volatile java.util.concurrent.ThreadPoolExecutor dispatchExecutor;
 
     public TriggerEventIngestService(TriggerMapper triggerMapper,
@@ -112,7 +111,7 @@ public class TriggerEventIngestService {
                             t.setDaemon(true);
                             return t;
                         },
-                        new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+                        new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
             }
             return dispatchExecutor;
         }
@@ -139,7 +138,7 @@ public class TriggerEventIngestService {
      * candidate trigger so callers can surface a partial-accept summary.
      */
     public List<IngestResult> ingest(TriggerEventEnvelope envelope) {
-        if (envelope.patternType() == null || envelope.patternType().isBlank()) {
+        if (envelope == null || envelope.patternType() == null || envelope.patternType().isBlank()) {
             return List.of();
         }
         List<TriggerEntity> candidates = triggerMapper.selectList(new LambdaQueryWrapper<TriggerEntity>()
@@ -169,16 +168,36 @@ public class TriggerEventIngestService {
                 && botSelfFilter.isBotSelf(envelope.workspaceId(), envelope.senderId())) {
             return IngestResult.dropped(trigger.getId(), Reason.BOT_SELF);
         }
+        if (envelope.triggerDepth() >= TriggerDispatcher.MAX_TRIGGER_DEPTH
+                || envelope.triggerAncestry().contains(trigger.getId())) {
+            return IngestResult.dropped(trigger.getId(), Reason.LOOP_GUARD);
+        }
         if (trigger.getMaxFires() != null && trigger.getMaxFires() > 0
                 && trigger.getFireCount() != null && trigger.getFireCount() >= trigger.getMaxFires()) {
             return IngestResult.dropped(trigger.getId(), Reason.EXHAUSTED);
         }
-        if (!recordDedupRow(trigger, envelope)) {
-            return IngestResult.dropped(trigger.getId(), Reason.DUPLICATE);
-        }
         int limit = trigger.getRateLimitPerMin() == null ? 0 : trigger.getRateLimitPerMin();
         if (!rateLimiter.tryAcquire(trigger.getId(), limit, Instant.now())) {
             return IngestResult.dropped(trigger.getId(), Reason.RATE_LIMITED);
+        }
+        // Reserve the max_fires slot before dispatch. The SQL predicate is
+        // the arbiter across concurrent webhooks/nodes; the entity pre-check
+        // above is only a cheap fast path.
+        if (triggerMapper.claimFire(trigger.getId(), LocalDateTime.now()) != 1) {
+            return IngestResult.dropped(trigger.getId(), Reason.EXHAUSTED);
+        }
+        // Only consume the dedup lease after rate/quota admission. Otherwise
+        // a rate-limited or exhausted event would poison its dedup key even
+        // though no workflow was accepted. Release the reserved fire slot if
+        // this event turns out to be a duplicate.
+        try {
+            if (!recordDedupRow(trigger, envelope)) {
+                settleRejectedClaim(trigger, "duplicate event");
+                return IngestResult.dropped(trigger.getId(), Reason.DUPLICATE);
+            }
+        } catch (RuntimeException error) {
+            settleRejectedClaim(trigger, "dedup admission failed: " + error.getMessage());
+            throw error;
         }
         if (asyncDispatch) {
             // Async path — submit dispatch to the bounded pool so the
@@ -216,7 +235,7 @@ public class TriggerEventIngestService {
     private DispatchResult runDispatchAndPersist(TriggerEntity trigger, TriggerEventEnvelope envelope) {
         DispatchResult outcome;
         try {
-            outcome = dispatcher.dispatch(trigger, envelope.data());
+            outcome = dispatcher.dispatch(trigger, envelope);
         } catch (Exception e) {
             log.error("Trigger {} dispatch threw on event ingest: {}",
                     trigger.getId(), e.getMessage(), e);
@@ -236,19 +255,23 @@ public class TriggerEventIngestService {
     private void persistDispatchOutcome(TriggerEntity trigger, DispatchResult outcome) {
         try {
             LocalDateTime now = LocalDateTime.now();
-            trigger.setLastDispatchedAt(now);
-            if (outcome.fired()) {
-                trigger.setFireCount(
-                        (trigger.getFireCount() == null ? 0L : trigger.getFireCount()) + 1);
-                trigger.setLastFiredAt(now);
-                trigger.setLastError(null);
-            } else {
-                trigger.setLastError(outcome.reason());
-            }
-            triggerMapper.updateById(trigger);
+            boolean fired = outcome != null && outcome.fired();
+            String error = fired ? null
+                    : outcome == null ? "dispatcher returned null" : outcome.reason();
+            // Atomic column-level bookkeeping avoids letting an async worker
+            // overwrite a newer trigger pattern/config snapshot.
+            triggerMapper.settleClaimedFire(trigger.getId(), fired ? 1 : 0, error, now);
         } catch (Exception e) {
             // Best-effort bookkeeping — never let a stats write fail ingest.
             log.warn("Trigger {} bookkeeping update failed: {}", trigger.getId(), e.getMessage());
+        }
+    }
+
+    private void settleRejectedClaim(TriggerEntity trigger, String reason) {
+        try {
+            triggerMapper.settleClaimedFire(trigger.getId(), 0, reason, LocalDateTime.now());
+        } catch (Exception error) {
+            log.warn("Trigger {} rejected-fire rollback failed: {}", trigger.getId(), error.getMessage());
         }
     }
 
@@ -258,15 +281,20 @@ public class TriggerEventIngestService {
         row.setDedupKey(resolveDedupKey(envelope));
         int windowSecs = trigger.getDedupWindowSecs() == null ? 60 : trigger.getDedupWindowSecs();
         Instant now = Instant.now();
-        row.setReceivedAt(LocalDateTime.ofInstant(now, ZoneOffset.systemDefault()));
-        row.setExpiresAt(LocalDateTime.ofInstant(now.plusSeconds(windowSecs),
-                ZoneOffset.systemDefault()));
+        LocalDateTime receivedAt = LocalDateTime.ofInstant(now, ZoneOffset.systemDefault());
+        LocalDateTime expiresAt = LocalDateTime.ofInstant(now.plusSeconds(windowSecs),
+                ZoneOffset.systemDefault());
+        row.setReceivedAt(receivedAt);
+        row.setExpiresAt(expiresAt);
         try {
             eventMapper.insert(row);
             return true;
         } catch (DuplicateKeyException e) {
-            // Within the dedup window — silently drop.
-            return false;
+            // Cleanup is periodic, so an expired unique row may still exist.
+            // Atomically move its lease forward; exactly one concurrent caller
+            // can reclaim it because the old expires_at predicate stops the rest.
+            return eventMapper.reclaimExpired(trigger.getId(), row.getDedupKey(),
+                    receivedAt, expiresAt) == 1;
         }
     }
 
@@ -320,7 +348,7 @@ public class TriggerEventIngestService {
     }
 
     public enum Reason {
-        PATTERN_MISMATCH, BOT_SELF, DUPLICATE, RATE_LIMITED, EXHAUSTED,
+        PATTERN_MISMATCH, BOT_SELF, LOOP_GUARD, DUPLICATE, RATE_LIMITED, EXHAUSTED,
         /** Dispatcher returned SKIPPED — pre-flight rejected (no published revision, etc.). */
         DISPATCH_SKIPPED,
         /** Dispatcher returned FAILED — runner threw or workflow run ended in failed state. */

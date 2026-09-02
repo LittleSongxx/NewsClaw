@@ -17,6 +17,7 @@ import vip.newsclaw.system.repository.SystemSettingMapper;
 import vip.newsclaw.tool.guard.WorkspacePathGuard;
 import vip.newsclaw.tool.search.SearchProvider;
 import vip.newsclaw.tool.search.SearchProviderRegistry;
+import vip.newsclaw.tool.search.TavilyApiKeyPool;
 import vip.newsclaw.workspace.core.config.WorkspaceSandboxProperties;
 
 import java.nio.file.Files;
@@ -186,7 +187,13 @@ public class SystemSettingService {
         dto.setSearxngBaseUrl(resolveSearxngBaseUrl());
         // API Key 脱敏回显
         dto.setSerperApiKeyMasked(maskApiKey(getValue(SERPER_API_KEY_KEY, "")));
-        dto.setTavilyApiKeyMasked(maskApiKey(getValue(TAVILY_API_KEY_KEY, "")));
+        String tavilyKeys = getValue(TAVILY_API_KEY_KEY, "");
+        int tavilyKeyCount = TavilyApiKeyPool.configuredKeyCount(tavilyKeys);
+        dto.setTavilyApiKeyCount(tavilyKeyCount);
+        // Never derive the placeholder from the full pool string: doing so can
+        // reveal a suffix from one of the keys and makes multi-line values
+        // awkward to render. The count communicates configuration status.
+        dto.setTavilyApiKeyMasked(tavilyKeyCount > 0 ? "********" : "");
 
         // 公众号发布凭证（AppSecret 脱敏回显，AppID 明文）
         dto.setWeixinoaAppId(getValue(WEIXINOA_APP_ID_KEY, ""));
@@ -264,6 +271,7 @@ public class SystemSettingService {
         // 补充搜索明文 Key
         dto.setSerperApiKey(getValue(SERPER_API_KEY_KEY, ""));
         dto.setTavilyApiKey(getValue(TAVILY_API_KEY_KEY, ""));
+        dto.setTavilyApiKeyCount(TavilyApiKeyPool.configuredKeyCount(dto.getTavilyApiKey()));
         // 补充视频明文 Key
         dto.setZhipuApiKey(getValue(ZHIPU_API_KEY_KEY, ""));
         dto.setFalApiKey(getValue(FAL_API_KEY_KEY, ""));
@@ -367,7 +375,9 @@ public class SystemSettingService {
             saveValue(SERPER_BASE_URL_KEY, dto.getSerperBaseUrl(), "Serper 接口地址");
         }
         if (dto.getTavilyApiKey() != null && !dto.getTavilyApiKey().isBlank()) {
-            saveValue(TAVILY_API_KEY_KEY, dto.getTavilyApiKey(), "Tavily API Key");
+            String normalizedPool = String.join("\n",
+                    TavilyApiKeyPool.parseConfiguredKeys(dto.getTavilyApiKey()));
+            saveValue(TAVILY_API_KEY_KEY, normalizedPool, "Tavily API Key pool");
         }
         if (dto.getTavilyBaseUrl() != null) {
             saveValue(TAVILY_BASE_URL_KEY, dto.getTavilyBaseUrl(), "Tavily 接口地址");

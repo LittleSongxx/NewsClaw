@@ -156,7 +156,7 @@ Authorization: Bearer <token>
 ```bash
 curl -X POST http://localhost:18088/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
+  -d '{"username":"admin","password":"$BOOTSTRAP_PASSWORD"}'
 ```
 
 ### 聊天
@@ -230,7 +230,7 @@ curl -N -X POST http://localhost:18088/api/v1/chat/stream \
 ```bash
 curl -X POST http://localhost:18088/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
+  -d '{"username":"admin","password":"$BOOTSTRAP_PASSWORD"}'
 ```
 
 ### 流式对话：`POST /api/v1/chat/stream`
@@ -252,6 +252,13 @@ curl -X POST http://localhost:18088/api/v1/auth/login \
 | `thinkingLevel` | string | null | 思考深度：`off` / `low` / `medium` / `high` / `max`；null 跟随 Agent 默认 |
 | `modelProvider` | string | null | 本会话模型 provider 覆盖（与 `modelName` 配对） |
 | `modelName` | string | null | 本会话模型名覆盖 |
+| `responseFormat` | string | `text` | 终态格式：`text` 或 `json_object` |
+| `responseSchema` | string | `generic` | JSON 语义合同：`generic`、`ai_news_decision_v1` 或 `ai_news_evidence_relations_v2`；两个命名 schema 都要求 `responseFormat=json_object` |
+| `allowedCitationIds` | string[] | null | 调用方 Evidence Packet 中实际存在的精确 ID；`ai_news_decision_v1` 会用它阻断模型杜撰、改写或重复引用 |
+| `requestedCitationId` | string | null | 任务指定的精确引用 ID；服务端不会从模型输出反推 |
+| `expectedEvidenceIds` | string[] | null | `ai_news_evidence_relations_v2` 必填；模型必须对每个 ID 恰好返回一次关系，不得增删 ID |
+| `toolChoice` | string | `auto` | 工具选择策略：`auto` / `none` / `required` / `function:<tool>` |
+| `toolCandidates` | string[] | null | 可选请求级工具候选集；只与 Agent 已授权且已披露工具取交集，不能扩大权限。`null` 保持全部 active 工具，`[]` 不暴露任何工具 schema |
 | `endUserId` | string | null | 第三方终端用户 ID，用于一个 NewsClaw 账号下的记忆隔离 |
 
 浏览器原生 `EventSource` 不支持 POST body，必须用 `fetch()` + 流式 reader。
@@ -264,6 +271,79 @@ curl -N -X POST "http://localhost:18088/api/v1/chat/stream?token=$TOKEN" \
 ```
 
 相关端点：`POST /api/v1/chat/{conversationId}/stop`（停止生成）、`POST /api/v1/chat/{conversationId}/interrupt`（排队后续消息，不打断当前流）。
+
+命名 schema 的职责不同：`ai_news_decision_v1` 是兼容旧评测的七字段终态合同；`ai_news_evidence_relations_v2` 只接受 `{"relations":[{"evidenceId":"E1","relation":"entails|contradicts|partial|unrelated|hedged","confidence":0.0}]}`。生产链路优先使用 v2：模型只判断逐证据 quote→claim 关系，来源等级、独立媒体计数、高风险、可信冲突、核验资格和引用许可由后端确定性策略计算。
+
+### AI 新闻候选流水线（V213 shadow）
+
+候选流水线默认关闭；显式开启 feature flag 后，后端可在无 LLM 参与时完成多路召回、候选/观测先落库、排序、抓取队列推进和运行终态。读取至少需要 workspace `viewer`，扫描与审核需要 `member`：
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| `POST` | `/api/v1/ai-news/candidate-pipeline/scans` | 对明确 UTC 窗口启动一次后端扫描 |
+| `GET` | `/api/v1/ai-news/candidate-pipeline/scans` | 分页查看运行状态和漏斗计数 |
+| `GET` | `/api/v1/ai-news/candidate-pipeline/scans/{scanRunId}` | 查看 provider 边际独有贡献、审计摘要和四项记分卡 |
+| `GET` | `/api/v1/ai-news/candidate-pipeline/candidates` | 按 scan/provider/阶段状态/是否独有/`seenAfter`/`seenBefore` 查询候选 |
+| `POST` | `/api/v1/ai-news/candidate-pipeline/candidates/{candidateId}/review` | 人工采用或拒绝候选，不自动发布 |
+
+扫描体示例：`{"topic":"AI","windowStart":"2026-08-27T00:00:00Z","windowEnd":"2026-08-28T00:00:00Z","maxCandidates":30}`。时间窗口采用半开区间；启用中国搜索时 provider ID 为 `bocha-web`。Agent 可使用轻量 `ai_news_scan`、`ai_news_query`、`ai_news_review`，无需再复制 capture ID 来驱动候选持久化；旧 `ai_news_event` 继续保留兼容。
+
+### AI 动态事件与证据
+
+端点统一挂在 `/api/v1/ai-news/events`，读取至少需要 workspace `viewer`，写入与复核需要 `member`：
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| `GET` | `/api/v1/ai-news/events` | 分页查询事件 |
+| `GET` | `/api/v1/ai-news/events/{id}` | 查看事件、证据与语义关系审计字段 |
+| `POST` | `/api/v1/ai-news/events` | 写入/更新候选事件和 Evidence Packet |
+| `POST` | `/api/v1/ai-news/events/{id}/verify` | 请求后端重新计算确定性核验门禁 |
+| `POST` | `/api/v1/ai-news/events/{id}/capture-official` | 只读抓取官方页面并归档，不自动核验 |
+| `POST` | `/api/v1/ai-news/events/{id}/evidence/{evidenceId}/relation` | 由当前认证操作者人工复核 quote→claim 关系 |
+| `POST` | `/api/v1/ai-news/events/{id}/dismiss` | 忽略候选事件 |
+| `POST` | `/api/v1/ai-news/events/{id}/produce` | 通过当前核验和人工复核门禁后进入生产 |
+| `POST` | `/api/v1/ai-news/events/{id}/published` | 确认交付 |
+| `POST` | `/api/v1/ai-news/events/{id}/run` | 关联 Team Run |
+| `POST` | `/api/v1/ai-news/events/{id}/content` | 关联公众号/小红书内容 |
+| `POST` | `/api/v1/ai-news/events/{id}/wiki` | 关联 Wiki 证据页 |
+| `POST` | `/api/v1/ai-news/events/{id}/archive` | 归档事件 |
+| `POST` | `/api/v1/ai-news/source-captures` | 对公开 URL 执行只读抓取并生成不可变 capture ID |
+| `GET` | `/api/v1/ai-news/source-captures/{id}?startOffset=0` | 分页读取 capture 的规范化正文，以便选择逐字引文 |
+
+Agent/自动化入库采用 capture-first 合同：先向 `/ai-news/source-captures` 提交 `{"sourceUrl":"https://..."}`，再用返回的 `captureId` 读取正文；事件 upsert 的 evidence 提交 `captureId`、`claim`、逐字 `quote`、`semanticRelation` 和可选的 `relationConfidence`。服务端从 capture 派生最终 URL、来源标题、来源等级、发布时间、HTTP 状态、抓取时间和内容哈希，并要求 quote 能以 `NORMALIZED_EXACT` 在快照正文中定位。成功响应的 `captureMethod` 区分 `READ_ONLY_HTTP` 与仅在直连传输失败后使用的 `READ_ONLY_HTTP_PROXY_FALLBACK`。`sourceTimeOrigin` 区分页面显式元数据 `PAGE_METADATA` 与受治理的发布方结构化时间证言 `STRUCTURED_SOURCE`；后者同时返回结构化 item version 和证言哈希，入库前还会重新校验。超限响应不会截断成证据，正文不足部署门槛也会显式失败。直接填写或修改这些 provenance 字段不会形成合格证据。
+
+`ai_news_event(action=upsert)` 还必须携带预先冻结的 ISO-8601 UTC `windowStart/windowEnd`。没有带时区的可靠来源发布时间、发布时间不在 `[windowStart,windowEnd)`、结构化时间证言已撤销/冲突/被新版本改正、HTTP 非 2xx、正文为空或 quote 无法定位时均拒绝写入。普通 REST upsert 为人工录入兼容仍可保存未 capture 的候选，但确定性核验门禁会将其视为 `MISSING_CAPTURE_PROVENANCE`，不能进入 verified/production。
+
+`semanticRelation` 允许 `entails`、`contradicts`、`partial`、`unrelated`、`hedged`；旧调用省略时落为 `unknown` 并 fail-closed。`sourceTier` 即使由调用方提交也不会越过最终 URL 注册表策略。
+
+人工关系复核请求示例：
+
+```json
+{"semanticRelation":"entails","confidence":0.98,"note":"原文完整覆盖产品、版本和时间限定"}
+```
+
+操作者身份取自认证上下文，不能由请求体伪造。人工结论会记录 reviewer、时间和备注；证据内容或关系变化会撤销旧核验并重新计算复核任务。
+
+### AI 动态发现快照审计
+
+以下端点统一要求全局管理员权限。每次隔离发现都会把请求窗口、逐查询参数、供应商结果、
+`fromCache`、结果哈希、最终候选、拒绝计数、策略版本、快照哈希和排序哈希写入 V211 持久化账本：
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| `POST` | `/api/v1/ai-news/discovery/search` | 对明确 UTC 窗口执行一次发现并保存完整快照 |
+| `GET` | `/api/v1/ai-news/discovery/runs` | 按 workspace/策略版本分页查看运行摘要 |
+| `GET` | `/api/v1/ai-news/discovery/runs/{runId}` | 查看逐通道冻结响应、候选和拒绝诊断 |
+| `POST` | `/api/v1/ai-news/discovery/runs/{runId}/replay?maxCandidates=30` | 不联网，用当前准入/排序策略重放同一冻结响应 |
+| `GET` | `/api/v1/ai-news/discovery/stability?runIds={id}&runIds={id}` | 对 2～20 个同 workspace、同窗口、同策略运行计算稳定性 |
+
+`search` 请求体为
+`{"workspaceId":"1","topic":"artificial intelligence","windowStart":"2026-08-27T02:10:00Z","windowEnd":"2026-08-28T02:10:00Z","maxCandidates":30}`；起止时间必须是 ISO-8601 instant，窗口采用半开区间。
+
+稳定性报告包含 Jaccard@10/30、RBO@10/30、原始快照/最终排序相同比例、来源 lane、窗口内/
+未知/过期准入量和缓存查询数。至少三次运行且所有查询均未命中缓存时，
+`liveSentinelEligible=true`；缓存运行仍可诊断，但不能作为联网稳定性 SLA。`replay` 保留原始
+`snapshotHash`，用于把供应商漂移与代码策略变化分开，且不会生成新的联网运行记录。
 
 ### Agent 管理
 
@@ -379,7 +459,7 @@ curl "http://localhost:18088/api/v1/audit/events?page=1&size=20&resourceType=AGE
 3. 需登录（非 `@RequireGlobalAdmin`）。
 
 ```bash
-curl -X PUT "http://localhost:18088/api/v1/auth/users/1/password?oldPassword=admin123&newPassword=newPass456" \
+curl -X PUT "http://localhost:18088/api/v1/auth/users/1/password?oldPassword=$BOOTSTRAP_PASSWORD&newPassword=$NEW_PASSWORD" \
   -H "Authorization: Bearer $TOKEN"
 ```
 

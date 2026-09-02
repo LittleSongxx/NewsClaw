@@ -10,6 +10,8 @@ import vip.newsclaw.kbopen.auth.model.KbApiKeyBindingEntity;
 import vip.newsclaw.kbopen.auth.model.KbApiKeyEntity;
 import vip.newsclaw.kbopen.auth.repository.KbApiKeyBindingMapper;
 import vip.newsclaw.kbopen.auth.repository.KbApiKeyMapper;
+import vip.newsclaw.wiki.model.WikiKnowledgeBaseEntity;
+import vip.newsclaw.wiki.repository.WikiKnowledgeBaseMapper;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
@@ -39,6 +41,13 @@ public class KbApiKeyService {
     private final KbApiKeyMapper keyMapper;
     private final KbApiKeyBindingMapper bindingMapper;
     private final TokenHashUtil tokenHashUtil;
+    private WikiKnowledgeBaseMapper knowledgeBaseMapper;
+
+    /** Optional in lightweight unit tests; always present in the server context. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setKnowledgeBaseMapper(WikiKnowledgeBaseMapper mapper) {
+        this.knowledgeBaseMapper = mapper;
+    }
 
     // ── Mint ──────────────────────────────────────────────────────────────
 
@@ -60,6 +69,7 @@ public class KbApiKeyService {
             // R3: empty binding = zero access, which is useless for an external key.
             throw new NewsClawException(400, "At least one knowledge base must be bound to the API key");
         }
+        validateKbBindings(workspaceId, kbIds);
         String plaintext = tokenHashUtil.generate(KEY_PREFIX, KEY_ENTROPY_BYTES);
         String hash = tokenHashUtil.hash(plaintext);
         String displayPrefix = plaintext.substring(0, Math.min(PREFIX_DISPLAY_LEN + KEY_PREFIX.length(), plaintext.length()));
@@ -156,6 +166,11 @@ public class KbApiKeyService {
             // R3: cannot reduce to zero access.
             throw new NewsClawException(400, "At least one knowledge base must be bound to the API key");
         }
+        KbApiKeyEntity key = keyMapper.selectById(apiKeyId);
+        if (key == null || key.getWorkspaceId() == null) {
+            throw new NewsClawException(404, "API key not found: " + apiKeyId);
+        }
+        validateKbBindings(key.getWorkspaceId(), newKbIds);
         bindingMapper.delete(new LambdaQueryWrapper<KbApiKeyBindingEntity>()
                 .eq(KbApiKeyBindingEntity::getApiKeyId, apiKeyId));
         for (Long kbId : newKbIds) {
@@ -179,7 +194,33 @@ public class KbApiKeyService {
         if (expiresAt != null) existing.setExpiresAt(expiresAt);
         keyMapper.updateById(existing);
         if (kbIds != null) {
-            updateBindings(apiKeyId, kbIds);
+            validateKbBindings(workspaceId, kbIds);
+            replaceBindings(apiKeyId, kbIds);
+        }
+    }
+
+    private void replaceBindings(Long apiKeyId, Set<Long> kbIds) {
+        bindingMapper.delete(new LambdaQueryWrapper<KbApiKeyBindingEntity>()
+                .eq(KbApiKeyBindingEntity::getApiKeyId, apiKeyId));
+        for (Long kbId : kbIds) {
+            KbApiKeyBindingEntity binding = new KbApiKeyBindingEntity();
+            binding.setApiKeyId(apiKeyId);
+            binding.setKbId(kbId);
+            bindingMapper.insert(binding);
+        }
+    }
+
+    private void validateKbBindings(Long workspaceId, Set<Long> kbIds) {
+        if (workspaceId == null || workspaceId <= 0 || kbIds == null || kbIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new NewsClawException(400, "Invalid workspace or knowledge base binding");
+        }
+        if (knowledgeBaseMapper == null) return;
+        long visible = knowledgeBaseMapper.selectCount(new LambdaQueryWrapper<WikiKnowledgeBaseEntity>()
+                .in(WikiKnowledgeBaseEntity::getId, kbIds)
+                .eq(WikiKnowledgeBaseEntity::getWorkspaceId, workspaceId)
+                .eq(WikiKnowledgeBaseEntity::getDeleted, 0));
+        if (visible != kbIds.size()) {
+            throw new NewsClawException(403, "Every knowledge base must belong to the current workspace");
         }
     }
 

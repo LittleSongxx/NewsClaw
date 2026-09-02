@@ -58,6 +58,8 @@ public class MusicGenerationService {
     private final ChatUploadLocationResolver uploadLocationResolver;
 
     private static final String TASK_TYPE = "music_generation";
+    private static final java.util.Set<String> SAFE_AUDIO_FORMATS = java.util.Set.of(
+            "mp3", "wav", "ogg", "opus", "aac", "flac", "m4a", "pcm");
 
     /** Dedicated virtual-thread worker. Music generation blocks on a single
      *  upstream HTTP call (~120s) — keeping it off the polling pool and the
@@ -73,6 +75,9 @@ public class MusicGenerationService {
     public Map<String, Object> submitGeneration(String conversationId,
                                                  MusicGenerationRequest request,
                                                  String createdBy) {
+        if (conversationId == null || conversationId.isBlank() || request == null) {
+            return Map.of("success", false, "error", "conversationId 和音乐请求不能为空");
+        }
         SystemSettingsDTO config = systemSettingService.getAllSettings();
 
         if (!Boolean.TRUE.equals(config.getMusicEnabled())) {
@@ -138,9 +143,18 @@ public class MusicGenerationService {
             }
 
             PersistedAudio persisted = persistAudio(conversationId, task.getTaskId(), result);
+            if (asyncTaskService.isConversationCanceled(conversationId)) {
+                Files.deleteIfExists(persisted.localPath());
+                return;
+            }
             String audioUrl = persisted.servingUrl();
 
             List<MessageContentPart> parts = saveAssistantMessage(conversationId, persisted, result);
+
+            if (asyncTaskService.isConversationCanceled(conversationId)) {
+                Files.deleteIfExists(persisted.localPath());
+                return;
+            }
 
             ObjectNode resultJson = objectMapper.createObjectNode();
             resultJson.put("audioUrl", audioUrl);
@@ -193,11 +207,22 @@ public class MusicGenerationService {
                                          MusicGenerationResult result) throws IOException {
         Path dir = uploadLocationResolver.resolveWriteDir(conversationId);
         Files.createDirectories(dir);
-        String fileName = "music_" + taskId + "." + result.getFormat();
+        String format = safeAudioFormat(result.getFormat());
+        if (result.getAudioData() == null || result.getAudioData().length == 0) {
+            throw new IOException("audio data is empty");
+        }
+        String fileName = "music_" + taskId + "." + format;
         Path filePath = dir.resolve(fileName);
         Files.write(filePath, result.getAudioData());
         String servingUrl = "/api/v1/chat/files/" + conversationId + "/" + fileName;
         return new PersistedAudio(filePath, servingUrl, fileName);
+    }
+
+    private static String safeAudioFormat(String format) {
+        if (format == null) return "mp3";
+        String normalized = format.trim().toLowerCase(java.util.Locale.ROOT);
+        if (normalized.startsWith(".")) normalized = normalized.substring(1);
+        return SAFE_AUDIO_FORMATS.contains(normalized) ? normalized : "mp3";
     }
 
     private List<MessageContentPart> saveAssistantMessage(String conversationId,

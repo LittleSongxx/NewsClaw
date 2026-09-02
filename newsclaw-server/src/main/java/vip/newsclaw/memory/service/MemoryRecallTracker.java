@@ -7,6 +7,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.workspace.document.model.WorkspaceFileEntity;
 import vip.newsclaw.workspace.document.repository.WorkspaceFileMapper;
+import vip.newsclaw.memory.identity.MemoryScope;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -44,15 +45,21 @@ public class MemoryRecallTracker {
      */
     @Async
     public void trackRecalls(Long agentId, String userQuery) {
+        trackRecalls(agentId, userQuery, null);
+    }
+
+    /** Track only shared rows plus the current owner's PERSONAL rows. */
+    @Async
+    public void trackRecalls(Long agentId, String userQuery, String ownerKey) {
         try {
-            // 精确复现 buildSystemPrompt 的注入条件
+            LambdaQueryWrapper<WorkspaceFileEntity> q = new LambdaQueryWrapper<WorkspaceFileEntity>()
+                    .eq(WorkspaceFileEntity::getAgentId, agentId)
+                    .eq(WorkspaceFileEntity::getEnabled, true)
+                    .isNotNull(WorkspaceFileEntity::getContent)
+                    .ne(WorkspaceFileEntity::getContent, "");
+            applyVisibility(q, ownerKey);
             List<WorkspaceFileEntity> injectedFiles = workspaceFileMapper.selectList(
-                    new LambdaQueryWrapper<WorkspaceFileEntity>()
-                            .eq(WorkspaceFileEntity::getAgentId, agentId)
-                            .eq(WorkspaceFileEntity::getEnabled, true)
-                            .isNotNull(WorkspaceFileEntity::getContent)
-                            .ne(WorkspaceFileEntity::getContent, "")
-                            .orderByAsc(WorkspaceFileEntity::getSortOrder));
+                    q.orderByAsc(WorkspaceFileEntity::getSortOrder));
 
             if (injectedFiles.isEmpty()) {
                 return;
@@ -62,19 +69,25 @@ public class MemoryRecallTracker {
             int trackedCount = 0;
 
             for (WorkspaceFileEntity file : injectedFiles) {
+                if (!isVisible(file, ownerKey)) {
+                    continue;
+                }
                 String content = file.getContent();
                 if (content == null || content.isBlank()) {
                     continue;
                 }
 
                 String filename = file.getFilename();
+                String scope = file.getScope() == null ? MemoryScope.TEAM : file.getScope();
+                String fileOwner = MemoryScope.PERSONAL.equals(scope) ? file.getOwnerKey() : null;
 
                 if (filename.startsWith("memory/") && filename.endsWith(".md")) {
                     // daily note: 按 ## 标题拆分为独立片段
-                    trackedCount += trackDailyNoteSnippets(agentId, filename, content, queryHash);
+                    trackedCount += trackDailyNoteSnippets(
+                            agentId, filename, content, queryHash, fileOwner, scope);
                 } else {
                     // 非 daily note (PROFILE.md, MEMORY.md 等): 文件级追踪
-                    recallService.recordRecall(agentId, filename, content, queryHash);
+                    recallService.recordRecall(agentId, filename, content, queryHash, fileOwner, scope);
                     trackedCount++;
                 }
             }
@@ -88,7 +101,8 @@ public class MemoryRecallTracker {
     /**
      * 将 daily note 按 ## 标题拆分为独立片段，分别追踪
      */
-    private int trackDailyNoteSnippets(Long agentId, String filename, String content, String queryHash) {
+    private int trackDailyNoteSnippets(Long agentId, String filename, String content, String queryHash,
+                                       String ownerKey, String scope) {
         Matcher matcher = SECTION_PATTERN.matcher(content);
         List<Integer> sectionStarts = new java.util.ArrayList<>();
         while (matcher.find()) {
@@ -97,7 +111,7 @@ public class MemoryRecallTracker {
 
         if (sectionStarts.isEmpty()) {
             // 没有 ## 标题，整个文件作为一个片段
-            recallService.recordRecall(agentId, filename, content.trim(), queryHash);
+            recallService.recordRecall(agentId, filename, content.trim(), queryHash, ownerKey, scope);
             return 1;
         }
 
@@ -106,7 +120,8 @@ public class MemoryRecallTracker {
         if (sectionStarts.get(0) > 0) {
             String preamble = content.substring(0, sectionStarts.get(0)).trim();
             if (!preamble.isEmpty()) {
-                recallService.recordRecall(agentId, filename + "#preamble", preamble, queryHash);
+                recallService.recordRecall(
+                        agentId, filename + "#preamble", preamble, queryHash, ownerKey, scope);
                 count++;
             }
         }
@@ -119,7 +134,7 @@ public class MemoryRecallTracker {
                 // 从 ## 标题行提取 section 标识
                 String firstLine = snippet.contains("\n") ? snippet.substring(0, snippet.indexOf('\n')).trim() : snippet;
                 String sectionKey = filename + "#" + sanitizeSectionKey(firstLine);
-                recallService.recordRecall(agentId, sectionKey, snippet, queryHash);
+                recallService.recordRecall(agentId, sectionKey, snippet, queryHash, ownerKey, scope);
                 count++;
             }
         }
@@ -149,15 +164,41 @@ public class MemoryRecallTracker {
      */
     @Async
     public void trackActiveRetrieval(Long agentId, String filename, String content) {
+        trackActiveRetrieval(agentId, filename, content, null, MemoryScope.TEAM);
+    }
+
+    @Async
+    public void trackActiveRetrieval(Long agentId, String filename, String content,
+                                     String ownerKey, String scope) {
         try {
             if (agentId == null || filename == null || content == null || content.isBlank()) {
                 return;
             }
-            recallService.recordRecall(agentId, filename, content, "__active_read__");
+            recallService.recordRecall(
+                    agentId, filename, content, "__active_read__", ownerKey, scope);
             log.debug("[MemoryRecall] Tracked active retrieval: agent={}, file={}", agentId, filename);
         } catch (Exception e) {
             log.warn("[MemoryRecall] Failed to track active retrieval for agent={}: {}", agentId, e.getMessage());
         }
+    }
+
+    private static void applyVisibility(LambdaQueryWrapper<WorkspaceFileEntity> q, String ownerKey) {
+        if (ownerKey == null || ownerKey.isBlank()) {
+            q.in(WorkspaceFileEntity::getScope, MemoryScope.TEAM, MemoryScope.GLOBAL);
+            return;
+        }
+        String owner = ownerKey.trim();
+        q.and(w -> w.in(WorkspaceFileEntity::getScope, MemoryScope.TEAM, MemoryScope.GLOBAL)
+                .or(p -> p.eq(WorkspaceFileEntity::getScope, MemoryScope.PERSONAL)
+                        .eq(WorkspaceFileEntity::getOwnerKey, owner)));
+    }
+
+    static boolean isVisible(WorkspaceFileEntity file, String ownerKey) {
+        if (file == null) return false;
+        String scope = file.getScope() == null ? MemoryScope.TEAM : file.getScope();
+        if (MemoryScope.isShared(scope)) return true;
+        return MemoryScope.PERSONAL.equals(scope) && ownerKey != null
+                && !ownerKey.isBlank() && ownerKey.trim().equals(file.getOwnerKey());
     }
 
     private String sha256Short(String text) {

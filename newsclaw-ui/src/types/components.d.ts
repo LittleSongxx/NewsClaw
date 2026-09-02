@@ -11,6 +11,8 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    ElAlert: typeof import('element-plus/es/components/alert/index')['ElAlert']
+    ElBadge: typeof import('element-plus/es/components/badge/index')['ElBadge']
     ElButton: typeof import('element-plus/es/components/button/index')['ElButton']
     ElConfigProvider: typeof import('element-plus/es/components/config-provider/index')['ElConfigProvider']
     ElDatePicker: typeof import('element-plus/es/components/date-picker/index')['ElDatePicker']
@@ -33,6 +35,7 @@ declare module 'vue' {
     ElRadioGroup: typeof import('element-plus/es/components/radio/index')['ElRadioGroup']
     ElSelect: typeof import('element-plus/es/components/select/index')['ElSelect']
     ElSkeleton: typeof import('element-plus/es/components/skeleton/index')['ElSkeleton']
+    ElSlider: typeof import('element-plus/es/components/slider/index')['ElSlider']
     ElTable: typeof import('element-plus/es/components/table/index')['ElTable']
     ElTableColumn: typeof import('element-plus/es/components/table/index')['ElTableColumn']
     ElTabPane: typeof import('element-plus/es/components/tabs/index')['ElTabPane']

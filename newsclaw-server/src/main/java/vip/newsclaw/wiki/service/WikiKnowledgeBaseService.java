@@ -15,12 +15,38 @@ import vip.newsclaw.wiki.model.WikiKnowledgeBaseEntity;
 import vip.newsclaw.wiki.model.WikiPageCitationEntity;
 import vip.newsclaw.wiki.model.WikiPageEntity;
 import vip.newsclaw.wiki.model.WikiRawMaterialEntity;
+import vip.newsclaw.wiki.model.WikiRelationEntity;
+import vip.newsclaw.wiki.model.WikiHotCacheEntity;
+import vip.newsclaw.wiki.model.WikiTransformationEntity;
+import vip.newsclaw.wiki.model.WikiTransformationRunEntity;
+import vip.newsclaw.wiki.model.WikiPageDependencyEntity;
+import vip.newsclaw.wiki.model.WikiPageTypeProfileEntity;
+import vip.newsclaw.wiki.model.WikiAgentPageTypePermissionEntity;
+import vip.newsclaw.wiki.model.WikiPipelineDefinitionEntity;
+import vip.newsclaw.wiki.model.WikiPipelineRunEntity;
+import vip.newsclaw.wiki.model.WikiPipelineStepRunEntity;
+import vip.newsclaw.wiki.model.WikiEntityEntity;
+import vip.newsclaw.wiki.model.WikiEntityMentionEntity;
+import vip.newsclaw.wiki.model.WikiEntityRelationEntity;
 import vip.newsclaw.wiki.repository.WikiChunkMapper;
 import vip.newsclaw.wiki.repository.WikiKnowledgeBaseMapper;
 import vip.newsclaw.wiki.repository.WikiPageCitationMapper;
 import vip.newsclaw.wiki.repository.WikiPageMapper;
 import vip.newsclaw.wiki.repository.WikiProcessingJobMapper;
 import vip.newsclaw.wiki.repository.WikiRawMaterialMapper;
+import vip.newsclaw.wiki.repository.WikiRelationMapper;
+import vip.newsclaw.wiki.repository.WikiHotCacheMapper;
+import vip.newsclaw.wiki.repository.WikiTransformationMapper;
+import vip.newsclaw.wiki.repository.WikiTransformationRunMapper;
+import vip.newsclaw.wiki.repository.WikiPageDependencyMapper;
+import vip.newsclaw.wiki.repository.WikiPageTypeProfileMapper;
+import vip.newsclaw.wiki.repository.WikiAgentPageTypePermissionMapper;
+import vip.newsclaw.wiki.repository.WikiPipelineDefinitionMapper;
+import vip.newsclaw.wiki.repository.WikiPipelineRunMapper;
+import vip.newsclaw.wiki.repository.WikiPipelineStepRunMapper;
+import vip.newsclaw.wiki.repository.WikiEntityMapper;
+import vip.newsclaw.wiki.repository.WikiEntityMentionMapper;
+import vip.newsclaw.wiki.repository.WikiEntityRelationMapper;
 
 import java.util.List;
 import java.util.Set;
@@ -62,6 +88,21 @@ public class WikiKnowledgeBaseService {
      */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private AgentWikiKbBindingMapper kbBindingMapper;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiRelationMapper relationMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiHotCacheMapper hotCacheMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiTransformationMapper transformationMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiTransformationRunMapper transformationRunMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiPageDependencyMapper dependencyMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiPageTypeProfileMapper profileMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiAgentPageTypePermissionMapper permissionMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiPipelineDefinitionMapper pipelineDefinitionMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiPipelineRunMapper pipelineRunMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiPipelineStepRunMapper pipelineStepRunMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiEntityMapper entityMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiEntityMentionMapper entityMentionMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private WikiEntityRelationMapper entityRelationMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private vip.newsclaw.wiki.WikiProperties wikiProperties;
 
     /**
      * Summary returned from cascade delete — used by callers (e.g. the
@@ -336,8 +377,23 @@ public class WikiKnowledgeBaseService {
         if (entity == null) {
             throw new IllegalArgumentException("Knowledge base not found: " + id);
         }
+        Long previous = entity.getEmbeddingModelId();
         entity.setEmbeddingModelId(embeddingModelId);
         kbMapper.updateById(entity);
+        if (!java.util.Objects.equals(previous, embeddingModelId)) {
+            chunkMapper.update(null,
+                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<WikiChunkEntity>()
+                            .eq(WikiChunkEntity::getKbId, id)
+                            .set(WikiChunkEntity::getEmbedding, null)
+                            .set(WikiChunkEntity::getEmbeddingModel, null)
+                            .set(WikiChunkEntity::getEmbeddingTextVersion, null));
+            pageMapper.update(null,
+                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<WikiPageEntity>()
+                            .eq(WikiPageEntity::getKbId, id)
+                            .set(WikiPageEntity::getEmbedding, null)
+                            .set(WikiPageEntity::getEmbeddingModel, null)
+                            .set(WikiPageEntity::getEmbeddingTextVersion, null));
+        }
     }
 
     @Transactional
@@ -437,6 +493,13 @@ public class WikiKnowledgeBaseService {
             throw new IllegalArgumentException("Knowledge base not found: " + id);
         }
 
+        List<String> managedUploadPaths = rawMapper.selectList(
+                new LambdaQueryWrapper<WikiRawMaterialEntity>()
+                        .select(WikiRawMaterialEntity::getSourcePath)
+                        .eq(WikiRawMaterialEntity::getKbId, id))
+                .stream().map(WikiRawMaterialEntity::getSourcePath)
+                .filter(java.util.Objects::nonNull).filter(p -> !p.isBlank()).toList();
+
         List<Long> pageIds = pageMapper.selectList(
                 new LambdaQueryWrapper<WikiPageEntity>()
                         .select(WikiPageEntity::getId)
@@ -448,6 +511,51 @@ public class WikiKnowledgeBaseService {
         int citationCount = pageIds.isEmpty() ? 0 : citationMapper.delete(
                 new LambdaQueryWrapper<WikiPageCitationEntity>()
                         .in(WikiPageCitationEntity::getPageId, pageIds));
+
+        if (relationMapper != null) relationMapper.delete(
+                new LambdaQueryWrapper<WikiRelationEntity>().eq(WikiRelationEntity::getKbId, id));
+        if (hotCacheMapper != null) hotCacheMapper.delete(
+                new LambdaQueryWrapper<WikiHotCacheEntity>().eq(WikiHotCacheEntity::getKbId, id));
+        if (transformationRunMapper != null) transformationRunMapper.delete(
+                new LambdaQueryWrapper<WikiTransformationRunEntity>().eq(WikiTransformationRunEntity::getKbId, id));
+        if (transformationMapper != null) transformationMapper.delete(
+                new LambdaQueryWrapper<WikiTransformationEntity>().eq(WikiTransformationEntity::getKbId, id));
+        if (dependencyMapper != null) dependencyMapper.delete(
+                new LambdaQueryWrapper<WikiPageDependencyEntity>().eq(WikiPageDependencyEntity::getKbId, id));
+        if (profileMapper != null) profileMapper.delete(
+                new LambdaQueryWrapper<WikiPageTypeProfileEntity>().eq(WikiPageTypeProfileEntity::getKbId, id));
+        if (permissionMapper != null) permissionMapper.delete(
+                new LambdaQueryWrapper<WikiAgentPageTypePermissionEntity>()
+                        .eq(WikiAgentPageTypePermissionEntity::getKbId, id));
+
+        if (pipelineRunMapper != null && pipelineStepRunMapper != null) {
+            List<Long> runIds = pipelineRunMapper.selectList(
+                    new LambdaQueryWrapper<WikiPipelineRunEntity>()
+                            .select(WikiPipelineRunEntity::getId)
+                            .eq(WikiPipelineRunEntity::getKbId, id))
+                    .stream().map(WikiPipelineRunEntity::getId).toList();
+            if (!runIds.isEmpty()) pipelineStepRunMapper.delete(
+                    new LambdaQueryWrapper<WikiPipelineStepRunEntity>()
+                            .in(WikiPipelineStepRunEntity::getRunId, runIds));
+            pipelineRunMapper.delete(
+                    new LambdaQueryWrapper<WikiPipelineRunEntity>().eq(WikiPipelineRunEntity::getKbId, id));
+        }
+        if (pipelineDefinitionMapper != null) pipelineDefinitionMapper.delete(
+                new LambdaQueryWrapper<WikiPipelineDefinitionEntity>()
+                        .eq(WikiPipelineDefinitionEntity::getKbId, id));
+
+        if (entityMentionMapper != null) entityMentionMapper.delete(
+                new LambdaQueryWrapper<WikiEntityMentionEntity>().eq(WikiEntityMentionEntity::getKbId, id));
+        if (entityRelationMapper != null) entityRelationMapper.delete(
+                new LambdaQueryWrapper<WikiEntityRelationEntity>().eq(WikiEntityRelationEntity::getKbId, id));
+        if (entityMapper != null) entityMapper.delete(
+                new LambdaQueryWrapper<WikiEntityEntity>().eq(WikiEntityEntity::getKbId, id));
+        if (kbBindingMapper != null) kbBindingMapper.delete(
+                new LambdaQueryWrapper<AgentWikiKbBinding>().eq(AgentWikiKbBinding::getKbId, id));
+        if (agentMapper != null) agentMapper.update(null,
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<AgentEntity>()
+                        .eq(AgentEntity::getPrimaryKbId, id)
+                        .set(AgentEntity::getPrimaryKbId, null));
 
         int pageCount = pageMapper.delete(
                 new LambdaQueryWrapper<WikiPageEntity>()
@@ -466,10 +574,35 @@ public class WikiKnowledgeBaseService {
                         .eq(WikiProcessingJobEntity::getKbId, id));
 
         kbMapper.deleteById(id);
+        deleteManagedUploadsAfterCommit(managedUploadPaths);
 
         log.info("[Wiki] Knowledge base cascade-deleted: id={}, name={}, raw={}, page={}, chunk={}, citation={}, job={}",
                 id, kb.getName(), rawCount, pageCount, chunkCount, citationCount, jobCount);
 
         return new CascadeDeleteResult(kb.getName(), rawCount, pageCount, chunkCount, citationCount, jobCount);
+    }
+
+    private void deleteManagedUploadsAfterCommit(List<String> paths) {
+        if (paths == null || paths.isEmpty() || wikiProperties == null) return;
+        Runnable cleanup = () -> {
+            java.nio.file.Path root = java.nio.file.Paths.get(wikiProperties.getUploadDir())
+                    .toAbsolutePath().normalize();
+            for (String sourcePath : paths) {
+                try {
+                    java.nio.file.Path target = java.nio.file.Paths.get(sourcePath).toAbsolutePath().normalize();
+                    if (target.startsWith(root)) java.nio.file.Files.deleteIfExists(target);
+                } catch (Exception e) {
+                    log.warn("[Wiki] Failed to delete KB upload {}: {}", sourcePath, e.getMessage());
+                }
+            }
+        };
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override public void afterCommit() { cleanup.run(); }
+                    });
+        } else {
+            cleanup.run();
+        }
     }
 }

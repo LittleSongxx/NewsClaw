@@ -7,6 +7,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.util.Map;
 
 /** Small bounded, read-only HTTP helper shared by source adapters. */
 final class NewsSourceHttpSupport {
@@ -27,6 +31,11 @@ final class NewsSourceHttpSupport {
      * the strict overload above.
      */
     static HttpResponse<byte[]> get(HttpClient client, URI uri, boolean allowPrivateNetwork) throws Exception {
+        return get(client, uri, allowPrivateNetwork, Map.of());
+    }
+
+    static HttpResponse<byte[]> get(HttpClient client, URI uri, boolean allowPrivateNetwork,
+                                    Map<String, String> requestHeaders) throws Exception {
         if (uri == null || !("http".equalsIgnoreCase(uri.getScheme())
                 || "https".equalsIgnoreCase(uri.getScheme()))
                 || uri.getHost() == null || uri.getHost().isBlank()) {
@@ -36,17 +45,49 @@ final class NewsSourceHttpSupport {
         // Reuse the platform SSRF guard so a provider cannot become a
         // backdoor into loopback, metadata or private network services.
         UrlSafetyChecker.check(uri.toString(), allowPrivateNetwork);
-        HttpRequest request = HttpRequest.newBuilder(uri)
+        HttpRequest.Builder request = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(20))
                 .header("Accept", "text/html, application/xml, application/rss+xml, application/atom+xml, application/json")
                 .header("User-Agent", "NewsClaw-NewsSource/1.0")
-                .GET()
-                .build();
-        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-        if (response.body() != null && response.body().length > MAX_BODY_BYTES) {
-            throw new IllegalArgumentException("source response exceeds " + MAX_BODY_BYTES + " bytes");
+                .GET();
+        if (requestHeaders != null) {
+            requestHeaders.forEach((name, value) -> {
+                if (name != null && !name.isBlank() && value != null && !value.isBlank()) {
+                    request.header(name, value);
+                }
+            });
         }
+        HttpResponse<byte[]> response = client.send(request.build(), responseInfo -> {
+            long declaredLength = responseInfo.headers()
+                    .firstValueAsLong("content-length").orElse(-1L);
+            if (declaredLength > MAX_BODY_BYTES) {
+                throw new IllegalArgumentException("source response exceeds " + MAX_BODY_BYTES + " bytes");
+            }
+            return HttpResponse.BodySubscribers.mapping(
+                    HttpResponse.BodySubscribers.ofInputStream(),
+                    NewsSourceHttpSupport::readBounded);
+        });
         return response;
+    }
+
+    /** Read chunked/unknown-length responses without allocating an unbounded body. */
+    private static byte[] readBounded(InputStream input) {
+        try (InputStream in = input; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int total = 0;
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                if (read > MAX_BODY_BYTES - total) {
+                    throw new IllegalArgumentException(
+                            "source response exceeds " + MAX_BODY_BYTES + " bytes");
+                }
+                out.write(buffer, 0, read);
+                total += read;
+            }
+            return out.toByteArray();
+        } catch (java.io.IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     static String text(HttpResponse<byte[]> response) {

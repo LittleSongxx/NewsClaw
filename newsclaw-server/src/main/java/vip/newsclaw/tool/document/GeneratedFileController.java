@@ -91,9 +91,18 @@ public class GeneratedFileController {
     private boolean canDownload(GeneratedFileCache.Entry entry, Long currentWorkspaceId, UserEntity user) {
         Long ownerWorkspaceId = entry.workspaceId();
         if (ownerWorkspaceId == null) {
-            return true;
+            // Legacy entries have no tenant boundary. Do not turn an exposed
+            // UUID into a cross-tenant read primitive; only a global admin may
+            // retrieve an ownerless artifact.
+            return "admin".equalsIgnoreCase(user.getRole());
         }
-        if (currentWorkspaceId == null || !ownerWorkspaceId.equals(currentWorkspaceId)) {
+        // Browser resource loads (img/link) cannot attach the custom workspace
+        // header. Derive the candidate workspace from the artifact, then still
+        // require membership below; an explicit mismatching header remains a
+        // hard deny.
+        Long effectiveWorkspaceId = currentWorkspaceId == null
+                ? ownerWorkspaceId : currentWorkspaceId;
+        if (!ownerWorkspaceId.equals(effectiveWorkspaceId)) {
             return false;
         }
         if ("admin".equalsIgnoreCase(user.getRole())) {

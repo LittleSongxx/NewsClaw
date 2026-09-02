@@ -4,7 +4,7 @@
       <div class="modal">
         <div class="modal-header">
           <h3>{{ t('auth.changePassword') }}</h3>
-          <button class="modal-close" @click="close">&times;</button>
+          <button v-if="!forced" class="modal-close" @click="close">&times;</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
@@ -57,7 +57,7 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="close">{{ t('common.cancel') }}</button>
+          <button v-if="!forced" class="btn-secondary" @click="close">{{ t('common.cancel') }}</button>
           <button class="btn-primary" :disabled="submitting" @click="handleSubmit">
             {{ submitting ? t('common.loading') : t('common.confirm') }}
           </button>
@@ -73,8 +73,11 @@ import { useI18n } from 'vue-i18n'
 import { mcToast } from '@/composables/useMcToast'
 import { authApi } from '@/api/index'
 
-const props = defineProps<{ visible: boolean }>()
-const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
+const props = withDefaults(defineProps<{ visible: boolean; forced?: boolean }>(), { forced: false })
+const emit = defineEmits<{
+  'update:visible': [value: boolean]
+  changed: []
+}>()
 
 const { t } = useI18n()
 const submitting = ref(false)
@@ -93,6 +96,7 @@ watch(() => props.visible, (open) => {
 })
 
 function close() {
+  if (props.forced) return
   emit('update:visible', false)
 }
 
@@ -110,7 +114,8 @@ async function handleSubmit() {
     const userId = localStorage.getItem('userId') || '1'
     await authApi.changePassword(userId, form.oldPassword, form.newPassword)
     mcToast.success(t('auth.passwordChanged'))
-    close()
+    emit('changed')
+    emit('update:visible', false)
   } catch (error: any) {
     mcToast.error(error?.msg || error?.message || t('auth.passwordChangeFailed'))
   } finally {

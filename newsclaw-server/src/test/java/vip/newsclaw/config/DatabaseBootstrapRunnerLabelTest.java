@@ -4,13 +4,23 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for {@link DatabaseBootstrapRunner#normalizeDatabaseLabel(String)}.
- * Verifies that raw JDBC product names — including version-suffixed ones from the
- * KingbaseES / PostgreSQL family — collapse to a clean, canonical label.
+ * Unit tests for the small, pure helpers on {@link DatabaseBootstrapRunner}.
+ * Verifies canonical database labels and the bootstrap password boundary.
  */
 class DatabaseBootstrapRunnerLabelTest {
+
+    @Test
+    @DisplayName("Bootstrap password stays within BCrypt's UTF-8 byte limit")
+    void bootstrapPasswordHonorsBcryptLimit() {
+        String base = "0123456789abcdef".repeat(4);
+        assertTrue(DatabaseBootstrapRunner.isUsableBootstrapPassword(base));
+        assertTrue(DatabaseBootstrapRunner.isUsableBootstrapPassword(base + "ABCDEFGH"));
+        assertFalse(DatabaseBootstrapRunner.isUsableBootstrapPassword(base + "ABCDEFGHI"));
+    }
 
     @Test
     @DisplayName("KingbaseES product name (with version noise) → '人大金仓'")

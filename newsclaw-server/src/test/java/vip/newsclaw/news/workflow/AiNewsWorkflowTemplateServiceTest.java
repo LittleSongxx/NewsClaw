@@ -44,8 +44,22 @@ class AiNewsWorkflowTemplateServiceTest {
         assertEquals("fan_out", steps.get(3).get("mode").get("type").asText());
         assertEquals("collect", steps.get(4).get("mode").get("type").asText());
         assertTrue(steps.get(0).get("promptTemplate").asText().contains("ai_news_event"));
+        assertTrue(steps.get(0).get("promptTemplate").asText().contains("ai_news_scan"));
+        assertTrue(steps.get(0).get("promptTemplate").asText().contains("ai_news_query"));
+        assertTrue(steps.get(0).get("promptTemplate").asText().contains("ai_news_review"));
+        assertTrue(steps.get(0).get("promptTemplate").asText().contains("inProgress"));
+        assertTrue(steps.get(0).get("promptTemplate").asText().contains("兼容 ai_news_event(action=discover)"));
+        assertTrue(steps.get(0).get("promptTemplate").asText().contains("capture_source"));
+        assertTrue(steps.get(0).get("promptTemplate").asText().contains("read_capture"));
+        assertTrue(steps.get(0).get("promptTemplate").asText().contains("windowStart/windowEnd"));
+        assertTrue(steps.get(0).get("promptTemplate").asText().contains("semanticRelation"));
+        assertTrue(steps.get(0).get("promptTemplate").asText().contains("串行完成"));
+        assertTrue(steps.get(0).get("promptTemplate").asText().contains("逐字复制成功响应"));
         assertTrue(steps.get(1).get("promptTemplate").asText()
                 .contains("ai_news_event(action=mark_verified"));
+        assertTrue(steps.get(1).get("promptTemplate").asText().contains("candidate-only"));
+        assertTrue(steps.get(1).get("promptTemplate").asText().contains("不要把 candidateId 当 eventId"));
+        assertTrue(steps.get(1).get("promptTemplate").asText().contains("由后端"));
         assertFalse(steps.get(1).get("promptTemplate").asText()
                 .contains("ai_news_event(action=verify)"));
         assertTrue(steps.get(5).get("mode").get("type").asText().equals("await_approval"));

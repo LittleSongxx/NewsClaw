@@ -113,6 +113,37 @@ class WorkflowRunnerIntegrationTest {
     }
 
     @Test
+    @DisplayName("News candidate-only verification is a hard terminal boundary.")
+    void candidateOnlyVerificationCannotReachDelivery() {
+        stubInvoker.reset();
+        stubInvoker.respond("verifier", "{\"status\":\"candidate-only\",\"candidateId\":17}");
+        stubInvoker.respond("delivery", "should-not-run");
+
+        WorkflowGraph graph = parser.parse("""
+                {
+                  "steps": [
+                    {"name":"verify","agentName":"verifier","mode":{"type":"sequential"},
+                     "promptTemplate":"verify","outputVar":"verification_result","outputContentType":"json"},
+                    {"name":"deliver","agentName":"delivery","mode":{"type":"sequential"},
+                     "promptTemplate":"deliver","outputVar":"sent","outputContentType":"text"}
+                  ]
+                }
+                """);
+
+        WorkflowRunResult result = runner.run(graph,
+                new WorkflowRunRequest(420L, 1L, 99L, "manual", Map.of()));
+
+        assertEquals("failed", result.state());
+        assertEquals(0, stubInvoker.invocationCount("delivery"));
+        List<WorkflowRunStepEntity> rows = stepMapper.selectList(
+                new LambdaQueryWrapper<WorkflowRunStepEntity>()
+                        .eq(WorkflowRunStepEntity::getRunId, result.runId()));
+        assertEquals(1, rows.size(), "delivery must not get a run-step row");
+        assertEquals("failed", rows.getFirst().getState());
+        assertTrue(rows.getFirst().getErrorMessage().contains("candidate-only"));
+    }
+
+    @Test
     @DisplayName("Fan-out group runs branches in parallel and the collect joins their outputs.")
     void fanOutThenCollectRunsBranchesAndJoins() {
         stubInvoker.reset();

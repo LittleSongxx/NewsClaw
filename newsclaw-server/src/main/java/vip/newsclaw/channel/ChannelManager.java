@@ -903,6 +903,38 @@ public class ChannelManager {
         }
     }
 
+    /** All active adapters of a type. Webhook routing must disambiguate the
+     * account instead of relying on ConcurrentHashMap iteration order. */
+    public List<ChannelAdapter> getAdaptersByType(String channelType) {
+        adapterLock.readLock().lock();
+        try {
+            List<ChannelAdapter> matches = new ArrayList<>();
+            activeAdapters.values().stream()
+                    .filter(a -> a.getChannelType().equals(channelType))
+                    .forEach(matches::add);
+            pluginChannels.values().stream()
+                    .filter(a -> a.getChannelType().equals(channelType))
+                    .forEach(matches::add);
+            return List.copyOf(matches);
+        } finally {
+            adapterLock.readLock().unlock();
+        }
+    }
+
+    /** Resolve a type only when exactly one active built-in channel in the
+     * requested workspace matches. Ambiguity is a failure, never a random send. */
+    public Optional<ChannelAdapter> getAdapterByTypeAndWorkspace(String channelType, long workspaceId) {
+        List<ChannelAdapter> matches = getAdaptersByType(channelType).stream()
+                .filter(AbstractChannelAdapter.class::isInstance)
+                .filter(adapter -> {
+                    ChannelEntity row = ((AbstractChannelAdapter) adapter).getChannelEntity();
+                    return row != null && row.getWorkspaceId() != null
+                            && row.getWorkspaceId() == workspaceId;
+                })
+                .toList();
+        return matches.size() == 1 ? Optional.of(matches.get(0)) : Optional.empty();
+    }
+
     /**
      * 获取所有运行中的渠道适配器（含插件渠道）
      */

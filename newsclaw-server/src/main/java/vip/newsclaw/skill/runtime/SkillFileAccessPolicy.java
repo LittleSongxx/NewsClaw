@@ -3,6 +3,8 @@ package vip.newsclaw.skill.runtime;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -42,12 +44,56 @@ public class SkillFileAccessPolicy {
             return null;
         }
 
-        // 解析为绝对路径
-        Path resolved = skillDir.resolve(normalized).normalize();
+        // Resolve against an absolute, normalized root.  Keeping the root in
+        // canonical form is important when a caller supplies a relative skill
+        // directory: a plain startsWith check on two relative paths is not a
+        // filesystem boundary check.
+        Path root = skillDir.toAbsolutePath().normalize();
+        Path resolved = root.resolve(normalized).normalize();
 
         // 确保解析后的路径仍在 skillDir 内
-        if (!resolved.startsWith(skillDir)) {
+        if (!resolved.startsWith(root)) {
             log.warn("Path escapes skill directory: {}", relativePath);
+            return null;
+        }
+
+        // A symlink inside references/scripts/templates can otherwise point
+        // anywhere on the host.  Check the nearest existing ancestor as well
+        // as an existing target, so both existing links and a symlinked parent
+        // for a new file are rejected.  Broken links are rejected too.
+        try {
+            if (Files.isSymbolicLink(resolved)) {
+                log.warn("Symlink target is not allowed: {}", relativePath);
+                return null;
+            }
+            Path realRoot = Files.exists(root) ? root.toRealPath() : root;
+            Path ancestor = resolved;
+            while (ancestor != null && !Files.exists(ancestor)) {
+                if (Files.isSymbolicLink(ancestor)) {
+                    log.warn("Symlink parent is not allowed: {}", relativePath);
+                    return null;
+                }
+                ancestor = ancestor.getParent();
+            }
+            if (ancestor != null) {
+                Path realAncestor = ancestor.toRealPath();
+                if (!realAncestor.startsWith(realRoot)) {
+                    log.warn("Path escapes skill directory through symlink: {}", relativePath);
+                    return null;
+                }
+                if (Files.exists(resolved)) {
+                    Path realResolved = resolved.toRealPath();
+                    if (!realResolved.startsWith(realRoot)) {
+                        log.warn("Path target escapes skill directory: {}", relativePath);
+                        return null;
+                    }
+                    // Returning the canonical target avoids handing a later
+                    // process a still-followable link.
+                    resolved = realResolved;
+                }
+            }
+        } catch (IOException e) {
+            log.warn("Unable to resolve skill path safely: {}", relativePath);
             return null;
         }
 
@@ -64,7 +110,7 @@ public class SkillFileAccessPolicy {
         }
 
         // 必须在 scripts/ 目录下
-        Path scriptsDir = skillDir.resolve("scripts");
+        Path scriptsDir = skillDir.toAbsolutePath().normalize().resolve("scripts").normalize();
         if (!resolved.startsWith(scriptsDir)) {
             log.warn("Script path must be under scripts/: {}", scriptPath);
             return null;

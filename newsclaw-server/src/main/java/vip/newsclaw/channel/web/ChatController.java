@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.annotation.PreDestroy;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -28,8 +29,13 @@ import vip.newsclaw.workspace.conversation.ConversationService;
 import vip.newsclaw.workspace.conversation.MessageMetadataJson;
 import vip.newsclaw.workspace.conversation.model.MessageContentPart;
 import vip.newsclaw.workspace.conversation.model.MessageEntity;
+import vip.newsclaw.workspace.conversation.model.ConversationEntity;
+import vip.newsclaw.workspace.core.service.WorkspaceService;
 import vip.newsclaw.llm.chatmodel.StructuredOutputFormat;
+import vip.newsclaw.llm.chatmodel.StructuredOutputSchema;
+import vip.newsclaw.news.contract.AiNewsDecisionContract;
 import vip.newsclaw.llm.chatmodel.ToolChoicePolicy;
+import vip.newsclaw.llm.chatmodel.ToolCandidatePolicy;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -37,6 +43,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.io.IOException;
 import reactor.core.Disposable;
+import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -68,12 +75,18 @@ public class ChatController {
     private final vip.newsclaw.memory.identity.MemoryOwnerResolver memoryOwnerResolver;
     private final vip.newsclaw.workspace.core.service.ChatUploadLocationResolver uploadLocationResolver;
     private final vip.newsclaw.tool.document.preview.OfficePreviewService officePreviewService;
+    private final WorkspaceService workspaceService;
 
     // Virtual thread per SSE task: matches the app-wide virtual-thread model
     // (spring.threads.virtual.enabled=true) and, unlike a cached platform-thread
     // pool, never reuses a thread across tasks, so no ThreadLocal state can leak
     // from one stream into another.
     private final ExecutorService sseExecutor = Executors.newVirtualThreadPerTaskExecutor();
+
+    @PreDestroy
+    void shutdownSseExecutor() {
+        sseExecutor.shutdownNow();
+    }
 
     /**
      * SSE 流式对话（支持断线重连）
@@ -88,10 +101,19 @@ public class ChatController {
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
             Authentication auth) {
 
-        String conversationId = request.getConversationId() != null ? request.getConversationId() : "default";
         // SSE 超时设为 10 分钟，覆盖 servlet 默认的 30s，避免长回答被中断
         // RFC-058 PR-1: Utf8SseEmitter 显式声明 charset=UTF-8，防止中文在 Windows 中文 Chrome / 部分代理处乱码
         SseEmitter emitter = new Utf8SseEmitter(10 * 60 * 1000L);
+        if (request == null) {
+            sendErrorDoneAndComplete(emitter, "请求体不能为空");
+            return emitter;
+        }
+        String conversationId = request.getConversationId() != null && !request.getConversationId().isBlank()
+                ? request.getConversationId().trim() : "default";
+        if (conversationId.length() > 128) {
+            sendErrorDoneAndComplete(emitter, "conversationId 过长");
+            return emitter;
+        }
 
         // Resolve the public base URL on THIS (request) thread. Every agent run
         // below is dispatched to sseExecutor / reactive callbacks that run off
@@ -100,14 +122,23 @@ public class ChatController {
         // tool-generated download links carry an absolute host on the streaming,
         // approval-replay, and queued-message paths alike.
         final String requestBaseUrl = resolveRequestBaseUrl();
+        if (auth == null || auth.getName() == null) {
+            sendErrorDoneAndComplete(emitter, "未登录，请先登录");
+            return emitter;
+        }
+        final String authenticatedUsername = auth.getName();
+        final Long requesterUserId = requesterUserIdOf(auth);
 
         // ---- 分支 A：断线重连 ----
         if (Boolean.TRUE.equals(request.getReconnect())) {
-            String reconnectUser = auth != null ? auth.getName() : "anonymous";
+            String reconnectUser = authenticatedUsername;
             log.info("SSE reconnect: conversationId={}, user={}", conversationId, reconnectUser);
 
             // 校验会话归属
-            if (!conversationService.isConversationOwner(conversationId, reconnectUser)) {
+            ConversationEntity reconnectConversation = conversationService.findByConversationId(conversationId);
+            if (!conversationService.isConversationOwner(conversationId, reconnectUser)
+                    || reconnectConversation == null
+                    || !hasWorkspaceAccess(auth, requesterUserId, reconnectConversation.getWorkspaceId())) {
                 try {
                     sendEvent(emitter, "error", Map.of("message", "无权访问该会话"));
                 } catch (IOException e) {
@@ -162,21 +193,43 @@ public class ChatController {
         // ---- 分支 B：正常请求 ----
         Long agentId = request.getAgentId();
         String requestMessage = request.getMessage() != null ? request.getMessage() : "";
-        if (auth == null) {
-            try {
-                sendEvent(emitter, "error", Map.of("message", "未登录，请先登录"));
-            } catch (IOException e) {
-                log.warn("SSE auth error send failed: {}", e.getMessage());
-            }
-            emitter.complete();
+        boolean regenerateRequest = Boolean.TRUE.equals(request.getRegenerate());
+        String username = authenticatedUsername;
+        final Long effectiveWorkspaceId = workspaceId != null ? workspaceId : 1L;
+        if (!hasWorkspaceAccess(auth, requesterUserId, effectiveWorkspaceId)) {
+            sendErrorDoneAndComplete(emitter, "无权访问该工作区");
             return emitter;
         }
-        String username = auth.getName();
+        if (request.getEndUserId() != null && !request.getEndUserId().isBlank()) {
+            sendErrorDoneAndComplete(emitter,
+                    "endUserId 暂不接受客户端自报；请使用服务端绑定的外部身份");
+            return emitter;
+        }
+        // Worker conversations are immutable evidence from the web UI. Check
+        // this before normal agent/message validation because worker replay
+        // requests intentionally carry neither field.
+        if (!conversationService.isUserMessageAllowed(conversationId)) {
+            sendErrorDoneAndComplete(emitter, "执行任务会话为只读，不能发送新消息");
+            return emitter;
+        }
+        if (!regenerateRequest && (agentId == null || requestMessage.isBlank())) {
+            sendErrorDoneAndComplete(emitter, agentId == null ? "agentId 不能为空" : "message 不能为空");
+            return emitter;
+        }
         final StructuredOutputFormat responseFormat;
+        final StructuredOutputSchema responseSchema;
         final ToolChoicePolicy toolChoice;
+        final ToolCandidatePolicy toolCandidates;
         try {
             responseFormat = StructuredOutputFormat.fromWire(request.getResponseFormat());
+            responseSchema = StructuredOutputSchema.fromWire(request.getResponseSchema());
             toolChoice = ToolChoicePolicy.fromWire(request.getToolChoice());
+            toolCandidates = ToolCandidatePolicy.fromWire(request.getToolCandidates());
+            if (responseSchema.isNamedSchema() && !responseFormat.requiresJsonObject()) {
+                throw new IllegalArgumentException(
+                        "a named responseSchema requires responseFormat=json_object");
+            }
+            validateStructuredContext(responseSchema, request);
         } catch (IllegalArgumentException e) {
             sendErrorDoneAndComplete(emitter, e.getMessage());
             return emitter;
@@ -187,7 +240,7 @@ public class ChatController {
         if (agentId != null) {
             AgentEntity agent = agentService.getAgent(agentId);
             if (agent != null && agent.getWorkspaceId() != null) {
-                long wsId = workspaceId != null ? workspaceId : 1L;
+                long wsId = effectiveWorkspaceId;
                 if (!agent.getWorkspaceId().equals(wsId)) {
                     log.warn("Chat workspace mismatch: agent {} belongs to workspace {}, request workspace {}",
                             agentId, agent.getWorkspaceId(), wsId);
@@ -203,11 +256,15 @@ public class ChatController {
             }
         }
 
-        // Worker conversations are immutable evidence from the web UI. Keep this
-        // guard at the user entry point so internal dispatch can still persist its
-        // user/assistant execution transcript through ConversationService.
-        if (!conversationService.isUserMessageAllowed(conversationId)) {
-            sendErrorDoneAndComplete(emitter, "执行任务会话为只读，不能发送新消息");
+        // A client may choose a new conversation id, but an existing id is a
+        // server-owned object: bind it to both its persisted workspace and owner
+        // before approval commands or any other early-return branch can touch it.
+        ConversationEntity existingConversation = conversationService.findByConversationId(conversationId);
+        if (existingConversation != null
+                && (!effectiveWorkspaceId.equals(existingConversation.getWorkspaceId() == null
+                ? 1L : existingConversation.getWorkspaceId())
+                || !conversationService.isConversationOwner(conversationId, username))) {
+            sendErrorDoneAndComplete(emitter, "无权操作该会话");
             return emitter;
         }
 
@@ -262,6 +319,15 @@ public class ChatController {
             streamTracker.register(conversationId);
             Long approvalAgentId = parseLongOrNull(pending.getAgentId());
             streamTracker.bindRunMeta(conversationId, approvalAgentId, username);
+            vip.newsclaw.agent.context.ChatOrigin approvalRunOrigin =
+                    approvalService.restoreChatOrigin(pending.getChatOrigin());
+            if (approvalRunOrigin == vip.newsclaw.agent.context.ChatOrigin.EMPTY) {
+                approvalRunOrigin = memoryOrigin(conversationId, username,
+                        requesterUserId, effectiveWorkspaceId);
+            }
+            approvalRunOrigin = approvalRunOrigin.withAgent(approvalAgentId)
+                    .withBaseUrl(requestBaseUrl);
+            streamTracker.bindRunOrigin(conversationId, approvalRunOrigin);
             registerEmitterCallbacks(emitter, conversationId);
             streamTracker.attach(conversationId, emitter);
             AtomicBoolean approvalEmitterDone = new AtomicBoolean(false);
@@ -329,11 +395,13 @@ public class ChatController {
                             approvalService.restoreChatOrigin(finalConsumed.getChatOrigin());
                     if (replayOrigin == vip.newsclaw.agent.context.ChatOrigin.EMPTY) {
                         replayOrigin = vip.newsclaw.agent.context.ChatOrigin.web(
-                                conversationId, username, workspaceId, null);
+                                conversationId, username, effectiveWorkspaceId, null);
                     }
                     // Carry the request-thread base URL so any file a replayed
                     // tool generates gets an absolute download link.
                     replayOrigin = replayOrigin.withBaseUrl(requestBaseUrl);
+                    replayOrigin = replayOrigin.withAgent(replayAgentId);
+                    streamTracker.bindRunOrigin(conversationId, replayOrigin);
                     Disposable disposable = agentService.chatWithReplayStream(
                             replayAgentId, replayPrompt, conversationId, finalConsumed.getToolCallPayload(), username, replayOrigin)
                             .doOnNext(delta -> {
@@ -567,6 +635,11 @@ public class ChatController {
         // ---- 正常请求：注册流状态并附着首个订阅者 ----
         streamTracker.register(conversationId);
         streamTracker.bindRunMeta(conversationId, agentId, username);
+        vip.newsclaw.agent.context.ChatOrigin initialRunOrigin =
+                memoryOrigin(conversationId, username, requesterUserId, effectiveWorkspaceId)
+                        .withBaseUrl(requestBaseUrl)
+                        .withAgent(agentId);
+        streamTracker.bindRunOrigin(conversationId, initialRunOrigin);
         registerEmitterCallbacks(emitter, conversationId);
         streamTracker.attach(conversationId, emitter);
 
@@ -578,7 +651,10 @@ public class ChatController {
             sendEvent(emitter, "stream_started", Map.of(
                     "conversationId", conversationId,
                     "responseFormat", responseFormat.wireValue(),
+                    "responseSchema", responseSchema.wireValue(),
                     "toolChoice", toolChoice.wireValue(),
+                    "toolCandidates", toolCandidates.names(),
+                    "toolCandidatesRestricted", toolCandidates.restricted(),
                     "timestamp", System.currentTimeMillis()
             ));
         } catch (IOException e) {
@@ -592,7 +668,8 @@ public class ChatController {
             AgentStreamAccumulator accumulator = newAccumulator();
             AtomicBoolean finalized = new AtomicBoolean(false);
             try {
-                conversationService.getOrCreateConversation(conversationId, agentId, username, workspaceId);
+                conversationService.getOrCreateConversation(
+                        conversationId, agentId, username, effectiveWorkspaceId);
                 // Pin the model the user picked for this conversation so later
                 // turns (and the runtime model resolver) honour it independently
                 // of every other conversation.
@@ -602,6 +679,9 @@ public class ChatController {
                         ? regenerateSeed.parts()
                         : normalizeRequestParts(request);
                 String promptText = buildPromptText(message, requestParts);
+                boolean legacyAiNewsDecisionRequired = responseFormat.requiresJsonObject()
+                        && responseSchema == StructuredOutputSchema.GENERIC
+                        && AiNewsDecisionContract.containsDecisionFieldSignature(promptText);
                 Long originMessageId;
                 if (regenerateSeed == null) {
                     // Regenerate reuses the already-persisted seed user row —
@@ -627,14 +707,12 @@ public class ChatController {
                 // tools that need a workspace path read it from the agent (origin
                 // is enriched with workspaceBasePath in StateGraph buildInitialState).
                 vip.newsclaw.agent.context.ChatOrigin webOrigin =
-                        memoryOrigin(conversationId, username, requesterUserIdOf(auth), workspaceId, request.getEndUserId())
-                                .withBaseUrl(requestBaseUrl)
-                                .withOriginMessageId(originMessageId);
-                Disposable disposable = (toolChoice.isAuto()
-                        ? agentService.chatStructuredStream(agentId, promptText, conversationId,
-                                username, request.getThinkingLevel(), responseFormat, webOrigin)
-                        : agentService.chatStructuredStream(agentId, promptText, conversationId,
-                                username, request.getThinkingLevel(), responseFormat, toolChoice, webOrigin))
+                        initialRunOrigin.withOriginMessageId(originMessageId);
+                streamTracker.bindRunOrigin(conversationId, webOrigin);
+                Flux<AgentService.StreamDelta> responseStream = agentService.chatStructuredStream(
+                        agentId, promptText, conversationId, username, request.getThinkingLevel(),
+                        responseFormat, toolChoice, responseSchema, toolCandidates, webOrigin);
+                Disposable disposable = responseStream
                         .doOnNext(delta -> {
                             if (emitterDone.get()) return;
                             try {
@@ -694,7 +772,10 @@ public class ChatController {
                             boolean isError = assistantText != null && assistantText.startsWith("[错误] ");
                             StructuredOutputContract.Validation outputContract = StructuredOutputContract.validate(
                                     responseFormat, assistantText,
-                                    !wasStopped && !isError && !accumulator.isAwaitingApproval());
+                                    !wasStopped && !isError && !accumulator.isAwaitingApproval(),
+                                    responseSchema, legacyAiNewsDecisionRequired,
+                                    request.getAllowedCitationIds(), request.getRequestedCitationId(),
+                                    request.getExpectedEvidenceIds());
                             if (responseFormat.requiresJsonObject()) {
                                 accumulator.recordStructuredOutputContract(outputContract.payload());
                                 broadcastEvent(conversationId, "structured_output", outputContract.payload());
@@ -1051,9 +1132,11 @@ public class ChatController {
     @Operation(summary = "停止流式生成")
     @PostMapping("/{conversationId}/stop")
     public R<Map<String, Object>> stopStream(@PathVariable String conversationId, Authentication auth) {
-        String username = auth != null ? auth.getName() : "anonymous";
-        // 权限校验：已认证用户需验证会话归属，匿名用户（permitAll）直接放行
-        if (auth != null && !conversationService.isConversationOwner(conversationId, username)) {
+        if (auth == null || auth.getName() == null) {
+            return R.fail(401, "未登录，请先登录");
+        }
+        String username = auth.getName();
+        if (!conversationService.isConversationOwner(conversationId, username)) {
             return R.fail(403, "无权操作该会话");
         }
         boolean stopped = streamTracker.requestStop(conversationId);
@@ -1100,8 +1183,14 @@ public class ChatController {
             @PathVariable String conversationId,
             @RequestBody InterruptRequest request,
             Authentication auth) {
-        String username = auth != null ? auth.getName() : "anonymous";
-        if (auth != null && !conversationService.isConversationOwner(conversationId, username)) {
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            return R.fail(401, "未登录，请先登录");
+        }
+        if (request == null) {
+            return R.fail(400, "请求体不能为空");
+        }
+        String username = auth.getName();
+        if (!conversationService.isConversationOwner(conversationId, username)) {
             return R.fail(403, "无权操作该会话");
         }
 
@@ -1110,7 +1199,9 @@ public class ChatController {
         }
 
         String message = request.getMessage();
-        Long agentId = request.getAgentId();
+        if (message == null || message.isBlank()) {
+            return R.fail(400, "message 不能为空");
+        }
         List<MessageContentPart> contentParts = request.getContentParts();
 
         // 判断当前阶段（仅用于 reason 字段，行为对所有阶段一致：仅入队）
@@ -1118,7 +1209,10 @@ public class ChatController {
 
         // 仅入队、不 dispose。延迟持久化到 startQueuedMessage（让 Asst-N 先在 doOnComplete 落库，
         // 否则 listMessages ORDER BY create_time ASC 会把 Q(N+1) 排到 Asst-N 前面）
-        boolean queued = streamTracker.enqueueMessage(conversationId, message, agentId, false, contentParts);
+        // The active run owns agent/workspace/end-user identity. A follow-up
+        // body may carry a stale or malicious agentId, but it cannot rebind
+        // the queued continuation.
+        boolean queued = streamTracker.enqueueMessage(conversationId, message, null, false, contentParts);
         log.info("Enqueued follow-up message during running turn: conversationId={}, user={}, queueSize={}, awaitingApproval={}",
                 conversationId, username, streamTracker.getQueueSize(conversationId), isAwaitingApproval);
 
@@ -1153,7 +1247,37 @@ public class ChatController {
         if (username == null) {
             return R.fail(401, "未登录，请先登录");
         }
-        conversationService.getOrCreateConversation(request.getConversationId(), agentId, username, workspaceId);
+        if (request == null || request.getMessage() == null || request.getMessage().isBlank()) {
+            return R.fail(400, "message 不能为空");
+        }
+        if (request.getConversationId() == null || request.getConversationId().isBlank()) {
+            request.setConversationId("default");
+        }
+        Long requesterUserId = requesterUserIdOf(auth);
+        Long effectiveWorkspaceId = workspaceId != null ? workspaceId : 1L;
+        if (!hasWorkspaceAccess(auth, requesterUserId, effectiveWorkspaceId)) {
+            return R.fail(403, "无权访问该工作区");
+        }
+        if (request.getEndUserId() != null && !request.getEndUserId().isBlank()) {
+            return R.fail(403, "endUserId 暂不接受客户端自报；请使用服务端绑定的外部身份");
+        }
+        AgentEntity agent = agentService.getAgent(agentId);
+        if (agent == null || !Boolean.TRUE.equals(agent.getEnabled())) {
+            return R.fail(404, "Agent 不存在或已禁用");
+        }
+        if (agent.getWorkspaceId() != null && !agent.getWorkspaceId().equals(effectiveWorkspaceId)) {
+            return R.fail(403, "Agent 不属于当前工作区");
+        }
+        ConversationEntity existingConversation = conversationService.findByConversationId(
+                request.getConversationId());
+        if (existingConversation != null
+                && (!effectiveWorkspaceId.equals(existingConversation.getWorkspaceId() == null
+                ? 1L : existingConversation.getWorkspaceId())
+                || !conversationService.isConversationOwner(request.getConversationId(), username))) {
+            return R.fail(403, "无权操作该会话");
+        }
+        conversationService.getOrCreateConversation(
+                request.getConversationId(), agentId, username, effectiveWorkspaceId);
         MessageEntity savedUser = conversationService.saveMessage(
                 request.getConversationId(), "user", request.getMessage(), request.getContentParts());
 
@@ -1161,8 +1285,8 @@ public class ChatController {
         // Carry the web origin so per-owner memory recall (read) and the
         // post-conversation memory write below agree on the same owner key.
         vip.newsclaw.agent.context.ChatOrigin webOrigin =
-                memoryOrigin(request.getConversationId(), username, requesterUserIdOf(auth), workspaceId,
-                        request.getEndUserId()).withOriginMessageId(
+                memoryOrigin(request.getConversationId(), username, requesterUserId,
+                        effectiveWorkspaceId).withOriginMessageId(
                                 savedUser == null ? null : savedUser.getId());
         AgentService.ChatResult result = agentService.chatWithUsage(agentId, promptText, request.getConversationId(), webOrigin);
         String response = result.content();
@@ -1179,20 +1303,29 @@ public class ChatController {
     public R<ChatUploadResponse> upload(
             @RequestParam String conversationId,
             @RequestPart("file") MultipartFile file,
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
             Authentication auth) throws IOException {
 
-        String username = auth != null ? auth.getName() : "anonymous";
-        // 校验会话归属（会话可能尚未创建，此时允许上传——后续 stream/chat 会创建并绑定用户）。
-        // 注意：会话尚不存在时，附件暂存到默认目录（resolveUploadRoot 查不到会话即回退）；
-        // 会话创建后读取走双重查找，仍能命中。
-        if (conversationService.conversationExists(conversationId)
-                && !conversationService.isConversationOwner(conversationId, username)) {
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            return R.fail(401, "未登录，请先登录");
+        }
+        if (conversationId == null || conversationId.isBlank()) {
+            return R.fail(400, "conversationId 不能为空");
+        }
+        if (file == null || file.isEmpty()) {
+            return R.fail(400, "上传文件不能为空");
+        }
+        String username = auth.getName();
+        long effectiveWorkspaceId = workspaceId == null || workspaceId <= 0 ? 1L : workspaceId;
+        // Atomically reserve a new client-generated conversation for this user;
+        // this preserves "attach before first message" while preventing another
+        // user from racing to claim the id and reading the uploaded file.
+        try {
+            conversationService.getOrCreateConversation(
+                    conversationId, null, username, effectiveWorkspaceId);
+        } catch (IllegalArgumentException e) {
             return R.fail(403, "无权操作该会话");
         }
-        if (file.isEmpty()) {
-            return R.fail("上传文件不能为空");
-        }
-
         String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "file";
         String safeFilename = Path.of(originalFilename).getFileName().toString().replaceAll("[^a-zA-Z0-9._-]", "_");
         String storedName = System.currentTimeMillis() + "_" + safeFilename;
@@ -1227,7 +1360,13 @@ public class ChatController {
             Authentication auth) throws IOException {
 
         // 校验当前用户拥有该会话
-        String username = auth != null ? auth.getName() : "anonymous";
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            return ResponseEntity.status(401).build();
+        }
+        if (conversationId == null || conversationId.isBlank() || storedName == null || storedName.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        String username = auth.getName();
         if (!conversationService.isConversationOwner(conversationId, username)) {
             return ResponseEntity.status(403).build();
         }
@@ -1267,7 +1406,13 @@ public class ChatController {
             Authentication auth) {
 
         // Same ownership gate as the raw file endpoint.
-        String username = auth != null ? auth.getName() : "anonymous";
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            return ResponseEntity.status(401).build();
+        }
+        if (conversationId == null || conversationId.isBlank() || storedName == null || storedName.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        String username = auth.getName();
         if (!conversationService.isConversationOwner(conversationId, username)) {
             return ResponseEntity.status(403).build();
         }
@@ -1311,25 +1456,16 @@ public class ChatController {
 
     /**
      * Build the {@link vip.newsclaw.agent.context.ChatOrigin} that drives per-owner
-     * memory isolation for a web request. When {@code endUserId} is supplied
-     * (third-party single-account integration) the origin is attributed to that
-     * external end-user ({@code api:<endUserId>}); otherwise to the logged-in
-     * NewsClaw user ({@code user:<username>}).
+     * memory isolation for an authenticated web request. Client-asserted external
+     * identities are rejected at the HTTP boundary until a server-side binding
+     * model exists, so this method always attributes memory to the logged-in user.
      */
     private vip.newsclaw.agent.context.ChatOrigin memoryOrigin(String conversationId, String username,
-                                                           Long requesterUserId, Long workspaceId,
-                                                           String endUserId) {
+                                                           Long requesterUserId, Long workspaceId) {
         // Resolve the public base URL here, on the request thread, so it can ride
         // the origin into async tool execution where no request is bound. Tools
         // then mint absolute download links without operator config.
         String baseUrl = resolveRequestBaseUrl();
-        if (endUserId != null && !endUserId.isBlank()) {
-            // Third-party single-account integration: the requester is an external
-            // end-user id, not a NewsClaw account — no requesterUserId to assert.
-            return vip.newsclaw.agent.context.ChatOrigin
-                    .web(conversationId, endUserId.trim(), workspaceId, null, baseUrl)
-                    .withSender(null, "api", null);
-        }
         // Authenticated web user: carry the immutable id so on-behalf-of identity
         // forwarding can assert "NewsClaw authenticated this user" (not an anon id).
         return vip.newsclaw.agent.context.ChatOrigin.web(conversationId, username, workspaceId, null, baseUrl, requesterUserId);
@@ -1343,7 +1479,15 @@ public class ChatController {
     private Long requesterUserIdOf(org.springframework.security.core.Authentication auth) {
         if (auth == null) return null;
         Object details = auth.getDetails();
-        return details instanceof Long id ? id : null;
+        return details instanceof Number id ? id.longValue() : null;
+    }
+
+    private boolean hasWorkspaceAccess(Authentication auth, Long userId, Long workspaceId) {
+        if (workspaceId == null || workspaceId <= 0 || auth == null) return false;
+        boolean globalAdmin = auth.getAuthorities() != null && auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        return globalAdmin || userId != null
+                && workspaceService.hasPermission(workspaceId, userId, "viewer");
     }
 
     /**
@@ -1366,11 +1510,9 @@ public class ChatController {
         private String conversationId = "default";
         private List<MessageContentPart> contentParts;
         /**
-         * Optional third-party end-user identifier. When a single NewsClaw
-         * account (e.g. one PAT) fronts many of an external system's users,
-         * pass that system's user id here so memory and recall are isolated
-         * per end-user. Kept as a string (never coerced to a number) to
-         * preserve precision of large external ids.
+         * Reserved third-party end-user identifier. Currently rejected unless a
+         * future server-side identity binding authorizes it; never trusted solely
+         * because a JWT/PAT caller supplied the string.
          */
         private String endUserId;
     }
@@ -1414,6 +1556,14 @@ public class ChatController {
         private String modelName;
         /** Optional strict terminal response contract: text (default) or json_object. */
         private String responseFormat;
+        /** Optional semantic JSON schema: generic, ai_news_decision_v1, or ai_news_evidence_relations_v2. */
+        private String responseSchema;
+        /** Exact citation ids present in the caller-supplied evidence packet. */
+        private List<String> allowedCitationIds;
+        /** Exact citation id requested by the task; never inferred from model output. */
+        private String requestedCitationId;
+        /** Required exact id set for ai_news_evidence_relations_v2. */
+        private List<String> expectedEvidenceIds;
         /**
          * Optional provider tool-selection contract: {@code auto} (default),
          * {@code none}, {@code required}, or {@code function:<exact-tool-name>}.
@@ -1422,9 +1572,13 @@ public class ChatController {
          */
         private String toolChoice;
         /**
-         * Optional third-party end-user identifier — see
-         * {@link ChatRequest#getEndUserId()}. Isolates memory per external
-         * end-user when one NewsClaw account fronts many of them.
+         * Optional provider-visible subset of this Agent's already-active
+         * tools. Null preserves the legacy full active set; [] exposes none.
+         */
+        private List<String> toolCandidates;
+        /**
+         * Reserved third-party end-user identifier — see
+         * {@link ChatRequest#getEndUserId()}. Currently fail-closed.
          */
         private String endUserId;
         /**
@@ -1433,6 +1587,37 @@ public class ChatController {
          * 重复插入 user 行。生成中的会话拒绝该请求。
          */
         private Boolean regenerate;
+    }
+
+    private static void validateStructuredContext(StructuredOutputSchema schema,
+                                                  ChatStreamRequest request) {
+        if (schema == null || request == null) return;
+        validateIdList(request.getAllowedCitationIds(), "allowedCitationIds", false);
+        if (schema.requiresAiNewsEvidenceRelations()) {
+            validateIdList(request.getExpectedEvidenceIds(), "expectedEvidenceIds", true);
+        }
+        String requested = request.getRequestedCitationId();
+        if (requested != null && (!requested.equals(requested.trim()) || requested.isBlank())) {
+            throw new IllegalArgumentException("requestedCitationId must be a trimmed nonblank id when supplied");
+        }
+    }
+
+    private static void validateIdList(List<String> ids, String name, boolean required) {
+        if (ids == null) {
+            if (required) throw new IllegalArgumentException(name + " is required for this responseSchema");
+            return;
+        }
+        if (required && ids.isEmpty()) {
+            throw new IllegalArgumentException(name + " must not be empty");
+        }
+        if (ids.size() > 100) throw new IllegalArgumentException(name + " supports at most 100 ids");
+        java.util.Set<String> unique = new java.util.LinkedHashSet<>();
+        for (String id : ids) {
+            if (id == null || id.isBlank() || !id.equals(id.trim())) {
+                throw new IllegalArgumentException(name + " must contain only trimmed nonblank ids");
+            }
+            if (!unique.add(id)) throw new IllegalArgumentException(name + " must not contain duplicates");
+        }
     }
 
     /**
@@ -1471,7 +1656,20 @@ public class ChatController {
         }
 
         String queuedMessage = preConsumedInput.message();
-        Long agentId = preConsumedInput.agentId() != null ? preConsumedInput.agentId() : 1L;
+        Long agentId = preConsumedInput.agentId();
+        if (agentId == null) {
+            log.error("Queued message has no bound agent; refusing to run: conversationId={}", conversationId);
+            if (!preConsumedInput.persisted() && preConsumedInput.message() != null
+                    && !preConsumedInput.message().isBlank()) {
+                conversationService.saveMessage(conversationId, "user", preConsumedInput.message(),
+                        preConsumedInput.contentParts(), "failed");
+            }
+            broadcastEvent(conversationId, "error", Map.of(
+                    "message", "排队消息缺少已绑定 Agent，未执行"));
+            conversationService.updateStreamStatus(conversationId, "idle");
+            completeEmitterQuietly(emitter, emitterDone);
+            return;
+        }
         log.info("Starting queued message: conversationId={}, agentId={}, message={}",
                 conversationId, agentId, queuedMessage.substring(0, Math.min(30, queuedMessage.length())));
 
@@ -1493,6 +1691,7 @@ public class ChatController {
 
         // 重新注册流状态
         streamTracker.register(conversationId);
+        streamTracker.bindRunMeta(conversationId, agentId, requesterId);
         streamTracker.attach(conversationId, emitter);
 
         // 启动新的流（复用现有 sseExecutor.execute 的逻辑模式）
@@ -1505,11 +1704,20 @@ public class ChatController {
         // RFC-063r §2.5: queued messages land in the same conversation; carry
         // a web-origin ChatOrigin so any cron job created during the queued
         // turn keeps a consistent (null-channel) binding.
-        vip.newsclaw.agent.context.ChatOrigin queuedOrigin =
-                vip.newsclaw.agent.context.ChatOrigin.web(conversationId, requesterId, null, null)
-                        .withBaseUrl(baseUrl)
-                        .withOriginMessageId(queuedOriginMessageId);
-        Disposable disposable = agentService.chatStructuredStream(agentId, queuedMessage, conversationId, requesterId, null, queuedOrigin)
+        vip.newsclaw.agent.context.ChatOrigin queuedOrigin = preConsumedInput.origin();
+        if (queuedOrigin == null || queuedOrigin == vip.newsclaw.agent.context.ChatOrigin.EMPTY) {
+            queuedOrigin = vip.newsclaw.agent.context.ChatOrigin.web(
+                    conversationId, requesterId, null, null, baseUrl);
+        }
+        queuedOrigin = queuedOrigin.withAgent(agentId)
+                .withConversationId(conversationId)
+                .withBaseUrl(queuedOrigin.baseUrl() != null ? queuedOrigin.baseUrl() : baseUrl)
+                .withOriginMessageId(queuedOriginMessageId);
+        streamTracker.bindRunOrigin(conversationId, queuedOrigin);
+        String queuedRequester = queuedOrigin.requesterId() == null
+                || queuedOrigin.requesterId().isBlank() ? requesterId : queuedOrigin.requesterId();
+        Disposable disposable = agentService.chatStructuredStream(agentId, queuedMessage,
+                        conversationId, queuedRequester, null, queuedOrigin)
                 .doOnNext(delta -> {
                     if (emitterDone.get()) return;
                     try {

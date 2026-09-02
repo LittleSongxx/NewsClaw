@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import vip.newsclaw.news.service.AiNewsEventService;
+import vip.newsclaw.news.service.AiNewsSourceCaptureService;
 import vip.newsclaw.news.service.OfficialSourceEvidenceCaptureService;
 import vip.newsclaw.news.source.NewsSourceHealth;
 import vip.newsclaw.news.source.NewsSourceProvenance;
@@ -48,6 +49,8 @@ class AiNewsEventToolSourceTest {
         JsonNode json = objectMapper.readTree(output);
 
         assertEquals("read_only_candidate_sources", json.path("mode").asText());
+        assertTrue(json.path("message").asText().contains("capture_source"));
+        assertTrue(json.path("message").asText().contains("captureId"));
         assertEquals("rss", json.at("/results/0/provenance/providerId").asText());
         assertEquals("official", json.at("/results/0/provenance/sourceTier").asText());
         assertEquals("https://openai.com/news/example", json.at("/results/0/provenance/canonicalUrl").asText());
@@ -112,10 +115,33 @@ class AiNewsEventToolSourceTest {
         assertEquals(0, searchCalls.get());
     }
 
+    @Test
+    void validCallSucceedsAfterInvalidParametersWithoutLeakingState() throws Exception {
+        AtomicInteger searchCalls = new AtomicInteger();
+        NewsSourceProvider provider = provider("rss", query -> {
+            searchCalls.incrementAndGet();
+            return List.of(result("rss", "https://openai.com/news/recovered"));
+        }, url -> Optional.empty());
+        AiNewsEventTool tool = tool(mock(AiNewsEventService.class),
+                mock(OfficialSourceEvidenceCaptureService.class),
+                new NewsSourceProviderRegistry(List.of(provider)));
+
+        String rejected = call(tool, "search_sources", null, "AI", "rss", null,
+                "not-a-number", "en", null);
+        String recovered = call(tool, "search_sources", null, "AI", "rss", null,
+                "2", "en", null);
+
+        assertTrue(rejected.startsWith("Error: sourceLimit must be an integer between 1 and 100"), rejected);
+        assertEquals("read_only_candidate_sources",
+                objectMapper.readTree(recovered).path("mode").asText());
+        assertEquals(1, searchCalls.get(), "the rejected call must not reach or poison the provider");
+    }
+
     private AiNewsEventTool tool(AiNewsEventService events,
                                  OfficialSourceEvidenceCaptureService capture,
                                  NewsSourceProviderRegistry registry) {
         AiNewsEventTool tool = new AiNewsEventTool(events, capture,
+                mock(AiNewsSourceCaptureService.class),
                 mock(ConversationService.class), objectMapper);
         tool.setSourceProviderRegistry(registry);
         return tool;
@@ -126,9 +152,10 @@ class AiNewsEventToolSourceTest {
                                String language, String since) {
         return tool.ai_news_event(
                 action, null, null, null, null, sourceUrl,
-                null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null,
                 query, providerIds, providerId, sourceLimit, language, since,
+                null, null, null, null,
                 null);
     }
 

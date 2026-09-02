@@ -11,7 +11,8 @@ NewsClaw 追踪全球与中国 AI 圈的时效性事件：模型与研究、具�
 它不是通用新闻问答。每个对外交付的选题都必须通过以下闭环：
 
 ```text
-发现候选 -> 事件去重 -> 官方证据 -> claims 核验/冲突门禁
+后端多源扫描 -> 候选/观测先落库 -> 合规抓取 -> 人工接受
+-> 显式提升为事件 -> claims 核验/冲突门禁
 -> Wiki 证据归档 -> Team Run 并行生产 -> 合规与人工审批
 -> 飞书通知 / 小红书素材包 -> 记忆与待审 Skill proposal
 ```
@@ -26,7 +27,7 @@ candidate -> researching -> verified | conflicted | rejected
 ```
 
 - 官方页面是事实主证据；媒体报道主要用于发现线索或补充背景。
-- 每个事件以 canonical URL 与 hash 去重，避免同一发布被多次生产。
+- URL 用于来源归并；同一页面的不同 atomic claim/quote 以独立证据包身份保存，不能互相覆盖。
 - claim 保存 URL、来源等级、引用片段、发布时间、置信度和冲突原因。
 - 缺少标题、canonical URL 或有效证据的事件不能标为 `verified`。
 - 冲突未解决时事件保持 `conflicted`，不能进入对外交付。
@@ -35,15 +36,16 @@ candidate -> researching -> verified | conflicted | rejected
 
 ## 结构化来源
 
-Agent 可通过 `ai_news_event` 的 `source_health`、`search_sources` 和
-`fetch_source` 使用已配置的 RSS、SearXNG 或官方 API adapter。搜索结果统一保留
-provider ID、来源等级、原始 URL、canonical URL、抓取时间、HTTP 状态和 retrieval
-method，便于复查发现路径。
+候选主线通过 `ai_news_scan` 启动后端扫描，通过 `ai_news_query` 分页读取候选和漏斗，
+通过 `ai_news_review` 记录已认证人工决定。已配置的 RSS、News Sitemap、SearXNG、
+搜索 provider 或官方 API adapter 会保留 provider、lane、原始/canonical URL、rank、
+抓取时间和失败原因，便于复查发现路径。
 
-这些操作是只读的候选资料入口：不会自动创建事件、不会自动把来源标为已核验，也不
-会触发任何发布。Agent 必须阅读材料后显式 `upsert`，记录被来源直接支持的 claim 和
-quote；随后仍受多源、冲突和 `verified` 门禁约束。它不是全网爬虫，未配置或不可用的
-provider 不代表不存在相关新闻。
+所有合法结果先成为 candidate/observation；抓取失败或时间未知不会使候选消失。只有
+`selected + HUMAN ACCEPTED + capture SUCCESS` 的同窗候选才能显式 promote 为
+`candidate/researching` 事件，promotion 不代表已核验或可发布。`ai_news_event` 旧链只保留
+给明确人工请求的兼容入口，定时任务不能回退使用。未配置或不可用的 provider 不代表
+不存在相关新闻。
 
 ## Team Run
 
@@ -57,8 +59,10 @@ provider 不代表不存在相关新闻。
 
 ## 飞书与定时雷达
 
-「每日 AI 动态雷达」在 `Asia/Shanghai` 的每天 `08:00` 运行，负责发现候选、
-初步去重与通知。它不会定时自动发布内容。
+「每日 AI 动态雷达」计划在 `Asia/Shanghai` 的每天 `08:00` 运行，负责发现候选、
+初步去重与通知。它默认不注册；只有 radar/candidate 两个开关、模型凭证和国内 IM
+通道同时就绪后才能由操作者启用。任一主线开关关闭时，seed、scheduler 和 runner 都会
+fail-closed，且不会定时回退旧 `ai_news_event`。它不会定时自动发布内容。
 
 飞书使用 WebSocket 长连接接收请求和展示阶段性进度。主动推送需要一个启用的飞书
 渠道和有效的最近会话目标；没有目标时，任务仍可完成，但投递会记录为失败或未投递。

@@ -83,6 +83,28 @@ class AcpSkillWrapperToolFactoryTest {
     }
 
     @Test
+    @DisplayName("workspace-scoped wrapper resolves and delegates only inside that workspace")
+    void workspaceScopedWrapperStaysInWorkspace() {
+        AcpEndpointEntity ep = new AcpEndpointEntity();
+        ep.setId(42L);
+        ep.setWorkspaceId(7L);
+        when(endpointService.findByName("codex", 7L)).thenReturn(ep);
+        SkillManifest manifest = SkillManifest.builder()
+                .name("codex-helper")
+                .acp(SkillManifest.AcpBinding.builder().endpoint("codex").build())
+                .build();
+        when(delegationService.prompt(eq("codex"), eq("hello"), isNull(), eq(7L)))
+                .thenReturn("DONE");
+
+        assertEquals(42L, factory.resolveEndpointId("codex", 7L));
+        String out = factory.buildWrappers(manifest, 7L).get(0).call("{\"prompt\":\"hello\"}");
+
+        assertTrue(out.contains("DONE"));
+        verify(endpointService).findByName("codex", 7L);
+        verify(delegationService).prompt("codex", "hello", null, 7L);
+    }
+
+    @Test
     @DisplayName("callback delegates to AcpDelegationService and prepends system_prefix")
     void callbackDelegates() {
         SkillManifest m = SkillManifest.builder()

@@ -12,6 +12,7 @@ import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.core.SimpleLock;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -26,6 +27,8 @@ import vip.newsclaw.cron.model.CronJobDTO;
 import vip.newsclaw.cron.model.CronJobEntity;
 import vip.newsclaw.cron.repository.CronJobMapper;
 import vip.newsclaw.exception.NewsClawException;
+import vip.newsclaw.config.EnvironmentConfig;
+import vip.newsclaw.news.service.AiNewsCandidatePipelineProperties;
 import vip.newsclaw.wiki.model.WikiKnowledgeBaseEntity;
 import vip.newsclaw.wiki.repository.WikiKnowledgeBaseMapper;
 
@@ -39,10 +42,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
@@ -86,6 +91,12 @@ public class CronJobService implements ApplicationRunner {
     private final ConcurrentHashMap<Long, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
     private final ReentrantLock schedulerLock = new ReentrantLock();
 
+    /** Used only as a last-mile guard for stale/legacy scheduled radar rows. */
+    @Autowired(required = false)
+    private AiNewsCandidatePipelineProperties candidatePipelineProperties;
+
+    private static final int MAX_CONCURRENT_CRON_RUNS = 8;
+
     /**
      * RFC-063r post-deploy fix: dedicated executor for the actual cron
      * execution work (LLM call + DB writes). The {@link #scheduler} thread
@@ -97,8 +108,16 @@ public class CronJobService implements ApplicationRunner {
      * <p>Virtual threads (JDK 21) are perfect for this workload — LLM HTTP
      * is I/O-bound, virtual threads scale to thousands at trivial cost.
      */
-    private final ExecutorService cronExecutor = Executors.newThreadPerTaskExecutor(
-            Thread.ofVirtual().name("cron-execute-", 0).factory());
+    private final ThreadPoolExecutor cronExecutor = new ThreadPoolExecutor(
+            MAX_CONCURRENT_CRON_RUNS, MAX_CONCURRENT_CRON_RUNS,
+            60L, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(128),
+            r -> {
+                Thread t = new Thread(r, "cron-execute");
+                t.setDaemon(true);
+                return t;
+            },
+            new ThreadPoolExecutor.AbortPolicy());
 
     /**
      * Issue #50: cap concurrent cron run executions so that hundreds of jobs
@@ -110,7 +129,6 @@ public class CronJobService implements ApplicationRunner {
      * this value well below the pool size so non-cron paths still get
      * connections.
      */
-    private static final int MAX_CONCURRENT_CRON_RUNS = 8;
     private final Semaphore cronConcurrencyLimiter = new Semaphore(MAX_CONCURRENT_CRON_RUNS);
 
     /**
@@ -127,7 +145,8 @@ public class CronJobService implements ApplicationRunner {
      * if its clock is slightly ahead. 30s gives every other node a chance
      * to see the lock as held even for instant-finishing jobs.
      */
-    private static final Duration LOCK_AT_MOST_FOR = Duration.ofMinutes(30);
+    private static final Duration LOCK_AT_MOST_FOR =
+            CronJobRunner.MAX_RUN_DURATION.plusMinutes(5);
     private static final Duration LOCK_AT_LEAST_FOR = Duration.ofSeconds(30);
 
     // ==================== 初始化与销毁 ====================
@@ -150,21 +169,25 @@ public class CronJobService implements ApplicationRunner {
         // workspace is A. Workspace isolation lives in the CRUD paths only.
         List<CronJobEntity> enabledJobs = cronJobMapper.selectList(
                 new LambdaQueryWrapper<CronJobEntity>()
-                        .eq(CronJobEntity::getEnabled, true));
+                        .eq(CronJobEntity::getEnabled, true)
+                        .eq(CronJobEntity::getDeleted, 0));
+        int registered = 0;
         for (CronJobEntity job : enabledJobs) {
             try {
+                if (isBlockedAiNewsRadar(job)) continue;
                 register(job);
+                registered++;
             } catch (Exception e) {
                 log.warn("[CronJob] Failed to register job {} on startup: {}", job.getId(), e.getMessage());
             }
         }
-        log.info("[CronJob] Scheduler initialized, {} jobs registered", enabledJobs.size());
+        log.info("[CronJob] Scheduler initialized, {} jobs registered", registered);
     }
 
     @PreDestroy
     public void destroy() {
         scheduler.shutdown();
-        cronExecutor.shutdown();
+        cronExecutor.shutdownNow();
     }
 
     // ==================== CRUD ====================
@@ -228,7 +251,7 @@ public class CronJobService implements ApplicationRunner {
     }
 
     public CronJobDTO create(CronJobDTO dto, Long workspaceId) {
-        validateDto(dto);
+        validateDto(dto, workspaceId);
         // toSpringCron 校验表达式合法性，结果复用于后续 calcNextRunTime 和 register
         String springCron = toSpringCron(dto.getCronExpression());
 
@@ -257,6 +280,11 @@ public class CronJobService implements ApplicationRunner {
         // still detects duplicates.
         if (entity.getAgentId() == null && "wiki_process".equals(entity.getTaskType())) {
             entity.setAgentId(0L);
+        }
+
+        if (Boolean.TRUE.equals(entity.getEnabled()) && isBlockedAiNewsRadar(entity)) {
+            throw new NewsClawException("err.cron.ai_news_radar_disabled",
+                    "AI 新闻雷达候选主线尚未启用，不能启用定时任务");
         }
 
         entity.setNextRunTime(calcNextRunTime(springCron, entity.getTimezone()));
@@ -321,7 +349,7 @@ public class CronJobService implements ApplicationRunner {
         if (existing == null) {
             throw new NewsClawException("err.cron.not_found", "定时任务不存在: " + id);
         }
-        validateDto(dto);
+        validateDto(dto, workspaceId);
         String springCron = toSpringCron(dto.getCronExpression());
 
         // Issue #50 review #6: excluding-self duplicate check. Without
@@ -340,6 +368,7 @@ public class CronJobService implements ApplicationRunner {
             }
         }
 
+        boolean managedRadar = isManagedAiNewsRadar(existing);
         existing.setName(dto.getName());
         existing.setCronExpression(dto.getCronExpression());
         existing.setTimezone(dto.getTimezone() != null ? dto.getTimezone() : "Asia/Shanghai");
@@ -351,7 +380,10 @@ public class CronJobService implements ApplicationRunner {
         }
         existing.setAgentId(newAgentIdForUpdate);
         existing.setTaskType(dto.getTaskType());
-        existing.setTriggerMessage(dto.getTriggerMessage());
+        // Preserve the inert managed marker across ordinary edit-form saves;
+        // it is metadata, not part of the agent-facing request for agent jobs.
+        existing.setTriggerMessage(managedRadar
+                ? EnvironmentConfig.AI_NEWS_DAILY_RADAR_MARKER : dto.getTriggerMessage());
         existing.setRequestBody(dto.getRequestBody());
         // The edit form always submits the full delivery binding (channel +
         // target + suppress flag), so the request is authoritative for both
@@ -362,6 +394,10 @@ public class CronJobService implements ApplicationRunner {
         existing.setDeliveryConfig(dto.getDeliveryConfig());
         if (dto.getEnabled() != null) {
             existing.setEnabled(dto.getEnabled());
+        }
+        if (Boolean.TRUE.equals(existing.getEnabled()) && isBlockedAiNewsRadar(existing)) {
+            throw new NewsClawException("err.cron.ai_news_radar_disabled",
+                    "AI 新闻雷达候选主线尚未启用，不能启用定时任务");
         }
         existing.setNextRunTime(calcNextRunTime(springCron, existing.getTimezone()));
 
@@ -409,6 +445,10 @@ public class CronJobService implements ApplicationRunner {
         if (entity == null) {
             throw new NewsClawException("err.cron.not_found", "定时任务不存在: " + id);
         }
+        if (Boolean.TRUE.equals(enabled) && isBlockedAiNewsRadar(entity)) {
+            throw new NewsClawException("err.cron.ai_news_radar_disabled",
+                    "AI 新闻雷达候选主线尚未启用，不能启用定时任务");
+        }
         entity.setEnabled(enabled);
 
         // 先更新 DB，再同步调度器；避免调度器已注册但 DB 未持久化的不一致状态
@@ -442,7 +482,11 @@ public class CronJobService implements ApplicationRunner {
         // CronJobLifecycleService work as advertised. "manual" trigger type
         // distinguishes this from scheduler-driven runs in mate_cron_job_run.
         // Run on the virtual-thread cronExecutor — never block the scheduler.
-        cronExecutor.submit(() -> runWithBackpressure(entity, "manual"));
+        try {
+            cronExecutor.submit(() -> runWithBackpressure(entity, "manual"));
+        } catch (RejectedExecutionException busy) {
+            throw new NewsClawException("err.cron.executor_busy", "定时任务执行队列已满，请稍后重试");
+        }
     }
 
     // ==================== 调度器管理 ====================
@@ -451,6 +495,10 @@ public class CronJobService implements ApplicationRunner {
         schedulerLock.lock();
         try {
             cancel(job.getId());
+            if (isBlockedAiNewsRadar(job)) {
+                log.info("[CronJob] leaving scheduled AI-news radar unregistered while candidate pipeline is disabled");
+                return;
+            }
             String springCron = toSpringCron(job.getCronExpression());
             ZoneId zoneId = ZoneId.of(job.getTimezone());
             CronTrigger trigger = new CronTrigger(springCron, zoneId);
@@ -472,6 +520,24 @@ public class CronJobService implements ApplicationRunner {
         } finally {
             schedulerLock.unlock();
         }
+    }
+
+    private boolean isBlockedAiNewsRadar(CronJobEntity job) {
+        return job != null
+                && isManagedAiNewsRadar(job)
+                && (!EnvironmentConfig.aiNewsRadarEnabled()
+                || !candidatePipelineEnabled());
+    }
+
+    private boolean isManagedAiNewsRadar(CronJobEntity job) {
+        return job != null && (EnvironmentConfig.isLegacyAiNewsRadarName(job.getName())
+                || EnvironmentConfig.AI_NEWS_DAILY_RADAR_MARKER.equals(job.getTriggerMessage()));
+    }
+
+    private boolean candidatePipelineEnabled() {
+        return candidatePipelineProperties != null
+                ? candidatePipelineProperties.isEnabled()
+                : EnvironmentConfig.aiNewsCandidatePipelineEnabled();
     }
 
     private void cancel(Long jobId) {
@@ -497,6 +563,14 @@ public class CronJobService implements ApplicationRunner {
      * without booting the full Spring context.
      */
     void tickWithDistributedLock(CronJobEntity job) {
+        if (job == null || job.getId() == null) {
+            log.warn("[CronJob] skipped tick without a persistent job id");
+            return;
+        }
+        if (isBlockedAiNewsRadar(job)) {
+            log.info("[CronJob] skipped blocked AI-news radar tick for job {}", job.getId());
+            return;
+        }
         Long jobId = job.getId();
         Optional<SimpleLock> maybeLock = lockProvider.lock(new LockConfiguration(
                 Instant.now(),
@@ -508,19 +582,37 @@ public class CronJobService implements ApplicationRunner {
             return;
         }
         SimpleLock lock = maybeLock.get();
-        cronExecutor.submit(() -> {
-            try {
-                runWithBackpressure(job, "scheduled");
-            } finally {
+        try {
+            cronExecutor.submit(() -> {
                 try {
-                    lock.unlock();
-                } catch (Exception unlockEx) {
-                    // Lock will expire after LOCK_AT_MOST_FOR anyway; log + continue
-                    // so a transient unlock failure doesn't taint the cron worker.
-                    log.warn("[CronJob] {} lock release failed: {}", jobId, unlockEx.getMessage());
+                    // The scheduled lambda captures a registration snapshot.  A
+                    // disable/delete/update may have committed after that lambda
+                    // was queued, so reload the authoritative row after taking
+                    // the distributed lock and again inside the worker.
+                    CronJobEntity current = reloadActiveScheduledJob(job);
+                    if (current == null) {
+                        log.info("[CronJob] skipped stale tick for job {}", job.getId());
+                        return;
+                    }
+                    runWithBackpressure(current, "scheduled");
+                } finally {
+                    releaseLock(lock, jobId);
                 }
-            }
-        });
+            });
+        } catch (RejectedExecutionException rejected) {
+            releaseLock(lock, jobId);
+            log.info("[CronJob] {} tick rejected during executor shutdown", jobId);
+        }
+    }
+
+    private void releaseLock(SimpleLock lock, Long jobId) {
+        try {
+            lock.unlock();
+        } catch (Exception unlockEx) {
+            // Lock will expire after LOCK_AT_MOST_FOR anyway; log + continue
+            // so a transient unlock failure doesn't taint the cron worker.
+            log.warn("[CronJob] {} lock release failed: {}", jobId, unlockEx.getMessage());
+        }
     }
 
     // ==================== 任务执行 ====================
@@ -549,6 +641,24 @@ public class CronJobService implements ApplicationRunner {
      * still pile up after the executor "finishes".
      */
     private void runWithBackpressure(CronJobEntity job, String triggerType) {
+        if (job == null || job.getId() == null) return;
+        boolean scheduled = !"manual".equalsIgnoreCase(triggerType);
+        if (scheduled && isBlockedAiNewsRadar(job)) {
+            log.info("[CronJob] skipped blocked AI-news radar execution for job {}", job.getId());
+            return;
+        }
+        if (scheduled) {
+            CronJobEntity current = reloadActiveScheduledJob(job);
+            if (current == null) {
+                log.info("[CronJob] skipped stale scheduled execution for job {}", job.getId());
+                return;
+            }
+            job = current;
+            if (isBlockedAiNewsRadar(job)) {
+                log.info("[CronJob] skipped blocked AI-news radar execution for job {}", job.getId());
+                return;
+            }
+        }
         try {
             cronConcurrencyLimiter.acquire();
         } catch (InterruptedException ie) {
@@ -558,30 +668,61 @@ public class CronJobService implements ApplicationRunner {
             return;
         }
         try {
-            cronJobRunner.executeJob(job, triggerType);
-        } finally {
-            try {
-                updateRunTimes(job.getId(), job.getCronExpression(), job.getTimezone());
-            } finally {
-                cronConcurrencyLimiter.release();
+            // A permit can be queued for a long time. Re-read after acquiring
+            // it so a disable/delete committed while waiting cannot run once
+            // more from the earlier snapshot.
+            if (scheduled) {
+                CronJobEntity current = reloadActiveScheduledJob(job);
+                if (current == null) {
+                    log.info("[CronJob] skipped stale queued execution for job {}", job.getId());
+                    return;
+                }
+                job = current;
+                if (isBlockedAiNewsRadar(job)) {
+                    log.info("[CronJob] skipped blocked queued AI-news radar for job {}", job.getId());
+                    return;
+                }
             }
+            try {
+                cronJobRunner.executeJob(job, triggerType);
+            } finally {
+                if (!scheduled || !isBlockedAiNewsRadar(job)) {
+                    updateRunTimes(job.getId(), job.getCronExpression(), job.getTimezone(), scheduled);
+                }
+            }
+        } finally {
+            cronConcurrencyLimiter.release();
         }
     }
 
     /**
      * 合并更新 lastRunTime 和 nextRunTime，单次 DB 写入替代原来的 4 次 selectById + updateById
      */
-    private void updateRunTimes(Long jobId, String cronExpression, String timezone) {
+    private void updateRunTimes(Long jobId, String cronExpression, String timezone,
+                                boolean requireEnabled) {
         try {
             String springCron = toSpringCron(cronExpression);
             LocalDateTime nextRun = calcNextRunTime(springCron, timezone);
             cronJobMapper.update(null, new LambdaUpdateWrapper<CronJobEntity>()
                     .eq(CronJobEntity::getId, jobId)
+                    .eq(requireEnabled, CronJobEntity::getEnabled, true)
+                    .eq(CronJobEntity::getDeleted, 0)
                     .set(CronJobEntity::getLastRunTime, LocalDateTime.now())
                     .set(CronJobEntity::getNextRunTime, nextRun));
         } catch (Exception e) {
             log.warn("[CronJob] Failed to update run times for job {}: {}", jobId, e.getMessage());
         }
+    }
+
+    private CronJobEntity reloadActiveScheduledJob(CronJobEntity snapshot) {
+        if (snapshot == null || snapshot.getId() == null) return null;
+        CronJobEntity current = snapshot.getWorkspaceId() == null
+                ? cronJobMapper.selectById(snapshot.getId())
+                : cronJobMapper.selectByIdAndWorkspace(snapshot.getId(), snapshot.getWorkspaceId());
+        return current != null && Boolean.TRUE.equals(current.getEnabled())
+                && Integer.valueOf(0).equals(current.getDeleted())
+                && Objects.equals(snapshot.getCronExpression(), current.getCronExpression())
+                && Objects.equals(snapshot.getTimezone(), current.getTimezone()) ? current : null;
     }
 
     // ==================== Cron 工具方法 ====================
@@ -673,7 +814,7 @@ public class CronJobService implements ApplicationRunner {
 
     // ==================== 校验 ====================
 
-    private void validateDto(CronJobDTO dto) {
+    private void validateDto(CronJobDTO dto, Long workspaceId) {
         if (dto.getName() == null || dto.getName().isBlank()) {
             throw new NewsClawException("err.cron.name_required", "任务名称不能为空");
         }
@@ -695,7 +836,21 @@ public class CronJobService implements ApplicationRunner {
             throw new NewsClawException("err.cron.target_required", "执行目标不能为空");
         }
         if ("wiki_process".equals(taskType)) {
-            validateWikiProcessPayload(dto.getRequestBody());
+            validateWikiProcessPayload(dto.getRequestBody(), workspaceId);
+        } else {
+            AgentEntity agent = agentMapper.selectById(dto.getAgentId());
+            if (agent == null || workspaceId == null || !workspaceId.equals(agent.getWorkspaceId())) {
+                throw new NewsClawException("err.cron.agent_wrong_workspace",
+                        "关联 Agent 不属于当前工作区: " + dto.getAgentId());
+            }
+        }
+        if (dto.getChannelId() != null) {
+            ChannelEntity channel = channelMapper.selectById(dto.getChannelId());
+            if (channel == null || workspaceId == null
+                    || !workspaceId.equals(channel.getWorkspaceId())) {
+                throw new NewsClawException("err.cron.channel_wrong_workspace",
+                        "投递渠道不属于当前工作区: " + dto.getChannelId());
+            }
         }
     }
 
@@ -706,7 +861,7 @@ public class CronJobService implements ApplicationRunner {
      * precision contract — the UI may serialize the id as a string to avoid
      * losing the trailing digits in JS Number.
      */
-    private void validateWikiProcessPayload(String requestBody) {
+    private void validateWikiProcessPayload(String requestBody, Long workspaceId) {
         if (requestBody == null || requestBody.isBlank()) {
             throw new NewsClawException("err.cron.wiki_kb_required", "请选择知识库");
         }
@@ -738,7 +893,7 @@ public class CronJobService implements ApplicationRunner {
             throw new NewsClawException("err.cron.wiki_kb_invalid", "知识库参数解析失败");
         }
         WikiKnowledgeBaseEntity kb = wikiKnowledgeBaseMapper.selectById(kbId);
-        if (kb == null) {
+        if (kb == null || workspaceId == null || !workspaceId.equals(kb.getWorkspaceId())) {
             throw new NewsClawException("err.cron.wiki_kb_not_found", "知识库不存在");
         }
     }

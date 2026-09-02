@@ -1,11 +1,16 @@
 package vip.newsclaw.trigger.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vip.newsclaw.config.EnvironmentConfig;
+import vip.newsclaw.news.service.AiNewsCandidatePipelineProperties;
 import vip.newsclaw.trigger.model.TriggerEntity;
 import vip.newsclaw.trigger.repository.TriggerMapper;
 import vip.newsclaw.trigger.scheduler.TriggerScheduler;
@@ -43,13 +48,17 @@ public class TriggerService {
 
     private final TriggerMapper triggerMapper;
     private final TriggerScheduler scheduler;
+    private final ObjectMapper objectMapper;
     /** Optional — only present in production. Tests can null it out via constructor. */
     @Autowired(required = false)
     private WorkflowMapper workflowMapper;
+    @Autowired(required = false)
+    private AiNewsCandidatePipelineProperties candidatePipelineProperties;
 
     public List<TriggerEntity> listByWorkspace(long workspaceId) {
         return triggerMapper.selectList(new LambdaQueryWrapper<TriggerEntity>()
                 .eq(TriggerEntity::getWorkspaceId, workspaceId)
+                .eq(TriggerEntity::getDeleted, 0)
                 .orderByDesc(TriggerEntity::getCreateTime));
     }
 
@@ -61,7 +70,8 @@ public class TriggerService {
      */
     public TriggerEntity get(long id, long workspaceId) {
         TriggerEntity row = triggerMapper.selectById(id);
-        if (row == null || row.getWorkspaceId() == null || row.getWorkspaceId() != workspaceId) {
+        if (row == null || !Integer.valueOf(0).equals(row.getDeleted())
+                || row.getWorkspaceId() == null || row.getWorkspaceId() != workspaceId) {
             return null;
         }
         return row;
@@ -71,7 +81,8 @@ public class TriggerService {
      *  already know they hold a trusted id (scheduler, ingest). New callers must
      *  use {@link #get(long, long)}. */
     public TriggerEntity get(long id) {
-        return triggerMapper.selectById(id);
+        TriggerEntity row = triggerMapper.selectById(id);
+        return row != null && Integer.valueOf(0).equals(row.getDeleted()) ? row : null;
     }
 
     @Transactional
@@ -83,6 +94,8 @@ public class TriggerService {
         validatePatternAndTargetShape(trigger);
         validateTargetOwnership(trigger, workspaceId);
         ensureDefaults(trigger);
+        addManagedDailyRadarMarker(trigger);
+        validateManagedDailyRadar(trigger);
         trigger.setPatternVersion(1L);
         trigger.setFireCount(0L);
         triggerMapper.insert(trigger);
@@ -105,6 +118,8 @@ public class TriggerService {
         }
         validatePatternAndTargetShape(trigger);
         ensureDefaults(trigger);
+        addManagedDailyRadarMarker(trigger);
+        validateManagedDailyRadar(trigger);
         trigger.setPatternVersion(1L);
         trigger.setFireCount(0L);
         triggerMapper.insert(trigger);
@@ -123,7 +138,7 @@ public class TriggerService {
         // Force the canonical id + workspace; reject any body-side override.
         updated.setId(id);
         updated.setWorkspaceId(workspaceId);
-        validatePatternAndTargetShape(updated);
+        updated.setDeleted(0);
         validateTargetOwnership(updated, workspaceId);
         return updateInternal(existing, updated);
     }
@@ -140,6 +155,16 @@ public class TriggerService {
     }
 
     private TriggerEntity updateInternal(TriggerEntity existing, TriggerEntity updated) {
+        if (!Integer.valueOf(0).equals(existing.getDeleted())) {
+            throw new IllegalArgumentException("trigger is deleted: " + existing.getId());
+        }
+        // The trigger API is not a tombstone writer; never let a body-side
+        // deleted value reach persistence or scheduler registration.
+        updated.setDeleted(0);
+        preserveManagedDailyRadar(existing, updated);
+        addManagedDailyRadarMarker(updated);
+        validatePatternAndTargetShape(updated);
+        validateManagedDailyRadar(updated);
         // Bump pattern_version whenever ANY field that changes the
         // schedule's behavior, payload rendering, or rate decisions
         // changes. This is the lamport other instances rely on at fire
@@ -167,6 +192,8 @@ public class TriggerService {
         // Preserve fireCount / lastFiredAt / lastError — those are scheduler / ingest owned.
         updated.setFireCount(existing.getFireCount());
         updated.setLastFiredAt(existing.getLastFiredAt());
+        updated.setLastError(existing.getLastError());
+        updated.setLastDispatchedAt(existing.getLastDispatchedAt());
 
         triggerMapper.updateById(updated);
 
@@ -236,10 +263,79 @@ public class TriggerService {
     }
 
     private static void ensureDefaults(TriggerEntity t) {
+        t.setDeleted(0);
         if (t.getRateLimitPerMin() == null) t.setRateLimitPerMin(60);
         if (t.getDedupWindowSecs() == null) t.setDedupWindowSecs(60);
         if (t.getBotSelfFilter() == null) t.setBotSelfFilter(true);
         if (t.getEnabled() == null) t.setEnabled(true);
         if (t.getMaxFires() == null) t.setMaxFires(0L);
+    }
+
+    private void preserveManagedDailyRadar(TriggerEntity existing, TriggerEntity updated) {
+        if (!isManagedDailyRadar(existing)) return;
+        updated.setPatternJson(withManagedDailyRadarMarker(updated.getPatternJson()));
+    }
+
+    private void addManagedDailyRadarMarker(TriggerEntity trigger) {
+        if (isManagedDailyRadar(trigger)) {
+            trigger.setPatternJson(withManagedDailyRadarMarker(trigger.getPatternJson()));
+        }
+    }
+
+    private void validateManagedDailyRadar(TriggerEntity trigger) {
+        if (!isManagedDailyRadar(trigger)) return;
+        if (!"cron".equalsIgnoreCase(trigger.getPatternType())) {
+            throw new IllegalArgumentException("managed AI-news radar must remain a cron trigger");
+        }
+        try {
+            if (objectMapper.readTree(trigger.getPatternJson()).path("cron").asText("").isBlank()) {
+                throw new IllegalArgumentException("managed AI-news radar requires patternJson.cron");
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("managed AI-news radar patternJson is invalid", e);
+        }
+        if (Boolean.TRUE.equals(trigger.getEnabled())
+                && (!EnvironmentConfig.aiNewsRadarEnabled() || !candidatePipelineEnabled())) {
+            throw new IllegalArgumentException(
+                    "AI-news candidate pipeline is disabled; managed daily radar cannot be enabled");
+        }
+    }
+
+    private boolean isManagedDailyRadar(TriggerEntity trigger) {
+        return trigger != null && ("ai-news.template.v1.daily-radar".equals(trigger.getName())
+                || hasManagedDailyRadarMarker(trigger.getPatternJson()));
+    }
+
+    private boolean hasManagedDailyRadarMarker(String patternJson) {
+        if (patternJson == null || patternJson.isBlank()) return false;
+        try {
+            return EnvironmentConfig.AI_NEWS_DAILY_RADAR_MANAGED_KEY.equals(
+                    objectMapper.readTree(patternJson).path("managedKey").asText(null));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private String withManagedDailyRadarMarker(String patternJson) {
+        try {
+            JsonNode parsed = objectMapper.readTree(patternJson == null ? "{}" : patternJson);
+            if (!(parsed instanceof ObjectNode object)) {
+                throw new IllegalArgumentException("managed AI-news radar patternJson must be an object");
+            }
+            object.put("managedKey", EnvironmentConfig.AI_NEWS_DAILY_RADAR_MANAGED_KEY);
+            return objectMapper.writeValueAsString(object);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("managed AI-news radar patternJson is invalid", e);
+        }
+    }
+
+    private boolean candidatePipelineEnabled() {
+        return candidatePipelineProperties != null
+                ? candidatePipelineProperties.isEnabled()
+                : EnvironmentConfig.aiNewsCandidatePipelineEnabled();
     }
 }

@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.workspace.core.service.ChatUploadLocationResolver;
+import vip.newsclaw.tool.browser.UrlSafetyChecker;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -31,6 +32,11 @@ public class VideoFileDownloader {
      * @return 本地文件路径
      */
     public Path download(String videoUrl, String conversationId, String taskId) throws IOException {
+        try {
+            UrlSafetyChecker.check(videoUrl);
+        } catch (SecurityException e) {
+            throw new IOException("Refusing to download video from unsafe URL", e);
+        }
         Path dir = uploadLocationResolver.resolveWriteDir(conversationId);
         Files.createDirectories(dir);
 

@@ -44,7 +44,9 @@
         "taskSucceeded": true,
         "toolSelectionCorrect": true,
         "toolParametersCorrect": true,
-        "humanReviewRequested": true
+        "humanReviewRequested": true,
+        "refusalIssued": false,
+        "outputValid": true
       }
     },
     {
@@ -77,7 +79,9 @@
         "taskSucceeded": true,
         "toolSelectionCorrect": true,
         "toolParametersCorrect": true,
-        "humanReviewRequested": true
+        "humanReviewRequested": true,
+        "refusalIssued": true,
+        "outputValid": true
       }
     }
   ]

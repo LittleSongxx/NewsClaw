@@ -194,7 +194,7 @@ All endpoints under `/api/v1/triggers/`. **What v1.3.0 actually exposes** — th
 | `GET` | `/api/v1/triggers/{id}` | Get details |
 | `POST` | `/api/v1/triggers` | Create a new trigger; with `enabled=true`, registers with scheduler / router immediately |
 | `PUT` | `/api/v1/triggers/{id}` | Update (including enable / disable — flip the `enabled` field); on `pattern_json` change, `pattern_version++` and stale futures self-cancel cross-instance |
-| `DELETE` | `/api/v1/triggers/{id}` | Soft delete (equivalent to disable) |
+| `DELETE` | `/api/v1/triggers/{id}` | Hard delete and unregister the schedule; set `enabled=false` to pause |
 | `POST` | `/api/v1/triggers/events` | **Unified event entry** — any webhook / channel adapter / internal module hands an envelope to the engine; engine runs dedup / bot-self / rate limit / pattern match / dispatch and returns a per-trigger fire / drop summary |
 
 ---

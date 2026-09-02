@@ -57,6 +57,22 @@ class AvailableToolServiceTest {
     }
 
     @Test
+    @DisplayName("multi-callback builtin rows expose a bean alias that survives picker binding")
+    void multiCallbackBuiltinUsesBeanAlias() {
+        ToolEntity pipeline = builtin("ai_news_pipeline", "Candidate pipeline");
+        pipeline.setBeanName("aiNewsCandidateTool");
+        pipeline.setRuntimeNames(List.of("ai_news_scan", "ai_news_query", "ai_news_review"));
+        when(toolService.listEnabledTools()).thenReturn(List.of(pipeline));
+
+        AvailableToolDTO dto = service.listAvailable().get(0);
+
+        assertEquals("aiNewsCandidateTool", dto.getName());
+        assertEquals("ai_news_pipeline", dto.getRawName());
+        assertEquals("builtin#aiNewsCandidateTool", dto.getRowId());
+        assertTrue(dto.isAvailable());
+    }
+
+    @Test
     @DisplayName("plugin-registered callbacks appear as bindable agent picker tools")
     void includesPluginRegisteredCallbacks() {
         ToolCallback pluginTool = pluginCallback("custom_invoice_lookup", "Look up invoices from a plugin");

@@ -10,6 +10,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.news.model.AiNewsCaptureAttemptEntity;
 import vip.newsclaw.news.model.AiNewsEvidenceEntity;
+import vip.newsclaw.news.model.AiNewsEvidenceRelation;
 import vip.newsclaw.news.model.AiNewsEventEntity;
 import vip.newsclaw.news.model.AiNewsReviewTaskEntity;
 import vip.newsclaw.news.model.AiNewsReviewTaskStatus;
@@ -172,6 +173,9 @@ class AiNewsReviewRoutingServiceTest {
         evidence.setSourceUrl("https://openai.com/news/model");
         evidence.setClaim("released model");
         evidence.setQuote(quote);
+        evidence.setSemanticRelation(AiNewsEvidenceRelation.ENTAILS.token());
+        evidence.setRelationConfidence(0.9D);
+        evidence.setRelationOrigin("MODEL");
         evidence.setDeleted(0);
         if (captured) {
             evidence.setFinalUrl(evidence.getSourceUrl());

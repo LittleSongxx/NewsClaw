@@ -1,6 +1,8 @@
 package vip.newsclaw.trigger;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,7 +14,9 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.TestPropertySource;
 import vip.newsclaw.NewsClawApplication;
 import vip.newsclaw.trigger.dispatch.TriggerDispatcher;
+import vip.newsclaw.trigger.dispatch.DispatchResult;
 import vip.newsclaw.trigger.dispatch.WorkflowGraphLoader;
+import vip.newsclaw.trigger.ingest.TriggerEventEnvelope;
 import vip.newsclaw.trigger.model.TriggerEntity;
 import vip.newsclaw.trigger.repository.TriggerMapper;
 import vip.newsclaw.trigger.scheduler.TriggerScheduler;
@@ -63,6 +67,7 @@ class TriggerDispatcherWorkflowTest {
     @Autowired private TriggerScheduler scheduler;
     @Autowired private TriggerDispatcher dispatcher;
     @Autowired private WorkflowRunMapper runMapper;
+    @Autowired private ObjectMapper objectMapper;
     @Autowired private vip.newsclaw.workflow.runtime.StubAgentInvoker stubInvoker;
     @Autowired private StubGraphLoader stubGraphLoader;
 
@@ -91,6 +96,34 @@ class TriggerDispatcherWorkflowTest {
         assertEquals(7000L, runRow.getWorkflowId());
         assertEquals(11L, runRow.getRevisionId());
         assertEquals("trigger:" + trigger.getId(), runRow.getTriggeredBy());
+    }
+
+    @Test
+    @DisplayName("Untrusted lifecycle envelopes cannot turn a payload sender into a human origin.")
+    void untrustedLifecycleSenderIsSystem() throws Exception {
+        stubInvoker.reset();
+        stubInvoker.respond("greeter", "ok");
+        stubGraphLoader.reset();
+        stubGraphLoader.bind(7010L, 12L,
+                "{\"steps\":[{\"name\":\"a\",\"agentName\":\"greeter\","
+                        + "\"mode\":{\"type\":\"sequential\"},\"promptTemplate\":\"hi\"}]}\n");
+
+        TriggerEntity trigger = cronTrigger("lifecycle-origin", "0 0 * * * *", 7010L, null);
+        trigger.setPatternType("agent_lifecycle");
+        trigger.setEnabled(false);
+        trigger = triggerService.create(trigger);
+
+        DispatchResult result = dispatcher.dispatch(trigger, new TriggerEventEnvelope(
+                99L, "agent_lifecycle", "lifecycle-1", "attacker",
+                Map.of("channelType", "feishu")));
+
+        assertEquals(DispatchResult.Kind.FIRED, result.kind());
+        WorkflowRunEntity runRow = runMapper.selectById(result.runId());
+        assertNotNull(runRow);
+        JsonNode origin = objectMapper.readTree(runRow.getTriggeredMeta());
+        assertEquals("system", origin.path("requesterId").asText());
+        assertTrue(origin.path("requesterId").asText().equals("system"),
+                "untrusted REST-compatible envelopes must not impersonate a human actor");
     }
 
     @Test

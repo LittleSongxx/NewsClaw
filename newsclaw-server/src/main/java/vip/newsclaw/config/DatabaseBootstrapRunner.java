@@ -3,13 +3,16 @@ package vip.newsclaw.config;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.stereotype.Component;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -34,6 +37,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Component
 @Order(1)
 public class DatabaseBootstrapRunner implements ApplicationRunner {
+
+    private static final int BCRYPT_MAX_PASSWORD_BYTES = 72;
 
     private final DataSource dataSource;
     private final JdbcTemplate jdbcTemplate;
@@ -63,6 +68,16 @@ public class DatabaseBootstrapRunner implements ApplicationRunner {
     @Value("${newsclaw.setup.default-locale:zh-CN}")
     private String defaultLocale;
 
+    /** One-time production bootstrap secret; never logged or returned by an API. */
+    @Value("${newsclaw.bootstrap.password:}")
+    private String bootstrapPassword;
+
+    @Autowired(required = false)
+    private BCryptPasswordEncoder passwordEncoder;
+
+    @Autowired(required = false)
+    private Environment environment;
+
     /** Whether the database has been seeded with data (user table has rows). */
     @Getter
     private volatile boolean initialized = false;
@@ -81,6 +96,7 @@ public class DatabaseBootstrapRunner implements ApplicationRunner {
         // Flyway (db/migration/). New built-in tools must ship as their own
         // Vxx__register_<tool>_tool.sql migration (see V3, V31 for examples).
         if (isDataAlreadySeeded()) {
+            rotateLegacyBootstrapPassword();
             initialized = true;
             log.info("Database already initialized, skipping seed data");
             return;
@@ -129,6 +145,7 @@ public class DatabaseBootstrapRunner implements ApplicationRunner {
             }
             log.info("Initializing database with locale={} using {}", locale, scriptName);
             runScript(scriptName);
+            rotateLegacyBootstrapPassword();
             initialized = true;
             log.info("Database initialization completed successfully");
             return true;
@@ -138,6 +155,60 @@ public class DatabaseBootstrapRunner implements ApplicationRunner {
         } finally {
             initInProgress.set(false);
         }
+    }
+
+    /** Replace the legacy public seed credential exactly once when an operator supplied a secret. */
+    private void rotateLegacyBootstrapPassword() {
+        if (passwordEncoder == null) return;
+        try {
+            String stored = jdbcTemplate.queryForObject(
+                    "SELECT password FROM mate_user WHERE id=1 AND username='admin' AND deleted=0", String.class);
+            if (stored == null || !stored.equals(SecurityStartupValidator.LEGACY_BOOTSTRAP_HASH)) return;
+            if (!isUsableBootstrapPassword(bootstrapPassword)) {
+                if (isProductionProfile()) {
+                    throw new IllegalStateException(
+                            "Legacy bootstrap administrator credential detected; set NEWSCLAW_BOOTSTRAP_PASSWORD to a random 32-72 byte secret before startup");
+                }
+                return;
+            }
+            jdbcTemplate.update("UPDATE mate_user SET password=?, update_time=NOW() WHERE id=1 AND username='admin' AND password=?",
+                    passwordEncoder.encode(bootstrapPassword.trim()), SecurityStartupValidator.LEGACY_BOOTSTRAP_HASH);
+            log.warn("Legacy administrator seed credential rotated. Change NEWSCLAW_BOOTSTRAP_PASSWORD immediately and remove it from the runtime environment.");
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            if (isProductionProfile()) {
+                throw new IllegalStateException("Unable to verify or rotate the bootstrap administrator credential", e);
+            }
+            log.debug("Bootstrap credential rotation skipped: {}", e.getClass().getSimpleName());
+        }
+    }
+
+    private boolean isProductionProfile() {
+        if (environment != null) {
+            for (String profile : environment.getActiveProfiles()) {
+                if ("postgres".equalsIgnoreCase(profile) || "mysql".equalsIgnoreCase(profile)
+                        || "kingbase".equalsIgnoreCase(profile) || "prod".equalsIgnoreCase(profile)
+                        || "production".equalsIgnoreCase(profile)) return true;
+            }
+            if (Boolean.parseBoolean(environment.getProperty("newsclaw.security.production-mode", "false"))) {
+                return true;
+            }
+        }
+        String active = System.getProperty("spring.profiles.active", "");
+        return active.contains("postgres") || active.contains("mysql") || active.contains("kingbase")
+                || Boolean.parseBoolean(System.getenv("NEWSCLAW_PRODUCTION_MODE"));
+    }
+
+    static boolean isUsableBootstrapPassword(String value) {
+        if (value == null || value.isBlank()) return false;
+        String trimmed = value.trim();
+        String lower = trimmed.toLowerCase(java.util.Locale.ROOT);
+        int bytes = trimmed.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        return bytes >= 32 && bytes <= BCRYPT_MAX_PASSWORD_BYTES
+                && trimmed.chars().distinct().count() >= 12
+                && !lower.contains("replace") && !lower.contains("change-me")
+                && !lower.contains("example") && !lower.contains("default");
     }
 
     private boolean isDataAlreadySeeded() {

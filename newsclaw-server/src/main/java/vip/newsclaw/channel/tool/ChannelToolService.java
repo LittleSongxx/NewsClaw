@@ -10,6 +10,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.channel.model.ChannelEntity;
+import vip.newsclaw.agent.context.ChatOrigin;
 import vip.newsclaw.channel.repository.ChannelMapper;
 import vip.newsclaw.config.EnvironmentConfig;
 import vip.newsclaw.tool.ToolRegistry;
@@ -246,19 +247,59 @@ public class ChannelToolService {
         if (callbacks == null) return;
 
         List<String> actualNames = new ArrayList<>();
+        long channelWorkspaceId = ch.getWorkspaceId() == null ? 1L : ch.getWorkspaceId();
         for (ToolCallback cb : callbacks) {
             String baseName = cb.getToolDefinition().name();
             String actualName = nameMap.getOrDefault(baseName, baseName + INSTANCE_SUFFIX_PREFIX + ch.getId());
             ToolCallback renamed = (cb instanceof ChannelToolCallback ctc)
                     ? ctc.renamed(actualName)
                     : cb;  // legacy callback (any other ToolCallback impl) registers under its own name
-            toolRegistry.registerPluginTool(renamed, () -> isToolRowEnabled(actualName));
+            ToolCallback scoped = workspaceScoped(renamed, channelWorkspaceId);
+            toolRegistry.registerPluginTool(scoped, () -> isToolRowEnabled(actualName));
             actualNames.add(actualName);
         }
         registered.put(ch.getId(), actualNames);
         registeredUpdateTime.put(ch.getId(), ch.getUpdateTime());
         log.info("[channel-tool] Registered {} tool(s) for channel {} ({})",
                 actualNames.size(), ch.getId(), ch.getChannelType());
+    }
+
+    /**
+     * Channel credentials are tenant-bound even though the callback registry is
+     * process-global. Require the explicit runtime origin before invoking a
+     * channel callback, so an agent from another workspace cannot reuse a
+     * discovered {@code _c<channelId>} tool.
+     */
+    ToolCallback workspaceScoped(ToolCallback delegate, long channelWorkspaceId) {
+        return new ToolCallback() {
+            @Override
+            public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+                return delegate.getToolDefinition();
+            }
+
+            @Override
+            public org.springframework.ai.tool.metadata.ToolMetadata getToolMetadata() {
+                return delegate.getToolMetadata();
+            }
+
+            @Override
+            public String call(String toolInput) {
+                return workspaceError();
+            }
+
+            @Override
+            public String call(String toolInput, org.springframework.ai.chat.model.ToolContext context) {
+                ChatOrigin origin = ChatOrigin.from(context);
+                if (origin.workspaceId() == null || origin.workspaceId() != channelWorkspaceId) {
+                    return workspaceError();
+                }
+                return delegate.call(toolInput, context);
+            }
+
+            private String workspaceError() {
+                return "{\"error\":\"channel tool requires a matching workspace context\"}";
+            }
+        };
     }
 
     private void unregisterChannel(Long channelId) {

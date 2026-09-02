@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -92,7 +93,8 @@ class WebChatAttachmentE2ETest {
     private HttpClient http;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws IOException {
+        cleanUploadDirs();
         http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
         jdbc.update("DELETE FROM mate_channel WHERE id = ?", CHANNEL_ID);
@@ -212,6 +214,7 @@ class WebChatAttachmentE2ETest {
                 .uri(streamUri())
                 .timeout(HTTP_TIMEOUT)
                 .header("X-MC-Key", API_KEY)
+                .header("X-MC-Visitor-Token", tokenFor(visitorId))
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
@@ -249,13 +252,19 @@ class WebChatAttachmentE2ETest {
 
     @org.junit.jupiter.api.AfterEach
     void cleanUploadDirs() throws IOException {
-        // Only the convs under our key8 prefix are ours; safe to wipe.
-        Path root = UPLOAD_ROOT.resolve("webchat:testkey1");
-        if (Files.exists(root)) {
-            try (Stream<Path> walk = Files.walk(root)) {
-                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                    try { Files.deleteIfExists(p); } catch (IOException ignored) { }
-                });
+        if (!Files.isDirectory(UPLOAD_ROOT)) return;
+        List<String> prefixes = List.of(
+                ChatUploadLocationResolver.sanitizeSegment("webchat:" + CHANNEL_ID + ":"),
+                ChatUploadLocationResolver.sanitizeSegment("webchat:testkey1:"),
+                "webchat:testkey1");
+        try (Stream<Path> roots = Files.list(UPLOAD_ROOT)) {
+            for (Path root : roots.filter(path -> prefixes.stream().anyMatch(prefix ->
+                    path.getFileName().toString().startsWith(prefix))).toList()) {
+                try (Stream<Path> walk = Files.walk(root)) {
+                    walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                        try { Files.deleteIfExists(p); } catch (IOException ignored) { }
+                    });
+                }
             }
         }
     }
@@ -272,7 +281,7 @@ class WebChatAttachmentE2ETest {
 
         stream(visitorId, sessionId, "please read the attached", "[\"" + fileId + "\"]");
 
-        String cid = WebChatController.deriveConversationId(API_KEY, visitorId, sessionId);
+        String cid = WebChatController.deriveConversationId(CHANNEL_ID, visitorId, sessionId);
         String parts = lastUserContentParts(cid);
         assertThat(parts).isNotNull();
         // Text part is present.
@@ -299,7 +308,7 @@ class WebChatAttachmentE2ETest {
         String visitorId = "vAtt-unknown";
         stream(visitorId, null, "hello", "[\"totally-bogus-file-id\"]");
 
-        String cid = WebChatController.deriveConversationId(API_KEY, visitorId, null);
+        String cid = WebChatController.deriveConversationId(CHANNEL_ID, visitorId, null);
         String parts = lastUserContentParts(cid);
         assertThat(parts).isNotNull();
         assertThat(parts).contains("\"type\":\"text\"");
@@ -320,11 +329,11 @@ class WebChatAttachmentE2ETest {
         stream(visitorB, null, "trying to grab alice's file", "[\"" + aliceFileId + "\"]");
 
         // B's conversation's user message has no file part.
-        String bobCid = WebChatController.deriveConversationId(API_KEY, visitorB, null);
+        String bobCid = WebChatController.deriveConversationId(CHANNEL_ID, visitorB, null);
         String bobParts = lastUserContentParts(bobCid);
         assertThat(bobParts).doesNotContain("\"type\":\"file\"");
         // Alice's conversation is untouched — no user message there at all.
-        String aliceCid = WebChatController.deriveConversationId(API_KEY, visitorA, null);
+        String aliceCid = WebChatController.deriveConversationId(CHANNEL_ID, visitorA, null);
         Integer aliceMsgCount = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM mate_message WHERE conversation_id = ? AND role = 'user'",
                 Integer.class, aliceCid);

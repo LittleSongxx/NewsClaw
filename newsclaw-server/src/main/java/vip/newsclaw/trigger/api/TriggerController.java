@@ -51,6 +51,7 @@ public class TriggerController {
     @RequireWorkspaceRole("admin")
     public R<TriggerEntity> create(@RequestBody TriggerEntity trigger,
                                    @RequestHeader("X-Workspace-Id") long workspaceId) {
+        if (trigger == null) return R.fail(400, "request body is required");
         // The controller forces workspace from the trusted header — the
         // body's workspaceId is ignored so a caller can't plant a trigger
         // into another workspace by tweaking the JSON.
@@ -67,6 +68,7 @@ public class TriggerController {
     public R<TriggerEntity> update(@PathVariable long id,
                                    @RequestBody TriggerEntity trigger,
                                    @RequestHeader("X-Workspace-Id") long workspaceId) {
+        if (trigger == null) return R.fail(400, "request body is required");
         try {
             return R.ok(triggerService.update(id, workspaceId, trigger));
         } catch (IllegalArgumentException e) {
@@ -100,9 +102,14 @@ public class TriggerController {
      */
     @Operation(summary = "Ingest one event envelope; returns per-trigger fire / drop summary.")
     @PostMapping("/events")
+    @RequireWorkspaceRole("member")
     public R<List<TriggerEventIngestService.IngestResult>> ingestEvent(
             @RequestBody EventIngestRequest body,
             @RequestHeader("X-Workspace-Id") long workspaceId) {
+        if (workspaceId <= 0) return R.fail("workspace id must be positive");
+        if (body == null || body.patternType() == null || body.patternType().isBlank()) {
+            return R.fail("patternType is required");
+        }
         TriggerEventEnvelope env = new TriggerEventEnvelope(
                 // Header wins — body.workspaceId is dropped on purpose.
                 workspaceId,

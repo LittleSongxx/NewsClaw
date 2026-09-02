@@ -23,14 +23,19 @@ public class TeamRunEntity {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
+    @TableField("team_id")
     private Long teamId;
 
+    @TableField("workspace_id")
     private Long workspaceId;
 
+    @TableField("lead_agent_id")
     private Long leadAgentId;
 
+    @TableField("lead_conversation_id")
     private String leadConversationId;
 
+    @TableField("origin_message_id")
     private Long originMessageId;
 
     private String title;
@@ -54,10 +59,10 @@ public class TeamRunEntity {
     @TableField(value = "completed_at", updateStrategy = FieldStrategy.ALWAYS)
     private LocalDateTime completedAt;
 
-    @TableField(fill = FieldFill.INSERT)
+    @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
-    @TableField(fill = FieldFill.INSERT_UPDATE)
+    @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
     @TableLogic

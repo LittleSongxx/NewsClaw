@@ -1,7 +1,7 @@
 # UI 精简改动 - 验证测试用例
 
 > 基于 NewsClaw 内置的 3 个 Agent、19 个工具、31 条 Guard 规则和审批工作流设计。
-> 默认登录：admin / admin123
+> 使用部署者生成的一次性 bootstrap password；测试文档不携带共享凭证。
 
 ---
 

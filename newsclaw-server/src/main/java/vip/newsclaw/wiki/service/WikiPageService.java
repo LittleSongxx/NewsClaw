@@ -60,6 +60,7 @@ public class WikiPageService {
     }
     private final ConcurrentHashMap<Long, CachedSummaries> summaryCache = new ConcurrentHashMap<>();
     private static final long SUMMARY_CACHE_TTL_MS = 5 * 60_000; // 5 分钟
+    private static final int UPDATE_CAS_ATTEMPTS = 3;
 
     /** Agent 引用计数器（内存，不持久化，重启归零） */
     private final ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger> refCounter = new ConcurrentHashMap<>();
@@ -504,48 +505,50 @@ public class WikiPageService {
     @Transactional
     public WikiPageEntity updatePageByAi(Long kbId, String slug, String content,
                                           String summary, Long newRawId) {
-        WikiPageEntity existing = getBySlug(kbId, slug);
-        if (existing == null) {
-            log.warn("[Wiki] Page not found for AI update: kbId={}, slug={}", kbId, slug);
-            return null;
-        }
+        for (int attempt = 1; attempt <= UPDATE_CAS_ATTEMPTS; attempt++) {
+            WikiPageEntity existing = getBySlug(kbId, slug);
+            if (existing == null) {
+                log.warn("[Wiki] Page not found for AI update: kbId={}, slug={}", kbId, slug);
+                return null;
+            }
+            int expectedVersion = versionOf(existing);
 
-        // 手动编辑的页面：AI 不覆盖内容，仅追加来源 raw id
-        if ("manual".equals(existing.getLastUpdatedBy())) {
-            log.info("[Wiki] Skipping AI content update for manually edited page: kbId={}, slug={}", kbId, slug);
+            // 手动编辑的页面：AI 不覆盖内容，仅追加来源 raw id
+            if ("manual".equals(existing.getLastUpdatedBy())) {
+                log.info("[Wiki] Skipping AI content update for manually edited page: kbId={}, slug={}", kbId, slug);
+                if (newRawId == null) return existing;
+                List<Long> rawIds = parseSourceRawIds(existing.getSourceRawIds());
+                if (rawIds.contains(newRawId)) return existing;
+                rawIds.add(newRawId);
+                existing.setSourceRawIds(toJson(rawIds));
+                existing.setUpdateTime(LocalDateTime.now());
+                if (pageMapper.updateLineageIfVersion(existing, expectedVersion) == 1) {
+                    evictSummaryCache(kbId);
+                    return getBySlug(kbId, slug);
+                }
+                continue;
+            }
+
+            existing.setContent(content);
+            existing.setSummary(summary);
+            existing.setLastUpdatedBy("ai");
+            existing.setUpdateTime(LocalDateTime.now());
+            applyLinkAnalysis(existing);
+
             if (newRawId != null) {
                 List<Long> rawIds = parseSourceRawIds(existing.getSourceRawIds());
                 if (!rawIds.contains(newRawId)) {
                     rawIds.add(newRawId);
                     existing.setSourceRawIds(toJson(rawIds));
-                    existing.setUpdateTime(LocalDateTime.now());
-                    pageMapper.updateById(existing);
-                    evictSummaryCache(kbId);
-                    return getBySlug(kbId, slug); // 从 DB 重新加载确保一致性
                 }
             }
-            return existing;
-        }
-
-        existing.setContent(content);
-        existing.setSummary(summary);
-        existing.setVersion(existing.getVersion() + 1);
-        existing.setLastUpdatedBy("ai");
-        existing.setUpdateTime(LocalDateTime.now());
-        applyLinkAnalysis(existing);
-
-        // 追加新的 source raw id
-        if (newRawId != null) {
-            List<Long> rawIds = parseSourceRawIds(existing.getSourceRawIds());
-            if (!rawIds.contains(newRawId)) {
-                rawIds.add(newRawId);
-                existing.setSourceRawIds(toJson(rawIds));
+            if (pageMapper.updateContentIfVersion(existing, expectedVersion) == 1) {
+                evictSummaryCache(kbId);
+                return getBySlug(kbId, slug);
             }
         }
-
-        pageMapper.updateById(existing);
-        evictSummaryCache(kbId);
-        return existing;
+        throw new org.springframework.dao.OptimisticLockingFailureException(
+                "Wiki page changed concurrently after " + UPDATE_CAS_ATTEMPTS + " attempts: " + slug);
     }
 
     /**
@@ -561,29 +564,31 @@ public class WikiPageService {
      */
     @Transactional
     public void mergeSourceLineage(Long pageId, Long rawId, String rawTitle) {
-        WikiPageEntity page = pageMapper.selectById(pageId);
-        if (page == null) return;
-
-        List<SourceEntry> entries = parseSourceEntries(page.getSourceEntries());
-        boolean entryExists = entries.stream().anyMatch(e -> e.rawId() == rawId);
-
-        List<Long> rawIds = parseSourceRawIds(page.getSourceRawIds());
-        boolean idExists = rawIds.contains(rawId);
-
-        if (!entryExists) {
-            entries.add(new SourceEntry(rawId, rawTitle != null ? rawTitle : ""));
-            page.setSourceEntries(toJson(entries));
-        }
-        if (!idExists) {
-            rawIds.add(rawId);
-            page.setSourceRawIds(toJson(rawIds));
-        }
-
-        if (!entryExists || !idExists) {
+        for (int attempt = 1; attempt <= UPDATE_CAS_ATTEMPTS; attempt++) {
+            WikiPageEntity page = pageMapper.selectById(pageId);
+            if (page == null) return;
+            int expectedVersion = versionOf(page);
+            List<SourceEntry> entries = parseSourceEntries(page.getSourceEntries());
+            boolean entryExists = entries.stream().anyMatch(e -> e.rawId() == rawId);
+            List<Long> rawIds = parseSourceRawIds(page.getSourceRawIds());
+            boolean idExists = rawIds.contains(rawId);
+            if (entryExists && idExists) return;
+            if (!entryExists) {
+                entries.add(new SourceEntry(rawId, rawTitle != null ? rawTitle : ""));
+                page.setSourceEntries(toJson(entries));
+            }
+            if (!idExists) {
+                rawIds.add(rawId);
+                page.setSourceRawIds(toJson(rawIds));
+            }
             page.setUpdateTime(LocalDateTime.now());
-            pageMapper.updateById(page);
-            evictSummaryCache(page.getKbId());
+            if (pageMapper.updateLineageIfVersion(page, expectedVersion) == 1) {
+                evictSummaryCache(page.getKbId());
+                return;
+            }
         }
+        throw new org.springframework.dao.OptimisticLockingFailureException(
+                "Wiki page lineage changed concurrently after " + UPDATE_CAS_ATTEMPTS + " attempts: " + pageId);
     }
 
     /**
@@ -591,25 +596,28 @@ public class WikiPageService {
      */
     @Transactional
     public WikiPageEntity updatePageManually(Long kbId, String slug, String content, String summary) {
-        WikiPageEntity existing = getBySlug(kbId, slug);
-        if (existing == null) {
-            throw new IllegalArgumentException("Page not found: " + slug);
+        for (int attempt = 1; attempt <= UPDATE_CAS_ATTEMPTS; attempt++) {
+            WikiPageEntity existing = getBySlug(kbId, slug);
+            if (existing == null) {
+                throw new IllegalArgumentException("Page not found: " + slug);
+            }
+            int expectedVersion = versionOf(existing);
+            existing.setContent(content);
+            existing.setLastUpdatedBy("manual");
+            existing.setUpdateTime(LocalDateTime.now());
+            applyLinkAnalysis(existing);
+            existing.setSummary(summary != null ? summary : extractFirstParagraph(content));
+            if (pageMapper.updateContentIfVersion(existing, expectedVersion) == 1) {
+                evictSummaryCache(kbId);
+                return getBySlug(kbId, slug);
+            }
         }
-        existing.setContent(content);
-        existing.setVersion(existing.getVersion() + 1);
-        existing.setLastUpdatedBy("manual");
-        existing.setUpdateTime(LocalDateTime.now());
-        applyLinkAnalysis(existing);
-        // 同步更新摘要，防止与 content 漂移
-        if (summary != null) {
-            existing.setSummary(summary);
-        } else {
-            // 无显式摘要时，从 content 首段提取
-            existing.setSummary(extractFirstParagraph(content));
-        }
-        pageMapper.updateById(existing);
-        evictSummaryCache(kbId);
-        return existing;
+        throw new org.springframework.dao.OptimisticLockingFailureException(
+                "Wiki page changed concurrently after " + UPDATE_CAS_ATTEMPTS + " attempts: " + slug);
+    }
+
+    private static int versionOf(WikiPageEntity page) {
+        return page.getVersion() == null ? 0 : page.getVersion();
     }
 
     /**

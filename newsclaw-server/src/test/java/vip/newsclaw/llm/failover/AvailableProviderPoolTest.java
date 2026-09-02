@@ -26,9 +26,9 @@ class AvailableProviderPoolTest {
     }
 
     @Test
-    @DisplayName("New pool: nothing is in it")
-    void newPoolEmpty() {
-        assertFalse(pool.contains("openai"));
+    @DisplayName("Unprobed providers fail open so early graphs retain fallback entries")
+    void newPoolFailsOpenUntilDecision() {
+        assertTrue(pool.contains("openai"));
         assertTrue(pool.snapshot().isEmpty());
     }
 
@@ -37,7 +37,7 @@ class AvailableProviderPoolTest {
     void addThenContains() {
         pool.add("openai");
         assertTrue(pool.contains("openai"));
-        assertFalse(pool.contains("anthropic"));
+        assertTrue(pool.contains("anthropic"), "unknown provider is not a negative probe decision");
     }
 
     @Test

@@ -11,6 +11,8 @@ import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.core.SimpleLock;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
@@ -18,6 +20,8 @@ import org.springframework.stereotype.Component;
 import vip.newsclaw.trigger.dispatch.TriggerDispatcher;
 import vip.newsclaw.trigger.model.TriggerEntity;
 import vip.newsclaw.trigger.repository.TriggerMapper;
+import vip.newsclaw.config.EnvironmentConfig;
+import vip.newsclaw.news.service.AiNewsCandidatePipelineProperties;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -28,6 +32,10 @@ import java.util.Optional;
 import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Maintains the in-memory map of cron-pattern triggers active on this node
@@ -53,8 +61,22 @@ public class TriggerScheduler {
     private final LockProvider lockProvider;
     private final ObjectMapper objectMapper;
 
+    /**
+     * A workflow may legitimately spend more than a minute in an LLM/tool
+     * call. Keep the distributed fire lease longer than that by default, but
+     * leave an operator knob for deployments with a known upper bound.
+     */
+    @Value("${newsclaw.workflow.trigger.fire-lock-at-most-seconds:7200}")
+    private long fireLockAtMostSeconds = 7200L;
+
+    /** Spring-bound flag is preferred; the environment fallback keeps small
+     * unit-test constructions deterministic. */
+    @Autowired(required = false)
+    private AiNewsCandidatePipelineProperties candidatePipelineProperties;
+
     private final ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
     private final Map<Long, Registration> registrations = new ConcurrentHashMap<>();
+    private ThreadPoolExecutor fireExecutor;
 
     public TriggerScheduler(TriggerMapper triggerMapper,
                             TriggerDispatcher dispatcher,
@@ -72,11 +94,21 @@ public class TriggerScheduler {
         scheduler.setThreadNamePrefix("trigger-tick-");
         scheduler.setDaemon(true);
         scheduler.initialize();
+        fireExecutor = new ThreadPoolExecutor(
+                8, 8, 60L, TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(128),
+                r -> {
+                    Thread t = new Thread(r, "trigger-fire");
+                    t.setDaemon(true);
+                    return t;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
     }
 
     @PreDestroy
     void shutdownScheduler() {
         scheduler.shutdown();
+        if (fireExecutor != null) fireExecutor.shutdownNow();
         registrations.clear();
     }
 
@@ -122,13 +154,17 @@ public class TriggerScheduler {
         int registered = 0, refreshed = 0, removed = 0;
         for (TriggerEntity t : enabled) {
             if (!PATTERN_CRON.equalsIgnoreCase(t.getPatternType())) continue;
+            if (isBlockedDailyRadar(t)) {
+                if (t.getId() != null) unregister(t.getId());
+                continue;
+            }
             seenIds.add(t.getId());
             Registration current = registrations.get(t.getId());
             long liveVersion = t.getPatternVersion() == null ? 1L : t.getPatternVersion();
             if (current == null) {
-                if (registerInternal(t)) registered++;
+                if (register(t)) registered++;
             } else if (current.capturedVersion != liveVersion) {
-                if (registerInternal(t)) refreshed++;
+                if (register(t)) refreshed++;
             }
         }
         // Drop registrations whose row was disabled / deleted / changed type
@@ -148,10 +184,24 @@ public class TriggerScheduler {
 
     /** Register or replace a single trigger (called from {@code TriggerService} on save). */
     public boolean register(TriggerEntity trigger) {
-        if (trigger == null || !PATTERN_CRON.equalsIgnoreCase(trigger.getPatternType())) {
+        if (trigger == null || !Integer.valueOf(0).equals(trigger.getDeleted())
+                || !PATTERN_CRON.equalsIgnoreCase(trigger.getPatternType())) {
+            if (trigger != null && trigger.getId() != null) unregister(trigger.getId());
             return false;
         }
-        return registerInternal(trigger);
+        if (isBlockedDailyRadar(trigger)) {
+            if (trigger.getId() != null) unregister(trigger.getId());
+            log.info("[TriggerScheduler] daily AI-news radar remains unregistered while candidate pipeline is disabled");
+            return false;
+        }
+        try {
+            return registerInternal(trigger);
+        } catch (RuntimeException invalidSchedule) {
+            if (trigger.getId() != null) unregister(trigger.getId());
+            log.warn("[TriggerScheduler] trigger {} schedule rejected: {}",
+                    trigger.getId(), invalidSchedule.getMessage());
+            return false;
+        }
     }
 
     /** Cancel any active schedule for {@code triggerId}. Idempotent. */
@@ -187,7 +237,7 @@ public class TriggerScheduler {
         if (parsed == null) return false;
 
         long capturedVersion = trigger.getPatternVersion() == null ? 1L : trigger.getPatternVersion();
-        Runnable task = () -> fireWithCoordination(trigger.getId(), capturedVersion);
+        Runnable task = () -> submitFire(trigger.getId(), capturedVersion);
         ScheduledFuture<?> future = scheduler.schedule(task,
                 new CronTrigger(parsed.expression, parsed.timeZone));
         registrations.put(trigger.getId(), new Registration(future, capturedVersion));
@@ -200,64 +250,109 @@ public class TriggerScheduler {
         // Per-fire lamport check: a newer expression in the DB invalidates
         // this scheduled task. Drop the fire and unregister so the next
         // registration cycle picks up the new schedule.
+        TriggerEntity live = loadFireable(triggerId, capturedVersion);
+        if (live == null) return;
+
+        // Cross-node coordination: at-most-one node fires per tick.
+        Optional<SimpleLock> lock = lockProvider.lock(new LockConfiguration(
+                Instant.now(),
+                "trigger-fire-" + triggerId,
+                Duration.ofSeconds(Math.max(60L, fireLockAtMostSeconds)),
+                Duration.ofSeconds(5)));
+        if (lock.isEmpty()) {
+            return; // peer is firing
+        }
+        boolean fireClaimed = false;
+        boolean bounded = live.getMaxFires() != null && live.getMaxFires() > 0;
+        try {
+            // A disable/delete/edit may commit after the optimistic read but
+            // before this node acquires the cross-node lock. Re-read under
+            // ownership so that stale snapshot cannot dispatch.
+            live = loadFireable(triggerId, capturedVersion);
+            if (live == null) return;
+            // An unlimited trigger has no quota to reserve.  Keep the direct
+            // outcome update for that common path (and for older mapper
+            // fixtures); bounded triggers reserve a slot so max_fires remains
+            // race-safe across nodes.
+            if (bounded && triggerMapper.claimFire(triggerId, LocalDateTime.now()) != 1) {
+                log.info("[TriggerScheduler] trigger {} exhausted before dispatch", triggerId);
+                unregister(triggerId);
+                return;
+            }
+            fireClaimed = bounded;
+            vip.newsclaw.trigger.dispatch.DispatchResult outcome =
+                    dispatcher.dispatch(live, Map.of("firedAt", Instant.now().toString()));
+            // Bookkeeping is honest: only a real fire bumps fireCount /
+            // lastFiredAt. Persist only those columns so this callback cannot
+            // overwrite an administrator's newer trigger snapshot.
+            LocalDateTime now = LocalDateTime.now();
+            String error = outcome != null && outcome.fired()
+                    ? null : outcome == null ? "dispatcher returned null" : outcome.reason();
+            if (fireClaimed) {
+                triggerMapper.settleClaimedFire(triggerId,
+                        outcome != null && outcome.fired() ? 1 : 0, error, now);
+            } else {
+                triggerMapper.recordDispatchOutcome(triggerId,
+                        outcome != null && outcome.fired() ? 1 : 0, error, now);
+            }
+        } catch (Exception e) {
+            log.error("[TriggerScheduler] trigger {} fire failed: {}", triggerId, e.getMessage(), e);
+            if (fireClaimed) {
+                try {
+                    triggerMapper.settleClaimedFire(triggerId, 0,
+                            "scheduler threw: " + e.getMessage(), LocalDateTime.now());
+                } catch (Exception ignored) {
+                    // Best-effort — don't let a bookkeeping failure mask the dispatch failure.
+                }
+            } else {
+                try {
+                    triggerMapper.recordDispatchOutcome(triggerId, 0,
+                            "scheduler threw: " + e.getMessage(), LocalDateTime.now());
+                } catch (Exception ignored) {
+                    // Best-effort — don't let a bookkeeping failure mask the dispatch failure.
+                }
+            }
+        } finally {
+            try {
+                lock.get().unlock();
+            } catch (Exception unlockEx) {
+                log.warn("[TriggerScheduler] trigger {} lock release failed: {}",
+                        triggerId, unlockEx.getMessage());
+            }
+        }
+    }
+
+    private void submitFire(long triggerId, long capturedVersion) {
+        try {
+            fireExecutor.execute(() -> fireWithCoordination(triggerId, capturedVersion));
+        } catch (RejectedExecutionException busy) {
+            log.warn("[TriggerScheduler] trigger {} fire queue full; tick skipped", triggerId);
+        }
+    }
+
+    private TriggerEntity loadFireable(long triggerId, long capturedVersion) {
         TriggerEntity live = triggerMapper.selectById(triggerId);
-        if (live == null || Boolean.FALSE.equals(live.getEnabled())) {
+        if (live == null || !Boolean.TRUE.equals(live.getEnabled())
+                || !Integer.valueOf(0).equals(live.getDeleted())
+                || isBlockedDailyRadar(live)) {
             unregister(triggerId);
-            return;
+            return null;
         }
         long liveVersion = live.getPatternVersion() == null ? 1L : live.getPatternVersion();
         if (liveVersion != capturedVersion) {
             log.info("[TriggerScheduler] trigger {} self-cancelling (version changed {} -> {})",
                     triggerId, capturedVersion, liveVersion);
             unregister(triggerId);
-            return;
+            return null;
         }
         if (live.getMaxFires() != null && live.getMaxFires() > 0
                 && live.getFireCount() != null && live.getFireCount() >= live.getMaxFires()) {
             log.info("[TriggerScheduler] trigger {} reached max_fires={}, unregistering",
                     triggerId, live.getMaxFires());
             unregister(triggerId);
-            return;
+            return null;
         }
-
-        // Cross-node coordination: at-most-one node fires per tick.
-        Optional<SimpleLock> lock = lockProvider.lock(new LockConfiguration(
-                Instant.now(),
-                "trigger-fire-" + triggerId,
-                Duration.ofSeconds(60),
-                Duration.ofSeconds(5)));
-        if (lock.isEmpty()) {
-            return; // peer is firing
-        }
-        try {
-            vip.newsclaw.trigger.dispatch.DispatchResult outcome =
-                    dispatcher.dispatch(live, Map.of("firedAt", Instant.now().toString()));
-            // Bookkeeping is honest: only a real fire bumps fireCount /
-            // lastFiredAt. Skipped (no published revision, etc.) and failed
-            // outcomes still record lastDispatchedAt + lastError so the UI
-            // can show why a cron stopped firing.
-            LocalDateTime now = LocalDateTime.now();
-            live.setLastDispatchedAt(now);
-            if (outcome != null && outcome.fired()) {
-                live.setFireCount((live.getFireCount() == null ? 0L : live.getFireCount()) + 1);
-                live.setLastFiredAt(now);
-                live.setLastError(null);
-            } else {
-                live.setLastError(outcome == null ? "dispatcher returned null" : outcome.reason());
-            }
-            triggerMapper.updateById(live);
-        } catch (Exception e) {
-            log.error("[TriggerScheduler] trigger {} fire failed: {}", triggerId, e.getMessage(), e);
-            try {
-                live.setLastDispatchedAt(LocalDateTime.now());
-                live.setLastError("scheduler threw: " + e.getMessage());
-                triggerMapper.updateById(live);
-            } catch (Exception ignored) {
-                // Best-effort — don't let a bookkeeping failure mask the dispatch failure.
-            }
-        } finally {
-            lock.get().unlock();
-        }
+        return live;
     }
 
     private record ParsedCron(String expression, TimeZone timeZone) {}
@@ -279,6 +374,29 @@ public class TriggerScheduler {
                     trigger.getId(), e.getMessage());
             return null;
         }
+    }
+
+    private boolean isBlockedDailyRadar(TriggerEntity trigger) {
+        return trigger != null
+                && ("ai-news.template.v1.daily-radar".equals(trigger.getName())
+                || hasManagedDailyRadarMarker(trigger.getPatternJson()))
+                && (!EnvironmentConfig.aiNewsRadarEnabled() || !candidatePipelineEnabled());
+    }
+
+    private boolean hasManagedDailyRadarMarker(String patternJson) {
+        if (patternJson == null || patternJson.isBlank()) return false;
+        try {
+            return EnvironmentConfig.AI_NEWS_DAILY_RADAR_MANAGED_KEY.equals(
+                    objectMapper.readTree(patternJson).path("managedKey").asText(null));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private boolean candidatePipelineEnabled() {
+        return candidatePipelineProperties != null
+                ? candidatePipelineProperties.isEnabled()
+                : EnvironmentConfig.aiNewsCandidatePipelineEnabled();
     }
 
     private record Registration(ScheduledFuture<?> future, long capturedVersion) {}

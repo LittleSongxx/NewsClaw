@@ -25,9 +25,14 @@ public class AiNewsEventEntity {
     private String entitiesJson;
     private String status;
     private Double confidence;
+    /** Deterministic evidence-quality score used for candidate ordering. */
+    private Double rankingScore;
     private String claimsJson;
     private String conflictsJson;
     private LocalDateTime discoveredAt;
+    /** Earliest publication time parsed from a server-captured source page. */
+    private LocalDateTime sourcePublishedAt;
+    /** Editorial delivery acknowledgement time; not a source/event timestamp. */
     private LocalDateTime publishedAt;
     private Long wikiPageId;
     /**
@@ -42,6 +47,12 @@ public class AiNewsEventEntity {
     private Long teamRunId;
     private Long gzhContentItemId;
     private Long xhsContentItemId;
+    /** Delivery state is separate from source/event lifecycle status. */
+    private String deliveryStatus;
+    private LocalDateTime operatorAcknowledgedAt;
+    private LocalDateTime platformPublishedAt;
+    private String platformExternalRef;
+    private String artifactHash;
     /**
      * List-view evidence projection. Evidence remains a separate aggregate;
      * this prevents the workbench from inferring verification from event state.
@@ -52,6 +63,19 @@ public class AiNewsEventEntity {
     private Integer verifiedEvidenceCount;
     @TableField(exist = false)
     private String primaryEvidenceTier;
+    /** Current versioned event-cluster projection; membership history stays in V210 tables. */
+    @TableField(exist = false)
+    private Long clusterId;
+    @TableField(exist = false)
+    private Long clusterVersionId;
+    @TableField(exist = false)
+    private Integer clusterMemberCount;
+    @TableField(exist = false)
+    private String clusterAssignmentOrigin;
+    @TableField(exist = false)
+    private Double clusterAssignmentScore;
+    @TableField(exist = false)
+    private Boolean clusterReviewRequired;
     /** Persisted review-queue projection; no model-provided boolean controls this field. */
     @TableField(exist = false)
     private Boolean reviewRequired;

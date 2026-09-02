@@ -11,12 +11,14 @@ import vip.newsclaw.llm.chatmodel.StructuredOutputFormat;
 import vip.newsclaw.llm.chatmodel.StructuredOutputFormatHolder;
 import vip.newsclaw.llm.chatmodel.ToolChoiceHolder;
 import vip.newsclaw.llm.chatmodel.ToolChoicePolicy;
+import vip.newsclaw.llm.chatmodel.ToolCandidateHolder;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 class ReasoningNodeStructuredOutputTest {
@@ -25,6 +27,7 @@ class ReasoningNodeStructuredOutputTest {
     void clearResponseFormat() {
         StructuredOutputFormatHolder.clear();
         ToolChoiceHolder.clear();
+        ToolCandidateHolder.clear();
     }
 
     @Test
@@ -77,6 +80,7 @@ class ReasoningNodeStructuredOutputTest {
 
         assertEquals("function", choice.path("type").asText());
         assertEquals("ai_news_event", choice.path("function").path("name").asText());
+        assertEquals(1, options.getToolCallbacks().size());
     }
 
     @Test
@@ -98,7 +102,27 @@ class ReasoningNodeStructuredOutputTest {
                 "provider JSON mode must not compete with the forced tool-producing step");
         assertEquals("none", terminalStage.getToolChoice(),
                 "post-tool generation must not repeat the forced function");
+        assertEquals(0, terminalStage.getToolCallbacks().size(),
+                "post-tool generation must not resend unrelated tool schemas");
         assertEquals(ResponseFormat.Type.JSON_OBJECT, terminalStage.getResponseFormat().getType());
+    }
+
+    @Test
+    void exactFunctionAndNoneMinimizeProviderVisibleSchemas() {
+        ReasoningNode node = new ReasoningNode(mock(ChatModel.class), List.of());
+        org.springframework.ai.tool.ToolCallback selected = callback("ai_news_event");
+        org.springframework.ai.tool.ToolCallback unrelated = callback("wiki_create");
+
+        ToolChoiceHolder.set(ToolChoicePolicy.fromWire("function:ai_news_event"));
+        OpenAiChatOptions exact = (OpenAiChatOptions) node.buildChatOptions(
+                null, List.of(selected, unrelated));
+        assertEquals(List.of("ai_news_event"), exact.getToolCallbacks().stream()
+                .map(item -> item.getToolDefinition().name()).toList());
+
+        ToolChoiceHolder.set(ToolChoicePolicy.NONE);
+        OpenAiChatOptions none = (OpenAiChatOptions) node.buildChatOptions(
+                null, List.of(selected, unrelated));
+        assertTrue(none.getToolCallbacks().isEmpty());
     }
 
     @Test
@@ -128,5 +152,15 @@ class ReasoningNodeStructuredOutputTest {
                 () -> node.buildChatOptions(null, List.of()));
 
         assertEquals(422, error.getCode());
+    }
+
+    private static org.springframework.ai.tool.ToolCallback callback(String name) {
+        org.springframework.ai.tool.ToolCallback callback =
+                org.mockito.Mockito.mock(org.springframework.ai.tool.ToolCallback.class);
+        org.springframework.ai.tool.definition.ToolDefinition definition =
+                org.springframework.ai.tool.definition.ToolDefinition.builder()
+                        .name(name).description("test").inputSchema("{}").build();
+        org.mockito.Mockito.when(callback.getToolDefinition()).thenReturn(definition);
+        return callback;
     }
 }

@@ -14,6 +14,7 @@ import vip.newsclaw.memory.event.ConversationCompletionPublisher;
 import vip.newsclaw.stt.SttService;
 import vip.newsclaw.tts.TtsService;
 import vip.newsclaw.workspace.conversation.ConversationService;
+import vip.newsclaw.workspace.core.service.WorkspaceService;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -52,13 +53,15 @@ public class TalkModeWebSocketHandler extends AbstractWebSocketHandler {
     private final ConversationService conversationService;
     private final ConversationCompletionPublisher completionPublisher;
     private final ObjectMapper objectMapper;
+    private final WorkspaceService workspaceService;
 
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     /** 每个 WebSocket 会话的上下文 */
     private final ConcurrentHashMap<String, TalkSession> sessions = new ConcurrentHashMap<>();
 
-    private record TalkSession(Long agentId, String conversationId, String username) {}
+    private record TalkSession(Long agentId, String conversationId, String username,
+                               Long userId, Long workspaceId) {}
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -77,14 +80,31 @@ public class TalkModeWebSocketHandler extends AbstractWebSocketHandler {
                 Long agentId = (rawAgentId != null && !rawAgentId.toString().isBlank())
                         ? Long.valueOf(rawAgentId.toString()) : null;
                 String conversationId = (String) data.getOrDefault("conversationId", "talk-" + session.getId());
-                String username = (String) data.getOrDefault("username", "anonymous");
+                // Identity comes only from the authenticated handshake. The init
+                // frame's legacy `username` field is deliberately ignored.
+                String username = (String) session.getAttributes().get(TalkModeHandshakeInterceptor.USERNAME_ATTR);
+                Long userId = (Long) session.getAttributes().get(TalkModeHandshakeInterceptor.USER_ID_ATTR);
+                String role = (String) session.getAttributes().get(TalkModeHandshakeInterceptor.ROLE_ATTR);
 
-                if (agentId == null) {
-                    sendJson(session, Map.of("type", "error", "message", "agentId is required"));
+                if (agentId == null || username == null || userId == null) {
+                    sendJson(session, Map.of("type", "error", "message", "Authenticated agent session is required"));
                     return;
                 }
 
-                sessions.put(session.getId(), new TalkSession(agentId, conversationId, username));
+                var agent = agentService.getAgent(agentId);
+                if (agent == null || !Boolean.TRUE.equals(agent.getEnabled())) {
+                    sendJson(session, Map.of("type", "error", "message", "Agent not found or disabled"));
+                    return;
+                }
+                Long workspaceId = agent.getWorkspaceId() != null ? agent.getWorkspaceId() : 1L;
+                boolean globalAdmin = "admin".equalsIgnoreCase(role);
+                if (!globalAdmin && !workspaceService.hasPermission(workspaceId, userId, "viewer")) {
+                    sendJson(session, Map.of("type", "error", "message", "Workspace permission denied"));
+                    return;
+                }
+
+                sessions.put(session.getId(), new TalkSession(
+                        agentId, conversationId, username, userId, workspaceId));
                 sendJson(session, Map.of("type", "ready", "conversationId", conversationId));
                 log.info("[TalkMode] Session initialized: agentId={}, conversationId={}", agentId, conversationId);
             }
@@ -142,8 +162,7 @@ public class TalkModeWebSocketHandler extends AbstractWebSocketHandler {
             sendJson(session, Map.of("type", "transcript", "text", transcript));
 
             // 4. 保存用户消息（workspace 从 agent 获取）
-            var talkAgent = agentService.getAgent(talkSession.agentId);
-            Long talkWsId = talkAgent != null ? talkAgent.getWorkspaceId() : 1L;
+            Long talkWsId = talkSession.workspaceId;
             conversationService.getOrCreateConversation(
                     talkSession.conversationId, talkSession.agentId, talkSession.username, talkWsId);
             var savedUser = conversationService.saveMessage(
@@ -153,7 +172,7 @@ public class TalkModeWebSocketHandler extends AbstractWebSocketHandler {
             // memory recall (read) and the post-turn memory write (below) agree
             // on the same owner key.
             vip.newsclaw.agent.context.ChatOrigin talkOrigin = vip.newsclaw.agent.context.ChatOrigin.web(
-                    talkSession.conversationId, talkSession.username, talkWsId, null)
+                    talkSession.conversationId, talkSession.username, talkWsId, null, null, talkSession.userId)
                     .withOriginMessageId(savedUser == null ? null : savedUser.getId());
             AgentService.ChatResult chatResult = agentService.chatWithUsage(
                     talkSession.agentId, transcript, talkSession.conversationId, talkOrigin);

@@ -38,10 +38,12 @@ public class ChannelMessageEventBridge {
         if (event == null) return;
         try {
             Map<String, Object> data = new HashMap<>();
-            data.put("channelType", event.channelType());
-            data.put("senderId", event.senderId());
+            if (event.channelType() != null) data.put("channelType", event.channelType());
+            if (event.senderId() != null) data.put("senderId", event.senderId());
             if (event.senderName() != null) data.put("senderName", event.senderName());
             if (event.chatId() != null) data.put("chatId", event.chatId());
+            if (event.conversationId() != null) data.put("conversationId", event.conversationId());
+            if (event.channelId() != null) data.put("channelId", event.channelId());
             // The matcher's content_match pattern reads `data.content`,
             // so we put the message body there even when it's blank.
             data.put("content", event.content() == null ? "" : event.content());
@@ -52,7 +54,13 @@ public class ChannelMessageEventBridge {
                     "channel_message",
                     event.messageId(),
                     event.senderId(),
-                    data));
+                    data,
+                    event.conversationId(),
+                    event.channelId(),
+                    event.channelType(),
+                    event.chatId(),
+                    event.senderName(),
+                    true));
             // And to content_match triggers, which live under a different
             // patternType but read the same envelope shape. Two separate
             // ingests instead of one because the SQL candidate query
@@ -63,7 +71,13 @@ public class ChannelMessageEventBridge {
                     "content_match",
                     event.messageId(),
                     event.senderId(),
-                    data));
+                    data,
+                    event.conversationId(),
+                    event.channelId(),
+                    event.channelType(),
+                    event.chatId(),
+                    event.senderName(),
+                    true));
         } catch (Exception e) {
             log.warn("[ChannelMessageBridge] forwarding message {} from {} failed: {}",
                     event.messageId(), event.senderId(), e.getMessage());

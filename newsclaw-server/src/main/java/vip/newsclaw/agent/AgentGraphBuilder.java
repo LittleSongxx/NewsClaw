@@ -667,6 +667,8 @@ public class AgentGraphBuilder {
                     streamTracker, fallbackChain, llmCacheMetricsAggregator, providerHealthTracker,
                     primaryModelConfig != null ? primaryModelConfig.getProvider() : null,
                     providerPool);
+            streamingHelper.setPrimaryModelName(
+                    primaryModelConfig != null ? primaryModelConfig.getModelName() : null);
             if (llmRoutingTraceService != null) {
                 streamingHelper.setRoutingTraceContext(llmRoutingTraceService, agentId,
                         primaryModelConfig != null ? primaryModelConfig.getModelName() : null);
@@ -994,6 +996,8 @@ public class AgentGraphBuilder {
                     streamTracker, fallbackChain, llmCacheMetricsAggregator, providerHealthTracker,
                     primaryModelConfig != null ? primaryModelConfig.getProvider() : null,
                     providerPool);
+            streamingHelper.setPrimaryModelName(
+                    primaryModelConfig != null ? primaryModelConfig.getModelName() : null);
             if (llmRoutingTraceService != null) {
                 streamingHelper.setRoutingTraceContext(llmRoutingTraceService, agentId,
                         primaryModelConfig != null ? primaryModelConfig.getModelName() : null);

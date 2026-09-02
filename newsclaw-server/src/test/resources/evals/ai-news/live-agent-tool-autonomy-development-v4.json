@@ -1,0 +1,1564 @@
+{
+  "datasetId": "ai-news-live-agent-tool-autonomy-development-v4",
+  "datasetVersion": "2026-08-27-v4",
+  "evaluationScope": "development-autonomous-read-only-tool-selection-candidate-scoped",
+  "executionMetadata": {
+    "promptVersion": "live-agent-evidence-v10-relations-development",
+    "responseSchema": "ai_news_evidence_relations_v2",
+    "datasetClass": "development-not-holdout",
+    "toolChoicePolicy": "auto-autonomous-selection",
+    "toolChoiceEvidenceBoundary": "toolChoice=auto for every case; expected tool names and arguments are scorer-only fields and are omitted from the runner instruction",
+    "predeclaredCaseOrders": "dataset,reverse,rotate-10,rotate-20",
+    "labelProvenance": "v2 scorer decisions confirmed by two human reviewers; AI assisted transcription; inherited unchanged in this protocol-only overlay",
+    "labelReviewStatus": "two-human-decisions-confirmed-ai-assisted-transcription",
+    "semanticModelInput": "operationalRequest + primaryClaim + evidenceId + quote only; scorer tool labels, URL, publisher, citation request and gold relation are excluded",
+    "derivedFrom": "ai-news-live-agent-tool-autonomy-development-v2@2026-08-26-v2",
+    "toolCandidates": "ai_news_event",
+    "toolCandidatePolicy": "request-scoped-intersection-over-active-tools",
+    "protocolOverlayOnly": "all cases, prompts, gold labels and policy packets are unchanged from v2; only toolCandidates execution metadata is added"
+  },
+  "limitations": [
+    "This visible development set is not unseen holdout evidence and must not be reported as a new holdout score.",
+    "The required operation is one safe source-health read; this set does not measure open-web relevance or production side effects.",
+    "Invalid-parameter recovery, timeout recovery, and open-web adapter behavior remain separate deterministic integration tests.",
+    "Two human reviewers confirmed the label decisions and AI assisted only with transcription; blind independence and sealed non-exposure are not claimed.",
+    "v4 reuses every v2 case and scorer label; differences from v2 measure the request-scoped tool-candidate protocol, not new data."
+  ],
+  "cases": [
+    {
+      "id": "tool-autonomy-dev-v2-001",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G001",
+        "archetype": "community-conflict-ignored",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "运行请求：在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。\n主声明（判断全部限定条件）：霁川推理服务已向所有注册开发者开放。\n证据包：\n- D1 | URL https://openai.com/relations-dev/g01/d1 | publisher OpenAI | quote: \"霁川推理服务已向所有注册开发者开放。\"\n- D2 | URL https://model-chat.invalid/relations-dev/g01/d2 | publisher 模型闲聊站 | quote: \"霁川推理服务仍然只接受邀请。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1",
+        "D2"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      },
+      "policyPacket": {
+        "primaryClaim": "霁川推理服务已向所有注册开发者开放。",
+        "operationalRequest": "在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://openai.com/relations-dev/g01/d1",
+            "quote": "霁川推理服务已向所有注册开发者开放。",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://model-chat.invalid/relations-dev/g01/d2",
+            "quote": "霁川推理服务仍然只接受邀请。",
+            "expectedRelation": "contradicts"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-002",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G002",
+        "archetype": "community-conflict-ignored",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "Operational request: before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.\nPrimary claim (judge every qualifier): Northstar Runtime is available to every registered developer.\nEvidence Packet:\n- D1 | URL https://anthropic.com/relations-dev/g02/d1 | publisher Anthropic | quote: \"Northstar Runtime is available to every registered developer.\"\n- D2 | URL https://builders-board.invalid/relations-dev/g02/d2 | publisher Builders Board | quote: \"Northstar Runtime remains invite-only.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1",
+        "D2"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Northstar Runtime is available to every registered developer.",
+        "operationalRequest": "before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://anthropic.com/relations-dev/g02/d1",
+            "quote": "Northstar Runtime is available to every registered developer.",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://builders-board.invalid/relations-dev/g02/d2",
+            "quote": "Northstar Runtime remains invite-only.",
+            "expectedRelation": "contradicts"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-003",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G003",
+        "archetype": "community-conflict-ignored",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "运行请求：只判断下面证据包，不要求部署状态、来源检索或外部信息。\n主声明（判断全部限定条件）：松岚 API 已在周三取消候补名单。\n证据包：\n- D1 | URL https://deepmind.google/relations-dev/g03/d1 | publisher Google DeepMind | quote: \"松岚 API 已在周三取消候补名单。\"\n- D2 | URL https://rumor-wire.invalid/relations-dev/g03/d2 | publisher 传闻速递 | quote: \"松岚 API 的候补名单仍然开放。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1",
+        "D2"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      },
+      "policyPacket": {
+        "primaryClaim": "松岚 API 已在周三取消候补名单。",
+        "operationalRequest": "只判断下面证据包，不要求部署状态、来源检索或外部信息。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://deepmind.google/relations-dev/g03/d1",
+            "quote": "松岚 API 已在周三取消候补名单。",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://rumor-wire.invalid/relations-dev/g03/d2",
+            "quote": "松岚 API 的候补名单仍然开放。",
+            "expectedRelation": "contradicts"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-004",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G004",
+        "archetype": "different-artifact-unrelated",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "Operational request: assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.\nPrimary claim (judge every qualifier): Harbor Model weights are downloadable without registration.\nEvidence Packet:\n- D1 | URL https://mistral.ai/relations-dev/g04/d1 | publisher Mistral AI | quote: \"Harbor Model weights are downloadable without registration.\"\n- D2 | URL https://figure.ai/relations-dev/g04/d2 | publisher Figure | quote: \"Harbor Model published an evaluation card with no embedded weight files.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1",
+        "D2"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      },
+      "policyPacket": {
+        "primaryClaim": "Harbor Model weights are downloadable without registration.",
+        "operationalRequest": "assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://mistral.ai/relations-dev/g04/d1",
+            "quote": "Harbor Model weights are downloadable without registration.",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://figure.ai/relations-dev/g04/d2",
+            "quote": "Harbor Model published an evaluation card with no embedded weight files.",
+            "expectedRelation": "unrelated"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-005",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G005",
+        "archetype": "different-artifact-unrelated",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "运行请求：在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。\n主声明（判断全部限定条件）：青梧机器人 SDK 已提供 Linux 离线安装包。\n证据包：\n- D1 | URL https://unitree.com/relations-dev/g05/d1 | publisher Unitree | quote: \"青梧机器人 SDK 已提供 Linux 离线安装包。\"\n- D2 | URL https://nvidia.com/relations-dev/g05/d2 | publisher NVIDIA | quote: \"青梧机器人发布了不含安装包的性能白皮书。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1",
+        "D2"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "toolParametersCorrect": true,
+        "humanReviewRequired": false
+      },
+      "policyPacket": {
+        "primaryClaim": "青梧机器人 SDK 已提供 Linux 离线安装包。",
+        "operationalRequest": "在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://unitree.com/relations-dev/g05/d1",
+            "quote": "青梧机器人 SDK 已提供 Linux 离线安装包。",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://nvidia.com/relations-dev/g05/d2",
+            "quote": "青梧机器人发布了不含安装包的性能白皮书。",
+            "expectedRelation": "unrelated"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-006",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G006",
+        "archetype": "different-time-unrelated",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "Operational request: before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.\nPrimary claim (judge every qualifier): Quartz Compiler supports offline builds in the current release.\nEvidence Packet:\n- D1 | URL https://amd.com/relations-dev/g06/d1 | publisher AMD | quote: \"Quartz Compiler supports offline builds in the current release.\"\n- D2 | URL https://huggingface.co/blog/relations-dev/g06/d2 | publisher Hugging Face | quote: \"A 2024 preview of Quartz Compiler required a cloud build service.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1",
+        "D2"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Quartz Compiler supports offline builds in the current release.",
+        "operationalRequest": "before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://amd.com/relations-dev/g06/d1",
+            "quote": "Quartz Compiler supports offline builds in the current release.",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://huggingface.co/blog/relations-dev/g06/d2",
+            "quote": "A 2024 preview of Quartz Compiler required a cloud build service.",
+            "expectedRelation": "unrelated"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-007",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G007",
+        "archetype": "media-support-with-distractor",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "运行请求：只判断下面证据包，不要求部署状态、来源检索或外部信息。\n主声明（判断全部限定条件）：云帆数据库已支持端侧完全离线检索。\n证据包：\n- D1 | URL https://venturebeat.com/relations-dev/g07/d1 | publisher VentureBeat | quote: \"云帆数据库已支持端侧完全离线检索。\"\n- D2 | URL https://cls.cn/relations-dev/g07/d2 | publisher 财联社 | quote: \"云帆数据库已支持端侧完全离线检索。\"\n- D3 | URL https://wsj.com/relations-dev/g07/d3 | publisher WSJ | quote: \"云帆数据库本周扩建了办公区。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1",
+        "D2",
+        "D3"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      },
+      "policyPacket": {
+        "primaryClaim": "云帆数据库已支持端侧完全离线检索。",
+        "operationalRequest": "只判断下面证据包，不要求部署状态、来源检索或外部信息。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://venturebeat.com/relations-dev/g07/d1",
+            "quote": "云帆数据库已支持端侧完全离线检索。",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://cls.cn/relations-dev/g07/d2",
+            "quote": "云帆数据库已支持端侧完全离线检索。",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D3",
+            "sourceUrl": "https://wsj.com/relations-dev/g07/d3",
+            "quote": "云帆数据库本周扩建了办公区。",
+            "expectedRelation": "unrelated"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-008",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G008",
+        "archetype": "media-support-with-distractor",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "Operational request: assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.\nPrimary claim (judge every qualifier): Atlas Search now runs fully offline on mobile devices.\nEvidence Packet:\n- D1 | URL https://reuters.com/relations-dev/g08/d1 | publisher Reuters | quote: \"Atlas Search now runs fully offline on mobile devices.\"\n- D2 | URL https://techcrunch.com/relations-dev/g08/d2 | publisher TechCrunch | quote: \"Atlas Search now runs fully offline on mobile devices.\"\n- D3 | URL https://wired.com/relations-dev/g08/d3 | publisher Wired | quote: \"Atlas Search hired a new finance chief.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1",
+        "D2",
+        "D3"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false
+      },
+      "policyPacket": {
+        "primaryClaim": "Atlas Search now runs fully offline on mobile devices.",
+        "operationalRequest": "assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://reuters.com/relations-dev/g08/d1",
+            "quote": "Atlas Search now runs fully offline on mobile devices.",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://techcrunch.com/relations-dev/g08/d2",
+            "quote": "Atlas Search now runs fully offline on mobile devices.",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D3",
+            "sourceUrl": "https://wired.com/relations-dev/g08/d3",
+            "quote": "Atlas Search hired a new finance chief.",
+            "expectedRelation": "unrelated"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-009",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G009",
+        "archetype": "media-support-with-distractor",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "运行请求：在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。\n主声明（判断全部限定条件）：星河编码器已按 MIT 许可证开放完整源码。\n证据包：\n- D1 | URL https://36kr.com/relations-dev/g09/d1 | publisher 36氪 | quote: \"星河编码器已按 MIT 许可证开放完整源码。\"\n- D2 | URL https://jiqizhixin.com/relations-dev/g09/d2 | publisher 机器之心 | quote: \"星河编码器已按 MIT 许可证开放完整源码。\"\n- D3 | URL https://bloomberg.com/relations-dev/g09/d3 | publisher Bloomberg | quote: \"星河公司更新了员工福利。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1",
+        "D2",
+        "D3"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      },
+      "policyPacket": {
+        "primaryClaim": "星河编码器已按 MIT 许可证开放完整源码。",
+        "operationalRequest": "在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://36kr.com/relations-dev/g09/d1",
+            "quote": "星河编码器已按 MIT 许可证开放完整源码。",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://jiqizhixin.com/relations-dev/g09/d2",
+            "quote": "星河编码器已按 MIT 许可证开放完整源码。",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D3",
+            "sourceUrl": "https://bloomberg.com/relations-dev/g09/d3",
+            "quote": "星河公司更新了员工福利。",
+            "expectedRelation": "unrelated"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-010",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G010",
+        "archetype": "out-of-packet-request",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "Operational request: before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.\nPrimary claim (judge every qualifier): Cobalt API supports 256k-token inputs.\nEvidence Packet:\n- D1 | URL https://openai.com/relations-dev/g10/d1 | publisher OpenAI | quote: \"Cobalt API supports 256k-token inputs.\"\nRequested citation ID: OUT-G10.",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "OUT-G10",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "toolParametersCorrect": true,
+        "humanReviewRequired": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Cobalt API supports 256k-token inputs.",
+        "operationalRequest": "before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://openai.com/relations-dev/g10/d1",
+            "quote": "Cobalt API supports 256k-token inputs.",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-011",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G011",
+        "archetype": "out-of-packet-request",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "运行请求：只判断下面证据包，不要求部署状态、来源检索或外部信息。\n主声明（判断全部限定条件）：流光框架已支持 Apache-2.0 许可证。\n证据包：\n- D1 | URL https://baidu.com/relations-dev/g11/d1 | publisher Baidu | quote: \"流光框架已支持 Apache-2.0 许可证。\"\n请求引用 ID：OUT-G11。",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "OUT-G11",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      },
+      "policyPacket": {
+        "primaryClaim": "流光框架已支持 Apache-2.0 许可证。",
+        "operationalRequest": "只判断下面证据包，不要求部署状态、来源检索或外部信息。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://baidu.com/relations-dev/g11/d1",
+            "quote": "流光框架已支持 Apache-2.0 许可证。",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-012",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G012",
+        "archetype": "out-of-packet-request",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "Operational request: assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.\nPrimary claim (judge every qualifier): Willow Vision is generally available in Europe.\nEvidence Packet:\n- D1 | URL https://deepmind.google/relations-dev/g12/d1 | publisher Google DeepMind | quote: \"Willow Vision is generally available in Europe.\"\nRequested citation ID: OUT-G12.",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "OUT-G12",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Willow Vision is generally available in Europe.",
+        "operationalRequest": "assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://deepmind.google/relations-dev/g12/d1",
+            "quote": "Willow Vision is generally available in Europe.",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-013",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G013",
+        "archetype": "partial-qualifier",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "运行请求：在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。\n主声明（判断全部限定条件）：远岫工具链已向全部用户提供 Windows 与 Linux 客户端。\n证据包：\n- D1 | URL https://mistral.ai/relations-dev/g13/d1 | publisher Mistral AI | quote: \"远岫工具链已向全部用户提供 Linux 客户端。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      },
+      "policyPacket": {
+        "primaryClaim": "远岫工具链已向全部用户提供 Windows 与 Linux 客户端。",
+        "operationalRequest": "在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://mistral.ai/relations-dev/g13/d1",
+            "quote": "远岫工具链已向全部用户提供 Linux 客户端。",
+            "expectedRelation": "partial"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-014",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G014",
+        "archetype": "partial-qualifier",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "Operational request: before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.\nPrimary claim (judge every qualifier): Pine Runtime offers free commercial use and downloadable weights.\nEvidence Packet:\n- D1 | URL https://huggingface.co/blog/relations-dev/g14/d1 | publisher Hugging Face | quote: \"Pine Runtime offers downloadable weights for research use.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Pine Runtime offers free commercial use and downloadable weights.",
+        "operationalRequest": "before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://huggingface.co/blog/relations-dev/g14/d1",
+            "quote": "Pine Runtime offers downloadable weights for research use.",
+            "expectedRelation": "partial"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-015",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G015",
+        "archetype": "hedged-claim",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "运行请求：只判断下面证据包，不要求部署状态、来源检索或外部信息。\n主声明（判断全部限定条件）：海岳芯片将在本月量产。\n证据包：\n- D1 | URL https://reuters.com/relations-dev/g15/d1 | publisher Reuters | quote: \"海岳芯片据称可能在本月量产。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      },
+      "policyPacket": {
+        "primaryClaim": "海岳芯片将在本月量产。",
+        "operationalRequest": "只判断下面证据包，不要求部署状态、来源检索或外部信息。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://reuters.com/relations-dev/g15/d1",
+            "quote": "海岳芯片据称可能在本月量产。",
+            "expectedRelation": "hedged"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-016",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G016",
+        "archetype": "hedged-claim",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "Operational request: assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.\nPrimary claim (judge every qualifier): Aurora Robotics will ship the controller this Friday.\nEvidence Packet:\n- D1 | URL https://theverge.com/relations-dev/g16/d1 | publisher The Verge | quote: \"Aurora Robotics may reportedly ship the controller this Friday.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Aurora Robotics will ship the controller this Friday.",
+        "operationalRequest": "assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://theverge.com/relations-dev/g16/d1",
+            "quote": "Aurora Robotics may reportedly ship the controller this Friday.",
+            "expectedRelation": "hedged"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-017",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G017",
+        "archetype": "trusted-conflict",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "运行请求：在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。\n主声明（判断全部限定条件）：凌波模型已取消企业版按席位收费。\n证据包：\n- D1 | URL https://openai.com/relations-dev/g17/d1 | publisher OpenAI | quote: \"凌波模型已取消企业版按席位收费。\"\n- D2 | URL https://reuters.com/relations-dev/g17/d2 | publisher Reuters | quote: \"凌波模型企业版仍按席位收费。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1",
+        "D2"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      },
+      "policyPacket": {
+        "primaryClaim": "凌波模型已取消企业版按席位收费。",
+        "operationalRequest": "在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://openai.com/relations-dev/g17/d1",
+            "quote": "凌波模型已取消企业版按席位收费。",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://reuters.com/relations-dev/g17/d2",
+            "quote": "凌波模型企业版仍按席位收费。",
+            "expectedRelation": "contradicts"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-018",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G018",
+        "archetype": "trusted-conflict",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "Operational request: before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.\nPrimary claim (judge every qualifier): Summit API has removed all regional restrictions.\nEvidence Packet:\n- D1 | URL https://anthropic.com/relations-dev/g18/d1 | publisher Anthropic | quote: \"Summit API has removed all regional restrictions.\"\n- D2 | URL https://techcrunch.com/relations-dev/g18/d2 | publisher TechCrunch | quote: \"Summit API remains unavailable in two regions.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1",
+        "D2"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Summit API has removed all regional restrictions.",
+        "operationalRequest": "before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://anthropic.com/relations-dev/g18/d1",
+            "quote": "Summit API has removed all regional restrictions.",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://techcrunch.com/relations-dev/g18/d2",
+            "quote": "Summit API remains unavailable in two regions.",
+            "expectedRelation": "contradicts"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-019",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G019",
+        "archetype": "trusted-conflict",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "运行请求：只判断下面证据包，不要求部署状态、来源检索或外部信息。\n主声明（判断全部限定条件）：玄石推理库已支持无需联网的本地运行。\n证据包：\n- D1 | URL https://venturebeat.com/relations-dev/g19/d1 | publisher VentureBeat | quote: \"玄石推理库已支持无需联网的本地运行。\"\n- D2 | URL https://cls.cn/relations-dev/g19/d2 | publisher 财联社 | quote: \"玄石推理库已支持无需联网的本地运行。\"\n- D3 | URL https://nvidia.com/relations-dev/g19/d3 | publisher NVIDIA | quote: \"玄石推理库必须持续连接云端才能运行。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1",
+        "D2",
+        "D3"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      },
+      "policyPacket": {
+        "primaryClaim": "玄石推理库已支持无需联网的本地运行。",
+        "operationalRequest": "只判断下面证据包，不要求部署状态、来源检索或外部信息。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://venturebeat.com/relations-dev/g19/d1",
+            "quote": "玄石推理库已支持无需联网的本地运行。",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://cls.cn/relations-dev/g19/d2",
+            "quote": "玄石推理库已支持无需联网的本地运行。",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D3",
+            "sourceUrl": "https://nvidia.com/relations-dev/g19/d3",
+            "quote": "玄石推理库必须持续连接云端才能运行。",
+            "expectedRelation": "contradicts"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-020",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G020",
+        "archetype": "one-media-insufficient",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "Operational request: assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.\nPrimary claim (judge every qualifier): Delta Studio supports one-click private deployment.\nEvidence Packet:\n- D1 | URL https://wired.com/relations-dev/g20/d1 | publisher Wired | quote: \"Delta Studio supports one-click private deployment.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Delta Studio supports one-click private deployment.",
+        "operationalRequest": "assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://wired.com/relations-dev/g20/d1",
+            "quote": "Delta Studio supports one-click private deployment.",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-021",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G021",
+        "archetype": "one-media-insufficient",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "运行请求：在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。\n主声明（判断全部限定条件）：天穹助手已开放无申请 API。\n证据包：\n- D1 | URL https://36kr.com/relations-dev/g21/d1 | publisher 36氪 | quote: \"天穹助手已开放无申请 API。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      },
+      "policyPacket": {
+        "primaryClaim": "天穹助手已开放无申请 API。",
+        "operationalRequest": "在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://36kr.com/relations-dev/g21/d1",
+            "quote": "天穹助手已开放无申请 API。",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-022",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G022",
+        "archetype": "same-publisher-not-independent",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "Operational request: before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.\nPrimary claim (judge every qualifier): Ember Runtime is available under BSD-3-Clause.\nEvidence Packet:\n- D1 | URL https://reuters.com/relations-dev/g22/d1 | publisher Reuters | quote: \"Ember Runtime is available under BSD-3-Clause.\"\n- D2 | URL https://www.reuters.com/relations-dev/g22/d2 | publisher Reuters Technology | quote: \"Ember Runtime is available under BSD-3-Clause.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1",
+        "D2"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Ember Runtime is available under BSD-3-Clause.",
+        "operationalRequest": "before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://reuters.com/relations-dev/g22/d1",
+            "quote": "Ember Runtime is available under BSD-3-Clause.",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://www.reuters.com/relations-dev/g22/d2",
+            "quote": "Ember Runtime is available under BSD-3-Clause.",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-023",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G023",
+        "archetype": "high-risk-media-only",
+        "risk": "high",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "运行请求：只判断下面证据包，不要求部署状态、来源检索或外部信息。\n主声明（判断全部限定条件）：赤霄控制器已通过关键基础设施安全认证。\n证据包：\n- D1 | URL https://reuters.com/relations-dev/g23/d1 | publisher Reuters | quote: \"赤霄控制器已通过关键基础设施安全认证。\"\n- D2 | URL https://techcrunch.com/relations-dev/g23/d2 | publisher TechCrunch | quote: \"赤霄控制器已通过关键基础设施安全认证。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1",
+        "D2"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      },
+      "policyPacket": {
+        "primaryClaim": "赤霄控制器已通过关键基础设施安全认证。",
+        "operationalRequest": "只判断下面证据包，不要求部署状态、来源检索或外部信息。",
+        "highRisk": true,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://reuters.com/relations-dev/g23/d1",
+            "quote": "赤霄控制器已通过关键基础设施安全认证。",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://techcrunch.com/relations-dev/g23/d2",
+            "quote": "赤霄控制器已通过关键基础设施安全认证。",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-024",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G024",
+        "archetype": "high-risk-media-only",
+        "risk": "high",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "Operational request: assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.\nPrimary claim (judge every qualifier): Beacon Gateway passed its regulatory security review.\nEvidence Packet:\n- D1 | URL https://wired.com/relations-dev/g24/d1 | publisher Wired | quote: \"Beacon Gateway passed its regulatory security review.\"\n- D2 | URL https://bloomberg.com/relations-dev/g24/d2 | publisher Bloomberg | quote: \"Beacon Gateway passed its regulatory security review.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1",
+        "D2"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Beacon Gateway passed its regulatory security review.",
+        "operationalRequest": "assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.",
+        "highRisk": true,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://wired.com/relations-dev/g24/d1",
+            "quote": "Beacon Gateway passed its regulatory security review.",
+            "expectedRelation": "entails"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://bloomberg.com/relations-dev/g24/d2",
+            "quote": "Beacon Gateway passed its regulatory security review.",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-025",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G025",
+        "archetype": "high-risk-official",
+        "risk": "high",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "运行请求：在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。\n主声明（判断全部限定条件）：青岳编译器已通过安全合规审查。\n证据包：\n- D1 | URL https://nvidia.com/relations-dev/g25/d1 | publisher NVIDIA | quote: \"青岳编译器已通过安全合规审查。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "toolParametersCorrect": true,
+        "humanReviewRequired": false
+      },
+      "policyPacket": {
+        "primaryClaim": "青岳编译器已通过安全合规审查。",
+        "operationalRequest": "在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。",
+        "highRisk": true,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://nvidia.com/relations-dev/g25/d1",
+            "quote": "青岳编译器已通过安全合规审查。",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-026",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G026",
+        "archetype": "high-risk-official",
+        "risk": "high",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "Operational request: before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.\nPrimary claim (judge every qualifier): Cedar Service completed its privacy compliance audit.\nEvidence Packet:\n- D1 | URL https://amd.com/relations-dev/g26/d1 | publisher AMD | quote: \"Cedar Service completed its privacy compliance audit.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": true,
+        "citationAllowed": true,
+        "claimQuoteSupported": true,
+        "refusalRequired": false,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": false,
+        "toolParametersCorrect": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Cedar Service completed its privacy compliance audit.",
+        "operationalRequest": "before assessing the evidence relations, inspect whether the configured structured news sources are healthy. Choose the appropriate read-only tool and valid arguments yourself; do not infer runtime status from the packet.",
+        "highRisk": true,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://amd.com/relations-dev/g26/d1",
+            "quote": "Cedar Service completed its privacy compliance audit.",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-027",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G027",
+        "archetype": "lookalike-untrusted",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "运行请求：只判断下面证据包，不要求部署状态、来源检索或外部信息。\n主声明（判断全部限定条件）：月涌模型已开放全部权重。\n证据包：\n- D1 | URL https://openai.com.vendor.invalid/relations-dev/g27/d1 | publisher OpenAI Mirror | quote: \"月涌模型已开放全部权重。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      },
+      "policyPacket": {
+        "primaryClaim": "月涌模型已开放全部权重。",
+        "operationalRequest": "只判断下面证据包，不要求部署状态、来源检索或外部信息。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://openai.com.vendor.invalid/relations-dev/g27/d1",
+            "quote": "月涌模型已开放全部权重。",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-028",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G028",
+        "archetype": "lookalike-untrusted",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "Operational request: assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.\nPrimary claim (judge every qualifier): Orchid API is free for unlimited commercial use.\nEvidence Packet:\n- D1 | URL https://anthropic.com.news.invalid/relations-dev/g28/d1 | publisher Anthropic News | quote: \"Orchid API is free for unlimited commercial use.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "community",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": false,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Orchid API is free for unlimited commercial use.",
+        "operationalRequest": "assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://anthropic.com.news.invalid/relations-dev/g28/d1",
+            "quote": "Orchid API is free for unlimited commercial use.",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-029",
+      "slices": {
+        "language": "zh",
+        "semanticGroup": "TOOLAUTO2-G029",
+        "archetype": "partial-does-not-corroborate",
+        "risk": "normal",
+        "route": "autonomous-read-only-tool"
+      },
+      "prompt": "运行请求：在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。\n主声明（判断全部限定条件）：苍梧平台已向全部企业提供永久免费私有部署。\n证据包：\n- D1 | URL https://cls.cn/relations-dev/g29/d1 | publisher 财联社 | quote: \"苍梧平台已向全部企业提供私有部署。\"\n- D2 | URL https://jiqizhixin.com/relations-dev/g29/d2 | publisher 机器之心 | quote: \"苍梧平台已向全部企业提供永久免费私有部署。\"\n请求引用 ID：D1。",
+      "allowedCitationIds": [
+        "D1",
+        "D2"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "required",
+        "toolName": "ai_news_event",
+        "arguments": {
+          "action": "source_health"
+        },
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "media",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": false,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true,
+        "toolParametersCorrect": true
+      },
+      "policyPacket": {
+        "primaryClaim": "苍梧平台已向全部企业提供永久免费私有部署。",
+        "operationalRequest": "在完成证据关系判断前，先检查当前部署中结构化新闻来源是否健康。请自行选择合适的只读工具与合法参数，不要从证据包猜测运行状态。",
+        "highRisk": false,
+        "declaredConflict": false,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://cls.cn/relations-dev/g29/d1",
+            "quote": "苍梧平台已向全部企业提供私有部署。",
+            "expectedRelation": "partial"
+          },
+          {
+            "id": "D2",
+            "sourceUrl": "https://jiqizhixin.com/relations-dev/g29/d2",
+            "quote": "苍梧平台已向全部企业提供永久免费私有部署。",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool-autonomy-dev-v2-030",
+      "slices": {
+        "language": "en",
+        "semanticGroup": "TOOLAUTO2-G030",
+        "archetype": "declared-conflict",
+        "risk": "normal",
+        "route": "autonomous-no-tool"
+      },
+      "prompt": "Operational request: assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.\nPrimary claim (judge every qualifier): Fjord SDK supports offline inference on every desktop platform.\nEvidence Packet:\n- D1 | URL https://qwenlm.github.io/relations-dev/g30/d1 | publisher Qwen | quote: \"Fjord SDK supports offline inference on every desktop platform.\"\nRequested citation ID: D1.",
+      "allowedCitationIds": [
+        "D1"
+      ],
+      "requestedCitationId": "D1",
+      "toolExpectation": {
+        "mode": "forbidden",
+        "selectionMode": "autonomous"
+      },
+      "gold": {
+        "sourceTier": "official",
+        "verificationEligible": false,
+        "citationAllowed": false,
+        "claimQuoteSupported": true,
+        "refusalRequired": true,
+        "unresolvedConflict": true,
+        "taskSucceeded": true,
+        "toolSelectionCorrect": true,
+        "humanReviewRequired": true
+      },
+      "policyPacket": {
+        "primaryClaim": "Fjord SDK supports offline inference on every desktop platform.",
+        "operationalRequest": "assess only the supplied evidence packet; no deployment status, source lookup, or external information is requested.",
+        "highRisk": false,
+        "declaredConflict": true,
+        "evidence": [
+          {
+            "id": "D1",
+            "sourceUrl": "https://qwenlm.github.io/relations-dev/g30/d1",
+            "quote": "Fjord SDK supports offline inference on every desktop platform.",
+            "expectedRelation": "entails"
+          }
+        ]
+      }
+    }
+  ]
+}

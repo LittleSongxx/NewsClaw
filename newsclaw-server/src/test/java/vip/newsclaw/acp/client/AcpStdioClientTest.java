@@ -8,6 +8,8 @@ import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 
 import java.io.IOException;
+import java.io.BufferedReader;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -59,6 +61,12 @@ class AcpStdioClientTest {
                 AcpStdioClient.spawn(new ObjectMapper(),
                         "/definitely/does/not/exist/acp-test-bin",
                         List.of(), AcpStdioClient.emptyEnv(), null));
+    }
+
+    @Test
+    void oversizedProtocolLineIsRejectedBeforeUnboundedAllocation() {
+        BufferedReader reader = new BufferedReader(new StringReader("12345\n"));
+        assertThrows(IOException.class, () -> AcpStdioClient.readLineBounded(reader, 4));
     }
 
     /**

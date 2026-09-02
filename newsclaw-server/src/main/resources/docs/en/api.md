@@ -156,7 +156,7 @@ Common query params: `page` (default 1), `size` (default 20). Examples: `GET /ap
 ```bash
 curl -X POST http://localhost:18088/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
+  -d '{"username":"admin","password":"$BOOTSTRAP_PASSWORD"}'
 ```
 
 ### Chat
@@ -230,7 +230,7 @@ Public endpoint (no auth required). Exchanges credentials for a JWT.
 ```bash
 curl -X POST http://localhost:18088/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
+  -d '{"username":"admin","password":"$BOOTSTRAP_PASSWORD"}'
 ```
 
 ### Streaming chat: `POST /api/v1/chat/stream`
@@ -264,6 +264,72 @@ curl -N -X POST "http://localhost:18088/api/v1/chat/stream?token=$TOKEN" \
 ```
 
 Related endpoints: `POST /api/v1/chat/{conversationId}/stop` (stop generation), `POST /api/v1/chat/{conversationId}/interrupt` (queue a follow-up without interrupting the current stream).
+
+### AI-news candidate pipeline (V213 shadow)
+
+The candidate pipeline is default-off. Once its feature flag is explicitly enabled, the backend can finish multi-lane recall, candidate/observation persistence, ranking, capture-queue advancement, and terminal scan state without an LLM. Reads require workspace `viewer`; scans and reviews require `member`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/ai-news/candidate-pipeline/scans` | Start a backend scan for an explicit UTC window |
+| `GET` | `/api/v1/ai-news/candidate-pipeline/scans` | Page scan status and funnel counters |
+| `GET` | `/api/v1/ai-news/candidate-pipeline/scans/{scanRunId}` | Inspect provider marginal yield, audit data, and the four-part scorecard |
+| `GET` | `/api/v1/ai-news/candidate-pipeline/candidates` | Filter by scan/provider/stage/marginal-only/`seenAfter`/`seenBefore` |
+| `POST` | `/api/v1/ai-news/candidate-pipeline/candidates/{candidateId}/review` | Accept or reject a candidate without publishing it |
+
+Example scan body: `{"topic":"AI","windowStart":"2026-08-27T00:00:00Z","windowEnd":"2026-08-28T00:00:00Z","maxCandidates":30}`. The window is half-open; when China search is enabled its provider ID is `bocha-web`. Agents can use the compact `ai_news_scan`, `ai_news_query`, and `ai_news_review` tools; they do not copy capture IDs to drive candidate persistence. The legacy `ai_news_event` tool remains available.
+
+### AI-news source captures
+
+Evidence-producing automation uses a capture-first contract. `POST
+/api/v1/ai-news/source-captures` with `{"sourceUrl":"https://..."}` creates an
+immutable, workspace-scoped snapshot; `GET
+/api/v1/ai-news/source-captures/{id}?startOffset=0` pages through its normalized
+main content. Event evidence then supplies that exact `captureId`, an atomic
+claim, a verbatim quote, `semanticRelation`, and optional
+`relationConfidence`. The server derives final URL, source tier, publisher
+timestamp, HTTP status, capture time, hashes, and extractor provenance, and
+requires the quote to bind with `NORMALIZED_EXACT`.
+
+`sourceTimeOrigin` distinguishes explicit article-page metadata
+(`PAGE_METADATA`) from a governed publisher structured-source attestation
+(`STRUCTURED_SOURCE`). The latter exposes a source-item version id and
+attestation hash and is revalidated before admission. It is accepted only for
+an exact canonical-URL and publisher-owner match from an evidence-eligible
+endpoint with a complete digested transport record; disagreement or a later
+publisher correction fails closed.
+
+Successful responses expose `captureMethod` as `READ_ONLY_HTTP` or
+`READ_ONLY_HTTP_PROXY_FALLBACK`; the latter is used only after a direct
+transport failure. An oversized response is never truncated into evidence,
+and extracted content below the deployment minimum fails explicitly. Agent
+upserts additionally require a frozen half-open UTC window and reject missing
+or out-of-window publisher timestamps.
+
+### AI-news discovery snapshot audit
+
+These endpoints require global-admin permission. Every isolated discovery run
+stores its UTC window, per-query request and provider results, cache flags,
+result hashes, final candidates, rejection diagnostics, policy version,
+snapshot hash, and ranking hash in the V211 durable ledger.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/ai-news/discovery/search` | Run discovery for an explicit window and persist the full snapshot |
+| `GET` | `/api/v1/ai-news/discovery/runs` | Page run summaries, optionally filtered by workspace or policy |
+| `GET` | `/api/v1/ai-news/discovery/runs/{runId}` | Inspect frozen channel responses, candidates, and rejection counters |
+| `POST` | `/api/v1/ai-news/discovery/runs/{runId}/replay?maxCandidates=30` | Reapply the current admission/ranking policy without network access |
+| `GET` | `/api/v1/ai-news/discovery/stability?runIds={id}&runIds={id}` | Compare 2–20 same-workspace, same-window, same-policy runs |
+
+The `search` body is
+`{"workspaceId":"1","topic":"artificial intelligence","windowStart":"2026-08-27T02:10:00Z","windowEnd":"2026-08-28T02:10:00Z","maxCandidates":30}`.
+Times must be ISO-8601 instants and the window is half-open.
+
+Stability reports include Jaccard@10/30, RBO@10/30, identical raw-snapshot and
+final-ranking rates, lane composition, temporal admission, and cached-query
+counts. `liveSentinelEligible=true` requires at least three runs with no cached
+query. A replay retains the original `snapshotHash`, separating provider drift
+from policy changes, and does not create a new live run.
 
 ### Agent management
 
@@ -379,7 +445,7 @@ Three things to note (they differ from intuition):
 3. Requires login (not `@RequireGlobalAdmin`).
 
 ```bash
-curl -X PUT "http://localhost:18088/api/v1/auth/users/1/password?oldPassword=admin123&newPassword=newPass456" \
+curl -X PUT "http://localhost:18088/api/v1/auth/users/1/password?oldPassword=$BOOTSTRAP_PASSWORD&newPassword=$NEW_PASSWORD" \
   -H "Authorization: Bearer $TOKEN"
 ```
 

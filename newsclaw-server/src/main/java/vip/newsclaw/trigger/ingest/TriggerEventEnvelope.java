@@ -1,6 +1,7 @@
 package vip.newsclaw.trigger.ingest;
 
 import java.util.Map;
+import java.util.List;
 
 /**
  * Generic event envelope used by upstream sources (channel webhooks,
@@ -18,6 +19,8 @@ import java.util.Map;
  *       to drop events that originate from NewsClaw's own outbound traffic.</li>
  *   <li>{@code data} — free-form payload exposed to the trigger's payload
  *       template under {@code event.*}.</li>
+ *   <li>Optional conversation/channel/chat fields preserve source provenance
+ *       when the event starts a durable workflow run.</li>
  * </ul>
  */
 public record TriggerEventEnvelope(
@@ -25,9 +28,97 @@ public record TriggerEventEnvelope(
         String patternType,
         String eventId,
         String senderId,
-        Map<String, Object> data
+        Map<String, Object> data,
+        /** Conversation that caused the event, when the source has one. */
+        String conversationId,
+        /** Internal channel row id, when the source is an inbound channel. */
+        Long channelId,
+        /** External channel type (feishu / wecom / webhook, ...). */
+        String channelType,
+        /** External chat / room id used as the delivery target. */
+        String chatId,
+        /** Human-readable sender name, when supplied by the source. */
+        String senderName,
+        /**
+         * True only for an event emitted by a channel adapter after that
+         * adapter authenticated and mapped the channel to a workspace.  REST
+         * envelopes and generic webhooks are untrusted input; they must not
+         * be able to impersonate an editorial human merely by choosing a
+         * senderId.
+         */
+        boolean trustedSource,
+        /** Trigger ids already traversed by this event chain. */
+        List<Long> triggerAncestry,
+        /** Number of trigger-to-workflow hops already traversed. */
+        int triggerDepth
 ) {
+    /**
+     * Backward-compatible constructor for generic callers that only have the
+     * original five envelope fields.
+     */
+    public TriggerEventEnvelope(long workspaceId, String patternType,
+                                String eventId, String senderId,
+                                Map<String, Object> data) {
+        this(workspaceId, patternType, eventId, senderId, data,
+                null, null, null, null, null, false, List.of(), 0);
+    }
+
+    /** Convenience constructor for sources that only know the conversation. */
+    public TriggerEventEnvelope(long workspaceId, String patternType,
+                                String eventId, String senderId,
+                                Map<String, Object> data,
+                                String conversationId) {
+        this(workspaceId, patternType, eventId, senderId, data,
+                conversationId, null, null, null, null, false, List.of(), 0);
+    }
+
+    /** Convenience constructor for the common channel metadata shape. */
+    public TriggerEventEnvelope(long workspaceId, String patternType,
+                                String eventId, String senderId,
+                                Map<String, Object> data,
+                                String conversationId, String channelType,
+                                String chatId) {
+        this(workspaceId, patternType, eventId, senderId, data,
+                conversationId, null, channelType, chatId, null, false, List.of(), 0);
+    }
+
+    /** Convenience constructor for channel sources without an internal id. */
+    public TriggerEventEnvelope(long workspaceId, String patternType,
+                                String eventId, String senderId,
+                                Map<String, Object> data,
+                                String conversationId, String channelType,
+                                String chatId, String senderName) {
+        this(workspaceId, patternType, eventId, senderId, data,
+                conversationId, null, channelType, chatId, senderName, false, List.of(), 0);
+    }
+
+    /** Backward-compatible constructor for the previous ten-field shape. */
+    public TriggerEventEnvelope(long workspaceId, String patternType,
+                                String eventId, String senderId,
+                                Map<String, Object> data,
+                                String conversationId, Long channelId,
+                                String channelType, String chatId,
+                                String senderName) {
+        this(workspaceId, patternType, eventId, senderId, data,
+                conversationId, channelId, channelType, chatId, senderName,
+                false, List.of(), 0);
+    }
+
+    /** Backward-compatible constructor for trusted channel bridges. */
+    public TriggerEventEnvelope(long workspaceId, String patternType,
+                                String eventId, String senderId,
+                                Map<String, Object> data,
+                                String conversationId, Long channelId,
+                                String channelType, String chatId,
+                                String senderName, boolean trustedSource) {
+        this(workspaceId, patternType, eventId, senderId, data,
+                conversationId, channelId, channelType, chatId, senderName,
+                trustedSource, List.of(), 0);
+    }
+
     public TriggerEventEnvelope {
         data = data == null ? Map.of() : Map.copyOf(data);
+        triggerAncestry = triggerAncestry == null ? List.of() : List.copyOf(triggerAncestry);
+        triggerDepth = Math.max(0, triggerDepth);
     }
 }

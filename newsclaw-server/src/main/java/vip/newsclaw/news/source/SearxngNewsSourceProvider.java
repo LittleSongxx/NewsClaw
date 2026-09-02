@@ -13,6 +13,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.DateTimeException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -66,8 +67,13 @@ public class SearxngNewsSourceProvider implements NewsSourceProvider {
                 String url = item.path("url").asText("");
                 if (url.isBlank()) continue;
                 String snippet = item.path("content").asText("");
+                String publishedAt = publishedAt(item);
+                Map<String, Object> metadata = new java.util.LinkedHashMap<>();
+                String engine = item.path("engine").asText("");
+                if (!engine.isBlank()) metadata.put("engine", engine);
+                if (!publishedAt.isBlank()) metadata.put("publishedAt", publishedAt);
                 out.add(result(url, item.path("title").asText(""), snippet,
-                        response.statusCode(), "SEARXNG_SEARCH", Map.of("engine", item.path("engine").asText(""))));
+                        response.statusCode(), "SEARXNG_SEARCH", metadata));
                 if (out.size() >= query.limit()) break;
             }
             return List.copyOf(out);
@@ -131,6 +137,33 @@ public class SearxngNewsSourceProvider implements NewsSourceProvider {
             endpoint.append('?').append(parsed.getRawQuery());
         }
         return endpoint.toString();
+    }
+
+    private static String publishedAt(JsonNode item) {
+        for (String field : List.of("publishedDate", "published_at", "published", "date", "timestamp")) {
+            JsonNode value = item.get(field);
+            if (value == null || value.isNull()) continue;
+            if (value.isNumber()) {
+                long epoch = value.asLong();
+                // SearXNG extensions have used both seconds and milliseconds.
+                if (Math.abs(epoch) < 100_000_000_000L) epoch *= 1000L;
+                try {
+                    return Instant.ofEpochMilli(epoch).toString();
+                } catch (ArithmeticException | DateTimeException ignored) {
+                    continue;
+                }
+            }
+            String text = value.asText("").trim();
+            if (!text.isBlank()) return text;
+        }
+        JsonNode metadata = item.path("metadata");
+        if (metadata.isObject()) {
+            for (String field : List.of("publishedDate", "published_at", "published", "date")) {
+                String text = metadata.path(field).asText("").trim();
+                if (!text.isBlank()) return text;
+            }
+        }
+        return "";
     }
 
     private NewsSourceResult result(String url, String title, String body, int status,

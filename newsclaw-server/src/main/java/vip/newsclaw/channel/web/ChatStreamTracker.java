@@ -9,6 +9,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.Disposable;
+import vip.newsclaw.agent.context.ChatOrigin;
 import vip.newsclaw.tool.mcp.runtime.McpProgressContext;
 import vip.newsclaw.workspace.conversation.model.MessageContentPart;
 
@@ -247,6 +248,9 @@ public class ChatStreamTracker {
 
         /** Username that owns this run; null for system-driven runs. */
         volatile String username;
+
+        /** Immutable security/provenance scope inherited by queued follow-ups. */
+        volatile ChatOrigin origin;
 
         RunState(String conversationId) {
             this.conversationId = conversationId;
@@ -1615,7 +1619,8 @@ public class ChatStreamTracker {
             Disposable d = state.disposable;
             canInterrupt = d != null && !d.isDisposed();
             // 无论是否可中断，都入队（支持多条排队消息）
-            state.messageQueue.offer(new QueuedInput(queuedMessage, agentId, persisted, contentParts));
+            state.messageQueue.offer(snapshotQueuedInput(
+                    state, queuedMessage, agentId, persisted, contentParts));
             if (canInterrupt) {
                 state.interruptType = InterruptType.USER_INTERRUPT_WITH_FOLLOWUP;
                 state.stopRequested.set(true);
@@ -1682,7 +1687,13 @@ public class ChatStreamTracker {
         if (state == null || state.done) {
             return false;
         }
-        state.messageQueue.offer(new QueuedInput(message, agentId, persisted, contentParts));
+        synchronized (state.lock) {
+            if (!isCurrent(state) || state.done) {
+                return false;
+            }
+            state.messageQueue.offer(snapshotQueuedInput(
+                    state, message, agentId, persisted, contentParts));
+        }
         // broadcast 在锁外
         try {
             String json = objectMapper.writeValueAsString(Map.of(
@@ -1701,10 +1712,27 @@ public class ChatStreamTracker {
      * 排队输入的原子快照（message + agentId + persisted + contentParts 一起返回，避免分离读取导致不一致）
      */
     public record QueuedInput(String message, Long agentId, boolean persisted,
-                              List<MessageContentPart> contentParts) {
+                              List<MessageContentPart> contentParts, ChatOrigin origin) {
         public QueuedInput(String message, Long agentId, boolean persisted) {
-            this(message, agentId, persisted, null);
+            this(message, agentId, persisted, null, ChatOrigin.EMPTY);
         }
+
+        public QueuedInput(String message, Long agentId, boolean persisted,
+                           List<MessageContentPart> contentParts) {
+            this(message, agentId, persisted, contentParts, ChatOrigin.EMPTY);
+        }
+    }
+
+    private static QueuedInput snapshotQueuedInput(RunState state, String message,
+                                                    Long requestedAgentId, boolean persisted,
+                                                    List<MessageContentPart> contentParts) {
+        Long boundAgentId = state.agentId != null ? state.agentId : requestedAgentId;
+        ChatOrigin boundOrigin = state.origin != null ? state.origin : ChatOrigin.EMPTY;
+        if (boundOrigin.agentId() == null && boundAgentId != null) {
+            boundOrigin = boundOrigin.withAgent(boundAgentId);
+        }
+        return new QueuedInput(message, boundAgentId, persisted,
+                contentParts == null ? null : List.copyOf(contentParts), boundOrigin);
     }
 
     /**
@@ -2157,6 +2185,19 @@ public class ChatStreamTracker {
         if (s == null) return;
         if (agentId != null) s.agentId = agentId;
         if (username != null) s.username = username;
+    }
+
+    /** Bind the complete immutable origin used by every queued continuation. */
+    public void bindRunOrigin(String conversationId, ChatOrigin origin) {
+        if (origin == null) return;
+        RunState s = runs.get(conversationId);
+        if (s == null) return;
+        synchronized (s.lock) {
+            if (!isCurrent(s) || s.done) return;
+            s.origin = origin;
+            if (origin.agentId() != null) s.agentId = origin.agentId();
+            if (origin.requesterId() != null) s.username = origin.requesterId();
+        }
     }
 
     /**

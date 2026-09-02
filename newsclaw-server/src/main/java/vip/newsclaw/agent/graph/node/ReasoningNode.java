@@ -23,6 +23,7 @@ import vip.newsclaw.llm.chatmodel.ThinkingLevelHolder;
 import vip.newsclaw.llm.chatmodel.StructuredOutputFormat;
 import vip.newsclaw.llm.chatmodel.StructuredOutputFormatHolder;
 import vip.newsclaw.llm.chatmodel.ToolChoiceHolder;
+import vip.newsclaw.llm.chatmodel.ToolCandidateHolder;
 import vip.newsclaw.llm.chatmodel.ToolChoicePolicy;
 import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.agent.graph.NodeStreamingChatHelper;
@@ -979,6 +980,7 @@ public class ReasoningNode implements NodeAction {
                         .activeCallbacks()
                 : toolCallbacks;
         activeCallbacks = filterLongFormArtifactTools(accessor.userMessage(), activeCallbacks);
+        activeCallbacks = ToolCandidateHolder.get().restrict(activeCallbacks);
 
         ChatOptions options = buildChatOptions(effectiveReasoning, activeCallbacks,
                 lastTurnIsToolResponse(promptMessages));
@@ -1239,6 +1241,27 @@ public class ReasoningNode implements NodeAction {
                 builder.finalThinking(result.thinking());
             }
             return builder.build();
+        }
+
+        if (result.partial() && result.hasToolCalls()) {
+            // A disposed/truncated stream can leave syntactically plausible but
+            // incomplete arguments. Never route those calls to ActionNode.
+            String partialText = result.text() == null ? "" : result.text();
+            log.warn("[ReasoningNode] Dropping {} tool call(s) from partial stream",
+                    result.toolCalls().size());
+            return reasonOutput()
+                    .needsToolCall(false)
+                    .shouldSummarize(false)
+                    .toolCalls(List.of())
+                    .finalAnswer(partialText.isBlank()
+                            ? "（模型响应在工具参数生成期间中断，未执行任何工具，请重试。）"
+                            : partialText)
+                    .llmCallCount(nextLlmCallCount)
+                    .finishReason(FinishReason.INCOMPLETE)
+                    .contentStreamed(!partialText.isBlank())
+                    .thinkingStreamed(result.thinking() != null && !result.thinking().isBlank())
+                    .mergeUsage(state, result)
+                    .build();
         }
 
         // Fatal error：直接设置 finalAnswer 为错误文案 + ERROR_FALLBACK，
@@ -1696,13 +1719,14 @@ public class ReasoningNode implements NodeAction {
             throw new NewsClawException(422,
                     "responseFormat=json_object is unsupported by the selected model protocol");
         }
-        OpenAiChatOptions.Builder oaiBuilder = OpenAiChatOptions.builder()
-                .toolCallbacks(activeCallbacks)
-                .maxTokens(effectiveMaxTokens);
         boolean terminalStage = toolChoice.requiresInitialToolCall() && afterToolResult;
+        List<ToolCallback> exposedCallbacks = callbacksForStage(activeCallbacks, toolChoice, terminalStage);
+        OpenAiChatOptions.Builder oaiBuilder = OpenAiChatOptions.builder()
+                .toolCallbacks(exposedCallbacks)
+                .maxTokens(effectiveMaxTokens);
         Object providerToolChoice = terminalStage
                 ? org.springframework.ai.openai.api.OpenAiApi.ChatCompletionRequest.ToolChoiceBuilder.NONE
-                : toolChoice.toOpenAiToolChoice(activeCallbacks.stream()
+                : toolChoice.toOpenAiToolChoice(exposedCallbacks.stream()
                         .map(callback -> callback.getToolDefinition().name())
                         .filter(Objects::nonNull)
                         .toList());
@@ -1721,6 +1745,24 @@ public class ReasoningNode implements NodeAction {
         oaiOpts.setInternalToolExecutionEnabled(false);
         oaiOpts.setStreamUsage(true);
         return oaiOpts;
+    }
+
+    /**
+     * Minimize provider-visible schemas without widening the active tool set.
+     * Exact-function turns expose only that function; explicit no-tool and the
+     * post-tool terminal stage expose no schemas at all.
+     */
+    private static List<ToolCallback> callbacksForStage(List<ToolCallback> activeCallbacks,
+                                                        ToolChoicePolicy policy,
+                                                        boolean terminalStage) {
+        List<ToolCallback> active = activeCallbacks == null ? List.of() : activeCallbacks;
+        if (terminalStage || policy.mode() == ToolChoicePolicy.Mode.NONE) return List.of();
+        if (policy.mode() != ToolChoicePolicy.Mode.FUNCTION) return active;
+        return active.stream()
+                .filter(Objects::nonNull)
+                .filter(callback -> callback.getToolDefinition() != null)
+                .filter(callback -> policy.functionName().equals(callback.getToolDefinition().name()))
+                .toList();
     }
 
     /**

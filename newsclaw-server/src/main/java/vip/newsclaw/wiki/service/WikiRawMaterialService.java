@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.scheduling.annotation.Scheduled;
 import vip.newsclaw.system.featureflag.FeatureFlagService;
 import vip.newsclaw.tool.builtin.DocumentExtractTool;
 import vip.newsclaw.tool.image.vision.ImageVisionService;
@@ -66,6 +67,18 @@ public class WikiRawMaterialService {
 
     public List<WikiRawMaterialEntity> listByKbId(Long kbId) {
         return listByKbIdFiltered(kbId, null, null, null, null, null);
+    }
+
+    /** Database-side counters used by the processing-status endpoint. */
+    public long countByKbId(Long kbId) {
+        return rawMapper.selectCount(new LambdaQueryWrapper<WikiRawMaterialEntity>()
+                .eq(WikiRawMaterialEntity::getKbId, kbId));
+    }
+
+    public long countByKbIdAndStatus(Long kbId, String status) {
+        return rawMapper.selectCount(new LambdaQueryWrapper<WikiRawMaterialEntity>()
+                .eq(WikiRawMaterialEntity::getKbId, kbId)
+                .eq(WikiRawMaterialEntity::getProcessingStatus, status));
     }
 
     /**
@@ -508,20 +521,7 @@ public class WikiRawMaterialService {
      */
     @Transactional
     public boolean claimForProcessing(Long id) {
-        WikiRawMaterialEntity entity = rawMapper.selectById(id);
-        if (entity == null || !"pending".equals(entity.getProcessingStatus())) {
-            return false;
-        }
-        entity.setProcessingStatus("processing");
-        clearFailureState(entity);
-        // RFC-012 M2 v2 UI：新一轮处理开始，清掉上次遗留的进度显示
-        entity.setProgressPhase(null);
-        entity.setProgressTotal(0);
-        entity.setProgressDone(0);
-        // Fresh start clears any stale cancel request from a previous run.
-        entity.setCancelRequested(Boolean.FALSE);
-        rawMapper.updateById(entity);
-        return true;
+        return id != null && rawMapper.claimPending(id) == 1;
     }
 
     /**
@@ -958,6 +958,42 @@ public class WikiRawMaterialService {
             log.info("[Wiki] Recovered stuck processing raw material: id={}, kbId={}", raw.getId(), raw.getKbId());
         }
         return stuck.size();
+    }
+
+    @Scheduled(fixedDelayString = "${newsclaw.wiki.upload-orphan-sweep-ms:3600000}",
+               initialDelayString = "${newsclaw.wiki.upload-orphan-sweep-initial-ms:300000}")
+    public void sweepOrphanUploads() {
+        sweepOrphanUploadsNow();
+    }
+
+    int sweepOrphanUploadsNow() {
+        java.nio.file.Path root = java.nio.file.Paths.get(properties.getUploadDir())
+                .toAbsolutePath().normalize();
+        if (!java.nio.file.Files.isDirectory(root)) return 0;
+        java.util.Set<java.nio.file.Path> referenced = rawMapper.selectList(
+                new LambdaQueryWrapper<WikiRawMaterialEntity>()
+                        .select(WikiRawMaterialEntity::getSourcePath)
+                        .isNotNull(WikiRawMaterialEntity::getSourcePath))
+                .stream().map(WikiRawMaterialEntity::getSourcePath)
+                .filter(java.util.Objects::nonNull)
+                .map(path -> java.nio.file.Paths.get(path).toAbsolutePath().normalize())
+                .collect(java.util.stream.Collectors.toSet());
+        java.time.Instant cutoff = java.time.Instant.now()
+                .minus(java.time.Duration.ofHours(Math.max(1, properties.getUploadOrphanTtlHours())));
+        int removed = 0;
+        try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.list(root)) {
+            for (java.nio.file.Path file : files.filter(java.nio.file.Files::isRegularFile).toList()) {
+                if (!referenced.contains(file.toAbsolutePath().normalize())
+                        && java.nio.file.Files.getLastModifiedTime(file).toInstant().isBefore(cutoff)) {
+                    java.nio.file.Files.deleteIfExists(file);
+                    removed++;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[Wiki] Orphan upload sweep failed: {}", e.getMessage());
+        }
+        if (removed > 0) log.info("[Wiki] Removed {} orphan upload(s)", removed);
+        return removed;
     }
 
     /**

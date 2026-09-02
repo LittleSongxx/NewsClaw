@@ -140,6 +140,18 @@ class WebChatVisitorTokenTest {
     }
 
     @Test
+    void channelScopedConversationIdsDoNotShareGeneratedKeyPrefix() {
+        String first = WebChatController.deriveConversationId(101L, "visitor", "thread");
+        String second = WebChatController.deriveConversationId(202L, "visitor", "thread");
+
+        assertNotEquals(first, second);
+        assertTrue(first.startsWith("webchat:101:"));
+        assertTrue(second.startsWith("webchat:202:"));
+        assertTrue(first.length() <= 64);
+        assertTrue(second.length() <= 64);
+    }
+
+    @Test
     void webchatUsername_staysWithin64_forLongVisitor() {
         assertTrue(WebChatController.webchatUsername("v".repeat(120)).length() <= 64);
         assertEquals("webchat:alice", WebChatController.webchatUsername("alice"));

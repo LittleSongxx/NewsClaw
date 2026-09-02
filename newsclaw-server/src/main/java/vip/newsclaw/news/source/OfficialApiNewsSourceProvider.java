@@ -7,5 +7,10 @@ package vip.newsclaw.news.source;
  */
 public interface OfficialApiNewsSourceProvider extends NewsSourceProvider {
 
+    @Override
+    default NewsSourceChannel channel() {
+        return NewsSourceChannel.OFFICIAL_API;
+    }
+
     String officialSourceKey();
 }

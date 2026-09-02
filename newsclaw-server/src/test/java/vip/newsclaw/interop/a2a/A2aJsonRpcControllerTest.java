@@ -113,6 +113,25 @@ class A2aJsonRpcControllerTest {
     }
 
     @Test
+    void taskAndRpcIdsAreIsolatedByAuthenticatedUser() throws Exception {
+        when(bridge.executeBlocking(any())).thenReturn(new A2aExecutionBridge.ExecutionResult("hello", true));
+        String body = """
+                {"jsonrpc":"2.0","id":"rpc-1","method":"message/send","params":{
+                  "tenant":"shared","workspaceId":1,
+                  "message":{"messageId":"m1","taskId":"task-1","parts":[{"kind":"text","text":"hi"}],
+                  "metadata":{"skillId":"1"}}
+                }}
+                """;
+
+        mvc.perform(post("/api/a2a").contentType("application/json").principal(auth("alice", 1L)).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.id").value("task-1"));
+        mvc.perform(post("/api/a2a").contentType("application/json").principal(auth("bob", 2L)).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.id").value("task-1"));
+    }
+
+    @Test
     void cancelTransitionsActiveTaskToCanceled() throws Exception {
         when(bridge.executeBlocking(any())).thenReturn(new A2aExecutionBridge.ExecutionResult("hello", false));
         String send = """
@@ -135,8 +154,12 @@ class A2aJsonRpcControllerTest {
     }
 
     private static UsernamePasswordAuthenticationToken auth() {
-        UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken("alice", null, List.of());
-        token.setDetails(1L);
+        return auth("alice", 1L);
+    }
+
+    private static UsernamePasswordAuthenticationToken auth(String username, long userId) {
+        UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(username, null, List.of());
+        token.setDetails(userId);
         return token;
     }
 }

@@ -34,6 +34,8 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -1266,6 +1268,51 @@ public class FeishuChannelAdapter extends AbstractChannelAdapter implements Stre
     }
 
     // ==================== Webhook 处理 ====================
+
+    /** Decrypt and authenticate one Event Subscription callback. Null means
+     * the payload belongs to another app or failed verification. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> verifyAndDecodeWebhook(Map<String, Object> payload) {
+        if (payload == null) return null;
+        Map<String, Object> decoded = payload;
+        boolean encrypted = payload.get("encrypt") instanceof String;
+        try {
+            if (encrypted) {
+                String encryptKey = getConfigString("encrypt_key");
+                if (encryptKey == null || encryptKey.isBlank()) return null;
+                String token = getConfigString("verification_token", "");
+                String plain = EventDispatcher.newBuilder(token, encryptKey).build()
+                        .decryptEvent(String.valueOf(payload.get("encrypt")));
+                decoded = objectMapper.readValue(plain, Map.class);
+            }
+            Map<String, Object> header = decoded.get("header") instanceof Map<?, ?> value
+                    ? (Map<String, Object>) value : Map.of();
+            String expectedApp = getConfigString("app_id");
+            Object app = header.get("app_id");
+            if (app != null && expectedApp != null && !expectedApp.equals(String.valueOf(app))) return null;
+
+            String expectedToken = getConfigString("verification_token");
+            Object suppliedToken = header.get("token") != null ? header.get("token") : decoded.get("token");
+            if (!encrypted) {
+                if (expectedToken == null || expectedToken.isBlank() || suppliedToken == null
+                        || !MessageDigest.isEqual(expectedToken.getBytes(StandardCharsets.UTF_8),
+                        String.valueOf(suppliedToken).getBytes(StandardCharsets.UTF_8))) return null;
+            } else if (expectedToken != null && !expectedToken.isBlank() && suppliedToken != null
+                    && !MessageDigest.isEqual(expectedToken.getBytes(StandardCharsets.UTF_8),
+                    String.valueOf(suppliedToken).getBytes(StandardCharsets.UTF_8))) {
+                return null;
+            }
+            Object created = header.get("create_time");
+            if (created != null) {
+                long seconds = Long.parseLong(String.valueOf(created));
+                if (Math.abs(java.time.Instant.now().getEpochSecond() - seconds) > 300) return null;
+            }
+            return decoded;
+        } catch (Exception invalid) {
+            log.debug("[feishu] Webhook verification failed: {}", invalid.getMessage());
+            return null;
+        }
+    }
 
     /**
      * 处理飞书 Event Subscription 回调

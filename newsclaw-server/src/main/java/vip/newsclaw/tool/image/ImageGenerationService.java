@@ -57,6 +57,7 @@ public class ImageGenerationService {
     public ImageGenerationResult submitGeneration(ImageGenerationRequest request,
                                                     String conversationId,
                                                     String createdBy) {
+        if (request == null) return ImageGenerationResult.failure("图片生成请求不能为空");
         SystemSettingsDTO config = systemSettingService.getAllSettings();
 
         // 1. 检查图片功能是否启用
@@ -184,6 +185,13 @@ public class ImageGenerationService {
             List<MessageContentPart> contentParts = new ArrayList<>();
             for (int i = 0; i < imageUrls.size(); i++) {
                 Path localPath = fileDownloader.download(imageUrls.get(i), conversationId, taskId, i);
+                if (asyncTaskService.isConversationCanceled(conversationId)) {
+                    for (Path written : contentParts.stream().map(p -> p.getPath() == null ? null : Path.of(p.getPath())).toList()) {
+                        if (written != null) java.nio.file.Files.deleteIfExists(written);
+                    }
+                    java.nio.file.Files.deleteIfExists(localPath);
+                    return ImageGenerationResult.failure("会话已删除，已丢弃生成文件");
+                }
                 String servingUrl = fileDownloader.toServingUrl(conversationId, localPath);
                 servingUrls.add(servingUrl);
 
@@ -202,10 +210,19 @@ public class ImageGenerationService {
             }
 
             // 保存 assistant 消息
-            conversationService.saveMessage(
-                    conversationId, "assistant",
-                    "图片已生成完毕",
-                    contentParts, "completed");
+                conversationService.saveMessage(
+                        conversationId, "assistant",
+                        "图片已生成完毕",
+                        contentParts, "completed");
+
+            if (asyncTaskService.isConversationCanceled(conversationId)) {
+                for (MessageContentPart part : contentParts) {
+                    if (part != null && part.getPath() != null) {
+                        java.nio.file.Files.deleteIfExists(Path.of(part.getPath()));
+                    }
+                }
+                return ImageGenerationResult.failure("会话已删除，已丢弃生成文件");
+            }
 
             // Broadcast async_task_completed so the chat window renders the image
             // inline immediately. Without this, the message is in DB but the SSE
@@ -265,6 +282,10 @@ public class ImageGenerationService {
 
                 // 下载图片到本地
                 Path localPath = fileDownloader.download(imageUrl, task.getConversationId(), task.getTaskId(), 0);
+                if (asyncTaskService.isConversationCanceled(task.getConversationId())) {
+                    java.nio.file.Files.deleteIfExists(localPath);
+                    return;
+                }
                 String servingUrl = fileDownloader.toServingUrl(task.getConversationId(), localPath);
 
                 // 保存 assistant 消息
@@ -285,6 +306,11 @@ public class ImageGenerationService {
                         task.getConversationId(), "assistant",
                         "图片已生成完毕",
                         parts, "completed");
+
+                if (asyncTaskService.isConversationCanceled(task.getConversationId())) {
+                    java.nio.file.Files.deleteIfExists(localPath);
+                    return;
+                }
 
                 // SSE 广播（使用 imageUrl 字段）
                 asyncTaskService.broadcastTaskEvent(task, "async_task_completed",

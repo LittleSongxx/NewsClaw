@@ -38,6 +38,7 @@ public class ProxyController {
     @PutMapping
     @RequireGlobalAdmin
     public R<ProxyConfigResponse> save(@RequestBody ProxyConfigRequest req) {
+        if (req == null) return R.fail(400, "request body is required");
         ProxySettings saved = proxyManager.save(
                 Boolean.TRUE.equals(req.getEnabled()),
                 req.getUrl(),
@@ -52,6 +53,9 @@ public class ProxyController {
     @PostMapping("/test")
     @RequireGlobalAdmin
     public R<ProxyManager.ProbeResult> test(@RequestBody ProxyConfigRequest req) {
+        if (req == null || req.getUrl() == null || req.getUrl().isBlank()) {
+            return R.fail(400, "proxy url is required");
+        }
         ProxyManager.ProbeResult result = proxyManager.test(req.getUrl());
         return R.ok(result);
     }

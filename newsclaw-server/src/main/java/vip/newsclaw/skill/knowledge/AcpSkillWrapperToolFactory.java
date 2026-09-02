@@ -44,8 +44,14 @@ public class AcpSkillWrapperToolFactory {
      * Returns null when the slug doesn't match any registered endpoint.
      */
     public Long resolveEndpointId(String endpointName) {
+        return resolveEndpointId(endpointName, null);
+    }
+
+    public Long resolveEndpointId(String endpointName, Long workspaceId) {
         if (endpointName == null || endpointName.isBlank()) return null;
-        AcpEndpointEntity ep = endpointService.findByName(endpointName.trim());
+        AcpEndpointEntity ep = workspaceId == null
+                ? endpointService.findByName(endpointName.trim())
+                : endpointService.findByName(endpointName.trim(), workspaceId);
         return ep == null ? null : ep.getId();
     }
 
@@ -54,6 +60,10 @@ public class AcpSkillWrapperToolFactory {
      * list when the manifest doesn't declare an ACP binding.
      */
     public List<ToolCallback> buildWrappers(SkillManifest manifest) {
+        return buildWrappers(manifest, null);
+    }
+
+    public List<ToolCallback> buildWrappers(SkillManifest manifest, Long workspaceId) {
         if (manifest == null || manifest.getAcp() == null
                 || manifest.getAcp().getEndpoint() == null
                 || manifest.getAcp().getEndpoint().isBlank()) {
@@ -92,7 +102,9 @@ public class AcpSkillWrapperToolFactory {
                 String composedPrompt = systemPrefix == null || systemPrefix.isBlank()
                         ? userPrompt
                         : systemPrefix.trim() + "\n\n" + userPrompt;
-                String reply = delegationService.prompt(endpointName, composedPrompt, cwd);
+                String reply = workspaceId == null
+                        ? delegationService.prompt(endpointName, composedPrompt, cwd)
+                        : delegationService.prompt(endpointName, composedPrompt, cwd, workspaceId);
                 JSONObject resp = new JSONObject()
                         .set("endpoint", endpointName)
                         .set("skill", manifest.getName())

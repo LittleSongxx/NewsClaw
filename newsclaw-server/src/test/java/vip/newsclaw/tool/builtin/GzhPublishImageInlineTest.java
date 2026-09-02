@@ -87,4 +87,15 @@ class GzhPublishImageInlineTest {
         assertEquals(1, r.failed().size(), "the missing image is reported");
         assertTrue(r.html().contains("http://mmbiz.qpic.cn/mmbiz_png/ok/0"));
     }
+
+    @Test
+    @DisplayName("direct free-publish is hard-disabled; a model boolean cannot trigger an external send")
+    void directPublishIsDisabled() {
+        GzhPublishTool disabled = new GzhPublishTool(null, null, cache);
+
+        String result = disabled.gzh_publish("publish", null, null, null, null, null,
+                "draft-1", true);
+
+        assertTrue(result.startsWith("Error: direct WeChat free-publish is disabled"), result);
+    }
 }

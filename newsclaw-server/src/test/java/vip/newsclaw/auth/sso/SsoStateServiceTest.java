@@ -92,6 +92,18 @@ class SsoStateServiceTest {
     }
 
     @Test
+    void verifyStateBindsConsumptionToCallbackProvider() {
+        when(stateMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+        String state = service.issueState("feishu");
+
+        service.verifyState(state, "feishu");
+
+        ArgumentCaptor<Wrapper<SsoStateEntity>> wrapper = ArgumentCaptor.forClass(Wrapper.class);
+        verify(stateMapper).update(isNull(), wrapper.capture());
+        assertThat(wrapper.getValue().getSqlSegment()).contains("provider");
+    }
+
+    @Test
     @DisplayName("verifyState rejects replay when UPDATE affects 0 rows (already consumed)")
     void verifyStateRejectsReplay() {
         // Simulate: state already consumed by another request

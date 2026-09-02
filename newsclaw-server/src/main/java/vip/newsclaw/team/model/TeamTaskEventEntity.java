@@ -33,30 +33,38 @@ public class TeamTaskEventEntity {
     public static final String REJECTED = "rejected";
     public static final String RETRIED = "retried";
     public static final String STALE = "stale";
+    public static final String ANNOUNCE_QUEUED = "announce_queued";
+    public static final String ANNOUNCED = "announced";
+    public static final String ANNOUNCE_FAILED = "announce_failed";
 
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     /** Denormalized team id for team-level activity queries. */
+    @TableField("team_id")
     private Long teamId;
 
+    @TableField("task_id")
     private Long taskId;
 
+    @TableField("event_type")
     private String eventType;
 
     /** Actor kind: agent / user / system. */
+    @TableField("actor_type")
     private String actorType;
 
     /** Agent id or username depending on actorType; null for system moments. */
+    @TableField("actor_id")
     private String actorId;
 
     /** Human-readable one-liner: progress step, failure reason, file name… */
     private String detail;
 
-    @TableField(fill = FieldFill.INSERT)
+    @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
-    @TableField(fill = FieldFill.INSERT_UPDATE)
+    @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
     @TableLogic

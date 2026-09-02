@@ -163,7 +163,7 @@ public class ConversationController {
         if (!conversationService.isConversationOwner(conversationId, username)) {
             return R.fail(403, "无权操作该会话");
         }
-        String title = body.getOrDefault("title", "").trim();
+        String title = body == null ? "" : body.getOrDefault("title", "").trim();
         if (title.isEmpty() || title.length() > 100) {
             return R.fail("标题不合法");
         }
@@ -183,7 +183,7 @@ public class ConversationController {
         if (!conversationService.isConversationOwner(conversationId, username)) {
             return R.fail(403, "无权操作该会话");
         }
-        conversationService.setPinned(conversationId, Boolean.TRUE.equals(body.get("pinned")));
+        conversationService.setPinned(conversationId, body != null && Boolean.TRUE.equals(body.get("pinned")));
         return R.ok();
     }
 
@@ -209,8 +209,8 @@ public class ConversationController {
         if (!conversationService.isConversationOwner(conversationId, username)) {
             return R.fail(403, "无权操作该会话");
         }
-        String provider = body.get("modelProvider");
-        String modelName = body.get("modelName");
+        String provider = body == null ? null : body.get("modelProvider");
+        String modelName = body == null ? null : body.get("modelName");
         if (provider == null || provider.isBlank() || modelName == null || modelName.isBlank()) {
             return R.fail("modelProvider 和 modelName 都必须提供");
         }
@@ -225,7 +225,7 @@ public class ConversationController {
     @PostMapping("/batch-delete")
     public R<Integer> batchDelete(@RequestBody Map<String, List<String>> body, Authentication auth) {
         String username = auth != null ? auth.getName() : "anonymous";
-        List<String> ids = body.get("conversationIds");
+        List<String> ids = body == null ? null : body.get("conversationIds");
         if (ids == null || ids.isEmpty()) {
             return R.fail(400, "未指定要删除的会话");
         }

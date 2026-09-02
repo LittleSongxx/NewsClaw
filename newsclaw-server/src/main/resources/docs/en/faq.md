@@ -57,7 +57,7 @@ rm -rf data/
 
 ### What are the default credentials?
 
-Username `admin`, password `admin123`. **Change it immediately in any real deployment.**
+Use username `admin` with the deployment-provided one-time bootstrap password. **Never use a shared default; change it immediately in any real deployment.**
 
 ### My JWT token keeps expiring
 

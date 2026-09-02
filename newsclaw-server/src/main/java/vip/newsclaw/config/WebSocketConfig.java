@@ -8,6 +8,8 @@ import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
+import org.springframework.web.socket.server.support.OriginHandshakeInterceptor;
+import vip.newsclaw.channel.web.TalkModeHandshakeInterceptor;
 import vip.newsclaw.channel.web.TalkModeWebSocketHandler;
 import vip.newsclaw.tool.local.DesktopBridgeHandshakeInterceptor;
 import vip.newsclaw.tool.local.DesktopBridgeWebSocketHandler;
@@ -39,13 +41,16 @@ public class WebSocketConfig implements WebSocketConfigurer {
     private static final int MAX_TEXT_BUFFER_BYTES = 64 * 1024;
 
     private final TalkModeWebSocketHandler talkModeHandler;
+    private final TalkModeHandshakeInterceptor talkModeHandshakeInterceptor;
     private final DesktopBridgeWebSocketHandler desktopBridgeHandler;
     private final DesktopBridgeHandshakeInterceptor desktopBridgeHandshakeInterceptor;
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(talkModeHandler, "/api/v1/talk/ws")
-                .setAllowedOrigins("*");
+                // OriginHandshakeInterceptor with an empty allow-list permits
+                // same-origin handshakes only and rejects cross-site WebSockets.
+                .addInterceptors(new OriginHandshakeInterceptor(), talkModeHandshakeInterceptor);
         // Desktop local-tool tunnel. The handshake interceptor authenticates the
         // ?token= query param and pins the username into the session attributes;
         // an unauthenticated socket never reaches the handler.

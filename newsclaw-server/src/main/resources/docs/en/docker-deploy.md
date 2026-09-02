@@ -190,6 +190,7 @@ vi .env   # see table below
 | `DB_ADMIN_PASSWORD` | PostgreSQL bootstrap superuser password (init + admin only) — **must differ from the above** |
 | `JWT_SECRET` | JWT signing secret; Compose requires it, generate with `openssl rand -base64 48` |
 | `NEWSCLAW_ENCRYPT_KEY` | Skill Secret / datasource-password encryption key; Compose requires it and it must be backed up |
+| `NEWSCLAW_BOOTSTRAP_PASSWORD` | Required on first boot or while the legacy seed remains; 32–72 UTF-8 bytes, generate with `openssl rand -base64 36`, then remove after changing the password |
 
 **Strongly recommended** (the stack starts, but historical settings cannot be decrypted if omitted):
 
@@ -206,9 +207,9 @@ docker compose up -d --build   # first build takes 3-10 minutes
 docker compose logs -f newsclaw-server
 ```
 
-First boot runs Flyway migrations (~5 s) and seeds default data (~3 s), then binds `0.0.0.0:18080`.
+First boot runs Flyway migrations (~5 s) and seeds default data (~3 s), then binds the application ports to `127.0.0.1` only. Put a separate HTTPS reverse proxy on 443; do not expose the Spring Boot or desktop ports directly.
 
-Open `http://localhost:18080`, sign in as `admin / admin123`, and **change the password immediately** under `Settings → Security`.
+Open `http://localhost:18080/showcase` for the portfolio. For the console, sign in as `admin` with the one-time `NEWSCLAW_BOOTSTRAP_PASSWORD`, then **change the password immediately** under `Settings → Security` and remove the variable.
 
 ---
 
@@ -310,7 +311,9 @@ docker compose build newsclaw-server   # only rebuild the backend
 docker compose up -d newsclaw-server
 ```
 
-The `newsclaw-postgres-data` volume persists across rebuilds. Flyway runs incremental migrations automatically and self-heals checksum changes on restart. **Version is pinned in `newsclaw-server/pom.xml` and the git tag** — prefer pinning to a tag in production, not tracking `dev`.
+The `newsclaw-postgres-data` volume persists across rebuilds. Flyway validates migration checksums and runs incremental migrations automatically. Checksum drift fails startup by default; use `newsclaw.flyway.auto-repair=true` only for a reviewed, one-off recovery, then disable it again. **Version is pinned in `newsclaw-server/pom.xml` and the git tag** — prefer pinning to a tag in production, not tracking `dev`.
+
+See [Backup and restore](./backup-restore.md) for a consistent PostgreSQL plus `/app/data` checkpoint, checksum verification, and rollback procedure.
 
 ---
 

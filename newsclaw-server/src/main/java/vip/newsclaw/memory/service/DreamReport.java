@@ -11,6 +11,7 @@ import java.util.List;
 public record DreamReport(
         Long id,
         Long agentId,
+        String ownerKey,
         DreamMode mode,
         String topic,
         String triggerSource,

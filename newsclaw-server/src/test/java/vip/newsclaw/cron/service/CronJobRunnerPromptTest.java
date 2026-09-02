@@ -1,11 +1,22 @@
 package vip.newsclaw.cron.service;
 
 import org.junit.jupiter.api.Test;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.test.util.ReflectionTestUtils;
+import vip.newsclaw.agent.AgentService;
 import vip.newsclaw.agent.context.ChannelTarget;
 import vip.newsclaw.agent.context.ChatOrigin;
+import vip.newsclaw.config.EnvironmentConfig;
+import vip.newsclaw.cron.CronChatOriginFactory;
+import vip.newsclaw.cron.CronConversationResolver;
+import vip.newsclaw.cron.model.CronJobEntity;
+import vip.newsclaw.news.service.AiNewsCandidatePipelineProperties;
+import vip.newsclaw.wiki.service.WikiProcessingService;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * {@link CronJobRunner#buildCronPrompt} assembles the scheduled-job prompt:
@@ -64,5 +75,24 @@ class CronJobRunnerPromptTest {
         assertTrue(prompt.contains("[定时任务执行说明]"));
         assertFalse(prompt.contains("自动投递回本任务绑定的渠道会话"));
         assertTrue(prompt.endsWith("hello"));
+    }
+
+    @Test
+    void managedRadarTreatsUnknownInvocationAsScheduledAndFailsClosed() {
+        CronJobLifecycleService lifecycle = mock(CronJobLifecycleService.class);
+        CronJobRunner runner = new CronJobRunner(lifecycle, mock(AgentService.class),
+                mock(CronChatOriginFactory.class), mock(CronConversationResolver.class),
+                mock(WikiProcessingService.class), new ObjectMapper());
+        AiNewsCandidatePipelineProperties properties = new AiNewsCandidatePipelineProperties();
+        properties.setEnabled(false);
+        ReflectionTestUtils.setField(runner, "candidatePipelineProperties", properties);
+        CronJobEntity job = new CronJobEntity();
+        job.setId(1L);
+        job.setName("renamed radar");
+        job.setTriggerMessage(EnvironmentConfig.AI_NEWS_DAILY_RADAR_MARKER);
+
+        runner.executeJob(job, null);
+
+        verifyNoInteractions(lifecycle);
     }
 }

@@ -5,6 +5,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import vip.newsclaw.wiki.WikiProperties;
 import vip.newsclaw.wiki.job.*;
 import vip.newsclaw.wiki.job.model.WikiProcessingJobEntity;
+import vip.newsclaw.wiki.job.event.WikiJobCreatedEvent;
 
 /**
  * RFC-031: Template method base class for all wiki processing job types.
@@ -37,6 +38,7 @@ public abstract class WikiProcessingTemplate {
             job = jobService.transition(job.getId(), WikiJobStage.ROUTING);
             Long modelId = routingService.selectModelId(job, routingStep());
             job.setCurrentModelId(modelId);
+            jobService.updateCurrentModel(job.getId(), modelId);
 
             job = jobService.transition(job.getId(), mainStage());
             try {
@@ -49,10 +51,12 @@ public abstract class WikiProcessingTemplate {
                 handleSoftError(job, e);
             } catch (Exception e) {
                 jobService.recordSoftError(job.getId(), "UNKNOWN", e.getMessage());
+                eventPublisher.publishEvent(new WikiJobCreatedEvent(job.getId()));
             }
         } catch (WikiModelUnavailableException e) {
             log.error("[WikiTemplate] No model available for job {}: {}", job.getId(), e.getMessage());
             jobService.recordHardError(job.getId(), "MODEL_NOT_FOUND", e.getMessage());
+            eventPublisher.publishEvent(new WikiJobCreatedEvent(job.getId()));
         }
     }
 
@@ -73,15 +77,18 @@ public abstract class WikiProcessingTemplate {
             Long fallbackModelId = routingService.selectFallbackModel(
                 job, routingStep(), e.getErrorCode());
             job.setCurrentModelId(fallbackModelId);
+            jobService.updateCurrentModel(job.getId(), fallbackModelId);
             doProcess(job, fallbackModelId);
             jobService.transition(job.getId(), WikiJobStage.COMPLETED);
             onSuccess(job);
         } catch (Exception fallbackEx) {
             jobService.recordHardError(job.getId(), e.getErrorCode(), e.getMessage());
+            eventPublisher.publishEvent(new WikiJobCreatedEvent(job.getId()));
         }
     }
 
     private void handleSoftError(WikiProcessingJobEntity job, WikiSoftModelException e) {
         jobService.recordSoftError(job.getId(), e.getErrorCode(), e.getMessage());
+        eventPublisher.publishEvent(new WikiJobCreatedEvent(job.getId()));
     }
 }

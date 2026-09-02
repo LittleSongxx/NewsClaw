@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import reactor.core.publisher.Flux;
 import vip.newsclaw.agent.AgentService;
 import vip.newsclaw.agent.context.ChatOrigin;
@@ -11,6 +12,7 @@ import vip.newsclaw.agent.model.AgentEntity;
 import vip.newsclaw.agent.service.AgentGenerationService;
 import vip.newsclaw.audit.service.AuditEventService;
 import vip.newsclaw.auth.service.AuthService;
+import vip.newsclaw.auth.model.UserEntity;
 import vip.newsclaw.llm.service.ModelCapabilityService;
 import vip.newsclaw.llm.service.ModelConfigService;
 import vip.newsclaw.system.service.SystemSettingService;
@@ -37,14 +39,17 @@ class AgentControllerOriginTest {
 
     private AgentService agentService;
     private ConversationService conversations;
+    private AuthService authService;
+    private UsernamePasswordAuthenticationToken auth;
     private AgentController controller;
 
     @BeforeEach
     void setUp() {
         agentService = mock(AgentService.class);
         conversations = mock(ConversationService.class);
+        authService = mock(AuthService.class);
         controller = new AgentController(agentService, conversations,
-                mock(AuditEventService.class), mock(AuthService.class), mock(WorkspaceService.class),
+                mock(AuditEventService.class), authService, mock(WorkspaceService.class),
                 mock(ModelConfigService.class), mock(ModelCapabilityService.class),
                 mock(SystemSettingService.class), mock(AgentGenerationService.class),
                 new ObjectMapper());
@@ -53,6 +58,12 @@ class AgentControllerOriginTest {
         agent.setWorkspaceId(WORKSPACE_ID);
         agent.setEnabled(true);
         when(agentService.getAgent(AGENT_ID)).thenReturn(agent);
+        UserEntity user = new UserEntity();
+        user.setId(7L);
+        user.setUsername("alice");
+        user.setEnabled(true);
+        when(authService.findByUsername("alice")).thenReturn(user);
+        auth = new UsernamePasswordAuthenticationToken("alice", null);
         MessageEntity saved = new MessageEntity();
         saved.setId(MESSAGE_ID);
         when(conversations.saveMessage(CONVERSATION_ID, "user", MESSAGE)).thenReturn(saved);
@@ -63,7 +74,7 @@ class AgentControllerOriginTest {
         when(agentService.chatStream(eq(AGENT_ID), eq(MESSAGE), eq(CONVERSATION_ID), any()))
                 .thenReturn(Flux.empty());
 
-        controller.chatStream(AGENT_ID, MESSAGE, CONVERSATION_ID, WORKSPACE_ID);
+        controller.chatStream(AGENT_ID, MESSAGE, CONVERSATION_ID, WORKSPACE_ID, auth);
 
         ArgumentCaptor<ChatOrigin> origin = ArgumentCaptor.forClass(ChatOrigin.class);
         verify(agentService, org.mockito.Mockito.timeout(1000))
@@ -79,7 +90,7 @@ class AgentControllerOriginTest {
         when(agentService.chat(eq(AGENT_ID), eq(MESSAGE), eq(CONVERSATION_ID), any()))
                 .thenReturn("done");
 
-        controller.chat(AGENT_ID, request, WORKSPACE_ID);
+        controller.chat(AGENT_ID, request, WORKSPACE_ID, auth);
 
         ArgumentCaptor<ChatOrigin> origin = ArgumentCaptor.forClass(ChatOrigin.class);
         verify(agentService).chat(eq(AGENT_ID), eq(MESSAGE), eq(CONVERSATION_ID), origin.capture());
@@ -94,7 +105,7 @@ class AgentControllerOriginTest {
         when(agentService.execute(eq(AGENT_ID), eq(MESSAGE), eq(CONVERSATION_ID), any()))
                 .thenReturn("done");
 
-        controller.execute(AGENT_ID, request, WORKSPACE_ID);
+        controller.execute(AGENT_ID, request, WORKSPACE_ID, auth);
 
         ArgumentCaptor<ChatOrigin> origin = ArgumentCaptor.forClass(ChatOrigin.class);
         verify(agentService).execute(eq(AGENT_ID), eq(MESSAGE), eq(CONVERSATION_ID), origin.capture());

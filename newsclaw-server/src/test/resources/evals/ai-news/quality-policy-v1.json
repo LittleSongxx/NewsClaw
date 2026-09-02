@@ -29,7 +29,7 @@
         "sourceTier": "official",
         "verificationEligible": true,
         "citationAllowed": true,
-        "canonicalGroup": "https://openai.com/index/gpt-5-release?utm_source=radar",
+        "canonicalGroup": "https://openai.com/index/gpt-5-release",
         "refusalRequired": false,
         "unresolvedConflict": false
       }
@@ -48,7 +48,7 @@
         "sourceTier": "official",
         "verificationEligible": true,
         "citationAllowed": true,
-        "canonicalGroup": "https://openai.com/index/gpt-5-release?utm_source=radar",
+        "canonicalGroup": "https://openai.com/index/gpt-5-release",
         "refusalRequired": false,
         "unresolvedConflict": false
       }

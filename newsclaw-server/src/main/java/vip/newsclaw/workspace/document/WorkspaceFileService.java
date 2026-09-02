@@ -36,6 +36,9 @@ public class WorkspaceFileService {
     private final WorkspaceFileMapper fileMapper;
     private final ApplicationEventPublisher eventPublisher;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private vip.newsclaw.memory.MemoryProperties memoryProperties;
+
     /**
      * 列出 Agent 的所有工作区文件（按排序 + 文件名排列）
      */
@@ -193,6 +196,20 @@ public class WorkspaceFileService {
         return files;
     }
 
+    /** List only the current owner's PERSONAL rows (metadata, no content). */
+    public List<WorkspaceFileEntity> listPersonalFiles(Long agentId, String ownerKey) {
+        if (!isPersonalOwner(ownerKey)) return List.of();
+        List<WorkspaceFileEntity> files = fileMapper.selectList(
+                new LambdaQueryWrapper<WorkspaceFileEntity>()
+                        .eq(WorkspaceFileEntity::getAgentId, agentId)
+                        .eq(WorkspaceFileEntity::getScope, MemoryScope.PERSONAL)
+                        .eq(WorkspaceFileEntity::getOwnerKey, ownerKey)
+                        .orderByAsc(WorkspaceFileEntity::getSortOrder)
+                        .orderByAsc(WorkspaceFileEntity::getFilename));
+        files.forEach(f -> f.setContent(null));
+        return files;
+    }
+
     /**
      * Read a file visible to {@code ownerKey}: the owner's PERSONAL row when it
      * exists, otherwise the shared row. Null when neither exists.
@@ -335,6 +352,7 @@ public class WorkspaceFileService {
      */
     @Transactional
     public void setPromptFiles(Long agentId, List<String> filenames) {
+        if (filenames == null) filenames = List.of();
         // Only shared config files participate in system-prompt enable/disable.
         // PERSONAL memory rows are enabled per-owner by saveMemoryFile and must
         // not be batch-toggled by filename here (that would flip every owner's
@@ -722,22 +740,55 @@ public class WorkspaceFileService {
                         .eq(WorkspaceFileEntity::getScope, MemoryScope.PERSONAL)
                         .eq(WorkspaceFileEntity::getOwnerKey, ownerKey)
                         .orderByAsc(WorkspaceFileEntity::getSortOrder));
-        return concatFiles(files);
+        int dailyLimit = memoryProperties == null ? 7
+                : Math.max(0, memoryProperties.getOwnerDailyMaxFiles());
+        List<WorkspaceFileEntity> daily = files.stream()
+                .filter(f -> f.getFilename() != null && f.getFilename().matches("memory/\\d{4}-\\d{2}-\\d{2}\\.md"))
+                .sorted(Comparator.comparing(WorkspaceFileEntity::getFilename).reversed())
+                .limit(dailyLimit)
+                .toList();
+        List<WorkspaceFileEntity> selected = new ArrayList<>();
+        files.stream()
+                .filter(f -> !daily.contains(f))
+                .filter(f -> f.getFilename() == null || !f.getFilename().startsWith("memory/"))
+                .sorted(Comparator.comparingInt(f -> ownerFilePriority(f.getFilename())))
+                .forEach(selected::add);
+        selected.addAll(daily);
+        int maxChars = memoryProperties == null ? 12000
+                : Math.max(0, memoryProperties.getOwnerBlockMaxChars());
+        return concatFiles(selected, maxChars);
+    }
+
+    private static int ownerFilePriority(String filename) {
+        if ("PROFILE.md".equals(filename)) return 0;
+        if ("MEMORY.md".equals(filename)) return 1;
+        if ("SOUL.md".equals(filename)) return 2;
+        return 3;
     }
 
     /** Concatenate file bodies in the "--- {filename} ---\n{content}" format. */
     private String concatFiles(List<WorkspaceFileEntity> files) {
+        return concatFiles(files, 0);
+    }
+
+    private String concatFiles(List<WorkspaceFileEntity> files, int maxChars) {
         if (files == null || files.isEmpty()) {
             return null;
         }
         StringBuilder sb = new StringBuilder();
         for (WorkspaceFileEntity file : files) {
             if (file.getContent() != null && !file.getContent().isBlank()) {
-                if (!sb.isEmpty()) {
-                    sb.append("\n\n");
+                String section = "--- " + file.getFilename() + " ---\n" + file.getContent().trim();
+                int separator = sb.isEmpty() ? 0 : 2;
+                if (maxChars > 0 && sb.length() + separator + section.length() > maxChars) {
+                    int remaining = maxChars - sb.length() - separator;
+                    if (remaining <= 0) break;
+                    if (!sb.isEmpty()) sb.append("\n\n");
+                    sb.append(section, 0, Math.min(section.length(), remaining));
+                    break;
                 }
-                sb.append("--- ").append(file.getFilename()).append(" ---\n");
-                sb.append(file.getContent().trim());
+                if (!sb.isEmpty()) sb.append("\n\n");
+                sb.append(section);
             }
         }
         return sb.isEmpty() ? null : sb.toString();

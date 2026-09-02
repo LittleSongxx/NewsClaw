@@ -29,10 +29,12 @@ public class TokenUsageController {
     @GetMapping
     @RequireWorkspaceRole("member")
     public R<TokenUsageSummaryVO> getSummary(
+            @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate,
             @RequestParam(required = false) String modelName,
             @RequestParam(required = false) String providerId) {
-        return R.ok(tokenUsageService.getSummary(startDate, endDate, modelName, providerId));
+        long ws = workspaceId == null || workspaceId <= 0 ? 1L : workspaceId;
+        return R.ok(tokenUsageService.getSummary(startDate, endDate, modelName, providerId, ws));
     }
 }

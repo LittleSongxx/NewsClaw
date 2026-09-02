@@ -44,6 +44,8 @@ public class SystemSettingsDTO {
 
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String tavilyApiKey;
+    /** Number of configured Tavily keys; key material itself is write-only. */
+    private Integer tavilyApiKeyCount;
     private String tavilyBaseUrl;
 
     // ===== Keyless 搜索 provider 配置 =====

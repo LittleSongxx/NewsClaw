@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import vip.newsclaw.common.result.R;
 import vip.newsclaw.plugin.PluginManager;
 import vip.newsclaw.plugin.model.PluginInfo;
-import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
+import vip.newsclaw.workspace.core.annotation.RequireGlobalAdmin;
 
 import java.util.List;
 import java.util.Map;
@@ -27,21 +27,21 @@ public class PluginController {
 
     @Operation(summary = "List all plugins")
     @GetMapping
-    @RequireWorkspaceRole("admin")
+    @RequireGlobalAdmin
     public R<List<PluginInfo>> list() {
         return R.ok(pluginManager.listPlugins());
     }
 
     @Operation(summary = "Get plugin detail")
     @GetMapping("/{name}")
-    @RequireWorkspaceRole("admin")
+    @RequireGlobalAdmin
     public R<PluginInfo> get(@PathVariable String name) {
         return R.ok(pluginManager.getPlugin(name));
     }
 
     @Operation(summary = "Disable a plugin")
     @PostMapping("/{name}/disable")
-    @RequireWorkspaceRole("admin")
+    @RequireGlobalAdmin
     public R<Void> disable(@PathVariable String name) {
         pluginManager.disablePlugin(name);
         return R.ok();
@@ -49,7 +49,7 @@ public class PluginController {
 
     @Operation(summary = "Enable a plugin")
     @PostMapping("/{name}/enable")
-    @RequireWorkspaceRole("admin")
+    @RequireGlobalAdmin
     public R<Void> enable(@PathVariable String name) {
         pluginManager.enablePlugin(name);
         return R.ok();
@@ -57,7 +57,7 @@ public class PluginController {
 
     @Operation(summary = "Update plugin configuration")
     @PutMapping("/{name}/config")
-    @RequireWorkspaceRole("admin")
+    @RequireGlobalAdmin
     public R<Void> updateConfig(@PathVariable String name,
                                 @RequestBody Map<String, Object> config) {
         pluginManager.updateConfig(name, config);

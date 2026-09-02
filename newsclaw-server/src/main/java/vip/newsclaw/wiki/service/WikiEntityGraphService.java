@@ -130,6 +130,7 @@ public class WikiEntityGraphService {
         // Pages that mention the center entity — the bridge to the page layer.
         List<WikiEntityMentionEntity> mentions = mentionMapper.selectList(
                 new LambdaQueryWrapper<WikiEntityMentionEntity>()
+                        .eq(WikiEntityMentionEntity::getKbId, kbId)
                         .eq(WikiEntityMentionEntity::getEntityId, entityId)
                         .isNotNull(WikiEntityMentionEntity::getPageId)
                         .last("LIMIT 200"));
@@ -139,7 +140,7 @@ public class WikiEntityGraphService {
         }
         for (Long pageId : pageIds) {
             WikiPageEntity page = pageService.getById(pageId);
-            if (page == null) {
+            if (page == null || !kbId.equals(page.getKbId())) {
                 continue;
             }
             WikiEntityGraphView.PageRef ref = new WikiEntityGraphView.PageRef();

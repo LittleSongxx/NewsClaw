@@ -42,6 +42,7 @@ public interface FactMapper extends BaseMapper<FactEntity> {
         <script>
         UPDATE mate_fact SET deleted = 1, update_time = #{now}
         WHERE agent_id = #{agentId} AND deleted = 0
+          AND (scope IS NULL OR scope IN ('TEAM','GLOBAL'))
         AND source_ref NOT IN
         <foreach item='ref' collection='keepSet' open='(' separator=',' close=')'>#{ref}</foreach>
         </script>
@@ -49,4 +50,26 @@ public interface FactMapper extends BaseMapper<FactEntity> {
     void deleteByAgentIdAndSourceRefNotIn(@Param("agentId") Long agentId,
                                           @Param("keepSet") List<String> keepSet,
                                           @Param("now") LocalDateTime now);
+
+    @Update("UPDATE mate_fact SET deleted = 1, update_time = #{now} "
+            + "WHERE agent_id = #{agentId} AND deleted = 0 "
+            + "AND (scope IS NULL OR scope IN ('TEAM','GLOBAL'))")
+    void deleteAllByAgentId(@Param("agentId") Long agentId, @Param("now") LocalDateTime now);
+
+    @Update("""
+        <script>
+        UPDATE mate_fact SET deleted = 1, update_time = #{now}
+        WHERE agent_id = #{agentId} AND deleted = 0
+          AND (scope IS NULL OR scope IN ('TEAM','GLOBAL'))
+          AND (source_ref = #{filename} OR source_ref LIKE CONCAT(#{filename}, '#%'))
+        <if test='keepSet != null and !keepSet.isEmpty()'>
+          AND source_ref NOT IN
+          <foreach item='ref' collection='keepSet' open='(' separator=',' close=')'>#{ref}</foreach>
+        </if>
+        </script>
+        """)
+    void deleteStaleForSource(@Param("agentId") Long agentId,
+                              @Param("filename") String filename,
+                              @Param("keepSet") List<String> keepSet,
+                              @Param("now") LocalDateTime now);
 }

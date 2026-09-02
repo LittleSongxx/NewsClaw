@@ -70,8 +70,9 @@ docker compose ps
 curl -fsS http://localhost:18080/actuator/health
 ~~~
 
-The health endpoint should return UP. Open <http://localhost:18080>; the
-development bootstrap account is admin / admin123. Change that password first.
+The health endpoint should return UP. Open <http://localhost:18080/showcase> for
+the static portfolio; use the one-time `NEWSCLAW_BOOTSTRAP_PASSWORD` for the
+authenticated console and change it first.
 
 docker-compose.yml retains newsclaw as its Compose project name to preserve
 verified container, network, and volume names. It is a deployment identifier,

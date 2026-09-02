@@ -31,6 +31,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final KbOpenApiAuthFilter kbOpenApiAuthFilter;
+    private final PasswordChangeRequiredFilter passwordChangeRequiredFilter;
 
     /**
      * SpringDoc Swagger UI / OpenAPI document paths. These serve the full REST
@@ -71,7 +72,9 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(
             HttpSecurity http,
-            @Value("${newsclaw.openapi.expose-ui:false}") boolean exposeOpenApiUi) throws Exception {
+            @Value("${newsclaw.openapi.expose-ui:false}") boolean exposeOpenApiUi,
+            @Value("${newsclaw.setup.allow-anonymous:false}") boolean allowAnonymousSetup,
+            @Value("${newsclaw.webchat.public-enabled:false}") boolean publicWebChatEnabled) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .headers(headers -> headers
@@ -91,23 +94,28 @@ public class SecurityConfig {
                 .requestMatchers(
                     "/api/v1/auth/login",
                     "/api/v1/auth/sso/**",
-                    "/api/v1/agents/*/chat/stream",
                     "/api/v1/chat/stream",
-                    "/api/v1/chat/*/stop",
-                    "/api/v1/setup/**",
+                    "/api/v1/setup/status",
                     "/api/v1/channels/webhook/**",
-                    "/api/v1/channels/webchat/**",
                     // KB Open API: authenticated by KbOpenApiAuthFilter (API key),
                     // not JWT — must be permitAll so the filter is the sole gatekeeper (R1).
                     "/api/v1/open/kb/**",
                     "/api/a2a/card",
                     "/.well-known/agent-card.json",
+                    // Talk Mode authenticates JWT/PAT + same-origin in its
+                    // WebSocket handshake interceptors.
                     "/api/v1/talk/ws",
                     // Desktop local-tool tunnel — the handshake interceptor
                     // authenticates the ?token= query param itself, so the
                     // upgrade request is opened to the filter chain like talk/ws.
                     "/api/v1/desktop/ws"
                 ).permitAll();
+                if (allowAnonymousSetup) {
+                    auth.requestMatchers(HttpMethod.POST, "/api/v1/setup/init").permitAll();
+                }
+                if (publicWebChatEnabled) {
+                    auth.requestMatchers("/api/v1/channels/webchat/**").permitAll();
+                }
                 // Swagger UI / OpenAPI document — explicit rule rather than the
                 // permitAll() fallthrough. Public for local dev, admin-only in
                 // production, driven by newsclaw.openapi.expose-ui.
@@ -129,7 +137,8 @@ public class SecurityConfig {
                 })
             )
             .addFilterBefore(kbOpenApiAuthFilter, UsernamePasswordAuthenticationFilter.class)
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(passwordChangeRequiredFilter, JwtAuthFilter.class);
 
         return http.build();
     }

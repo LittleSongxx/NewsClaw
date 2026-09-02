@@ -144,6 +144,13 @@ public class Model3dGenerationService {
     }
 
     private void handleCompletion(AsyncTaskEntity task, TaskPollResult result) {
+        // A conversation may be deleted while the provider is still running;
+        // never recreate its attachment directory or message row afterwards.
+        if (asyncTaskService.isConversationCanceled(task.getConversationId())) {
+            log.info("[Model3dGen] Task {} (success={}) aborted: conversation {} was deleted",
+                    task.getTaskId(), result.succeeded(), task.getConversationId());
+            return;
+        }
         if (!result.succeeded()) {
             asyncTaskService.broadcastTaskEventWithData(task, "async_task_completed",
                     false, Map.of(), result.errorMessage());
@@ -175,6 +182,14 @@ public class Model3dGenerationService {
 
             Path localPath = fileDownloader.download(
                     modelUrl, task.getConversationId(), task.getTaskId(), format);
+            // Cancellation can arrive while the provider download is in flight.
+            // Do not leave an orphaned attachment behind, and do not continue
+            // into message/broadcast side effects after the conversation was
+            // deleted.
+            if (asyncTaskService.isConversationCanceled(task.getConversationId())) {
+                deleteCanceledDownload(task, localPath);
+                return;
+            }
             String servingUrl = fileDownloader.toServingUrl(task.getConversationId(), localPath);
 
             String fileName = localPath.getFileName().toString();
@@ -205,6 +220,13 @@ public class Model3dGenerationService {
                     "3D 模型已生成完毕",
                     parts, "completed");
 
+            if (asyncTaskService.isConversationCanceled(task.getConversationId())) {
+                // The save may have raced with deletion; suppress all further
+                // fan-out and remove the file when it is still present.
+                deleteCanceledDownload(task, localPath);
+                return;
+            }
+
             Map<String, Object> extra = new LinkedHashMap<>();
             extra.put("modelUrl", servingUrl);
             if (format != null) extra.put("format", format);
@@ -226,6 +248,17 @@ public class Model3dGenerationService {
             asyncTaskService.broadcastTaskEventWithData(task, "async_task_completed",
                     false, Map.of(), "3D 模型下载或保存失败: " + e.getMessage());
         }
+    }
+
+    private void deleteCanceledDownload(AsyncTaskEntity task, Path localPath) {
+        try {
+            java.nio.file.Files.deleteIfExists(localPath);
+        } catch (Exception cleanupError) {
+            log.warn("[Model3dGen] Could not remove canceled download for task {}: {}",
+                    task.getTaskId(), cleanupError.getMessage());
+        }
+        log.info("[Model3dGen] Task {} download discarded after conversation cancellation",
+                task.getTaskId());
     }
 
     private Model3dCapability inferMode(Model3dGenerationRequest request) {

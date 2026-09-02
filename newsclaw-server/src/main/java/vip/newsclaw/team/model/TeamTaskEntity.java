@@ -20,11 +20,14 @@ public class TeamTaskEntity {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
+    @TableField("team_id")
     private Long teamId;
 
+    @TableField("run_id")
     private Long runId;
 
     /** Human-readable sequential number, unique within the team. */
+    @TableField("task_number")
     private Integer taskNumber;
 
     private String subject;
@@ -38,25 +41,33 @@ public class TeamTaskEntity {
     private Integer priority;
 
     /** Task category: general / request / note. */
+    @TableField("task_type")
     private String taskType;
 
     /** Intended executor chosen at creation (required); never the team lead. */
+    @TableField("assignee_agent_id")
     private Long assigneeAgentId;
 
     /** Agent currently executing; NULL until the task is claimed or assigned. */
+    @TableField("owner_agent_id")
     private Long ownerAgentId;
 
     /** Creating agent id when the task was created by an agent (NULL for humans). */
+    @TableField("created_by_agent_id")
     private Long createdByAgentId;
 
     /** JSON array of prerequisite task ids (as strings). */
+    @TableField("blocked_by")
     private String blockedBy;
 
     /** When true, completion parks the task in in_review until a human approves. */
+    @TableField("require_approval")
     private Boolean requireApproval;
 
+    @TableField("progress_percent")
     private Integer progressPercent;
 
+    @TableField("progress_step")
     private String progressStep;
 
     /** Result summary set on completion. */
@@ -67,6 +78,7 @@ public class TeamTaskEntity {
     private String reason;
 
     /** Dispatch attempts; auto-fails past the circuit-breaker cap. */
+    @TableField("dispatch_count")
     private Integer dispatchCount;
 
     /** Execution lease expiry; an expired in_progress task is recoverable as stale. */
@@ -74,9 +86,11 @@ public class TeamTaskEntity {
     private LocalDateTime lockExpiresAt;
 
     /** Conversation in which the member executes this task. */
+    @TableField("conversation_id")
     private String conversationId;
 
     /** Lead conversation that originated the task; used to route the result back. */
+    @TableField("lead_conversation_id")
     private String leadConversationId;
 
     /** User whose request triggered the task (scoping / board filtering). */
@@ -88,10 +102,10 @@ public class TeamTaskEntity {
     /** Custom JSON payload (attachments, origin routing, trace ids, ...). */
     private String metadata;
 
-    @TableField(fill = FieldFill.INSERT)
+    @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
-    @TableField(fill = FieldFill.INSERT_UPDATE)
+    @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
     @TableLogic

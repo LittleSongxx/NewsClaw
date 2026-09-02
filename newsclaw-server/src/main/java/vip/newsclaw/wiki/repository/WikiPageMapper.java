@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 import vip.newsclaw.wiki.dto.WikiPageLite;
 import vip.newsclaw.wiki.model.WikiPageEntity;
 
@@ -17,6 +18,24 @@ import java.util.List;
  */
 @Mapper
 public interface WikiPageMapper extends BaseMapper<WikiPageEntity> {
+
+    /** Conditional content update used for AI/manual writes; version is the CAS token. */
+    @Update("UPDATE mate_wiki_page SET content = #{page.content}, summary = #{page.summary}, "
+            + "outgoing_links = #{page.outgoingLinks}, source_raw_ids = #{page.sourceRawIds}, "
+            + "broken_links = #{page.brokenLinks}, broken_links_scanned_at = #{page.brokenLinksScannedAt}, "
+            + "last_updated_by = #{page.lastUpdatedBy}, version = COALESCE(version, 0) + 1, "
+            + "update_time = #{page.updateTime} "
+            + "WHERE id = #{page.id} AND deleted = 0 AND COALESCE(version, 0) = #{expectedVersion}")
+    int updateContentIfVersion(@Param("page") WikiPageEntity page,
+                               @Param("expectedVersion") int expectedVersion);
+
+    /** Conditional lineage-only update so concurrent source merges cannot clobber each other. */
+    @Update("UPDATE mate_wiki_page SET source_entries = #{page.sourceEntries}, "
+            + "source_raw_ids = #{page.sourceRawIds}, version = COALESCE(version, 0) + 1, "
+            + "update_time = #{page.updateTime} "
+            + "WHERE id = #{page.id} AND deleted = 0 AND COALESCE(version, 0) = #{expectedVersion}")
+    int updateLineageIfVersion(@Param("page") WikiPageEntity page,
+                               @Param("expectedVersion") int expectedVersion);
 
     /**
      * DB keyword search (H2 + MySQL compatible LIKE).

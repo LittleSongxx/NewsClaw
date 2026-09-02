@@ -42,7 +42,10 @@ class DatasourceServicePasswordPersistenceTest {
 
         // Then the entity sent back to MyBatis must be encrypted again.
         assertNotEquals(plaintext, datasource.getPassword());
-        assertTrue(datasource.getPassword().matches("[0-9a-f]+"));
+        // Re-encryption uses the versioned AES-GCM envelope; the old assertion
+        // expected the retired hex-only ECB format and made the full suite fail
+        // even though the password was never persisted in plaintext.
+        assertTrue(datasource.getPassword().startsWith("enc:v1:"));
         verify(mapper).updateById(datasource);
     }
 }

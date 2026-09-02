@@ -1,0 +1,73 @@
+{
+  "datasetId": "newsclaw-ai-news-content-extraction-business-v1",
+  "datasetVersion": "2026-08-27",
+  "license": "Apache-2.0",
+  "construction": "Synthetic, human-reviewed layouts and text; no publisher page content is redistributed.",
+  "expectedImplementation": {
+    "name": "trafilatura",
+    "version": "2.2.0",
+    "configHash": "0235b7bf49c3c80ea6a52aee9f413fa2d4e4e1f5196af87278c48e558c7d0400"
+  },
+  "cases": [
+    {
+      "id": "official-release-en",
+      "htmlFile": "official-release-en.html",
+      "sourceUrl": "https://example.ai/news/atlas-2",
+      "language": "en",
+      "requiredSnippets": [
+        "Example AI released Atlas 2 to developers on August 26, 2026.",
+        "Independent safety evaluations and a complete system card are published with the release."
+      ],
+      "forbiddenSnippets": [
+        "Accept all cookies Manage preferences",
+        "Recommended: five unrelated product announcements",
+        "Careers Privacy Terms Subscribe to our newsletter"
+      ]
+    },
+    {
+      "id": "official-release-zh",
+      "htmlFile": "official-release-zh.html",
+      "sourceUrl": "https://example.cn/news/xinghe-3",
+      "language": "zh",
+      "requiredSnippets": [
+        "示例智能于二〇二六年八月二十六日发布星河推理模型 3.0",
+        "离线基准结果不能替代真实业务流量中的持续监控与人工复核"
+      ],
+      "forbiddenSnippets": [
+        "限时活动：注册即领取优惠券",
+        "猜你喜欢 热门文章 下载客户端",
+        "版权声明 联系我们 备案信息"
+      ]
+    },
+    {
+      "id": "research-blog-en",
+      "htmlFile": "research-blog-en.html",
+      "sourceUrl": "https://research.example.org/blog/tool-use-reliability",
+      "language": "en",
+      "requiredSnippets": [
+        "Each trial records tool selection, argument validity, observable side effects, and final task completion.",
+        "The accompanying repository contains the prompts, deterministic scorer, and per-example outcomes."
+      ],
+      "forbiddenSnippets": [
+        "Research index Publications Authors Topics",
+        "Weekly digest Email address Subscribe now",
+        "All research posts Legal Accessibility"
+      ]
+    },
+    {
+      "id": "product-update-en",
+      "htmlFile": "product-update-en.html",
+      "sourceUrl": "https://cloud.example.com/updates/regional-failover",
+      "language": "en",
+      "requiredSnippets": [
+        "The managed inference service now supports automatic regional failover for provisioned endpoints.",
+        "the status API reports both the active region and the most recent transition"
+      ],
+      "forbiddenSnippets": [
+        "On this page Overview Pricing Previous updates",
+        "Related products Object storage Data warehouse Virtual network",
+        "Privacy Cookie settings Language selector"
+      ]
+    }
+  ]
+}

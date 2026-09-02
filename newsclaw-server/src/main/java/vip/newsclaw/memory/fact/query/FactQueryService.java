@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import vip.newsclaw.memory.fact.model.FactContradictionEntity;
 import vip.newsclaw.memory.fact.model.FactEntity;
 import vip.newsclaw.memory.fact.repository.FactMapper;
+import vip.newsclaw.memory.identity.MemoryScope;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,12 +30,18 @@ public class FactQueryService {
      * Probe facts by entity name (subject or object match).
      */
     public List<FactEntity> probe(Long agentId, String entity) {
+        return probe(agentId, entity, null);
+    }
+
+    /** Owner-scoped probe: shared facts plus this owner's personal facts. */
+    public List<FactEntity> probe(Long agentId, String entity, String ownerKey) {
         return factMapper.selectList(
                 new LambdaQueryWrapper<FactEntity>()
                         .eq(FactEntity::getAgentId, agentId)
                         .eq(FactEntity::getDeleted, 0)
                         .and(w -> w.like(FactEntity::getSubject, entity)
                                 .or().like(FactEntity::getObjectValue, entity))
+                        .and(q -> applyVisibility(q, ownerKey))
                         .orderByDesc(FactEntity::getTrust)
                         .last("LIMIT 20"));
     }
@@ -43,13 +50,33 @@ public class FactQueryService {
      * List unresolved contradictions for an agent.
      */
     public List<FactContradictionEntity> listContradictions(Long agentId) {
-        return contradictionMapper.selectList(
+        return listContradictions(agentId, null);
+    }
+
+    /**
+     * Owner-scoped contradiction list. Contradiction rows predate owner/scope
+     * columns, so visibility is derived from both referenced fact projections.
+     */
+    public List<FactContradictionEntity> listContradictions(Long agentId, String ownerKey) {
+        List<FactContradictionEntity> rows = contradictionMapper.selectList(
                 new LambdaQueryWrapper<FactContradictionEntity>()
                         .eq(FactContradictionEntity::getAgentId, agentId)
                         .isNull(FactContradictionEntity::getResolution)
                         .eq(FactContradictionEntity::getDeleted, 0)
                         .orderByDesc(FactContradictionEntity::getCreateTime)
                         .last("LIMIT 50"));
+        if (rows.isEmpty()) return rows;
+        return rows.stream().filter(row -> {
+            FactEntity a = row.getFactAId() == null ? null : factMapper.selectOne(
+                    new LambdaQueryWrapper<FactEntity>().eq(FactEntity::getId, row.getFactAId())
+                            .eq(FactEntity::getAgentId, agentId).eq(FactEntity::getDeleted, 0)
+                            .and(q -> applyVisibility(q, ownerKey)));
+            FactEntity b = row.getFactBId() == null ? null : factMapper.selectOne(
+                    new LambdaQueryWrapper<FactEntity>().eq(FactEntity::getId, row.getFactBId())
+                            .eq(FactEntity::getAgentId, agentId).eq(FactEntity::getDeleted, 0)
+                            .and(q -> applyVisibility(q, ownerKey)));
+            return a != null && b != null;
+        }).toList();
     }
 
     /**
@@ -74,16 +101,7 @@ public class FactQueryService {
                                 .or().like(FactEntity::getObjectValue, query)
                                 .or().like(FactEntity::getPredicate, query))
                         .and(s -> {
-                            if (ownerKey == null || ownerKey.isBlank()) {
-                                s.in(FactEntity::getScope, vip.newsclaw.memory.identity.MemoryScope.TEAM,
-                                        vip.newsclaw.memory.identity.MemoryScope.GLOBAL);
-                            } else {
-                                s.in(FactEntity::getScope, vip.newsclaw.memory.identity.MemoryScope.TEAM,
-                                                vip.newsclaw.memory.identity.MemoryScope.GLOBAL)
-                                        .or(p -> p.eq(FactEntity::getScope,
-                                                        vip.newsclaw.memory.identity.MemoryScope.PERSONAL)
-                                                .eq(FactEntity::getOwnerKey, ownerKey));
-                            }
+                            applyVisibility(s, ownerKey);
                         })
                         .orderByDesc(FactEntity::getTrust)
                         .last("LIMIT 10"));
@@ -95,5 +113,16 @@ public class FactQueryService {
     public void bumpUseCount(List<Long> ids) {
         if (ids == null || ids.isEmpty()) return;
         factMapper.bumpUseCount(ids, LocalDateTime.now());
+    }
+
+    private static void applyVisibility(LambdaQueryWrapper<FactEntity> query, String ownerKey) {
+        if (ownerKey == null || ownerKey.isBlank()) {
+            query.in(FactEntity::getScope, MemoryScope.TEAM, MemoryScope.GLOBAL)
+                    .and(w -> w.isNull(FactEntity::getOwnerKey).or().eq(FactEntity::getOwnerKey, ""));
+        } else {
+            query.and(w -> w.in(FactEntity::getScope, MemoryScope.TEAM, MemoryScope.GLOBAL)
+                    .or(p -> p.eq(FactEntity::getScope, MemoryScope.PERSONAL)
+                            .eq(FactEntity::getOwnerKey, ownerKey)));
+        }
     }
 }

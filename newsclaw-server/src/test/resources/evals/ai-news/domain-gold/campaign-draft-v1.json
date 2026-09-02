@@ -1,0 +1,219 @@
+{
+  "schemaVersion": "1.0",
+  "campaignId": "newsclaw-ai-news-domain-gold-v1",
+  "campaignStatus": "DRAFT_BLOCKED",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "purpose": "time-split AI-industry news discovery, clustering, evidence and ranking launch-gate evaluation",
+  "frozenInputs": [
+    {
+      "path": "newsclaw-server/src/main/resources/skills/ai_news_radar/references/source_catalog.yml",
+      "sha256": "e2c9e31d8517eef0fdb2d99c5acf0ba4b1b74f45c6092261bd6269fedafc1fd1"
+    },
+    {
+      "path": "newsclaw-server/src/main/resources/skills/ai_news_radar/references/source_registry.yml",
+      "sha256": "492eae1f4acef8552c027fd21be1585cce0aae868e3bb764108fb27f72fabf5d"
+    },
+    {
+      "path": "newsclaw-server/src/test/resources/evals/ai-news/domain-gold/domain-gold-pool.schema.json",
+      "sha256": "9db2661c73a19e1aa03055475bb9758b3cdb57580705e2344cb220adb830b2cf"
+    },
+    {
+      "path": "newsclaw-server/src/test/resources/evals/ai-news/domain-gold/domain-gold-blind-worksheet.schema.json",
+      "sha256": "d52ef309cd9417bbe1e53944a4ccac09c5bcc833cd2fbb6c2577c6750adafa14"
+    }
+  ],
+  "dataContracts": {
+    "coordinatorPoolSchemaPath": "newsclaw-server/src/test/resources/evals/ai-news/domain-gold/domain-gold-pool.schema.json",
+    "blindWorksheetSchemaPath": "newsclaw-server/src/test/resources/evals/ai-news/domain-gold/domain-gold-blind-worksheet.schema.json",
+    "forbiddenBlindPropertyNames": [
+      "systemId",
+      "poolDiscoveries",
+      "systemUnderTestPrediction",
+      "systemEventId",
+      "predictedClusterId",
+      "predictedClusterVersion",
+      "rankingSnapshotIds",
+      "matchedGoldEventId",
+      "goldClusterId",
+      "score"
+    ]
+  },
+  "window": {
+    "startAt": null,
+    "endAt": null,
+    "observationEndAt": null,
+    "minimumNaturalDays": 14,
+    "observationTailHours": 24
+  },
+  "collection": {
+    "pollIntervalMinutes": 15,
+    "rankingSnapshotIntervalMinutes": 60,
+    "storagePolicy": "metadata-and-digests-only-unless-rights-approved",
+    "independentCollector": {
+      "collectorId": "",
+      "implementation": "",
+      "operator": "",
+      "independentOfNewsClawDiscovery": true,
+      "enabled": false
+    }
+  },
+  "requiredCoverage": {
+    "languages": ["en", "zh"],
+    "sourceFamilies": ["official", "media"],
+    "categories": [
+      "model", "product", "open_source", "security", "infrastructure",
+      "partnership", "funding", "robotics", "industry", "policy"
+    ],
+    "minimumGoldEvents": 200,
+    "minimumAdjudicatedOutputs": 100
+  },
+  "sourceUniverse": [
+    {
+      "endpointId": "openai-news-rss",
+      "sourceKey": "openai",
+      "publisher": "OpenAI",
+      "sourceFamily": "official",
+      "transport": "feed",
+      "endpointUrl": "https://openai.com/news/rss.xml",
+      "languages": ["en"],
+      "categories": ["model", "product", "security"],
+      "rightsStatus": "review_required",
+      "robotsStatus": "review_required",
+      "rawRetention": "metadata_only",
+      "approvedForCampaign": false,
+      "enabledForCollection": false,
+      "reviewOwner": "",
+      "reviewedAt": null,
+      "exclusionReason": "publisher terms and robots review is not signed off"
+    },
+    {
+      "endpointId": "nvidia-newsroom-releases-rss",
+      "sourceKey": "nvidia",
+      "publisher": "NVIDIA Newsroom",
+      "sourceFamily": "official",
+      "transport": "feed",
+      "endpointUrl": "https://nvidianews.nvidia.com/releases.xml",
+      "languages": ["en"],
+      "categories": ["model", "product", "infrastructure", "robotics"],
+      "rightsStatus": "review_required",
+      "robotsStatus": "review_required",
+      "rawRetention": "metadata_only",
+      "approvedForCampaign": false,
+      "enabledForCollection": false,
+      "reviewOwner": "",
+      "reviewedAt": null,
+      "exclusionReason": "publisher terms and robots review is not signed off"
+    },
+    {
+      "endpointId": "nvidia-generative-ai-rss",
+      "sourceKey": "nvidia",
+      "publisher": "NVIDIA Generative AI",
+      "sourceFamily": "official",
+      "transport": "feed",
+      "endpointUrl": "https://nvidianews.nvidia.com/cats/generative_al.xml",
+      "languages": ["en"],
+      "categories": ["model", "product", "infrastructure"],
+      "rightsStatus": "review_required",
+      "robotsStatus": "review_required",
+      "rawRetention": "metadata_only",
+      "approvedForCampaign": false,
+      "enabledForCollection": false,
+      "reviewOwner": "",
+      "reviewedAt": null,
+      "exclusionReason": "publisher terms and robots review is not signed off"
+    },
+    {
+      "endpointId": "techcrunch-ai-rss",
+      "sourceKey": "techcrunch",
+      "publisher": "TechCrunch AI",
+      "sourceFamily": "media",
+      "transport": "feed",
+      "endpointUrl": "https://techcrunch.com/category/artificial-intelligence/feed/",
+      "languages": ["en"],
+      "categories": ["model", "product", "funding", "security", "infrastructure", "robotics"],
+      "rightsStatus": "restricted_review_required",
+      "robotsStatus": "review_required",
+      "rawRetention": "metadata_only",
+      "approvedForCampaign": false,
+      "enabledForCollection": false,
+      "reviewOwner": "",
+      "reviewedAt": null,
+      "exclusionReason": "RSS terms, campaign use and robots review is not signed off"
+    }
+  ],
+  "poolingSystems": [
+    {
+      "systemId": "newsclaw-shadow",
+      "kind": "system_under_test",
+      "operator": "NewsClaw",
+      "independentOfNewsClawDiscovery": false,
+      "enabled": true,
+      "outputContract": "frozen candidates, final events, cluster versions and ranking snapshots"
+    },
+    {
+      "systemId": "direct-source-baseline",
+      "kind": "independent_direct_source",
+      "operator": "",
+      "independentOfNewsClawDiscovery": true,
+      "enabled": false,
+      "outputContract": "independent first-observation ledger"
+    },
+    {
+      "systemId": "search-baseline",
+      "kind": "independent_search",
+      "operator": "",
+      "independentOfNewsClawDiscovery": true,
+      "enabled": false,
+      "outputContract": "frozen query, result rank and observation timestamp"
+    },
+    {
+      "systemId": "human-patrol",
+      "kind": "independent_human_patrol",
+      "operator": "",
+      "independentOfNewsClawDiscovery": true,
+      "enabled": false,
+      "outputContract": "manual source-universe discoveries and residual judgments"
+    }
+  ],
+  "annotationProtocol": {
+    "blindIndependentReviewers": 2,
+    "reviewerSlots": {"reviewerA": "", "reviewerB": ""},
+    "adjudicator": "",
+    "hideSystemPredictionsFromReviewers": true,
+    "unknownIsAllowed": true,
+    "adjudicateEveryDisagreement": true,
+    "labels": [
+      "relevance", "news_type", "gold_event_identity", "novelty",
+      "first_published_at", "title", "main_content", "source_tier",
+      "claim_quote_support"
+    ]
+  },
+  "splitProtocol": {
+    "unit": "natural-time-window",
+    "developmentWindows": [],
+    "calibrationWindows": [],
+    "sealedHoldoutWindows": [],
+    "futureInformationForbidden": true,
+    "sealedHoldoutSingleLook": true
+  },
+  "expectedReadiness": {
+    "ready": false,
+    "blockerCodes": [
+      "ANNOTATION_STAFF_NOT_ASSIGNED",
+      "CATEGORY_COVERAGE_MISSING",
+      "INDEPENDENT_COLLECTOR_NOT_READY",
+      "LANGUAGE_COVERAGE_MISSING",
+      "POOLING_NOT_READY",
+      "SPLITS_NOT_FROZEN",
+      "SOURCE_FAMILY_COVERAGE_MISSING",
+      "SOURCE_UNIVERSE_NOT_APPROVED",
+      "WINDOW_NOT_FROZEN"
+    ]
+  },
+  "limitations": [
+    "This draft does not claim that a 14-day campaign has started or elapsed.",
+    "Every catalog endpoint remains disabled until a named operator signs off current terms and robots handling.",
+    "The bundled source catalog is English-heavy and far too small for the required global-and-China source universe.",
+    "NewsClaw's own ingestion ledger is a system-under-test output, not the independent reference collector."
+  ]
+}

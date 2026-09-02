@@ -48,7 +48,7 @@ From the second post on, it already knows your voice — persona, style, topic d
 - **Platform-native structure** — a hook intro, 3–5 titled sections with concrete cases/data, a punchline, and a closing call-to-action.
 - **Cover** sized for the header (≈ 2.35:1), plus section images.
 - **Compliance self-check** against your banned words and platform sensitive terms.
-- **Deliver** by pasting manually, or push to the **draft box** via `gzh_publish` after explicitly configuring credentials. NewsClaw does not enable this path by default.
+- **Deliver** by pasting manually, or push to the **draft box** via `gzh_publish(action=draft)` after explicitly configuring credentials. NewsClaw never performs direct free-publish; the account owner publishes from the WeChat backend.
 
 > Read `references/gzh_platform_rules.md` inside the skill for the real platform rules — cover sizing, title/summary limits, editor layout, induced-share/follow red lines, mass-send frequency, and the originality mechanism.
 
@@ -141,7 +141,7 @@ The weak spot in any "the model should also log this" design is that the model f
 |---|---|
 | `wechat_article_extract` | Cleans a `mp.weixin.qq.com` article into `{title, author, time, body, images}` (SSRF-limited to that host) |
 | `gzh_package` | Packages a 公众号 article (inline HTML + cover); runs compliance scan + records to the calendar |
-| `gzh_publish` | Pushes the article to the WeChat **draft box** (`draft`); optional `publish` is approval-gated |
+| `gzh_publish` | Pushes the article to the WeChat **draft box** (`draft`); direct `publish` is disabled and must be completed manually in the WeChat backend |
 | `xhs_package` | Packages a Xiaohongshu note; hard-validates 3-18 portrait cards, event evidence, and compliance; scans + records |
 | `xhs_publish` | Not exposed in the NewsClaw mainline; upload the ZIP material package manually |
 | `content_item` | Content calendar: `check_recent` (dedup), `record`, `mark_published` |

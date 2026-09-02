@@ -1,0 +1,35 @@
+CREATE TABLE mate_ai_news_source_capture (
+    id BIGINT NOT NULL PRIMARY KEY,
+    workspace_id BIGINT NOT NULL DEFAULT 1,
+    source_url VARCHAR(4096) NOT NULL,
+    source_url_hash VARCHAR(64) NOT NULL,
+    final_url VARCHAR(4096) NULL,
+    source_title VARCHAR(512) NULL,
+    source_published_at DATETIME(3) NULL,
+    published_at_raw VARCHAR(512) NULL,
+    published_at_method VARCHAR(64) NULL,
+    source_tier VARCHAR(16) NOT NULL DEFAULT 'community',
+    http_status INT NULL,
+    fetched_at DATETIME(3) NULL,
+    content_hash VARCHAR(64) NULL,
+    content_type VARCHAR(256) NULL,
+    capture_method VARCHAR(32) NOT NULL DEFAULT 'READ_ONLY_HTTP',
+    redirect_chain_json TEXT NULL,
+    extracted_text MEDIUMTEXT NULL,
+    extracted_text_hash VARCHAR(64) NULL,
+    text_length INT NULL,
+    capture_status VARCHAR(32) NOT NULL DEFAULT 'started',
+    capture_error VARCHAR(2000) NULL,
+    create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    deleted INT NOT NULL DEFAULT 0,
+    INDEX idx_ai_news_capture_workspace_fetched (workspace_id, fetched_at),
+    INDEX idx_ai_news_capture_workspace_url (workspace_id, source_url_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE mate_ai_news_event_evidence
+    ADD COLUMN source_capture_id BIGINT NULL,
+    ADD COLUMN quote_start INT NULL,
+    ADD COLUMN quote_end INT NULL,
+    ADD COLUMN quote_match_method VARCHAR(32) NULL,
+    ADD INDEX idx_ai_news_evidence_capture (workspace_id, source_capture_id);

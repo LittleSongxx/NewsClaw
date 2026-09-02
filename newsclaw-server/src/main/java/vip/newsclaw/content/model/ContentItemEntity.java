@@ -15,8 +15,8 @@ import java.time.LocalDateTime;
  * repeating topics and so publishing is idempotent and auditable.
  *
  * <p>{@code topicFingerprint} is a stable hash of the normalized topic; it is the
- * dedup key for "did we already cover this recently". {@code status} moves
- * {@code draft/packaged → published} (or {@code failed}).
+ * dedup key for "did we already cover this recently". Delivery status moves
+ * {@code draft/packaged → operator_acknowledged → published} (or {@code failed}).
  */
 @Data
 @TableName("mate_content_item")
@@ -46,6 +46,9 @@ public class ContentItemEntity {
     /** Platform-side reference: draft media_id / publish_id, when applicable. */
     private String externalRef;
 
+    /** SHA-256 identity of the exact artifact approved for delivery. */
+    private String artifactHash;
+
     /** Online-preview link handed to the user. */
     private String previewUrl;
 
@@ -57,6 +60,12 @@ public class ContentItemEntity {
 
     /** Set when the item is marked published. */
     private LocalDateTime publishTime;
+
+    /** Set when an operator approves the artifact for an external platform. */
+    private LocalDateTime operatorAcknowledgedAt;
+
+    /** Set only after a non-empty platform acknowledgement/reference is recorded. */
+    private LocalDateTime platformPublishedAt;
 
     private Integer deleted;
 }

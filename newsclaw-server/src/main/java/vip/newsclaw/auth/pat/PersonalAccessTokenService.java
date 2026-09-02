@@ -69,6 +69,10 @@ public class PersonalAccessTokenService {
             throw new NewsClawException("err.auth.pat_user_required",
                     "PAT requires an owning user");
         }
+        if (expiresAt != null && !expiresAt.isAfter(LocalDateTime.now())) {
+            throw new NewsClawException("err.auth.pat_expiry_invalid", 400,
+                    "PAT expiration must be in the future");
+        }
         String plaintext = generatePlaintext();
         String hash = sha256Hex(plaintext);
 
@@ -76,7 +80,11 @@ public class PersonalAccessTokenService {
         entity.setUserId(userId);
         entity.setName(name);
         entity.setTokenHash(hash);
-        entity.setScopes(scopes);
+        try {
+            entity.setScopes(PersonalAccessTokenScopePolicy.normalize(scopes));
+        } catch (IllegalArgumentException e) {
+            throw new NewsClawException("err.auth.pat_scope_invalid", 400, e.getMessage());
+        }
         entity.setExpiresAt(expiresAt);
         entity.setEnabled(true);
         entity.setDeleted(0);

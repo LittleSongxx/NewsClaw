@@ -79,7 +79,8 @@ class ChannelMessageTriggerTest {
         triggerService.create(t);
 
         publisher.publishEvent(new ChannelMessageReceivedEvent(
-                workspace, "feishu", "msg-1", "alice", "Alice", "chat-1", "hello"));
+                workspace, "feishu", "msg-1", "alice", "Alice", "chat-1", "hello",
+                "feishu:channel-1:chat-1", 42L));
 
         List<WorkflowRunEntity> runs = awaitRuns(downstream);
         assertEquals(1, runs.size(), "channel_message envelope should have triggered exactly one run");
@@ -88,6 +89,11 @@ class ChannelMessageTriggerTest {
                         && runs.get(0).getTriggeredBy().startsWith("trigger:"),
                 "downstream run should be triggered_by trigger:* — got "
                         + runs.get(0).getTriggeredBy());
+        assertTrue(runs.get(0).getTriggeredMeta() != null
+                        && runs.get(0).getTriggeredMeta().contains("\"conversationId\":\"feishu:channel-1:chat-1\"")
+                        && runs.get(0).getTriggeredMeta().contains("\"cronOrigin\":false"),
+                "channel origin must survive into the durable run metadata: "
+                        + runs.get(0).getTriggeredMeta());
     }
 
     @Test
@@ -187,10 +193,21 @@ class ChannelMessageTriggerTest {
         var q = new LambdaQueryWrapper<WorkflowRunEntity>().eq(WorkflowRunEntity::getWorkflowId, workflowId);
         for (int i = 0; i < 50; i++) {
             List<WorkflowRunEntity> runs = runMapper.selectList(q);
-            if (!runs.isEmpty()) return runs;
+            // The async trigger persists the run before the worker advances it
+            // from running to a terminal state. Wait for that transition too,
+            // otherwise a fast assertion can race a perfectly healthy run.
+            if (!runs.isEmpty() && runs.stream().allMatch(run -> isTerminal(run.getState()))) return runs;
             try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
         }
         return runMapper.selectList(q);
+    }
+
+    private boolean isTerminal(String state) {
+        if (state == null) return false;
+        return "succeeded".equalsIgnoreCase(state)
+                || "failed".equalsIgnoreCase(state)
+                || "cancelled".equalsIgnoreCase(state)
+                || "timed_out".equalsIgnoreCase(state);
     }
 
     // Give the @Async listener time to run, then confirm it produced nothing.

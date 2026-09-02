@@ -14,6 +14,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -122,14 +123,29 @@ public class CronJobRunService {
      * which can be 1–5 minutes when the agent does multi-iteration tool use.
      */
     public List<ActiveCronRunVO> listActiveByConversation(String conversationId) {
+        return listActiveByConversation(conversationId, null);
+    }
+
+    /** Workspace-scoped active-run lookup used by the chat polling endpoint. */
+    public List<ActiveCronRunVO> listActiveByConversation(String conversationId, Long workspaceId) {
         if (conversationId == null || conversationId.isBlank()) {
             return Collections.emptyList();
         }
-        List<CronJobRunEntity> runs = runMapper.selectList(
-                new LambdaQueryWrapper<CronJobRunEntity>()
-                        .eq(CronJobRunEntity::getConversationId, conversationId)
-                        .eq(CronJobRunEntity::getStatus, "running")
-                        .orderByAsc(CronJobRunEntity::getStartedAt));
+        LambdaQueryWrapper<CronJobRunEntity> runQuery = new LambdaQueryWrapper<CronJobRunEntity>()
+                .eq(CronJobRunEntity::getConversationId, conversationId)
+                .eq(CronJobRunEntity::getStatus, "running")
+                .orderByAsc(CronJobRunEntity::getStartedAt);
+        if (workspaceId != null) {
+            List<Long> workspaceJobIds = cronJobMapper.selectList(
+                            new LambdaQueryWrapper<CronJobEntity>()
+                                    .eq(CronJobEntity::getWorkspaceId, workspaceId)
+                                    .eq(CronJobEntity::getDeleted, 0)
+                                    .select(CronJobEntity::getId))
+                    .stream().map(CronJobEntity::getId).filter(Objects::nonNull).toList();
+            if (workspaceJobIds.isEmpty()) return Collections.emptyList();
+            runQuery.in(CronJobRunEntity::getCronJobId, workspaceJobIds);
+        }
+        List<CronJobRunEntity> runs = runMapper.selectList(runQuery);
         if (runs.isEmpty()) return Collections.emptyList();
 
         Set<Long> jobIds = runs.stream()

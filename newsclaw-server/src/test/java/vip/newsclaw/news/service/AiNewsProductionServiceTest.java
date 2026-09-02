@@ -68,7 +68,7 @@ class AiNewsProductionServiceTest {
 
     @Test
     void onlyInProductionEventsCanStartATeamRun() {
-        when(eventService.findEvent(WORKSPACE_ID, EVENT_ID)).thenReturn(event("verified", null));
+        when(eventService.findEventForUpdate(WORKSPACE_ID, EVENT_ID)).thenReturn(event("verified", null));
 
         assertThrows(NewsClawException.class, () -> service.start(WORKSPACE_ID, EVENT_ID));
 
@@ -79,7 +79,7 @@ class AiNewsProductionServiceTest {
     @Test
     void anExistingRunMakesStartIdempotent() {
         AiNewsEventEntity existing = event("in_production", RUN_ID);
-        when(eventService.findEvent(WORKSPACE_ID, EVENT_ID)).thenReturn(existing);
+        when(eventService.findEventForUpdate(WORKSPACE_ID, EVENT_ID)).thenReturn(existing);
 
         assertEquals(existing, service.start(WORKSPACE_ID, EVENT_ID));
 
@@ -92,7 +92,8 @@ class AiNewsProductionServiceTest {
     void createsDurableEditorialDagLinksEventAndDispatchesAfterCommitIntent() throws Exception {
         AiNewsEventEntity input = event("in_production", null);
         AiNewsEventEntity linked = event("in_production", RUN_ID);
-        when(eventService.findEvent(WORKSPACE_ID, EVENT_ID)).thenReturn(input, linked);
+        when(eventService.findEventForUpdate(WORKSPACE_ID, EVENT_ID)).thenReturn(input);
+        when(eventService.findEvent(WORKSPACE_ID, EVENT_ID)).thenReturn(linked);
         when(teamMapper.selectOne(any())).thenReturn(team());
         when(teamService.listMembers(TEAM_ID)).thenReturn(members());
         stubAgents();

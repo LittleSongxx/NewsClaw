@@ -19,6 +19,9 @@ public class ToolApprovalEntity {
     private String conversationId;
     private String userId;
     private String agentId;
+    /** Durable workspace scope for activity/approval queries. */
+    @TableField("workspace_id")
+    private Long workspaceId;
     private String channelType;
     private String requesterName;
     private String replyTarget;

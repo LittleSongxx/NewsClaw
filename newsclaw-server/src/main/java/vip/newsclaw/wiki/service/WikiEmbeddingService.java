@@ -526,6 +526,11 @@ public class WikiEmbeddingService {
      * 查询向量化（混合搜索时调用，需指定 KB 以便解析对应模型）
      */
     public float[] embedQuery(Long kbId, String query) {
+        QueryEmbedding result = embedQueryWithIdentity(kbId, query);
+        return result == null ? null : result.vector();
+    }
+
+    public QueryEmbedding embedQueryWithIdentity(Long kbId, String query) {
         Resolved r = resolveForKb(kbId);
         if (r == null) return null;
         // Defensive truncation: user queries are usually short, but guard against
@@ -535,7 +540,8 @@ public class WikiEmbeddingService {
                 ? query.substring(0, maxChars) : query;
         try {
             EmbeddingResponse resp = r.model().call(new EmbeddingRequest(List.of(safeQuery), null));
-            return resp.getResults().get(0).getOutput();
+            return new QueryEmbedding(
+                    resp.getResults().get(0).getOutput(), r.modelName(), currentInputVersion());
         } catch (Exception e) {
             log.error("[WikiEmbedding] Query embedding failed for kbId={}: {}", kbId, e.getMessage());
             return null;
@@ -596,6 +602,11 @@ public class WikiEmbeddingService {
                 .set(WikiChunkEntity::getEmbedding, null)
                 .set(WikiChunkEntity::getEmbeddingModel, null)
                 .set(WikiChunkEntity::getEmbeddingTextVersion, null));
+        pageMapper.update(null, new LambdaUpdateWrapper<WikiPageEntity>()
+                .eq(WikiPageEntity::getKbId, kbId)
+                .set(WikiPageEntity::getEmbedding, null)
+                .set(WikiPageEntity::getEmbeddingModel, null)
+                .set(WikiPageEntity::getEmbeddingTextVersion, null));
         log.info("[WikiEmbedding] Cleared all embeddings for kbId={}", kbId);
     }
 
@@ -713,6 +724,8 @@ public class WikiEmbeddingService {
 
     /** 解析结果 DTO */
     public record Resolved(EmbeddingModel model, String modelName) {}
+
+    public record QueryEmbedding(float[] vector, String modelName, String inputVersion) {}
 
     /**
      * 暴露 factory 给外部（如测试连通性 API）

@@ -7,6 +7,7 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.event.EventListener;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import vip.newsclaw.tool.model.ToolEntity;
 import vip.newsclaw.tool.repository.ToolMapper;
@@ -42,6 +43,13 @@ import java.util.stream.Collectors;
 @Component
 @RequiredArgsConstructor
 public class ToolRegistry {
+
+    private static final Set<String> PRODUCTION_DISABLED_BEANS = Set.of(
+            "screenshotTool", "gzhPublishTool", "xhsPublishTool", "codeExecuteTool",
+            "shellExecuteTool", "localFileTools", "localShellTool");
+
+    @Value("${newsclaw.security.production-mode:false}")
+    private boolean productionMode;
 
     private final ApplicationContext applicationContext;
     private final ToolMapper toolMapper;
@@ -181,6 +189,11 @@ public class ToolRegistry {
             if (!hasToolMethod) {
                 continue;
             }
+            if (productionMode && enabledOnly && (PRODUCTION_DISABLED_BEANS.contains(beanName)
+                    || PRODUCTION_DISABLED_BEANS.contains(decapitalize(bean.getClass().getSimpleName())))) {
+                log.debug("Skipped production-disabled tool bean: {}", beanName);
+                continue;
+            }
             // 3. 只有 DB 中明确 enabled=false 的才跳过，其余全部启用
             if (disabledBeanNames.contains(beanName)) {
                 log.debug("Skipped disabled tool bean: {} (beanName={})", bean.getClass().getSimpleName(), beanName);
@@ -192,6 +205,11 @@ public class ToolRegistry {
 
         log.info("Total {} tools: {}", enabledOnly ? "enabled" : "registered", enabled.size());
         return enabled;
+    }
+
+    private static String decapitalize(String value) {
+        return value == null || value.isEmpty() ? value
+                : Character.toLowerCase(value.charAt(0)) + value.substring(1);
     }
 
     /**

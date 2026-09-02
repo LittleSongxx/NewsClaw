@@ -103,7 +103,10 @@ public class ChatUploadLocationResolver {
      */
     public static String sanitizeSegment(String conversationId) {
         if (conversationId == null) return "";
-        return conversationId.replaceAll("[^A-Za-z0-9_.-]", "_");
+        String safe = conversationId.replaceAll("[^A-Za-z0-9_.-]", "_");
+        // A path segment consisting only of "." or ".." still escapes/collapses
+        // even though every character is in the allow-list above.
+        return ".".equals(safe) || "..".equals(safe) ? safe.replace('.', '_') : safe;
     }
 
     /**
@@ -114,7 +117,11 @@ public class ChatUploadLocationResolver {
      * sub-directory when date folders are enabled.
      */
     public Path resolveConversationDir(String conversationId) {
-        return resolveUploadRoot(conversationId).resolve(sanitizeSegment(conversationId));
+        Path dir = directChild(resolveUploadRoot(conversationId), sanitizeSegment(conversationId));
+        if (dir == null) {
+            throw new IllegalArgumentException("Invalid conversation id for attachment path");
+        }
+        return dir;
     }
 
     /**
@@ -227,10 +234,16 @@ public class ChatUploadLocationResolver {
         String safe = sanitizeSegment(conversationId);
         Set<Path> dirs = new LinkedHashSet<>();
         for (Path root : resolveCandidateUploadRoots(conversationId)) {
-            dirs.add(root.resolve(safe));
+            Path sanitizedDir = directChild(root, safe);
+            if (sanitizedDir != null) {
+                dirs.add(sanitizedDir);
+            }
             if (!safe.equals(conversationId)) {
                 try {
-                    dirs.add(root.resolve(conversationId));
+                    Path legacyDir = directChild(root, conversationId);
+                    if (legacyDir != null) {
+                        dirs.add(legacyDir);
+                    }
                 } catch (InvalidPathException ignore) {
                     // Raw id is not a legal path on this OS (e.g. ':' on Windows);
                     // no legacy attachments could exist there, so skip it.
@@ -238,6 +251,44 @@ public class ChatUploadLocationResolver {
             }
         }
         return new ArrayList<>(dirs);
+    }
+
+    /**
+     * Defense-in-depth check for destructive cleanup callers. A conversation
+     * directory must be one of the direct children this resolver would produce;
+     * an upload root itself, a sibling, or any descendant reached through a raw
+     * {@code ../} id is never a valid cleanup target.
+     */
+    public boolean isSafeConversationDir(String conversationId, Path candidate) {
+        if (candidate == null) return false;
+        Path normalized = candidate.toAbsolutePath().normalize();
+        String safe = sanitizeSegment(conversationId);
+        for (Path root : resolveCandidateUploadRoots(conversationId)) {
+            Path sanitizedDir = directChild(root, safe);
+            if (normalized.equals(sanitizedDir)) return true;
+            if (!safe.equals(conversationId)) {
+                try {
+                    Path legacyDir = directChild(root, conversationId);
+                    if (normalized.equals(legacyDir)) return true;
+                } catch (InvalidPathException ignore) {
+                    // Invalid raw legacy segment cannot have produced a safe dir.
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Resolve exactly one filesystem segment under {@code root}, or reject it. */
+    private static Path directChild(Path root, String segment) {
+        if (root == null || segment == null || segment.isBlank()) return null;
+        Path name = Paths.get(segment);
+        if (name.getRoot() != null || name.getNameCount() != 1
+                || ".".equals(segment) || "..".equals(segment)) {
+            return null;
+        }
+        Path normalizedRoot = root.toAbsolutePath().normalize();
+        Path candidate = normalizedRoot.resolve(name).normalize();
+        return normalizedRoot.equals(candidate.getParent()) ? candidate : null;
     }
 
     private final ConversationMapper conversationMapper;

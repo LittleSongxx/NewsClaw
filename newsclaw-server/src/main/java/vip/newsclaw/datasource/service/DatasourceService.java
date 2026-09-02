@@ -1,20 +1,18 @@
 package vip.newsclaw.datasource.service;
 
-import cn.hutool.crypto.SecureUtil;
-import cn.hutool.crypto.symmetric.AES;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import vip.newsclaw.common.crypto.VersionedAesGcmCrypto;
 import vip.newsclaw.datasource.model.DatasourceEntity;
 import vip.newsclaw.datasource.repository.DatasourceMapper;
 import vip.newsclaw.exception.NewsClawException;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * 数据源业务服务
@@ -26,10 +24,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DatasourceService {
 
+    private static final String CRYPTO_PURPOSE = "datasource-password";
+    private static final Pattern LEGACY_HEX = Pattern.compile("(?i)^[0-9a-f]+$");
+
     private final DatasourceMapper datasourceMapper;
     private final DatasourceConnectionManager connectionManager;
 
-    @Value("${newsclaw.datasource.encrypt-key:NewsClaw@2024Key!}")
+    @Value("${newsclaw.datasource.encrypt-key:}")
     private String encryptKey;
 
     // ==================== CRUD ====================
@@ -63,6 +64,7 @@ public class DatasourceService {
     }
 
     public DatasourceEntity create(DatasourceEntity entity) {
+        if (entity == null) throw new NewsClawException(400, "datasource is required");
         if (entity.getEnabled() == null) {
             entity.setEnabled(true);
         }
@@ -72,9 +74,13 @@ public class DatasourceService {
     }
 
     public DatasourceEntity update(DatasourceEntity entity) {
+        if (entity == null || entity.getId() == null) {
+            throw new NewsClawException(400, "datasource id is required");
+        }
         DatasourceEntity existing = getById(entity.getId());
         // 如果前端传回的密码是脱敏值，保留原密码
         if ("******".equals(entity.getPassword()) || entity.getPassword() == null) {
+            migratePasswordEncryption(existing);
             entity.setPassword(existing.getPassword());
         } else {
             encryptPassword(entity);
@@ -93,6 +99,7 @@ public class DatasourceService {
     public DatasourceEntity toggle(Long id, boolean enabled) {
         DatasourceEntity entity = getById(id);
         entity.setEnabled(enabled);
+        migratePasswordEncryption(entity);
         datasourceMapper.updateById(entity);
         if (!enabled) {
             connectionManager.invalidate(id);
@@ -105,11 +112,17 @@ public class DatasourceService {
     public boolean testConnection(Long id) {
         DatasourceEntity entity = getById(id);
         decryptPassword(entity);
-        boolean ok = connectionManager.testConnection(entity);
+        boolean ok;
+        try {
+            ok = connectionManager.testConnection(entity);
+        } finally {
+            // Never leave a decrypted password on an entity returned from the
+            // mapper, even when the driver throws before the normal result path.
+            encryptPassword(entity);
+        }
         // 更新测试结果
         entity.setLastTestTime(LocalDateTime.now());
         entity.setLastTestOk(ok);
-        encryptPassword(entity);
         datasourceMapper.updateById(entity);
         return ok;
     }
@@ -127,25 +140,42 @@ public class DatasourceService {
 
     // ==================== 加解密 ====================
 
-    private AES getAes() {
-        byte[] key = Arrays.copyOf(encryptKey.getBytes(StandardCharsets.UTF_8), 16);
-        return SecureUtil.aes(key);
+    private VersionedAesGcmCrypto crypto() {
+        return new VersionedAesGcmCrypto(encryptKey, CRYPTO_PURPOSE);
     }
 
     private void encryptPassword(DatasourceEntity entity) {
         if (entity.getPassword() != null && !entity.getPassword().isBlank()) {
-            entity.setPassword(getAes().encryptHex(entity.getPassword()));
+            entity.setPassword(crypto().encrypt(entity.getPassword()));
         }
     }
 
     private void decryptPassword(DatasourceEntity entity) {
-        if (entity.getPassword() != null && !entity.getPassword().isBlank()) {
-            try {
-                entity.setPassword(getAes().decryptStr(entity.getPassword()));
-            } catch (Exception e) {
-                log.warn("密码解密失败（可能是明文存储的旧数据）: {}", entity.getName());
-            }
+        String stored = entity.getPassword();
+        if (stored == null || stored.isBlank()) return;
+        if (!VersionedAesGcmCrypto.isVersioned(stored) && !looksLikeLegacyCiphertext(stored)) {
+            return; // oldest installations may still contain plaintext
         }
+        try {
+            entity.setPassword(crypto().decrypt(stored));
+        } catch (Exception e) {
+            log.error("Datasource password authentication/decryption failed for datasource {}", entity.getId());
+            throw new NewsClawException("err.datasource.decrypt_failed", 500,
+                    "Datasource password could not be decrypted; verify the encryption key");
+        }
+    }
+
+    /** Upgrade legacy ECB/plaintext storage whenever an otherwise normal write occurs. */
+    private void migratePasswordEncryption(DatasourceEntity entity) {
+        String stored = entity.getPassword();
+        if (stored == null || stored.isBlank() || VersionedAesGcmCrypto.isVersioned(stored)) return;
+        decryptPassword(entity);
+        encryptPassword(entity);
+    }
+
+    private static boolean looksLikeLegacyCiphertext(String stored) {
+        return stored.length() >= 32 && stored.length() % 32 == 0
+                && LEGACY_HEX.matcher(stored).matches();
     }
 
     private void maskPassword(DatasourceEntity entity) {

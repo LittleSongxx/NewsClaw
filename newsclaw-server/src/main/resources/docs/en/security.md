@@ -43,7 +43,7 @@ That's the line between "let AI do work for you" and "let AI make decisions for 
 ```bash
 curl -X POST http://localhost:18088/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin123"}'
+  -d '{"username": "admin", "password": "$BOOTSTRAP_PASSWORD"}'
 ```
 
 Response:
@@ -94,7 +94,7 @@ Frontend handles both uniformly — redirect to login, clear stored tokens.
 
 ### Default credentials
 
-NewsClaw ships with `admin` / `admin123`. **Change this immediately in any deployment other than your laptop.**
+Production uses `admin` with the deployment-provided one-time bootstrap secret. **Change it immediately and remove the environment variable.**
 
 ### Spring Security config
 

@@ -79,6 +79,8 @@ public class GeneratedFileCache {
      * within the retention window. A miss simply reloads from disk.
      */
     private static final int MAX_MEMORY_ENTRIES = 256;
+    /** Per-artifact ceiling; callers must chunk or summarize larger outputs. */
+    public static final int MAX_ENTRY_BYTES = 50 * 1024 * 1024;
 
     /**
      * URL pattern for generated files served by {@code GeneratedFileController}.
@@ -167,6 +169,10 @@ public class GeneratedFileCache {
     }
 
     public String put(byte[] bytes, String filename, String mimeType, @Nullable Owner owner) {
+        if (bytes == null) throw new IllegalArgumentException("generated file bytes are required");
+        if (bytes.length > MAX_ENTRY_BYTES) {
+            throw new IllegalArgumentException("generated file exceeds " + MAX_ENTRY_BYTES + " bytes");
+        }
         String id = UUID.randomUUID().toString();
         long expireAt = System.currentTimeMillis() + TTL.toMillis();
         Entry entry = new Entry(bytes, filename, mimeType, expireAt,
@@ -369,6 +375,10 @@ public class GeneratedFileCache {
         }
         try {
             Metadata parsed = parseMeta(Files.readString(meta), id);
+            if (Files.size(bin) > MAX_ENTRY_BYTES) {
+                log.warn("Ignoring generated file id={} above size ceiling", id);
+                return null;
+            }
             byte[] bytes = Files.readAllBytes(bin);
             return new Entry(bytes, parsed.filename(), parsed.mimeType(), parsed.expireAt(),
                     parsed.workspaceId(), parsed.ownerUserId(), parsed.conversationId());

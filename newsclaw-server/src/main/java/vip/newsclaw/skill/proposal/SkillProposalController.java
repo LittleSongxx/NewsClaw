@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
+import vip.newsclaw.exception.NewsClawException;
 import vip.newsclaw.common.result.R;
 import vip.newsclaw.workspace.core.annotation.RequireWorkspaceRole;
 
@@ -48,8 +50,10 @@ public class SkillProposalController {
     @RequireWorkspaceRole("admin")
     public R<SkillChangeProposalEntity> approve(@PathVariable Long id,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
-            @RequestBody(required = false) SkillProposalReviewRequest request) {
-        return R.ok(proposalService.approve(workspaceId, id, request));
+            @RequestBody(required = false) SkillProposalReviewRequest request,
+            Authentication authentication) {
+        return R.ok(proposalService.approve(workspaceId, id,
+                withAuthenticatedReviewer(request, authentication)));
     }
 
     @Operation(summary = "拒绝候选 Skill 变更")
@@ -57,8 +61,10 @@ public class SkillProposalController {
     @RequireWorkspaceRole("admin")
     public R<SkillChangeProposalEntity> reject(@PathVariable Long id,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
-            @RequestBody(required = false) SkillProposalReviewRequest request) {
-        return R.ok(proposalService.reject(workspaceId, id, request));
+            @RequestBody(required = false) SkillProposalReviewRequest request,
+            Authentication authentication) {
+        return R.ok(proposalService.reject(workspaceId, id,
+                withAuthenticatedReviewer(request, authentication)));
     }
 
     @Operation(summary = "应用已批准的候选 Skill 变更")
@@ -74,8 +80,22 @@ public class SkillProposalController {
     @RequireWorkspaceRole("admin")
     public R<SkillChangeProposalEntity> rollback(@PathVariable Long id,
             @RequestHeader(value = "X-Workspace-Id", required = false) Long workspaceId,
-            @RequestBody(required = false) SkillProposalReviewRequest request) {
+            @RequestBody(required = false) SkillProposalReviewRequest request,
+            Authentication authentication) {
+        SkillProposalReviewRequest reviewed = withAuthenticatedReviewer(request, authentication);
         return R.ok(proposalService.rollback(workspaceId, id,
-                request == null ? null : request.reviewer(), request == null ? null : request.note()));
+                reviewed == null ? null : reviewed.reviewer(), reviewed == null ? null : reviewed.note()));
+    }
+
+    private static SkillProposalReviewRequest withAuthenticatedReviewer(
+            SkillProposalReviewRequest request, Authentication authentication) {
+        if (authentication == null || authentication.getName() == null
+                || authentication.getName().isBlank()
+                || "anonymousUser".equalsIgnoreCase(authentication.getName())) {
+            throw new NewsClawException(401, "authenticated reviewer is required");
+        }
+        return new SkillProposalReviewRequest(authentication.getName(),
+                request == null ? null : request.note(),
+                request != null && Boolean.TRUE.equals(request.applyNow()));
     }
 }

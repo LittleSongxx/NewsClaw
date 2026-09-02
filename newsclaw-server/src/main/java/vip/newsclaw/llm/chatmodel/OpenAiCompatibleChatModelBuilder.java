@@ -296,6 +296,7 @@ public class OpenAiCompatibleChatModelBuilder implements ChatModelBuilder {
                 chatRequest = OpenAiRequestRewriter.patchReasoningContent(chatRequest, provider);
                 chatRequest = OpenAiRequestRewriter.stripReasoningEffortIfIncompatible(chatRequest);
                 chatRequest = OpenAiRequestRewriter.stripAutoToolChoice(chatRequest);
+                chatRequest = OpenAiRequestRewriter.applyBailianQwenThinkingLevel(chatRequest, provider);
                 chatRequest = OpenAiRequestRewriter.disableBailianQwenThinkingForForcedToolChoice(
                         chatRequest, provider);
                 chatRequest = OpenAiRequestRewriter.patchVideoMediaContent(chatRequest);
@@ -320,6 +321,7 @@ public class OpenAiCompatibleChatModelBuilder implements ChatModelBuilder {
                 chatRequest = OpenAiRequestRewriter.patchReasoningContent(chatRequest, provider);
                 chatRequest = OpenAiRequestRewriter.stripReasoningEffortIfIncompatible(chatRequest);
                 chatRequest = OpenAiRequestRewriter.stripAutoToolChoice(chatRequest);
+                chatRequest = OpenAiRequestRewriter.applyBailianQwenThinkingLevel(chatRequest, provider);
                 chatRequest = OpenAiRequestRewriter.disableBailianQwenThinkingForForcedToolChoice(
                         chatRequest, provider);
                 chatRequest = OpenAiRequestRewriter.patchVideoMediaContent(chatRequest);

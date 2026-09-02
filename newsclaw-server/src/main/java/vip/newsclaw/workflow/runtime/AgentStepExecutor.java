@@ -2,6 +2,7 @@ package vip.newsclaw.workflow.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
+import vip.newsclaw.agent.context.ChatOrigin;
 import vip.newsclaw.workflow.compiler.PebbleSubsetEvaluator;
 import vip.newsclaw.workflow.compiler.ir.WorkflowStep;
 
@@ -60,7 +61,11 @@ public class AgentStepExecutor {
         String conversationId = "wf-run-" + context.runId() + "-step-" + step.name()
                 + "-" + UUID.randomUUID();
         try {
-            response = agentInvoker.invoke(agentId, prompt, conversationId);
+            ChatOrigin origin = context.origin() == null
+                    ? ChatOrigin.cron(conversationId, context.workspaceId(), null, null, null)
+                    : context.origin().withConversationId(conversationId)
+                    .withWorkspace(context.workspaceId(), context.origin().workspaceBasePath());
+            response = agentInvoker.invoke(agentId, prompt, conversationId, origin);
             if (response == null) response = "";
         } catch (Exception e) {
             return StepResult.failed("agent invocation failed for step '" + step.name()
@@ -82,7 +87,12 @@ public class AgentStepExecutor {
     }
 
     private Long resolveAgentId(WorkflowStep step, long workspaceId) {
-        if (step.agentId() != null) return step.agentId();
+        if (step.agentId() != null) {
+            // Agent ids are durable graph data, not proof of tenant ownership.
+            // Re-check the id at execution time so imported/old revisions
+            // cannot invoke an agent from another workspace.
+            return agentInvoker.resolveAgentId(workspaceId, step.agentId());
+        }
         if (step.agentName() != null && !step.agentName().isBlank()) {
             return agentInvoker.resolveAgentId(workspaceId, step.agentName());
         }

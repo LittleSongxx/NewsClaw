@@ -166,7 +166,13 @@ public class DefaultToolDisclosureService implements ToolDisclosureService {
         }
         Snapshot snap = snapshot();
         Set<String> prioritized = priorityTools == null ? Set.of() : priorityTools;
+        // An explicitly bound tool is an operator-level contract, not merely
+        // a ranking hint. Hiding it behind progressive disclosure makes a
+        // forced function:<name> request fail before the model can run it.
+        // Keep those callbacks in the active set even when the global schema
+        // budget is tight; the caller deliberately opted into the surface.
         List<ToolCallback> candidates = core.stream()
+                .filter(cb -> !prioritized.contains(cb.getToolDefinition().name()))
                 .filter(cb -> isDemotable(cb.getToolDefinition().name(), snap))
                 .sorted(Comparator
                         .comparing((ToolCallback cb) -> prioritized.contains(cb.getToolDefinition().name()))

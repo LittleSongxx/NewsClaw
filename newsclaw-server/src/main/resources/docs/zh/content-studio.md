@@ -48,7 +48,7 @@ NewsClaw 的内容生产不是通用写作场景：它从已核验的 AI 行业�
 - **平台原生结构**——钩子引言、3–5 个带标题小节含具体案例/数据、金句、结尾行动号召。
 - **封面**按头图尺寸(≈ 2.35:1),外加小节配图。
 - **合规自查**——比对你的违禁词与平台敏感词。
-- **交付**可手动粘贴，或在显式配置凭证后经 `gzh_publish` 推进草稿箱。NewsClaw 默认不启用该路径。
+- **交付**可手动粘贴，或在显式配置凭证后经 `gzh_publish(action=draft)` 推进草稿箱。NewsClaw 不提供机器人直接群发；最终发表必须在公众号后台人工完成。
 
 > 读技能内的 `references/gzh_platform_rules.md` 了解真实平台规矩——封面尺寸、标题/摘要限制、编辑器排版、诱导分享/关注红线、群发频次、原创机制。
 
@@ -141,7 +141,7 @@ NewsClaw 的内容生产不是通用写作场景：它从已核验的 AI 行业�
 |---|---|
 | `wechat_article_extract` | 把 `mp.weixin.qq.com` 文章清洗成 `{标题, 作者, 时间, 正文, 图片}`(SSRF 限该 host) |
 | `gzh_package` | 打包公众号图文(内联 HTML + 封面);跑合规扫描 + 落台账 |
-| `gzh_publish` | 把文章推进微信**草稿箱**(`draft`);可选 `publish` 走审批 |
+| `gzh_publish` | 把文章推进微信**草稿箱**(`draft`)；直接 `publish` 已禁用，最终发表由人工在公众号后台完成 |
 | `xhs_package` | 打包小红书笔记；硬校验 3-18 张竖版卡片、事件证据和合规扫描；扫 + 记 |
 | `xhs_publish` | 不在 NewsClaw 主线暴露；使用 ZIP 素材包人工上传 |
 | `content_item` | 内容日历:`check_recent`(去重)、`record`、`mark_published` |

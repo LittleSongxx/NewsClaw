@@ -50,6 +50,7 @@ public class VideoGenerationService {
     public VideoGenerationResult submitGeneration(VideoGenerationRequest request,
                                                     String conversationId,
                                                     String createdBy) {
+        if (request == null) return VideoGenerationResult.failure("视频生成请求不能为空");
         SystemSettingsDTO config = systemSettingService.getAllSettings();
 
         // 1. 检查视频功能是否启用
@@ -180,6 +181,10 @@ public class VideoGenerationService {
 
                 // 下载视频到本地
                 Path localPath = fileDownloader.download(videoUrl, task.getConversationId(), task.getTaskId());
+                if (asyncTaskService.isConversationCanceled(task.getConversationId())) {
+                    java.nio.file.Files.deleteIfExists(localPath);
+                    return;
+                }
                 String servingUrl = fileDownloader.toServingUrl(task.getConversationId(), localPath);
 
                 // 保存 assistant 消息（含 video content part）
@@ -200,6 +205,11 @@ public class VideoGenerationService {
                         task.getConversationId(), "assistant",
                         "视频已生成完毕",
                         parts, "completed");
+
+                if (asyncTaskService.isConversationCanceled(task.getConversationId())) {
+                    java.nio.file.Files.deleteIfExists(localPath);
+                    return;
+                }
 
                 // SSE 广播
                 asyncTaskService.broadcastTaskEvent(task, "async_task_completed",

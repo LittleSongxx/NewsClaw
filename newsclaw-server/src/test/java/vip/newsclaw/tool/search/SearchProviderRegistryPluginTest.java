@@ -68,6 +68,19 @@ class SearchProviderRegistryPluginTest {
     }
 
     @Test
+    @DisplayName("provider lookup and unregister are case-insensitive")
+    void providerLookupIsCaseInsensitive() {
+        SearchProviderRegistry registry = registryWithBuiltins();
+        SearchProvider plugin = stub("my-search", 500, true, true);
+        registry.registerPluginProvider(plugin);
+
+        assertSame(plugin, registry.getById("MY-SEARCH"));
+        assertTrue(registry.isPluginProvider("My-Search"));
+        registry.unregisterPluginProvider("MY-SEARCH");
+        assertNull(registry.getById("my-search"));
+    }
+
+    @Test
     @DisplayName("plugin id clashing with a built-in id is rejected")
     void builtinIdConflictRejected() {
         SearchProviderRegistry registry = registryWithBuiltins();
@@ -203,6 +216,28 @@ class SearchProviderRegistryPluginTest {
         SearchProviderRegistry.ResolvedProvider resolved = registry.resolve(new SystemSettingsDTO());
         assertSame(plugin, resolved.provider());
         assertEquals("auto-detect", resolved.source());
+    }
+
+    @Test
+    void brokenPluginAvailabilityProbeDoesNotAbortRegistryResolution() {
+        SearchProviderRegistry registry = registryWithBuiltins();
+        registry.registerPluginProvider(new SearchProvider() {
+            @Override public String id() { return "broken-search"; }
+            @Override public String label() { return id(); }
+            @Override public boolean requiresCredential() { return true; }
+            @Override public int autoDetectOrder() { return 1; }
+            @Override public boolean isAvailable(SystemSettingsDTO config) {
+                throw new IllegalStateException("plugin probe failed");
+            }
+            @Override public List<SearchResult> search(String query, SystemSettingsDTO config) {
+                return List.of();
+            }
+        });
+
+        SearchProviderRegistry.ResolvedProvider resolved = registry.resolve(new SystemSettingsDTO());
+
+        assertEquals("duckduckgo", resolved.provider().id());
+        assertEquals("keyless-fallback", resolved.source());
     }
 
     @Test

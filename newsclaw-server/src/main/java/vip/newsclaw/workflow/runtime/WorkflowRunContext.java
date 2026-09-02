@@ -1,5 +1,7 @@
 package vip.newsclaw.workflow.runtime;
 
+import vip.newsclaw.agent.context.ChatOrigin;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -21,21 +23,31 @@ public class WorkflowRunContext {
     private final long workflowId;
     private final long revisionId;
     private final Map<String, Object> inputs;
+    private final ChatOrigin origin;
     private final Map<String, Object> outputs = new LinkedHashMap<>();
 
     public WorkflowRunContext(long runId, long workspaceId, long workflowId, long revisionId,
                               Map<String, Object> inputs) {
+        this(runId, workspaceId, workflowId, revisionId, inputs, null);
+    }
+
+    public WorkflowRunContext(long runId, long workspaceId, long workflowId, long revisionId,
+                              Map<String, Object> inputs, ChatOrigin origin) {
         this.runId = runId;
         this.workspaceId = workspaceId;
         this.workflowId = workflowId;
         this.revisionId = revisionId;
         this.inputs = inputs == null ? Map.of() : Map.copyOf(inputs);
+        this.origin = origin;
     }
 
     public long runId() { return runId; }
     public long workspaceId() { return workspaceId; }
     public long workflowId() { return workflowId; }
     public long revisionId() { return revisionId; }
+
+    /** Origin propagated to every agent/tool invocation in this run. */
+    public ChatOrigin origin() { return origin; }
 
     public Map<String, Object> inputs() { return inputs; }
 
@@ -80,7 +92,7 @@ public class WorkflowRunContext {
      */
     public synchronized WorkflowRunContext branchSnapshot() {
         WorkflowRunContext child = new WorkflowRunContext(runId, workspaceId,
-                workflowId, revisionId, inputs);
+                workflowId, revisionId, inputs, origin);
         // Seed the child with a snapshot of the parent's outputs so the
         // branch can read everything that completed before the fan_out
         // group started, but its own writes stay local.
