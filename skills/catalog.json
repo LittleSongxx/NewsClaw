@@ -1,0 +1,51 @@
+{
+  "categories": [
+    {
+      "name": "文档处理",
+      "description": "用于创建、编辑和转换常见办公文件格式（如Word、Excel、PPT、PDF）的技能。",
+      "skills": [
+        "docx",
+        "pdf",
+        "pptx",
+        "xlsx"
+      ]
+    },
+    {
+      "name": "内容创作",
+      "description": "专注于通用文本写作、研究辅助及文章生成的技能。",
+      "skills": [
+        "chinese-writing",
+        "content-research-writer"
+      ]
+    },
+    {
+      "name": "社交媒体运营",
+      "description": "针对特定社交平台（如微信公众号、小红书）的内容生成与优化技能。",
+      "skills": [
+        "wechat-article",
+        "xiaohongshu-creator"
+      ]
+    },
+    {
+      "name": "新闻与编辑",
+      "description": "涉及新闻稿撰写、专业编辑校对及媒体发布流程的技能。",
+      "skills": [
+        "newsroom-editor"
+      ]
+    },
+    {
+      "name": "知识管理",
+      "description": "支持笔记软件（如Obsidian）集成、个人知识库构建与管理的功能。",
+      "skills": [
+        "obsidian-skills"
+      ]
+    },
+    {
+      "name": "飞书与归档",
+      "description": "飞书/Lark 业务系统操作与云文档、Wiki 知识库归档。",
+      "skills": [
+        "feishu-cli"
+      ]
+    }
+  ]
+}

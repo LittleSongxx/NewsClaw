@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Lint, tests, wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" ruff build
+      - name: Check version consistency
+        run: python scripts/version.py check
+      - name: Lint with ruff
+        run: ruff check src/
+      - name: Run tests
+        run: pytest tests/unit tests/component tests/integration -q
+      - name: Build wheel
+        # Also validates that the packaged skill list matches skills/catalog.json:
+        # a mismatch fails here with "Forced include not found".
+        run: python -m build --wheel --outdir dist/
+
+  frontend:
+    name: Frontend typecheck & tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/setup-center
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/setup-center/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Type check
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Unit tests
+        run: npx vitest run
