@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.llm.stream`.
+"""Tests for :mod:`newsclaw.runtime.llm.stream`.
 
 Hand-rolled fake LLMClient yields 3 synthetic events; we drive
 :func:`stream_llm_events` against it and assert event-order parity,

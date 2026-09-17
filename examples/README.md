@@ -1,6 +1,6 @@
 # Example Plugins
 
-This directory contains example plugins demonstrating the OpenAkita Plugin 2.0 system.
+This directory contains example plugins demonstrating the NewsClaw Plugin 2.0 system.
 Copy any plugin folder into `data/plugins/` to install it.
 
 | Plugin | Type | Description |

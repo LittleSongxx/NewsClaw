@@ -94,8 +94,8 @@ export function MarketplacePluginSetup({ apiBaseUrl, pluginId, onBusyChange, onC
       if (mounted.current) setError(err instanceof Error ? err.message : fallback);
     } finally {
       if (action !== "check") {
-        window.dispatchEvent(new CustomEvent("openakita:plugin-apps-changed"));
-        window.dispatchEvent(new CustomEvent("openakita:plugin-reloaded", { detail: { pluginId } }));
+        window.dispatchEvent(new CustomEvent("newsclaw:plugin-apps-changed"));
+        window.dispatchEvent(new CustomEvent("newsclaw:plugin-reloaded", { detail: { pluginId } }));
       }
       operation.current = false;
       if (mounted.current) setBusy(false);

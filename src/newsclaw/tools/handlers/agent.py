@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 DYNAMIC_AGENT_POLICIES = {
     "max_agents_per_session": 5,
-    "max_delegation_depth": 5,
+    "max_delegation_depth": 1,
     "forbidden_tools": {"create_agent"},
     "max_lifetime_minutes": 60,
 }
@@ -76,7 +76,10 @@ class AgentToolHandler:
         elif tool_name == "spawn_agent":
             return await self._spawn(params)
         elif tool_name == "create_agent":
-            return await self._create(params)
+            return (
+                "❌ create_agent 已禁用。请用 spawn_agent 继承已有画像，"
+                "或 delegate_to_agent 委派给预定义 Agent；不要现场造人格。"
+            )
         return f"❌ Unknown agent tool: {tool_name}"
 
     # ------------------------------------------------------------------

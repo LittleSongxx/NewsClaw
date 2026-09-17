@@ -98,7 +98,7 @@ def test_skill_python_metadata_is_parsed(tmp_path):
 name: data-skill
 description: Data skill
 metadata:
-  openakita:
+  newsclaw:
     python:
       env: skill
       dependencies:

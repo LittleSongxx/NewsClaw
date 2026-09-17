@@ -223,7 +223,7 @@ pub(crate) fn ensure_runtime_layout() -> Result<(), String> {
     ] {
         if let Err(e) = fs::create_dir_all(&dir) {
             // 企业 AD 域 / Windows S 模式 / 杀软"勒索软件防护"会把
-            // `%LOCALAPPDATA%\OpenAkitaDesktop\` 设为受保护目录，此时
+            // `%LOCALAPPDATA%\NewsClawDesktop\` 设为受保护目录，此时
             // `create_dir_all` 返回 PermissionDenied。Phase 2 加了 30MB seed
             // 后 IO 失败概率上升，必须给出可操作的指引而不是干瘪的报错。
             //
@@ -274,7 +274,7 @@ pub(crate) fn resolve_runtime_pip_index() -> RuntimePipIndex {
             let trusted_host = std::env::var("NEWSCLAW_PIP_TRUSTED_HOST")
                 .unwrap_or_else(|_| trusted_host_for_url(&url));
             return RuntimePipIndex {
-                id: "env-openakita".into(),
+                id: "env-newsclaw".into(),
                 url,
                 trusted_host,
             };
@@ -470,10 +470,10 @@ impl RuntimeEnvPurpose {
     }
 }
 
-/// Centralized runtime environment builder for OpenAkita-managed subprocesses.
+/// Centralized runtime environment builder for NewsClaw-managed subprocesses.
 ///
 /// Core/bootstrap subprocesses must not inherit user Python, Conda, pip, or SSL
-/// state. Both paths receive explicit OpenAkita runtime locations and secret
+/// state. Both paths receive explicit NewsClaw runtime locations and secret
 /// scrubbing markers.
 pub(crate) fn apply_runtime_env_builder(
     cmd: &mut Command,
@@ -539,7 +539,7 @@ pub(crate) fn apply_runtime_bootstrap_env(cmd: &mut Command, pip_index: Option<&
     //   * UV_PYTHON_DOWNLOADS=automatic：seed 缺失时允许自动下载
     //     python-build-standalone（联网环境无感升级；断网会落到 fallback）。
     //   * UV_PYTHON_INSTALL_DIR：把下载的 managed Python 落在
-    //     OpenAkita 自管目录而不是 `%LOCALAPPDATA%\uv\python`，便于卸载、
+    //     NewsClaw 自管目录而不是 `%LOCALAPPDATA%\uv\python`，便于卸载、
     //     便于"修复运行环境"按钮一刀清理。
     //   * UV_PYTHON_BIN_DIR：与 INSTALL_DIR 同根，避免 uv 把 shim 写到
     //     `~/.local/bin` 这种用户全局位置。
@@ -841,8 +841,8 @@ pub(crate) fn normalize_path_for_compare(path: &Path) -> String {
 /// 判断 `home` 是否落在我们自己管理的 Python 池里（PBS seed 或 uv 下载的
 /// managed Python）。命中即视为可信，无视 marker 子串。
 ///
-/// 解决的边角：用户把 OpenAkita 安装到 `C:\anaconda3\OpenAkita\` 这种路径，
-/// 我们的 seed `pyvenv.cfg::home = C:\anaconda3\OpenAkita\resources\bootstrap\python`
+/// 解决的边角：用户把 NewsClaw 安装到 `C:\anaconda3\NewsClaw\` 这种路径，
+/// 我们的 seed `pyvenv.cfg::home = C:\anaconda3\NewsClaw\resources\bootstrap\python`
 /// 子串命中 "anaconda" 会被 `BAD_BASE_PYTHON_MARKERS` 误拒，进而陷入
 /// "venv 自清 → 重建 → 仍被拒"的无限循环，永远走不到 dual-venv。
 pub(crate) fn home_is_under_managed_python_root(home: &str) -> bool {
@@ -865,7 +865,7 @@ pub(crate) fn home_is_under_managed_python_root(home: &str) -> bool {
 /// 解析失败（例如文件残缺）当成 "未命中"，把判断交给后续的 import 测试。
 ///
 /// 白名单：home 落在我们自己管理的 Python 池里时，永远不拒绝（避免
-/// "用户装在 C:\anaconda3\OpenAkita\ → seed 路径含 anaconda → 自拒死循环"）。
+/// "用户装在 C:\anaconda3\NewsClaw\ → seed 路径含 anaconda → 自拒死循环"）。
 pub(crate) fn pyvenv_cfg_home_is_disallowed(venv_dir: &Path) -> Option<String> {
     let cfg = venv_dir.join("pyvenv.cfg");
     let text = fs::read_to_string(&cfg).ok()?;
@@ -942,7 +942,7 @@ pub(crate) fn app_runtime_health_code(venv_dir: &Path) -> String {
     let path_markers = python_tuple_literal(BAD_PATH_MARKERS);
     // 把"我们自己管理的 Python 池"也注入到 Python 侧，与 Rust
     // `home_is_under_managed_python_root` 严格对齐。让 marker 子串误命中我们
-    // 自己 seed 路径的场景（用户装到 C:\anaconda3\OpenAkita\）也能放行。
+    // 自己 seed 路径的场景（用户装到 C:\anaconda3\NewsClaw\）也能放行。
     let managed_seed = python_string_literal(&bootstrap_resource_dir().join("python"));
     let managed_uv = python_string_literal(&runtime_cache_dir().join("python"));
     format!(
@@ -1285,7 +1285,7 @@ pub(crate) fn ensure_app_venv(
             ));
         }
         Err(format!(
-            "app venv health check failed after OpenAkita install: python={}, log={}",
+            "app venv health check failed after NewsClaw install: python={}, log={}",
             app_py.display(),
             log_path.display()
         ))
@@ -1563,7 +1563,7 @@ pub(crate) fn get_backend_executable(venv_dir: &str) -> (PathBuf, Vec<String>) {
     }
 
     // Compatibility only: old installations and local development may still
-    // have ~/.openakita/venv. New installers do not create this environment.
+    // have ~/.newsclaw/venv. New installers do not create this environment.
     eprintln!(
         "[backend] managed app runtime unavailable\n\
          [backend] current_exe: {:?}\n\
@@ -1662,7 +1662,7 @@ pub(crate) fn newsclaw_runtime_last_error() -> RuntimeLastError {
 /// 就是 PermissionDenied 之前的失败），通用命令会直接抛 `Path does not exist`，
 /// 用户什么也看不到。本命令向上溯源，找到最近一级**确实存在**的祖先目录
 /// 并打开，让用户能在自己的文件管理器里看到现场（例如 `%LOCALAPPDATA%\
-/// OpenAkitaDesktop\` 还在，但 `runtime\` 子目录因为 AD 策略建不出来）。
+/// NewsClawDesktop\` 还在，但 `runtime\` 子目录因为 AD 策略建不出来）。
 ///
 /// 返回的 `fellBack=true` 标记给前端用，用来弹一条"我们退回到上一级"的提示。
 #[derive(Debug, Serialize, Clone)]
@@ -1777,7 +1777,7 @@ mod tests {
     #[test]
     fn managed_python_seed_path_uses_the_bundled_bootstrap_layout() {
         let temp = std::env::temp_dir().join(format!(
-            "openakita-python-seed-test-{}-{}",
+            "newsclaw-python-seed-test-{}-{}",
             std::process::id(),
             now_ms()
         ));
@@ -1848,7 +1848,7 @@ mod tests {
             command
         };
         let log_path = std::env::temp_dir().join(format!(
-            "openakita-runtime-timeout-test-{}-{}.log",
+            "newsclaw-runtime-timeout-test-{}-{}.log",
             std::process::id(),
             now_ms()
         ));

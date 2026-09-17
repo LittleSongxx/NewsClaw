@@ -1,4 +1,4 @@
-"""Tests for :class:`openakita.runtime.llm.failover.EndpointFailoverView`.
+"""Tests for :class:`newsclaw.runtime.llm.failover.EndpointFailoverView`.
 
 Run against a hand-rolled fake (``_FakeClient``) so the suite stays
 hermetic. Coverage hits happy-path, failover-to-second, and all-fail

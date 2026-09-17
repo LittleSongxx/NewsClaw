@@ -336,7 +336,7 @@ export type OptionalFeatureInstallRequest = {
 
 /**
  * Backend ``config_hint`` SSE event payload (see
- * src/openakita/core/reasoning_engine.py:_build_tool_end_events).
+ * src/newsclaw/core/reasoning_engine.py:_build_tool_end_events).
  *
  * Single source of truth for both ChainEntry's ``config_hint`` kind and
  * ChatToolCall.configHints[]; keeping it in one place prevents the two

@@ -9,7 +9,7 @@
  *  2. Opens a dialog (on click) listing each subsystem with a per-row
  *     "quarantine + recreate" action.
  *  3. Differentiates the "restart required" UX between Tauri (auto-
- *     restart via ``/api/shutdown``) and standalone ``openakita serve``
+ *     restart via ``/api/shutdown``) and standalone ``newsclaw serve``
  *     (manual restart instructions).
  *
  * Polling strategy is deliberately conservative — initial fetch on
@@ -31,7 +31,7 @@ const DEGRADED_GET_URL = "/api/memory/repair/degraded";
 const QUARANTINE_URL = "/api/memory/repair/quarantine";
 const SHUTDOWN_URL = "/api/shutdown";
 
-export const DEGRADED_REFRESH_EVENT = "openakita.degraded.refresh";
+export const DEGRADED_REFRESH_EVENT = "newsclaw.degraded.refresh";
 
 /**
  * Pull the per-process desktop session token out of Tauri. In web/standalone
@@ -92,7 +92,7 @@ async function fetchDegradedDetails(apiBase: string): Promise<DegradedGetRespons
 interface Props {
   apiBase: string;
   /**
-   * Optional override — when running standalone ``openakita serve`` from
+   * Optional override — when running standalone ``newsclaw serve`` from
    * a browser tab the banner can't trigger ``/api/shutdown`` (the user
    * would lose the only way back). We default to ``IS_TAURI``, but
    * callers can force the standalone path.
@@ -468,7 +468,7 @@ const DegradedRepairDialog: React.FC<DialogProps> = ({ apiBase, canAutoRestart, 
                   })
                 : t("degraded.restartStandalone", {
                     defaultValue:
-                      "Stop the current backend with Ctrl+C in your terminal and run `openakita serve` again.",
+                      "Stop the current backend with Ctrl+C in your terminal and run `newsclaw serve` again.",
                   })}
             </div>
             {canAutoRestart && (

@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.llm.multimodal`.
+"""Tests for :mod:`newsclaw.runtime.llm.multimodal`.
 
 Hand-rolled :class:`LLMResponse` fixtures cover every conversion
 branch (text-only, thinking-only via native ThinkingBlock,

@@ -33,7 +33,7 @@ current_external_task_tracker_var: ContextVar[ExternalTaskTracker | None] = Cont
 def external_task_timeout(definition: dict[str, Any] | None) -> float:
     if not isinstance(definition, dict):
         return 0.0
-    execution = definition.get("x-openakita-execution")
+    execution = definition.get("x-newsclaw-execution")
     if not isinstance(execution, dict) or execution.get("kind") != "external_task":
         return 0.0
     try:

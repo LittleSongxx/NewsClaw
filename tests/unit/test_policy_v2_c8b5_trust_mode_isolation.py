@@ -134,7 +134,7 @@ class TestV2TrustModeMapping:
             ("default", False),
             ("strict", False),
             ("accept_edits", False),
-            ("dont_ask", True),
+            ("dont_ask", False),
         ],
     )
     def test_v2_trust_label_matches_mode(

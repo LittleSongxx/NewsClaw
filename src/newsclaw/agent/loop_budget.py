@@ -48,7 +48,7 @@ class LoopBudgetDecision:
 
 @dataclass
 class LoopBudgetGuard:
-    # 默认对齐 Claude Code 哲学：CLI/IM 真人场景下不强加业务护栏。
+    # 默认不启用人为业务护栏（0=禁用对应检测）。不要讲成已对齐某产品。
     # 0 / 负值 = 禁用对应检测。仅在用户主动收紧时启用：
     # - max_total_tool_calls <= 0：不限工具调用总数
     # - readonly_stagnation_limit <= 0：不做只读探索软提醒

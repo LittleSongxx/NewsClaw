@@ -1,4 +1,4 @@
-"""Tests for openakita.plugins.manager — PluginManager lifecycle."""
+"""Tests for newsclaw.plugins.manager — PluginManager lifecycle."""
 
 from __future__ import annotations
 
@@ -541,7 +541,7 @@ class TestPartialRegistrationCleanup:
         await mgr.load_all()
         assert mgr.get_loaded("bad-syntax") is None
         assert str(d) not in sys.path
-        assert "openakita_plugin_bad_syntax" not in sys.modules
+        assert "newsclaw_plugin_bad_syntax" not in sys.modules
 
 
 async def test_reload_invalidates_classifier_once(tmp_path, monkeypatch):

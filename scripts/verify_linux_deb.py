@@ -24,7 +24,7 @@ TAURI_DIR = ROOT / "apps" / "setup-center" / "src-tauri"
 def verify_deb(package: Path) -> None:
     config = json.loads((TAURI_DIR / "tauri.conf.json").read_text(encoding="utf-8"))
     binary = config["mainBinaryName"]
-    with tempfile.TemporaryDirectory(prefix="openakita-deb-check-") as directory:
+    with tempfile.TemporaryDirectory(prefix="newsclaw-deb-check-") as directory:
         work = Path(directory)
         subprocess.run(["dpkg-deb", "--extract", str(package), str(work / "root")], check=True)
         desktop = work / "root/usr/share/applications" / f"{config['productName']}.desktop"
@@ -60,7 +60,7 @@ def verify_deb(package: Path) -> None:
             entry.write(stream, space_around_delimiters=False)
         uri = (
             "newsclaw://marketplace/install?token=packaging-probe"
-            "&endpoint=https%3A%2F%2Fmarketplace.openakita.cn&state=a%20b%26c"
+            "&endpoint=https%3A%2F%2Fmarketplace.newsclaw.cn&state=a%20b%26c"
         )
         env = os.environ.copy()
         env.pop("GIO_LAUNCHED_DESKTOP_FILE", None)

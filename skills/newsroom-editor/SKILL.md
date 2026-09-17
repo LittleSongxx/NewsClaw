@@ -3,7 +3,7 @@ name: newsclaw/skills@newsroom-editor
 description: "AI 早报主线操作手册：每日采集 AI 圈新闻，产出日报总览/小红书/公众号三产物，沉淀 Obsidian Wiki 并自评落账。由定时任务 newsroom_daily_pipeline 与 newsroom_weekly_review 驱动，产物供人工审核后手动发布。"
 license: MIT
 metadata:
-  author: openakita
+  author: newsclaw
   version: "1.0.0"
 ---
 
@@ -26,10 +26,9 @@ metadata:
 
 ## 每日管线（定时任务 prompt 已内置流程，此处为要点备忘）
 
-1. **读上下文**：sources.yaml → editorial-policy.md（若存在）→ feedback-export.json
-   （若存在）→ search_memory 用户偏好 → 近几期 manifest 做去重底账；
-2. **采集**：按 weight 分组后用 `delegate_parallel` 并行采集（子 Agent 用 content-creator，
-   简报必须自包含）；零散 site 源自己用 web_fetch 抓；只取当日/昨日信息；
+1. **读上下文**：以任务消息最前的代码注入为准（信源 / 方针 / 近窗已见 URL）；
+2. **采集**：按 weight 分组后用 `delegate_parallel` 并行采集（子 Agent 用
+   `news-collector`，只交差 JSON 条目，不写盘）；零散 site 源自己 web_fetch；
 3. **三产物**（平台规范用 get_skill_info 加载 xiaohongshu-creator / wechat-article）：
    - `daily-brief.md`：编辑内部视角——入选条目（标题+一句话+来源链接+主题）、
      落选原因、选题逻辑；
@@ -37,8 +36,9 @@ metadata:
    - `wechat.md`：标题、摘要、Markdown 正文（小标题分节）、封面建议；
 4. **Wiki 沉淀**（config.yaml 配置了 obsidian_vault 时）：在库内「AI早报」目录
    按主题/公司建原子页，追加当日要点，wikilink 互链，维护 MOC 索引页；
-5. **自评与落账**：四个维度（source_hit / dedup / headline / structure）各 1–5
-   分 + 理由写入 manifest.scores；写一条 experience 记忆。
+5. **自评与落账**：`manifest.items` 写入选条目（title/url/source_name）；
+   四个维度分数只作复盘参考。`ready` 由契约机验，不是自评。
+   未 ready 禁止 `deliver_artifacts`。
 
 ## 硬规则
 
@@ -48,6 +48,6 @@ metadata:
 - 云文档归档（`feishu_doc`）三约定：① **标题日期前置**，格式
   `YYYY-MM-DD｜AI 早报 #N｜一句话要点（≤30 字）`；② 正文**首行**为
   `> 归档时间：YYYY-MM-DD（NewsClaw AI 早报管线自动生成）`；③ 归档链接写入
-  当天 `manifest.wiki_entries`；
+  当天 `manifest.feishu_doc_url`（不要写进 `wiki_entries`，那是本地 Wiki 页面路径）；
 - manifest.json 最后写，三产物齐备才置 `status: ready`；
 - 不改写历史期次目录与 Wiki 历史段落。

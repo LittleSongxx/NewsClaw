@@ -106,13 +106,13 @@ export function SkillConflictsPanel({ httpApiBase }: SkillConflictsPanelProps) {
       // Slight defer so the backend has a tick to update the registry.
       setTimeout(() => refresh(false), 200);
     };
-    window.addEventListener("openakita:skills-changed", onChange);
+    window.addEventListener("newsclaw:skills-changed", onChange);
     const tabFocus = () => {
       if (!document.hidden) refresh();
     };
     document.addEventListener("visibilitychange", tabFocus);
     return () => {
-      window.removeEventListener("openakita:skills-changed", onChange);
+      window.removeEventListener("newsclaw:skills-changed", onChange);
       document.removeEventListener("visibilitychange", tabFocus);
     };
   }, []);

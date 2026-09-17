@@ -6,7 +6,12 @@
 
 from __future__ import annotations
 
-from newsclaw.tools.web_search.providers.tavily import KeyPool, TavilyProvider
+import json
+
+import pytest
+
+from newsclaw.tools.web_search.base import NetworkUnreachableError, RateLimitedError, SearchResult
+from newsclaw.tools.web_search.providers.tavily import KeyPool, TavilyProvider, _key_fingerprint
 
 
 class TestParseKeys:
@@ -89,3 +94,69 @@ class TestProviderAvailability:
         monkeypatch.setattr(settings, "tavily_api_key", "   ")
         provider = TavilyProvider()
         assert provider.is_available() is False
+
+
+class TestPersistAndFailover:
+    def test_penalize_persists_fingerprint_not_raw_key(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEWSCLAW_ROOT", str(tmp_path))
+        pool = KeyPool(cooldown_seconds=60.0, state_name="tavily")
+        pool.penalize("fake-tavily-key-aaaa")
+        state_path = tmp_path / "web_search" / "key_pool.json"
+        raw = json.loads(state_path.read_text(encoding="utf-8"))
+        cooling = raw["tavily"]["cooling"]
+        assert list(cooling) == [_key_fingerprint("fake-tavily-key-aaaa")]
+        dumped = state_path.read_text(encoding="utf-8")
+        assert "fake-tavily-key-aaaa" not in dumped
+
+        restored = KeyPool(cooldown_seconds=60.0, state_name="tavily")
+        order = restored.order(["fake-tavily-key-aaaa", "fake-tavily-key-bbbb"])
+        assert order[0] == "fake-tavily-key-bbbb"
+        assert "fake-tavily-key-aaaa" in order
+
+    @pytest.mark.asyncio
+    async def test_tavily_uses_next_key_after_429(self, tmp_path, monkeypatch):
+        from newsclaw.config import settings
+
+        monkeypatch.setenv("NEWSCLAW_ROOT", str(tmp_path))
+        monkeypatch.setattr(settings, "tavily_api_key", "fake-key-a,fake-key-b")
+        provider = TavilyProvider()
+        calls: list[str] = []
+
+        async def _fake_search(api_key, query, **_kwargs):
+            calls.append(api_key)
+            if len(calls) == 1:
+                raise RateLimitedError(
+                    "tavily quota/rate limit (HTTP 429)",
+                    provider_id="tavily",
+                )
+            return [SearchResult(title="ok", url="https://example.com", snippet="x")]
+
+        monkeypatch.setattr(provider, "_search_with_key", _fake_search)
+        results = await provider.search("newsclaw")
+        assert len(calls) == 2
+        assert calls[0] != calls[1]
+        assert {calls[0], calls[1]} == {"fake-key-a", "fake-key-b"}
+        assert results[0].title == "ok"
+
+    @pytest.mark.asyncio
+    async def test_tavily_uses_next_key_after_network_error(self, tmp_path, monkeypatch):
+        from newsclaw.config import settings
+
+        monkeypatch.setenv("NEWSCLAW_ROOT", str(tmp_path))
+        monkeypatch.setattr(settings, "tavily_api_key", "fake-key-a,fake-key-b")
+        provider = TavilyProvider()
+        calls: list[str] = []
+
+        async def _fake_search(api_key, query, **_kwargs):
+            calls.append(api_key)
+            if len(calls) == 1:
+                raise NetworkUnreachableError(
+                    "tavily transport failure: connect timeout",
+                    provider_id="tavily",
+                )
+            return [SearchResult(title="ok", url="https://example.com", snippet="x")]
+
+        monkeypatch.setattr(provider, "_search_with_key", _fake_search)
+        results = await provider.search("newsclaw")
+        assert len(calls) == 2
+        assert results[0].url == "https://example.com"

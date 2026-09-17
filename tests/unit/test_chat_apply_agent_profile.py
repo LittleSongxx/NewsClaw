@@ -1,4 +1,4 @@
-"""Unit tests for `_apply_agent_profile` in `openakita.api.routes.chat`.
+"""Unit tests for `_apply_agent_profile` in `newsclaw.api.routes.chat`.
 
 The HTTP chat path is what the desktop `/agent` slash command now relies on:
 the frontend sets `selectedAgent` and the next `POST /api/chat` carries

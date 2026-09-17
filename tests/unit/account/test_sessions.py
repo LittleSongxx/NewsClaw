@@ -53,7 +53,7 @@ async def test_logout_revokes_product_credential_without_browser_logout(monkeypa
     assert len(calls) == 1
     assert calls[0].url.path == "/oauth/revoke"
     assert b"token=refresh-a" in calls[0].content
-    assert b"client_id=openakita-desktop" in calls[0].content
+    assert b"client_id=newsclaw-desktop" in calls[0].content
 
 
 @pytest.mark.asyncio
@@ -73,7 +73,7 @@ async def test_handoff_uses_current_refresh_and_returns_only_ticket(monkeypatch)
         return httpx.Response(200, json={"ticket": "t" * 64, "expires_in": 120})
 
     subject = manager(monkeypatch, handler)
-    assert await subject.marketplace_handoff("https://marketplace.openakita.cn") == "t" * 64
+    assert await subject.marketplace_handoff("https://marketplace.newsclaw.cn") == "t" * 64
     assert calls[0].url.path == "/oauth/desktop-handoff"
     assert b'"refresh_token":"refresh-a"' in calls[0].content
 
@@ -84,7 +84,7 @@ async def test_signed_out_handoff_does_not_contact_provider(monkeypatch):
         pytest.fail("Signed-out browsing must not trigger provider login")
 
     subject = manager(monkeypatch, handler, token=None)
-    assert await subject.marketplace_handoff("https://marketplace.openakita.cn") is None
+    assert await subject.marketplace_handoff("https://marketplace.newsclaw.cn") is None
 
 
 @pytest.mark.asyncio
@@ -152,7 +152,7 @@ async def test_failed_login_profile_revokes_new_grant_and_preserves_previous(mon
     subject = manager(monkeypatch, handler)
     with pytest.raises(AccountOIDCError):
         await subject._complete(code="code", verifier="verifier")
-    assert revoked == [b"token=new-refresh&client_id=openakita-desktop"]
+    assert revoked == [b"token=new-refresh&client_id=newsclaw-desktop"]
     assert subject._tokens.value == "refresh-a"
     subject._store.save_authenticated.assert_not_awaited()
 

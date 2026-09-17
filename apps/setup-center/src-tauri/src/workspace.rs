@@ -197,7 +197,7 @@ pub(crate) fn export_workspace_backup_native(
     fs::create_dir_all(&out).map_err(|e| format!("create output dir: {e}"))?;
 
     let ts = chrono_like_timestamp();
-    let zip_name = format!("openakita-backup-{workspace_id}-{ts}.zip");
+    let zip_name = format!("newsclaw-backup-{workspace_id}-{ts}.zip");
     let zip_path = out.join(&zip_name);
 
     let file = fs::File::create(&zip_path).map_err(|e| format!("create zip: {e}"))?;
@@ -249,7 +249,7 @@ pub(crate) fn export_workspace_backup_native(
         "data/temp",
         "data/tool_overflow",
         "data/selfcheck",
-        "data/openakita_docs",
+        "data/newsclaw_docs",
         "identity/runtime",
         "node_modules",
         "Lib",

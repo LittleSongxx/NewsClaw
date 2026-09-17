@@ -1,12 +1,12 @@
 """Sprint-9: ``OrgCommandService`` now drives ``Supervisor.run``.
 
 The HTTP ``POST /api/v2/orgs/{id}/command`` path (and the IM canary)
-both build a :class:`~openakita.runtime.supervisor.Supervisor` via
-:func:`openakita.runtime.supervisor_factory.build_supervisor_for_command`
+both build a :class:`~newsclaw.runtime.supervisor.Supervisor` via
+:func:`newsclaw.runtime.supervisor_factory.build_supervisor_for_command`
 and let it run end-to-end. The wall-clock ``_watchdog_loop`` is gone;
 stall detection lives in
-:class:`~openakita.runtime.stall_detector.StallDetector` and is fed by
-LLM-evaluated :class:`~openakita.runtime.ledger.ProgressLedger`
+:class:`~newsclaw.runtime.stall_detector.StallDetector` and is fed by
+LLM-evaluated :class:`~newsclaw.runtime.ledger.ProgressLedger`
 signals.
 
 This file pins the five regression scenarios the audit / RCA list

@@ -14,7 +14,7 @@ What it does in --apply mode (atomic within a single template):
   1. Scan ``<templates_dir>/*.json`` for files whose stem contains
      non-ASCII characters.
   2. For each such file, compute the new ASCII slug via
-     ``openakita.orgs._slug.slugify_template_id`` using the
+     ``newsclaw.orgs._slug.slugify_template_id`` using the
      ORIGINAL file stem as input (so the slug is deterministic and
      reversible via the alias map).
   3. Rename ``<old_stem>.json`` -> ``<new_slug>.json``. If a file

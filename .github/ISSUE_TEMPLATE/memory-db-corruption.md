@@ -8,17 +8,17 @@ assignees: ""
 
 ## Symptoms
 
-Describe what happens when OpenAkita starts.
+Describe what happens when NewsClaw starts.
 
 ## Version
 
-- OpenAkita version:
+- NewsClaw version:
 - Setup Center/Desktop version:
 - Operating system:
 
 ## Log Evidence
 
-Paste the last 200 lines of `openakita-serve.log`, especially any lines
+Paste the last 200 lines of `newsclaw-serve.log`, especially any lines
 containing `sqlite3.DatabaseError`, `malformed database schema`, `database disk
 image is malformed`, or `not a database`.
 
@@ -31,7 +31,7 @@ paste logs here
 Paste the output of:
 
 ```powershell
-$MemoryDir = "D:\openakitadata\data\memory"
+$MemoryDir = "D:\newsclawdata\data\memory"
 Get-ChildItem $MemoryDir -Force | Select-Object Name, Length, LastWriteTime
 ```
 

@@ -1192,13 +1192,31 @@ export function ChatView({
   const [streamingTick, setStreamingTick] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== "undefined" && window.innerWidth > 768);
   const [sidebarPinned, setSidebarPinned] = useState(() => {
-    try { return localStorage.getItem("newsclaw_convSidebarPinned") === "true"; } catch { return false; }
+    // v2：默认固定。旧键只在用户点过「固定」后才写入，缺省是 false，
+    // 点一下中间空白就会把会话列表收掉，网页用户很难找到「新建会话」。
+    try {
+      const next = localStorage.getItem("newsclaw_chatSidebarPinned_v2");
+      if (next !== null) return next === "true";
+      // 网页端忽略旧键：旧默认是未固定，点中间区域就会把会话列表收掉。
+      if (IS_WEB) return true;
+      const legacy = localStorage.getItem("newsclaw_convSidebarPinned");
+      if (legacy !== null) return legacy === "true";
+      return true;
+    } catch {
+      return true;
+    }
   });
   const [sidebarView, setSidebarView] = useState<"conversations" | "files">("conversations");
+  const showWorkingDirectoryUi = !IS_WEB;
   const [fileTrees, setFileTrees] = useState<Record<string, SessionFileTreeState>>({});
   const fileTreesRef = useRef<Record<string, SessionFileTreeState>>({});
   const fileTreeWatchInFlightRef = useRef<Set<string>>(new Set());
   useEffect(() => { fileTreesRef.current = fileTrees; }, [fileTrees]);
+  useEffect(() => {
+    if (!showWorkingDirectoryUi && sidebarView === "files") {
+      setSidebarView("conversations");
+    }
+  }, [showWorkingDirectoryUi, sidebarView]);
   const [convSearchQuery, setConvSearchQuery] = useState("");
   const [orbitTip, setOrbitTip] = useState<{ x: number; y: number; name: string; title: string; directory: string; directoryPath?: string } | null>(null);
   const [newConversationMenuOpen, setNewConversationMenuOpen] = useState(false);
@@ -1411,8 +1429,8 @@ export function ChatView({
       setSelectedOrgId(orgId);
       setSelectedOrgNodeId(nodeId ?? null);
     };
-    window.addEventListener("openakita_activate_org", handler);
-    return () => window.removeEventListener("openakita_activate_org", handler);
+    window.addEventListener("newsclaw_activate_org", handler);
+    return () => window.removeEventListener("newsclaw_activate_org", handler);
   }, []);
 
   const [displayActiveSubAgents, setDisplayActiveSubAgents] = useState<SubAgentEntry[]>([]);
@@ -1495,10 +1513,10 @@ export function ChatView({
 
   // ── Multi-device busy lock ──
   const clientIdRef = useRef(() => {
-    let id = sessionStorage.getItem("openakita_client_id");
+    let id = sessionStorage.getItem("newsclaw_client_id");
     if (!id) {
       id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : genId();
-      sessionStorage.setItem("openakita_client_id", id);
+      sessionStorage.setItem("newsclaw_client_id", id);
     }
     return id;
   });
@@ -3449,6 +3467,10 @@ export function ChatView({
     }},
     { id: "help", label: "帮助", description: "显示可用命令列表", action: () => {} },
   ];
+    if (IS_WEB) {
+      const personaIdx = cmds.findIndex((c) => c.id === "persona");
+      if (personaIdx >= 0) cmds.splice(personaIdx, 1);
+    }
     const helpCmd = cmds.find((c) => c.id === "help");
     if (helpCmd) {
       helpCmd.action = () => {
@@ -6978,14 +7000,14 @@ export function ChatView({
   }, [t]);
 
   useEffect(() => {
-    if (!sidebarOpen || sidebarView !== "files" || !activeConvId) return;
+    if (!showWorkingDirectoryUi || !sidebarOpen || sidebarView !== "files" || !activeConvId) return;
     const tree = fileTrees[activeConvId];
     if (tree?.childrenByPath[""] !== undefined || tree?.loadingPaths.includes("") || tree?.error) return;
     void loadFileTreeDirectory(activeConvId, "");
-  }, [activeConvId, fileTrees, loadFileTreeDirectory, sidebarOpen, sidebarView]);
+  }, [activeConvId, fileTrees, loadFileTreeDirectory, showWorkingDirectoryUi, sidebarOpen, sidebarView]);
 
   useEffect(() => {
-    if (!sidebarOpen || sidebarView !== "files" || !activeConvId) return;
+    if (!showWorkingDirectoryUi || !sidebarOpen || sidebarView !== "files" || !activeConvId) return;
     const conversationId = activeConvId;
     const watchKey = conversationId;
     const pollLoadedDirectories = async () => {
@@ -7009,7 +7031,7 @@ export function ChatView({
     };
     const timer = window.setInterval(() => { void pollLoadedDirectories(); }, 2000);
     return () => window.clearInterval(timer);
-  }, [activeConvId, loadFileTreeDirectory, sidebarOpen, sidebarView]);
+  }, [activeConvId, loadFileTreeDirectory, showWorkingDirectoryUi, sidebarOpen, sidebarView]);
 
   const toggleFileTreeDirectory = useCallback((entry: FileTreeEntry) => {
     if (!activeConvId) return;
@@ -7258,15 +7280,13 @@ export function ChatView({
     mode?: "agent" | "plan" | "ask";
     completionActions?: MessageCompletionAction[];
   }>>(() => [
-    // NewsClaw 收敛后的聊天定位：主线（早报）操作入口 + 内容改写 + 资讯检索
-    // + 知识归档 + 办公文档 + 定时自动化。话题与保留的能力面一一对应，
-    // 不再包含已被裁掉的技能（邮件、竞品分析模板等）。
+    // 只推荐本产品主线真正接得住的任务：早报契约、联网检索、本地 Wiki、期次复盘、定时任务。
+    // 小红书改写 / PPT 大纲 / Obsidian 桌面归档不是当前云端实例的交付能力。
     { id: "newsroom", icon: <IconNewspaper size={20} />, text: t("chat.quickStart.newsroom", "帮我生成今天一期的 AI 早报") },
-    { id: "rewrite", icon: <IconEdit size={20} />, text: t("chat.quickStart.rewrite", "把这段素材改写成小红书笔记（含话题标签）") },
     { id: "research", icon: <IconGlobe size={20} />, text: t("chat.quickStart.research", "搜索并整理今天 AI 圈的重要动态（带来源链接）") },
-    { id: "wiki", icon: <IconBook size={20} />, text: t("chat.quickStart.wiki", "把这篇长文归档进我的 Obsidian 知识库") },
-    { id: "office", icon: <IconPlan size={20} />, text: t("chat.quickStart.office", "把这份内容整理成一份 PPT 大纲") },
-    { id: "schedule", icon: <IconClock size={20} />, text: t("chat.quickStart.schedule", "帮我设置每天早上 8 点自动汇总指定话题的资讯") },
+    { id: "wiki", icon: <IconBook size={20} />, text: t("chat.quickStart.wiki", "把今天早报的要点写入本地 Wiki") },
+    { id: "review", icon: <IconTarget size={20} />, text: t("chat.quickStart.review", "复盘最近一期早报，指出可以改进的地方") },
+    { id: "schedule", icon: <IconClock size={20} />, text: t("chat.quickStart.schedule", "帮我设置每天早上自动生成 AI 早报") },
   ], [i18n.language, t]);
   const quickStartCardWidth = useMemo(() => {
     const textUnits = Math.max(
@@ -7352,10 +7372,12 @@ export function ChatView({
               <div className="convItemTitle">{conv.title}</div>
               <div className="convItemMeta">
                 {agentProfile && <span className="convItemAgent">{agentProfile.name}</span>}
-                <span className={`convItemDirectory ${conv.lastMessage ? "convItemDirectoryWithDesc" : ""}`} title={conv.workingDirectory || directoryName}>
-                  <IconFolderOpen size={10} />
-                  <span>{directoryName}</span>
-                </span>
+                {showWorkingDirectoryUi && (
+                  <span className={`convItemDirectory ${conv.lastMessage ? "convItemDirectoryWithDesc" : ""}`} title={conv.workingDirectory || directoryName}>
+                    <IconFolderOpen size={10} />
+                    <span>{directoryName}</span>
+                  </span>
+                )}
                 {conv.lastMessage && <span className="convItemDesc">{conv.lastMessage.slice(0, 40)}</span>}
               </div>
             </>
@@ -7514,20 +7536,26 @@ export function ChatView({
       )}
 
       {/* 主聊天区 */}
-      <div className="flex min-w-0 flex-1 flex-col" style={{ position: "relative" }} onMouseDown={() => { if (sidebarOpen && !sidebarPinned) setSidebarOpen(false); }}>
+      <div className="flex min-w-0 flex-1 flex-col" style={{ position: "relative" }} onMouseDown={() => { if (showWorkingDirectoryUi && sidebarOpen && !sidebarPinned) setSidebarOpen(false); }}>
         {/* Chat top bar */}
         <div className="chatTopBar">
           <div className="chatNewConversationMenuWrap" ref={newConversationMenuRef}>
             <button
-              onClick={() => setNewConversationMenuOpen((open) => !open)}
+              onClick={() => {
+                if (!showWorkingDirectoryUi) {
+                  newConversation();
+                  return;
+                }
+                setNewConversationMenuOpen((open) => !open);
+              }}
               className="chatTopBarBtn"
               aria-label={t("chat.newConversation", "新建会话")}
-              aria-haspopup="menu"
-              aria-expanded={newConversationMenuOpen}
+              aria-haspopup={showWorkingDirectoryUi ? "menu" : undefined}
+              aria-expanded={showWorkingDirectoryUi ? newConversationMenuOpen : undefined}
             >
               <IconPlus size={14} />
             </button>
-            {newConversationMenuOpen && (
+            {showWorkingDirectoryUi && newConversationMenuOpen && (
               <div className="chatNewConversationMenu" role="menu">
                 <button
                   type="button"
@@ -8619,7 +8647,7 @@ export function ChatView({
         <nav className={`convSidebar${typeof window !== "undefined" && window.innerWidth <= 768 ? " convSidebarMobileOpen" : ""}`} aria-label={t("chat.conversationList", "会话列表")}>
           <div className="convSidebarHeader">
             <div className="convSidebarTopRow">
-              <div className="convSidebarTabs" role="tablist" aria-label={t("chat.sidebarViews", "侧栏视图")}>
+              <div className={`convSidebarTabs${showWorkingDirectoryUi ? "" : " convSidebarTabsSingle"}`} role="tablist" aria-label={t("chat.sidebarViews", "侧栏视图")}>
                 <button
                   type="button"
                   role="tab"
@@ -8629,15 +8657,17 @@ export function ChatView({
                 >
                   {t("chat.sidebarConversations", "会话")}
                 </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={sidebarView === "files"}
-                  className={`convSidebarTab${sidebarView === "files" ? " convSidebarTabActive" : ""}`}
-                  onClick={() => setSidebarView("files")}
-                >
-                  {t("chat.sidebarFiles", "文件")}
-                </button>
+                {showWorkingDirectoryUi && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={sidebarView === "files"}
+                    className={`convSidebarTab${sidebarView === "files" ? " convSidebarTabActive" : ""}`}
+                    onClick={() => setSidebarView("files")}
+                  >
+                    {t("chat.sidebarFiles", "文件")}
+                  </button>
+                )}
               </div>
               <button
                 data-slot="pin"
@@ -8645,7 +8675,7 @@ export function ChatView({
                 onClick={() => {
                   const next = !sidebarPinned;
                   setSidebarPinned(next);
-                  try { localStorage.setItem("newsclaw_convSidebarPinned", String(next)); } catch {}
+                  try { localStorage.setItem("newsclaw_chatSidebarPinned_v2", String(next)); } catch {}
                 }}
                 title={sidebarPinned ? (t("chat.unpinSidebar") || "取消固定") : (t("chat.pinSidebar") || "固定会话列表")}
                 style={{ color: sidebarPinned ? "var(--brand, #2563eb)" : "var(--muted2, #999)" }}

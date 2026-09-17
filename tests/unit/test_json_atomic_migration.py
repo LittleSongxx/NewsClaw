@@ -171,8 +171,8 @@ def test_orchestrator_persist_uses_atomic_json_write(tmp_path, monkeypatch):
     "module_path,functions",
     [
         ("newsclaw.core.proactive", ["_load", "_save"]),
-        # ADR-0003: the user-profile manager moved to ``openakita.agent.user_profile``;
-        # ``openakita.agent.user_profile`` is now a thin re-export shim (no source-level
+        # ADR-0003: the user-profile manager moved to ``newsclaw.agent.user_profile``;
+        # ``newsclaw.agent.user_profile`` is now a thin re-export shim (no source-level
         # ``def _load_state(``), so point the source-scan at the canonical home.
         ("newsclaw.agent.user_profile", ["_load_state", "_save_state"]),
         ("newsclaw.sessions.user", ["_load_users", "_save_users"]),

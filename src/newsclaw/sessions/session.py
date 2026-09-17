@@ -658,7 +658,7 @@ class Session:
     # step 11 routes through ``_handle_unattended`` only when this is True.
     #
     # ``unattended_strategy``: empty → engine uses
-    # ``config.unattended.default_strategy`` ("ask_owner" by default).
+    # ``config.unattended.default_strategy``（默认 ``deny``）。
     # Explicit values: "deny" / "auto_approve" / "defer_to_owner" /
     # "defer_to_inbox" / "ask_owner".  Per-session override of config default.
     is_unattended: bool = False

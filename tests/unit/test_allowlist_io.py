@@ -1,4 +1,4 @@
-"""针对 ``openakita.skills.allowlist_io`` 的单元测试。
+"""针对 ``newsclaw.skills.allowlist_io`` 的单元测试。
 
 覆盖：
 - ``read_allowlist`` 的各种文件状态（不存在 / 缺字段 / 空列表 / 损坏 JSON / 含空白项）

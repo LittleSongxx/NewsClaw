@@ -2,7 +2,7 @@
 
 覆盖 v1.25.9 修复的技能相关 bug：
 1. 已安装技能列表 API 返回正确数据
-2. 含斜杠的技能名（如 openakita/skills@canvas-design）能查看详情不报 404
+2. 含斜杠的技能名（如 newsclaw/skills@canvas-design）能查看详情不报 404
 3. 技能内容读取 GET /api/skills/content/{skill_name:path}
 4. 技能内容更新 PUT /api/skills/content/{skill_name:path}（非系统技能）
 5. 系统技能不可编辑

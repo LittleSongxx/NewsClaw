@@ -128,7 +128,7 @@ class _SlowCancelAwareBrain(SupervisorBrain):
     :meth:`LLMClient._race_with_cancel`: the in-flight provider call is
     raced against ``cancel_event.wait()``; if the event fires first we
     surface a cooperative cancel as
-    :class:`~openakita.runtime.cancel_token.CancelledByToken` so the
+    :class:`~newsclaw.runtime.cancel_token.CancelledByToken` so the
     supervisor's ``except CancelledByToken`` arm in :meth:`Supervisor.run`
     can run ``_terminate`` and write the final cancelled checkpoint.
     """

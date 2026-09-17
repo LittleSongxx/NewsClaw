@@ -1,10 +1,8 @@
 """
-NewsClaw 测试系统
+NewsClaw 内置 demo cases（字符串包含判定，不是质量门）。
 
-包含300个测试用例，覆盖:
-- 问答测试 (100个)
-- 工具测试 (100个)
-- 搜索测试 (100个)
+不是 300 例评测套件。真实计数以 ``cases.get_test_count()`` 为准
+（当前 99 条：问答 39、工具 38 含 browser、搜索 22）。
 """
 
 from .fixer import CodeFixer

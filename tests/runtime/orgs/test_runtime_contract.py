@@ -1,7 +1,7 @@
 """Contract suite for v2 OrgRuntime (P-RC-9 P9.6gamma).
 
 Pins the public surface of
-:class:`openakita.orgs.runtime.OrgRuntime` and the
+:class:`newsclaw.orgs.runtime.OrgRuntime` and the
 ~10 Protocol contracts it composes against the seven
 sibling managers shipped in P9.6alpha-beta. Mirror the
 P9.5d :class:`OrgManager` contract suite layout (16

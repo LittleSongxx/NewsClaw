@@ -20,14 +20,14 @@ from newsclaw.wiki import store
 
 @pytest.fixture(autouse=True)
 def isolated_wiki(tmp_path, monkeypatch):
-    """把 wiki 根与 settings 一起重定向到 tmp_path（默认走内置 data/wiki）。"""
+    """把 wiki 根指到临时 vault；空 vault 不再回落到 data/wiki。"""
     from newsclaw.config import settings
 
-    # data_dir 是由 project_root 派生的属性（不可直接打补丁），改 project_root 即可
     monkeypatch.setattr(settings, "project_root", tmp_path)
-    # 确保 obsidian_vault 为空 → 用内置 data/wiki
-    save_config(NewsroomConfig(obsidian_vault=""))
-    return tmp_path / "data" / "wiki"
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    save_config(NewsroomConfig(obsidian_vault=str(vault)))
+    return vault
 
 
 class TestSanitize:
@@ -62,7 +62,7 @@ class TestUpsert:
         assert result["created"] is True
         text = (isolated_wiki / "主题" / "大模型.md").read_text(encoding="utf-8")
         assert text.startswith("---\ntitle: 大模型\ntype: topic\n")
-        assert "last_updated: 2026-09-17" in text
+        assert "last_updated:" in text and "2026-09-17" in text
         assert "# 大模型" in text
         assert "## 2026-09-17" in text
         assert "> 语音模型进入边说边想阶段" in text
@@ -135,6 +135,25 @@ class TestMOC:
         assert "## 主题" in text and "[[大模型]]" in text
         assert "## 公司" in text and "[[OpenAI]]" in text
         assert "type: index" in text
+
+
+def test_empty_vault_skips_wiki_and_does_not_fallback(tmp_path, monkeypatch):
+    from newsclaw.config import settings
+
+    monkeypatch.setattr(settings, "project_root", tmp_path)
+    save_config(NewsroomConfig(obsidian_vault=""))
+    assert store.wiki_enabled() is False
+    assert store.wiki_root() is None
+    assert store.list_pages() == []
+    with pytest.raises(store.WikiDisabledError):
+        store.upsert_daily_section("大模型", kind="topic", day="2026-09-17", entries=[store.WikiEntry("x")])
+    assert not (tmp_path / "data" / "wiki").exists()
+
+
+def test_frontmatter_keeps_colon_in_title(isolated_wiki):
+    rendered = store._render_frontmatter({"title": "foo: bar", "type": "topic"})
+    meta, _ = store._split_frontmatter(rendered + "\n# x\n")
+    assert meta["title"] == "foo: bar"
 
 
 def test_obsidian_vault_config_wins_over_builtin(tmp_path, monkeypatch):

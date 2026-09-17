@@ -24,7 +24,7 @@ pub(crate) fn export_diagnostic_bundle(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        downloads_dir.join(format!("openakita-diagnostic-{ts}.zip"))
+        downloads_dir.join(format!("newsclaw-diagnostic-{ts}.zip"))
     };
 
     if let Some(parent) = dest.parent() {
@@ -394,7 +394,7 @@ pub(crate) fn export_diagnostic_bundle(
 // Offline Feedback (when Python backend is down)
 // ═══════════════════════════════════════════════════════════════════════
 
-pub(crate) const DEFAULT_FEEDBACK_ENDPOINT: &str = "https://feedback-openakita.fzstack.com";
+pub(crate) const DEFAULT_FEEDBACK_ENDPOINT: &str = "https://feedback-newsclaw.fzstack.com";
 pub(crate) const DEFAULT_CAPTCHA_SCENE_ID: &str = "jkyrkj0w";
 pub(crate) const DEFAULT_CAPTCHA_PREFIX: &str = "yiqg72";
 
@@ -749,7 +749,7 @@ pub(crate) fn build_feedback_zip(
 
     // ── Native crash dumps ──
     // Our SetUnhandledExceptionFilter-based crash handler writes
-    // ~5 MB mini dumps to ~/.openakita/crashdumps/openakita-*.dmp.
+    // ~5 MB mini dumps to ~/.newsclaw/crashdumps/newsclaw-*.dmp.
     // Cap aggregate at 25 MB so a single bad report cannot blow past
     // the 30 MB upload limit; keeps newest dumps first.
     zip_add_dir_capped(
@@ -795,13 +795,13 @@ pub(crate) fn collect_windows_crash_artifacts(
         .join("ReportArchive");
 
     // WER report directories aren't reliably named: some are
-    // `AppCrash_openakita-setup-center.exe_<hash>`, others are just
+    // `AppCrash_newsclaw-setup-center.exe_<hash>`, others are just
     // `Report.<hash>`. The exe name is always present in the Report.wer
     // body though, so we filter by (a) dir-name fast path first, (b)
     // fall back to reading the (small, <30 KB) Report.wer text. Limit
     // the candidate set to the 30 most recently modified directories so
     // even a heavily-crashed host doesn't spend minutes scanning.
-    let needle = "openakita";
+    let needle = "newsclaw";
     let mut candidates: Vec<(PathBuf, std::time::SystemTime)> = fs::read_dir(&wer_archive)
         .into_iter()
         .flatten()
@@ -862,7 +862,7 @@ pub(crate) fn collect_windows_crash_artifacts(
     let ps_cmd = format!(
         "$ev = Get-WinEvent -LogName Application -MaxEvents 200 -FilterXPath \"{}\" \
          -ErrorAction SilentlyContinue | \
-         Where-Object {{ $_.Message -match 'openakita' }} | \
+         Where-Object {{ $_.Message -match 'newsclaw' }} | \
          Select-Object -First 30; \
          if ($ev) {{ $ev | ForEach-Object {{ \
            '[{{0}}] {{1}}: {{2}}' -f \

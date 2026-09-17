@@ -46,7 +46,7 @@ async def test_native_pkce_never_listens_on_backend_loopback(redirect, monkeypat
         None,
         "https://evil.example/callback",
         "http://127.0.0.1:1455/auth/callback",
-        "com.openakita.mobile:/other",
+        "com.newsclaw.mobile:/other",
     ],
 )
 async def test_native_redirect_allowlist(redirect):

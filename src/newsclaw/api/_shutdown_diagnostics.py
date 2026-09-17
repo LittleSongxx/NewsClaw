@@ -150,7 +150,7 @@ def arm_shutdown_diagnostics(
             _dump_thread = threading.Thread(
                 target=_dump_loop,
                 args=(interval_s,),
-                name="openakita-shutdown-diagnostics",
+                name="newsclaw-shutdown-diagnostics",
                 daemon=True,
             )
             _dump_thread.start()

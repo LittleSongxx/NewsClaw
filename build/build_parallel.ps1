@@ -1,5 +1,5 @@
 # ==========================================================
-#  OpenAkita Parallel Build Script (PowerShell)
+#  NewsClaw Parallel Build Script (PowerShell)
 #  将前端、Rust 和 managed Python runtime 构建并行执行
 #
 #  Usage:
@@ -27,7 +27,7 @@ $ResourceDir = Join-Path $SrcTauri "resources"
 $modeLabel = if ($Fast) { "$Mode, FAST" } else { $Mode }
 Write-Host ""
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  OpenAkita Parallel Build (mode: $modeLabel)" -ForegroundColor Cyan
+Write-Host "  NewsClaw Parallel Build (mode: $modeLabel)" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # ── Resolve tools ─────────────────────────────────────────
@@ -219,7 +219,7 @@ if (Test-Path $nsisDir) {
             $gitHash = (git -C $ProjectRoot rev-parse --short=7 HEAD 2>$null)
             if (-not $gitHash) { $gitHash = "unknown" }
         } catch { $gitHash = "unknown" }
-        $baseName = $latest.BaseName   # e.g. "OpenAkita Desktop_1.22.5_x64-setup"
+        $baseName = $latest.BaseName   # e.g. "NewsClaw Desktop_1.22.5_x64-setup"
         $tag      = "$([char]0x9884)$([char]0x89C8)$([char]0x7248)"  # 预览版
         $newName  = "${baseName}_${timestamp}_${gitHash}_${tag}.exe"
         $newPath  = Join-Path $nsisDir $newName

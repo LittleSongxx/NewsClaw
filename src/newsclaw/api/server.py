@@ -212,7 +212,7 @@ def _arm_force_exit_watchdog_sync(app: FastAPI) -> None:
             _do_force_exit(grace_s)
 
         timer = threading.Timer(float(grace_s), _fire)
-        timer.name = "openakita-force-exit-watchdog"
+        timer.name = "newsclaw-force-exit-watchdog"
         timer.daemon = True
         timer.start()
         app.state._force_exit_task = timer
@@ -254,7 +254,7 @@ def _arm_force_exit_watchdog_async(app: FastAPI) -> None:
 
     try:
         loop = asyncio.get_event_loop()
-        task = loop.create_task(_force_exit(), name="openakita-force-exit-watchdog")
+        task = loop.create_task(_force_exit(), name="newsclaw-force-exit-watchdog")
         app.state._force_exit_task = task
         app.state._force_exit_mechanism = "asyncio.Task"
         logger.info(
@@ -308,7 +308,7 @@ def _find_web_dist() -> Path | None:
 
     Search order:
     1. apps/setup-center/dist-web/ (development source checkout)
-    2. openakita/web/ (pip wheel install & PyInstaller bundle)
+    2. newsclaw/web/ (pip wheel install & PyInstaller bundle)
     """
     # Inside the installed package
     pkg_web = Path(__file__).parent.parent / "web"
@@ -340,7 +340,7 @@ def _find_docs_dist() -> Path | None:
     """Locate bundled user docs dist directory.
 
     Search order:
-    1. openakita/docs_dist/ (pip wheel install)
+    1. newsclaw/docs_dist/ (pip wheel install)
     2. docs-site/.vitepress/dist/ (development)
     """
     pkg_docs = Path(__file__).parent.parent / "docs_dist"
@@ -668,7 +668,7 @@ def _schedule_startup_llm_health_check(app_state: Any) -> asyncio.Task[None] | N
 
     task = asyncio.create_task(
         _run_startup_llm_health_checks(app_state),
-        name="openakita-startup-llm-health-check",
+        name="newsclaw-startup-llm-health-check",
     )
     app_state.llm_startup_health_check_task = task
     logger.info("[Startup] LLM endpoint health check scheduled in background")
@@ -727,6 +727,41 @@ def create_app(
         {"name": "系统", "description": "根路径、关机等系统操作"},
     ]
 
+    # 收成一条 lifespan：保留原先 @app.on_event 的注册顺序。
+    # startup 按登记顺序跑（播种 → 调度相关 hook → 通道周边）；
+    # shutdown 也按登记顺序 FIFO，与 Starlette on_event 一致，避免打乱
+    # 插件 aiosqlite 关闭与诊断钩子的相对位置。
+    startup_hooks: list = []
+    shutdown_hooks: list = []
+
+    def on_startup(fn):
+        startup_hooks.append(fn)
+        return fn
+
+    def on_shutdown(fn):
+        shutdown_hooks.append(fn)
+        return fn
+
+    @contextlib.asynccontextmanager
+    async def _lifespan(_app: FastAPI):
+        for hook in startup_hooks:
+            await hook()
+        # create_app 之后仍可能有测试/插件用 @app.on_event 补钩子；
+        # 自定义 lifespan 不会自动派发 router.on_startup，这里显式补上。
+        for handler in list(getattr(_app.router, "on_startup", []) or []):
+            result = handler()
+            if asyncio.iscoroutine(result):
+                await result
+        try:
+            yield
+        finally:
+            for hook in shutdown_hooks:
+                await hook()
+            for handler in list(getattr(_app.router, "on_shutdown", []) or []):
+                result = handler()
+                if asyncio.iscoroutine(result):
+                    await result
+
     app = FastAPI(
         title="NewsClaw API",
         description=(
@@ -737,11 +772,14 @@ def create_app(
         ),
         version=get_version_string(),
         openapi_tags=tags_metadata,
+        lifespan=_lifespan,
     )
+    app.state.lifespan_startup_hooks = startup_hooks
+    app.state.lifespan_shutdown_hooks = shutdown_hooks
 
     # AI 早报主线：等服务侧调度器就绪后幂等播种每日管线 / 每周复盘两条
     # 定时任务（轮询等待逻辑收敛在 newsclaw.newsroom.seed 内）。
-    @app.on_event("startup")
+    @on_startup
     async def _start_newsroom_seeding() -> None:
         from newsclaw.newsroom import start_background_seeding
 
@@ -788,7 +826,7 @@ def create_app(
         app.state.account_status_store = None
         app.state.account_oidc_manager = None
 
-        @app.on_event("startup")
+        @on_startup
         async def _clear_disabled_account_credentials() -> None:
             await clear_disabled_account_credentials()
 
@@ -1271,7 +1309,7 @@ def create_app(
     # ── Serve web frontend static files ──
     _mount_web_frontend(app)
 
-    @app.on_event("startup")
+    @on_startup
     async def _import_pending_feedback():
         """Import any feedback records staged by Tauri while the backend was down."""
         try:
@@ -1318,7 +1356,7 @@ def create_app(
             logger.warning("Failed to import pending feedback: %s", exc)
             pending.unlink(missing_ok=True)
 
-    @app.on_event("startup")
+    @on_startup
     async def _cleanup_memory_recovery_pending():
         try:
             from .routes.memory_repair import _cleanup_old_recovery_pending
@@ -1327,7 +1365,7 @@ def create_app(
         except Exception as e:
             logger.debug("[Startup] Memory recovery pending cleanup skipped: %s", e)
 
-    @app.on_event("startup")
+    @on_startup
     async def _cleanup_expired_resume_state():
         """Issue #608: drop crash-leftover cancel-resume snapshots in
         ``data/working_messages/`` so a process that died mid-turn doesn't
@@ -1341,7 +1379,7 @@ def create_app(
         except Exception as e:
             logger.debug("[Startup] Cancel-resume snapshot cleanup skipped: %s", e)
 
-    @app.on_event("startup")
+    @on_startup
     async def _wire_pending_approvals_sse():
         """Bridge PendingApprovalsStore events to WebSocket and owner IM delivery.
 
@@ -1457,7 +1495,7 @@ def create_app(
         logger.warning("No shutdown_event available, shutdown request ignored")
         return {"status": "error", "message": "shutdown not available in this mode"}
 
-    @app.on_event("startup")
+    @on_startup
     async def _start_inbox_service():
         try:
             from newsclaw.config import settings
@@ -1468,7 +1506,7 @@ def create_app(
         except Exception as e:
             logger.warning("[Startup] Inbox service startup skipped: %s", e)
 
-    @app.on_event("shutdown")
+    @on_shutdown
     async def _stop_inbox_service():
         try:
             from newsclaw.inbox import get_inbox_service
@@ -1477,7 +1515,7 @@ def create_app(
         except Exception as e:
             logger.debug("[Shutdown] Inbox service stop skipped: %s", e)
 
-    @app.on_event("startup")
+    @on_startup
     async def _startup_org_runtime():
         loop = asyncio.get_running_loop()
         loop.slow_callback_duration = 0.5
@@ -1518,7 +1556,7 @@ def create_app(
 
         _schedule_startup_llm_health_check(app.state)
 
-    @app.on_event("shutdown")
+    @on_shutdown
     async def _shutdown_org_runtime():
         # v22 P1: stop the reconcile loop FIRST so it cannot fire
         # against a half-torn-down runtime. Best-effort; a shutdown
@@ -1577,11 +1615,11 @@ def create_app(
             except Exception as e:
                 logger.warning(f"OrgRuntime shutdown error: {e}")
 
-    @app.on_event("shutdown")
+    @on_shutdown
     async def _shutdown_startup_llm_health_check():
         await _cancel_startup_llm_health_check(app.state)
 
-    @app.on_event("shutdown")
+    @on_shutdown
     async def _shutdown_policy_hot_reloader():
         try:
             from newsclaw.core.policy_v2.hot_reload import stop_hot_reloader
@@ -1590,7 +1628,7 @@ def create_app(
         except Exception as e:
             logger.debug("[Shutdown] PolicyHotReloader stop skipped: %s", e)
 
-    @app.on_event("shutdown")
+    @on_shutdown
     async def _shutdown_memory_storage():
         try:
             from newsclaw.memory.storage import checkpoint_and_close_all_storages
@@ -1604,7 +1642,7 @@ def create_app(
         except Exception as e:
             logger.warning("[Shutdown] Memory checkpoint skipped: %s", e)
 
-    @app.on_event("startup")
+    @on_startup
     async def _start_async_audit_writer():
         """C22 P3-2 follow-up: wire the async audit writer to the API loop.
 
@@ -1641,7 +1679,7 @@ def create_app(
                 e,
             )
 
-    @app.on_event("shutdown")
+    @on_shutdown
     async def _shutdown_async_audit_writer():
         """Drain + stop the async audit writer.
 
@@ -1675,7 +1713,7 @@ def create_app(
     # ------------------------------------------------------------
     app.state.stream_cleanup_task = None
 
-    @app.on_event("startup")
+    @on_startup
     async def _start_stream_cleanup() -> None:
         try:
             from newsclaw.runtime.stream_registry import (
@@ -1684,13 +1722,13 @@ def create_app(
 
             app.state.stream_cleanup_task = asyncio.create_task(
                 cleanup_idle_buses_periodically(),
-                name="openakita-stream-registry-cleanup",
+                name="newsclaw-stream-registry-cleanup",
             )
             logger.info("[Startup] StreamRegistry cleanup task started")
         except Exception as e:  # noqa: BLE001 -- never block startup
             logger.warning("[Startup] StreamRegistry cleanup not started: %s", e)
 
-    @app.on_event("shutdown")
+    @on_shutdown
     async def _stop_stream_cleanup() -> None:
         task = getattr(app.state, "stream_cleanup_task", None)
         if task is None:
@@ -1709,7 +1747,7 @@ def create_app(
     app.state.frontend_bundle_build_id = None
     app.state.frontend_bundle_outdated = False
 
-    @app.on_event("startup")
+    @on_startup
     async def _check_frontend_bundle_freshness() -> None:
         try:
             from newsclaw import __version__ as backend_version
@@ -1757,10 +1795,10 @@ def create_app(
     #
     # Registered BEFORE diagnostics so the diagnostics dump can
     # observe a clean thread set; registered AFTER the other
-    # @app.on_event("shutdown") handlers because plugins may still
+    # @on_shutdown handlers because plugins may still
     # call into them during their own ``on_unload``.
     # ------------------------------------------------------------
-    @app.on_event("shutdown")
+    @on_shutdown
     async def _shutdown_plugin_aiosqlite_workers() -> None:
         try:
             from newsclaw.config import settings as _settings
@@ -1849,7 +1887,7 @@ def create_app(
     # cleanup. This is when the unexplained ~13s hang historically
     # begins (see ``_v32_biz/_phase_b_hang_rca.md``).
     # ------------------------------------------------------------
-    @app.on_event("shutdown")
+    @on_shutdown
     async def _arm_shutdown_diagnostics() -> None:
         try:
             from newsclaw.config import settings as _settings
@@ -2012,7 +2050,7 @@ async def start_api_server(
     api_thread = threading.Thread(
         target=_api_thread,
         daemon=True,
-        name="openakita-api",
+        name="newsclaw-api",
     )
     api_thread.start()
 

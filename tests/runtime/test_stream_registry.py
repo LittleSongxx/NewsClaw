@@ -1,4 +1,4 @@
-"""Tests for :mod:openakita.runtime.stream_registry cleanup (P-RC-3 T4)."""
+"""Tests for :mod:newsclaw.runtime.stream_registry cleanup (P-RC-3 T4)."""
 
 from __future__ import annotations
 

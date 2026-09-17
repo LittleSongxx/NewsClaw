@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from newsclaw.account.status_store import AccountStatusStore, StatusPropagationError
 
-router = APIRouter(prefix="/api/internal/openakita", tags=["openakita-internal"])
+router = APIRouter(prefix="/api/internal/newsclaw", tags=["newsclaw-internal"])
 
 
 @router.post("/users/status")

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# OpenAkita desktop package with optional modules (Linux/macOS)
+# NewsClaw desktop package with optional modules (Linux/macOS)
 
 set -euo pipefail
 

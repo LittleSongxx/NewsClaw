@@ -11,9 +11,11 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ACCOUNT_MODES = {"newsclaw", "custom", "disabled"}
-DEFAULT_ACCOUNT_BASE_URL = "https://account.openakita.cn"
-DEFAULT_ACCOUNT_CLIENT_ID = "openakita-desktop"
-DEFAULT_CREDENTIAL_USERNAME = "openakita-desktop-refresh-token"
+# 本仓库没有独立 NewsClaw 云。所谓「官方」模式也必须显式给出 URL，
+# 不能默认连到并不存在的 account.newsclaw.cn。
+DEFAULT_ACCOUNT_BASE_URL = ""
+DEFAULT_ACCOUNT_CLIENT_ID = "newsclaw-desktop"
+DEFAULT_CREDENTIAL_USERNAME = "newsclaw-desktop-refresh-token"
 
 _PROVIDER_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 _NAMESPACE_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
@@ -76,8 +78,14 @@ class AccountFeatureConfig:
             )
 
         if mode == "newsclaw":
+            raw_base_url = values.get("NEWSCLAW_ACCOUNT_BASE_URL", "").strip()
+            if not raw_base_url:
+                raise ValueError(
+                    "NEWSCLAW_ACCOUNT_BASE_URL is required when "
+                    "NEWSCLAW_ACCOUNT_MODE=newsclaw (no bundled official cloud)"
+                )
             base_url = _validated_base_url(
-                values.get("NEWSCLAW_ACCOUNT_BASE_URL", DEFAULT_ACCOUNT_BASE_URL),
+                raw_base_url,
                 variable="NEWSCLAW_ACCOUNT_BASE_URL",
             )
             client_id = values.get("NEWSCLAW_ACCOUNT_CLIENT_ID", DEFAULT_ACCOUNT_CLIENT_ID).strip()

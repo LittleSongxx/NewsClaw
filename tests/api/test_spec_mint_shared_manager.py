@@ -5,10 +5,10 @@ v29 CRUD-1 / CRUD-2 background
 
 Commit ``a2b18fc4`` (Sprint 13 H2 RC-1) unified the spec and mint
 write paths through :class:`OrgManager` and made
-:class:`openakita.orgs.store.JsonOrgStore` a manager-backed read
+:class:`newsclaw.orgs.store.JsonOrgStore` a manager-backed read
 shim. The shim docstring + ``orgs_v2.py::_resolve_manager_for_writes``
 both assume that ``api/server.py`` calls
-:func:`openakita.orgs.store.set_default_org_manager` right after
+:func:`newsclaw.orgs.store.set_default_org_manager` right after
 constructing ``app.state.org_manager`` so the two routers resolve
 to the *same* :class:`OrgManager` instance (and the same
 ``_cache: dict[str, Organization]``).
@@ -58,7 +58,7 @@ def wired_app(
 ) -> tuple[TestClient, OrgManager]:
     """Compose the real FastAPI app at ``tmp_path`` and yield ``(client, manager)``.
 
-    Using ``create_app()`` (mirroring ``openakita serve`` minus the IM
+    Using ``create_app()`` (mirroring ``newsclaw serve`` minus the IM
     plumbing) exercises the exact wiring path the server uses at boot,
     so a regression that drops ``set_default_org_manager(org_manager)``
     breaks the identity assertion in
@@ -68,7 +68,7 @@ def wired_app(
     under ``tmp_path/data/orgs/`` instead of the real ``D:/NewsClaw/data``
     tree (303 live orgs there at the time of writing). The TestClient
     presents ``client.host == "testclient"`` and so fails the
-    ``_is_local_request`` bypass in :mod:`openakita.api.auth`; we mint
+    ``_is_local_request`` bypass in :mod:`newsclaw.api.auth`; we mint
     a real access token to authenticate, mirroring the desktop GUI.
 
     Because ``project_root`` points at a *fresh* ``tmp_path``, the app's

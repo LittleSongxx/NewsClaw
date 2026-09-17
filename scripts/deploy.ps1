@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    OpenAkita 一键部署脚本 (Windows PowerShell)
+    NewsClaw 一键部署脚本 (Windows PowerShell)
 .DESCRIPTION
     自动完成 Python 安装、环境配置、依赖安装等全部部署流程
 .NOTES
@@ -17,7 +17,7 @@ Set-StrictMode -Version Latest
 # =====================================================
 $PYTHON_MIN_VERSION = "3.11"
 $PYTHON_DOWNLOAD_URL = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
-$PROJECT_NAME = "openakita"
+$PROJECT_NAME = "newsclaw"
 
 # =====================================================
 # 辅助函数
@@ -430,7 +430,7 @@ function Initialize-IdentityTemplates {
         $soulContent = @"
 # Agent Soul
 
-你是 OpenAkita，一个忠诚可靠的 AI 助手。
+你是 NewsClaw，一个忠诚可靠的 AI 助手。
 
 ## 核心特质
 - 永不放弃，持续尝试直到成功
@@ -459,7 +459,7 @@ function New-EnvFile {
     } else {
         $config = @"
 # =====================================================
-# OpenAkita 基础配置
+# NewsClaw 基础配置
 # =====================================================
 
 # LLM API（推荐使用 data/llm_endpoints.json 管理多端点）
@@ -543,7 +543,7 @@ WHISPER_LANGUAGE=zh
 # =====================================================
 # 注意: LLM 相关配置已迁移到 data/llm_endpoints.json
 # 支持多端点、自动故障切换、能力路由
-# 运行 openakita llm-config 进行交互式配置
+# 运行 newsclaw llm-config 进行交互式配置
 "@
         Set-Content -Path $EnvFile -Value $config
         Write-Success "配置文件已创建: .env"
@@ -588,7 +588,7 @@ function Initialize-LLMEndpoints {
         Set-Content -Path $llmConfig -Value $llmConfigContent -Encoding UTF8
         Write-Success "LLM 端点配置已创建: $llmConfig"
     }
-    Write-Info "提示: 通过 Setup Center 或 openakita llm-config 添加 LLM 端点"
+    Write-Info "提示: 通过 Setup Center 或 newsclaw llm-config 添加 LLM 端点"
     Write-Info "提示: 可添加多个端点实现自动故障切换"
 }
 
@@ -662,7 +662,7 @@ function Show-Completion {
     Write-Host "后续步骤:" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  1. 配置 LLM 端点 (二选一):" -ForegroundColor White
-    Write-Host "     openakita llm-config" -ForegroundColor Cyan -NoNewline
+    Write-Host "     newsclaw llm-config" -ForegroundColor Cyan -NoNewline
     Write-Host "  # 交互式配置向导" -ForegroundColor Gray
     Write-Host "     notepad data\llm_endpoints.json" -ForegroundColor Cyan -NoNewline
     Write-Host "  # 直接编辑" -ForegroundColor Gray
@@ -675,9 +675,9 @@ function Show-Completion {
     Write-Host "     .\venv\Scripts\Activate.ps1" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  4. 启动 Agent:" -ForegroundColor White
-    Write-Host "     openakita" -ForegroundColor Cyan -NoNewline
+    Write-Host "     newsclaw" -ForegroundColor Cyan -NoNewline
     Write-Host "        # 交互模式" -ForegroundColor Gray
-    Write-Host "     openakita serve" -ForegroundColor Cyan -NoNewline
+    Write-Host "     newsclaw serve" -ForegroundColor Cyan -NoNewline
     Write-Host "  # 服务模式 (Telegram/IM)" -ForegroundColor Gray
     Write-Host ""
     Write-Host "新特性:" -ForegroundColor Blue
@@ -695,7 +695,7 @@ function Show-Completion {
 function Main {
     Write-Host ""
     Write-Host "╔════════════════════════════════════════╗" -ForegroundColor Magenta
-    Write-Host "║     OpenAkita 一键部署脚本 (Windows)     ║" -ForegroundColor Magenta
+    Write-Host "║     NewsClaw 一键部署脚本 (Windows)     ║" -ForegroundColor Magenta
     Write-Host "╚════════════════════════════════════════╝" -ForegroundColor Magenta
     Write-Host ""
     

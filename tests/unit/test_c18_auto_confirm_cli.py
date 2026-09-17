@@ -4,7 +4,7 @@ Coverage:
 1. Helper ``_apply_auto_confirm_flag`` sets ``NEWSCLAW_AUTO_CONFIRM=1``
    when enabled.
 2. Helper is a no-op when disabled (env var not touched).
-3. End-to-end: typer CliRunner invocation of ``openakita --auto-confirm
+3. End-to-end: typer CliRunner invocation of ``newsclaw --auto-confirm
    --version`` writes the env var that ``apply_env_overrides`` then sees.
 4. The flag does NOT change the engine's CLASSIFIER behavior for
    destructive / safety_immune paths (regression guard).
@@ -91,8 +91,8 @@ class TestPhaseDFeedsPhaseC:
         cfg = PolicyConfigV2()
         new_cfg, report = eo.apply_env_overrides(cfg, environ={})
         # 没有任何 env override 时，apply_env_overrides 必须返回 schema 默认值。
-        # schema 默认从 v1.27.13 起 = trust，所以这里也要随之更新。
-        assert new_cfg.confirmation.mode == "trust"
+        # 出厂 protect = confirmation.mode default。
+        assert new_cfg.confirmation.mode == "default"
         assert not report.has_any()
 
 
@@ -122,7 +122,7 @@ class TestCliInvocation:
     def test_auto_confirm_sets_env_var_before_subcommand_logic(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Running ``openakita --auto-confirm --version`` must set the
+        """Running ``newsclaw --auto-confirm --version`` must set the
         env var even though --version short-circuits before any
         subcommand runs. (The callback applies the flag BEFORE the
         --version check.)"""

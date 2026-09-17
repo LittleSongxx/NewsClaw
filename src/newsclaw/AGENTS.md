@@ -47,7 +47,7 @@ Python backend for the NewsClaw multi-agent AI assistant.
 ## Multi-Agent System
 
 - **Preset agents** are defined in `agents/presets.py` (default, office-doc, code-assistant, browser-agent, data-analyst)
-- Sub-agents receive full session history + delegated task as new user message
+- Sub-agents get an empty context (isolated session `:sub:<run_id>`) plus the task package
 - Sub-agents get a "子 Agent 工作模式" prompt section that disables delegation tools
 - Agent profiles are persisted as JSON in `data/agents/profiles/`
 - Instance pool key: `{session_id}::{profile_id}`, idle timeout 30 min

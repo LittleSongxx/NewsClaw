@@ -31,7 +31,7 @@
     "@capacitor/cli": "^8.1.0",
     "@capacitor/core": "^8.1.0",
     "@lobehub/icons-static-svg": "^1.87.0",
-    "@openakita/native-auth": "file:native-auth",
+    "@newsclaw/native-auth": "file:native-auth",
     "@radix-ui/react-slider": "^1.3.6",
     "@tailwindcss/vite": "^4.2.1",
     "@tauri-apps/api": "^2.0.0",

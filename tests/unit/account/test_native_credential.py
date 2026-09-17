@@ -41,12 +41,12 @@ def protected_windows(value):
 def test_native_credential_is_optional_and_never_created_by_http_backend(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     assert load_native_account_token() == ""
-    assert not (tmp_path / ".openakita").exists()
+    assert not (tmp_path / ".newsclaw").exists()
 
 
 def test_persistent_credential_format_and_tamper_rejection(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    path = tmp_path / ".openakita" / ".desktop-account-token"
+    path = tmp_path / ".newsclaw" / ".desktop-account-token"
     path.parent.mkdir()
     token = b"a" * 43
     encrypted = protected_windows(token) if os.name == "nt" else token
@@ -64,7 +64,7 @@ def test_persistent_credential_format_and_tamper_rejection(tmp_path, monkeypatch
 @pytest.mark.skipif(os.name == "nt", reason="Unix file permissions")
 def test_world_readable_credential_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    path = tmp_path / ".openakita" / ".desktop-account-token"
+    path = tmp_path / ".newsclaw" / ".desktop-account-token"
     path.parent.mkdir()
     path.write_bytes(b"a" * 43)
     path.chmod(0o644)

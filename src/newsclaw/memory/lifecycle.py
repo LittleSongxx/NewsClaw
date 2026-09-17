@@ -885,6 +885,10 @@ class LifecycleManager:
         checkpoint_callback: Callable[[dict], None] | None = None,
         max_batches: int | None = None,
         deadline_monotonic: float | None = None,
+        user_id: str | None = None,
+        workspace_id: str | None = None,
+        scope: str | None = None,
+        scope_owner: str | None = None,
     ) -> dict:
         """
         使用 LLM 审查所有记忆，清理垃圾、合并重复、更新过期内容。
@@ -902,7 +906,12 @@ class LifecycleManager:
         """
         import math
 
-        all_memories = self.store.load_all_memories()
+        all_memories = self.store.load_all_memories(
+            scope=scope,
+            scope_owner=scope_owner,
+            user_id=user_id,
+            workspace_id=workspace_id,
+        )
         if not all_memories:
             return {"deleted": 0, "updated": 0, "merged": 0, "kept": 0, "partial": False}
 

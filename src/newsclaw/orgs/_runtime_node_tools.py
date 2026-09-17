@@ -1390,7 +1390,7 @@ async def execute_node_tool(
     schema = tool_definition.get("input_schema", {}) if tool_definition else {}
     properties = schema.get("properties", {}) if isinstance(schema, Mapping) else {}
     idempotency_param = (
-        str(tool_definition.get("x-openakita-idempotency-param") or "").strip()
+        str(tool_definition.get("x-newsclaw-idempotency-param") or "").strip()
         if tool_definition
         else ""
     )

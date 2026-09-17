@@ -6,7 +6,7 @@ import importlib.util
 
 
 def test_prompt_compiler_import_surface() -> None:
-    """``openakita.prompt.compiler.check_compiled_outdated`` must import.
+    """``newsclaw.prompt.compiler.check_compiled_outdated`` must import.
 
     Pre-fix this raised ``ImportError`` because the ``prompt -> builder ->
     skills -> agent -> core._agent_runtime -> ..skills (re-entry)`` cycle

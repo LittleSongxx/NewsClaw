@@ -90,7 +90,7 @@ pub(crate) fn healthy_backend_pid(port: u16) -> Option<u32> {
         return None;
     }
     let json: serde_json::Value = resp.json().ok()?;
-    if json.get("service").and_then(|v| v.as_str()) != Some("openakita") {
+    if json.get("service").and_then(|v| v.as_str()) != Some("newsclaw") {
         return None;
     }
     json.get("pid")
@@ -101,7 +101,7 @@ pub(crate) fn healthy_backend_pid(port: u16) -> Option<u32> {
 
 /// DMG 覆盖安装后版本对账：检查运行中后端的版本，必要时替换。
 ///
-/// macOS 上通过 DMG 拖拽覆盖安装后，旧的 openakita-server 进程可能仍在端口上
+/// macOS 上通过 DMG 拖拽覆盖安装后，旧的 newsclaw-server 进程可能仍在端口上
 /// 服务。新版 app 启动时必须检测版本不匹配并主动替换，否则会一直使用旧后端。
 ///
 /// 此函数合并了「是否有后端在运行」和「版本是否匹配」两个检查，
@@ -237,7 +237,7 @@ pub(crate) fn startup_reconcile() {
     }
 }
 
-/// Append a crash entry to `~/.openakita/logs/crash.log`.
+/// Append a crash entry to `~/.newsclaw/logs/crash.log`.
 ///
 /// When `show_dialog` is true, a native `MessageBoxW` (Windows) is displayed
 /// so the user gets feedback instead of a silent flash-exit.
@@ -293,13 +293,13 @@ pub(crate) fn write_crash_log(message: &str, show_dialog: bool) -> PathBuf {
             }
 
             let body = format!(
-                "OpenAkita Desktop 启动失败 (startup failed)\n\n\
+                "NewsClaw Desktop 启动失败 (startup failed)\n\n\
                  {message}\n\n\
                  崩溃日志已写入 (crash log): {}\n\
                  请将此日志发送给开发者以帮助诊断问题。",
                 crash_path.display()
             );
-            let caption = "OpenAkita – Crash";
+            let caption = "NewsClaw – Crash";
             let wb = to_wide(&body);
             let wc = to_wide(caption);
             unsafe {

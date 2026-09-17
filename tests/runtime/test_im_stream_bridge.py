@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.im_stream_bridge`.
+"""Tests for :mod:`newsclaw.runtime.im_stream_bridge`.
 
 P-RC-1 commit 3. Covers the renderer's translation matrix plus the
 relay's resilience against send-side failures. The bridge runs as

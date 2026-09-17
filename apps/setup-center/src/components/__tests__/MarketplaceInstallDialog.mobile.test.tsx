@@ -14,7 +14,7 @@ const baseJob = { id: 'job', status: 'ready', resource_name: 'Test Skill', resou
 beforeEach(async () => {
   localStorage.clear(); mocks.server = { id: 'home', name: 'Home server', url: 'https://home.example' };
   await i18n.changeLanguage('en');
-  saveInstall({ key: 'install-one', target: { id: 'home', name: 'Home server', base: 'https://home.example', state: 'state', expires: Date.now() + 10000 }, endpoint: 'https://marketplace.openakita.cn', token: 'a'.repeat(64) });
+  saveInstall({ key: 'install-one', target: { id: 'home', name: 'Home server', base: 'https://home.example', state: 'state', expires: Date.now() + 10000 }, endpoint: 'https://marketplace.newsclaw.cn', token: 'a'.repeat(64) });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const props = { apiBaseUrl: 'https://home.example', desktopVersion: '1.27.40' };

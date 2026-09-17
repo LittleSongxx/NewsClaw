@@ -11,7 +11,7 @@
  * Wraps the browser ``EventSource`` API with a typed handler
  * registry so callers do not have to remember channel-name
  * strings. The channel list mirrors the backend's
- * ``STANDARD_CHANNELS`` constant (``src/openakita/runtime/stream.py``)
+ * ``STANDARD_CHANNELS`` constant (``src/newsclaw/runtime/stream.py``)
  * minus the high-volume ``debug`` channel; the contract is pinned
  * by ``tests/api/test_sse_channel_coverage.py``.
  *
@@ -127,7 +127,7 @@ export interface V2StreamOptions {
  * Channels eagerly attached on every connection.
  *
  * Must stay in sync with the backend's ``DEFAULT_SSE_CHANNELS``
- * tuple in ``src/openakita/api/routes/orgs_v2_stream.py``, which
+ * tuple in ``src/newsclaw/api/routes/orgs_v2_stream.py``, which
  * is computed as ``STANDARD_CHANNELS - {"debug"}``. The set is
  * sorted alphabetically so the order matches the backend's
  * sorted tuple, making cross-stack diffs easier to spot.

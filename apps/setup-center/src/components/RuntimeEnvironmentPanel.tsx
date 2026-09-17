@@ -103,7 +103,7 @@ export function RuntimeEnvironmentPanel({
       : 0);
   const runtimeRoot = info?.newsclawRootDir
     ? joinPath(info.newsclawRootDir, "runtime")
-    : "~/.openakita/runtime";
+    : "~/.newsclaw/runtime";
   const appVenvHint = joinPath(runtimeRoot, "app-venv");
   const agentVenvHint = joinPath(runtimeRoot, "agent-venv");
   const runtimeLogHint = joinPath(joinPath(runtimeRoot, "logs"), "bootstrap.log");

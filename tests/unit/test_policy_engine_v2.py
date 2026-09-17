@@ -388,13 +388,14 @@ class TestUnattended:
 
 
 class TestMessageIntent:
-    def test_trust_mode_bypasses(self, tmp_path: Path) -> None:
+    def test_trust_mode_does_not_bypass_destructive_intent(self, tmp_path: Path) -> None:
         engine = PolicyEngineV2()
         decision = engine.evaluate_message_intent(
             MessageIntentEvent(message="please rm -rf /", risk_intent="destructive"),
             _ctx(tmp_path, mode=ConfirmationMode.TRUST),
         )
-        assert decision.action == DecisionAction.ALLOW
+        assert decision.action != DecisionAction.ALLOW
+        assert "intent_trust_bypass" not in {s.name for s in decision.chain}
 
     def test_plan_mode_blocks_write_intent(self, tmp_path: Path) -> None:
         engine = PolicyEngineV2()

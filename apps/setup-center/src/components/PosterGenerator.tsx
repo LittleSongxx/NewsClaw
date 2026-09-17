@@ -80,7 +80,7 @@ export function PosterGenerator(props: PosterProps) {
         width: posterW,
         height: posterH,
       });
-      const filename = `openakita-${type}-${Date.now()}.png`;
+      const filename = `newsclaw-${type}-${Date.now()}.png`;
       if (IS_TAURI) {
         const saved = await savePngTauri(dataUrl, filename);
         if (!saved) {

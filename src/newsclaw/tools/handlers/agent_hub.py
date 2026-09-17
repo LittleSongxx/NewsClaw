@@ -200,7 +200,7 @@ class AgentHubHandler:
         return (
             f"📦 Agent 已打包: {package_path}\n\n"
             f"⚠️ 自动发布功能需要平台账号认证。\n"
-            f"请访问 https://openakita.ai 登录后在「我的 Agent」页面手动上传，\n"
+            f"请访问 https://newsclaw.ai 登录后在「我的 Agent」页面手动上传，\n"
             f"或通过 Setup Center 的 Agent Store 页面发布。"
         )
 

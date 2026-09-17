@@ -8,7 +8,6 @@ import threading
 from pathlib import Path
 
 os.environ.setdefault("NEWSCLAW", "1")
-os.environ.setdefault("OPENAKITA", "1")  # rename 前的标记，插件/脚本可能仍在读
 
 from typing import Annotated, Literal
 
@@ -195,7 +194,7 @@ class Settings(BaseSettings):
     max_iterations: int = Field(
         default=300,
         ge=5,
-        description="Ralph/ReAct 循环最大迭代次数（最终防死循环硬上限；默认 300，复杂任务可调到 500+）",
+        description="ReAct 循环最大迭代次数（最终防死循环硬上限；默认 300，复杂任务可调到 500+）",
     )
 
     # Plan 模式建议阈值（ComplexitySignal.score 达到此值时建议用户使用 Plan 模式）
@@ -213,8 +212,8 @@ class Settings(BaseSettings):
     )
 
     # === 任务超时策略 ===
-    # 默认对齐 Claude Code 哲学：CLI/IM 真人对话场景不做"agent 自检自杀"，
-    # 卡死由用户主动按"停止"/Esc 中断。仅在程序化场景（CI/SDK 批跑）需要兜底时打开。
+    # 默认不做无进展/硬超时自检：卡死需用户主动按「停止」/Esc。
+    # 不要把「超时为 0」讲成已对齐某产品的护栏策略。仅在程序化场景需要兜底时打开。
     # - progress_timeout_seconds: 若连续超过该时间没有任何进展（LLM返回/工具完成/迭代推进），视为卡死。0=禁用。
     # - hard_timeout_seconds: 任务硬上限（仅在确定要限制总时长时启用）。0=禁用。
     progress_timeout_seconds: int = Field(
@@ -404,23 +403,23 @@ class Settings(BaseSettings):
     # === 搜索源（Provider）配置 ===
     # 调度规则见 src/newsclaw/tools/web_search/runtime.py：
     #   - web_search_provider 留空 → 按 auto_detect_order 走可用源 fallback
-    #   - 指定 id → 严格走该源，失败不 fallback
+    #   - 指定 id → 优先走该源；Agent 路径 allow_fallback=True 时仍可换源
     # 命名带 `_API_KEY` / `_BASE_URL` 的敏感字段由前端 password input 自行保护显示
     web_search_provider: str = Field(
-        default="",
+        default="tavily",
         description=(
-            "激活的搜索源 ID（bocha / tavily / searxng / jina / duckduckgo）；"
-            "留空=按优先级自动检测可用源"
+            "激活的搜索源 ID（tavily / bocha / serper / searxng / jina / duckduckgo）；"
+            "默认 tavily；留空=按优先级自动检测可用源"
         ),
     )
     bocha_api_key: str = Field(
         default="",
-        description="博查 Bocha 搜索 API Key（国内推荐，申请：https://api.bochaai.com）",
+        description="博查 Bocha 搜索 API Key（备用源，申请：https://api.bochaai.com）",
     )
     tavily_api_key: str = Field(
         default="",
         description=(
-            "Tavily 搜索 API Key（首选搜索源，申请：https://app.tavily.com/home）；"
+            "Tavily 搜索 API Key（默认搜索源，申请：https://app.tavily.com/home）；"
             "支持逗号/换行分隔的多 Key 号池（自动轮询与失效切换）"
         ),
     )
@@ -893,8 +892,8 @@ class Settings(BaseSettings):
         description="站内信 L0 公开广播 JSON URL。",
     )
     inbox_api_url: str = Field(
-        default="https://admin.openakita.cn",
-        description="NewsClaw Platform L1 客户端 API base URL。",
+        default="",
+        description="可选的站内信 L1 API；本仓库没有官方云，留空除非你自建。",
     )
     inbox_poll_interval_sec: int = Field(
         default=1800,
@@ -922,8 +921,8 @@ class Settings(BaseSettings):
         description="是否允许匿名遥测/升级事件上报。当前站内信 ack 仍受 inbox_* 开关控制。",
     )
     updater_policy_endpoint: str = Field(
-        default="https://admin.openakita.cn/updater",
-        description="在线升级策略层 endpoint base URL，setup-center/updater 可按需使用。",
+        default="",
+        description="可选的升级策略 URL；本仓库没有官方更新云，留空除非你自建。",
     )
 
     # === NewsClaw Platform (Agent Hub / Skill Store) ===
@@ -932,7 +931,7 @@ class Settings(BaseSettings):
         description="启用 NewsClaw Platform 连接（Agent Hub / Skill Store）。关闭时不注册远程市场工具。",
     )
     hub_api_url: str = Field(
-        default="https://openakita.ai/api",
+        default="",
         description="NewsClaw Platform API base URL for Agent Hub and Skill Store",
     )
     hub_api_key: str = Field(
@@ -1295,8 +1294,10 @@ class Settings(BaseSettings):
         return value
 
     # === Harness 配置 ===
-    # 默认全部关闭/不限，对齐 Claude Code 风格（CLI 真人场景不强加业务护栏）。
-    # 仅在程序化场景（CI/SDK 批跑、定时任务、组织看门狗等）需要兜底时打开。
+    # 桌面/交互式 CLI：Field 默认 0=不限。
+    # 无人值守（session.is_unattended：newsclaw run / scheduler）在运行时把
+    # 步数/时长/工具次数的 0 换成 80 / 1200s / 200，同参重复上限 8。
+    # token/cost 有用户配置才设上限；有价表才 record_cost，不假装 0 元。
     supervisor_enabled: bool = Field(
         default=False,
         description="是否启用运行时监督器 (RuntimeSupervisor)，默认关闭。开启后会在工具抖动/编辑抖动/推理死循环等模式被检测到时主动干预",
@@ -1542,10 +1543,7 @@ class Settings(BaseSettings):
     def newsclaw_home(self) -> Path:
         """用户数据根目录，优先使用 NEWSCLAW_ROOT 环境变量，默认 ~/.newsclaw。
 
-        解析规则见 :func:`newsclaw.data_root.resolve_data_root`：NEWSCLAW_ROOT →
-        NEWSCLAW_ROOT → 既有 ~/.openakita → ~/.newsclaw。既有安装原地继续使用旧
-        目录，不做一次性改名——目录里躺着 venv、Playwright 浏览器等带绝对路径的
-        产物，改名会让桌面端指向不存在的运行时。
+        解析规则见 :func:`newsclaw.data_root.resolve_data_root`。
         """
         from .data_root import resolve_data_root
 
@@ -1620,7 +1618,7 @@ class Settings(BaseSettings):
         """内置 MCP 配置目录（随项目分发，打包后可能只读）
 
         优先使用 project_root/mcps（开发模式），
-        若不存在则回退到 wheel 打包位置 site-packages/openakita/builtin_mcps/。
+        若不存在则回退到 wheel 打包位置 site-packages/newsclaw/builtin_mcps/。
         """
         dev_path = self.project_root / "mcps"
         if dev_path.exists():
@@ -1830,12 +1828,6 @@ def _create_settings_safe() -> Settings:
 
 
 # 全局配置实例
-# 旧前缀（OPENAKITA_*）在这个进程里映射到当前前缀，让 rename 前写下的
-# .env / 启动脚本继续生效；Settings 构造必须发生在这之后。
-from .env_compat import alias_legacy_env  # noqa: E402
-
-alias_legacy_env()
-
 settings = _create_settings_safe()
 
 # 全局运行时状态管理器

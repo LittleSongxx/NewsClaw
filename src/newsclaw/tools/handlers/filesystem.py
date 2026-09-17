@@ -195,10 +195,10 @@ class FilesystemHandler:
 
         Profile 语义：
 
-        - ``off``:    安全策略整体关闭 → 空列表。
-        - ``trust``:  信任 AI 自主选择路径 → 空列表（与 off 在本函数行为一致，
-                      但全局其他机制 safety_immune / shell_risk / confirmation
-                      仍由 engine 各自处理，与本函数无关）。
+        - ``trust``:  信任 AI 自主选择路径 → 空列表。
+        - ``off`` / ``enabled=False``: 不再当「无白名单」。引擎会拒绝全部
+                      工具，但本函数仍保留 ``workspace.paths``，避免把 off
+                      误读成「随便读写」。
         - ``protect`` / ``strict`` / ``custom``: 读取 ``cfg.workspace.paths``，
                       用户在 SecurityView 里维护的"允许访问的工作区"。
         - 异常 fallback: agent.default_cwd → Path.cwd()（保留向后兼容）。
@@ -211,7 +211,7 @@ class FilesystemHandler:
             from ...core.policy_v2 import get_config_v2
 
             cfg = get_config_v2()
-            if not cfg.enabled or cfg.profile.current in ("off", "trust"):
+            if cfg.profile.current == "trust":
                 return []
             roots.extend(str(p) for p in cfg.workspace.paths if p)
         except Exception:
@@ -253,6 +253,13 @@ class FilesystemHandler:
             "请在 安全策略 → 路径名单 → 允许访问的工作区 中添加该目录，"
             "或将文件复制到当前工作区。"
         )
+
+    @staticmethod
+    def _deny_newsroom_evolution_write(path: str) -> str | None:
+        """信源 / 方针 / 运行配置只能经 apply 或设置页写入。"""
+        from newsclaw.newsroom.policy import guard_direct_evolution_write
+
+        return guard_direct_evolution_write(path)
 
     async def handle(self, tool_name: str, params: dict[str, Any]) -> str:
         """Public handler API: return only the LLM-visible result text."""
@@ -680,6 +687,36 @@ class FilesystemHandler:
             return "❌ write_file 缺少必要参数 'path'。请提供文件路径和内容后重试。"
         if content is None:
             return "❌ write_file 缺少必要参数 'content'。请提供文件内容后重试。"
+        blocked = self._deny_newsroom_evolution_write(str(path))
+        if blocked:
+            return blocked
+        from newsclaw.newsroom.policy import (
+            is_issue_manifest_path,
+            is_review_proposal_json_path,
+            write_manifest_from_agent,
+        )
+
+        issue_date = is_issue_manifest_path(str(path))
+        if issue_date:
+            try:
+                result = write_manifest_from_agent(issue_date, str(content))
+            except (TypeError, ValueError) as exc:
+                return f"❌ {exc}"
+            try:
+                resolved_path = str(self.agent.file_tool._resolve_path(path))
+            except Exception:
+                resolved_path = str(path)
+            return self._mutation_result(
+                result,
+                action="write",
+                target="file",
+                path=resolved_path,
+                requested_path=str(path),
+            )
+        if is_review_proposal_json_path(str(path)):
+            from newsclaw.newsroom.proposal import archive_pending_proposal_if_needed
+
+            archive_pending_proposal_if_needed()
         guard = self._guard_path_boundary(path, op="write")
         if guard:
             return guard
@@ -770,6 +807,13 @@ class FilesystemHandler:
             return "❌ append_file 缺少必要参数 'path'。请提供文件路径和内容后重试。"
         if content is None:
             return "❌ append_file 缺少必要参数 'content'。请提供要追加的内容后重试。"
+        blocked = self._deny_newsroom_evolution_write(str(path))
+        if blocked:
+            return blocked
+        from newsclaw.newsroom.policy import is_issue_manifest_path
+
+        if is_issue_manifest_path(str(path)):
+            return "❌ 请用 write_file 整文件重写 manifest.json，以便走契约机验。"
         guard = self._guard_path_boundary(path, op="write")
         if guard:
             return guard
@@ -903,6 +947,13 @@ class FilesystemHandler:
             return "❌ edit_file 缺少必要参数 'new_string'。"
         if old_string == new_string:
             return "❌ old_string 和 new_string 相同，无需替换。"
+        blocked = self._deny_newsroom_evolution_write(str(path))
+        if blocked:
+            return blocked
+        from newsclaw.newsroom.policy import is_issue_manifest_path
+
+        if is_issue_manifest_path(str(path)):
+            return "❌ 请用 write_file 整文件重写 manifest.json，以便走契约机验。"
         guard = self._guard_path_boundary(path, op="edit")
         if guard:
             return guard
@@ -1263,6 +1314,10 @@ class FilesystemHandler:
         if "\x00" in src or "\x00" in dst:
             return "❌ move_file 路径包含无效空字符，请去掉不可见字符后重试。"
         for raw in (src, dst):
+            blocked = self._deny_newsroom_evolution_write(str(raw))
+            if blocked:
+                return blocked
+        for raw in (src, dst):
             guard = self._guard_path_boundary(raw, op="move")
             if guard:
                 return guard
@@ -1310,6 +1365,9 @@ class FilesystemHandler:
         path = params.get("path", "")
         if not path:
             return "❌ delete_file 缺少必要参数 'path'。"
+        blocked = self._deny_newsroom_evolution_write(str(path))
+        if blocked:
+            return blocked
         guard = self._guard_path_boundary(path, op="delete")
         if guard:
             return guard

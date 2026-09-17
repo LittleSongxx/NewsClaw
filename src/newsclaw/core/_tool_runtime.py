@@ -1268,8 +1268,10 @@ class ToolExecutor:
                 )
 
             if perm_decision.behavior == "confirm":
-                # C12 §14.3 unattended branch: when PolicyEngineV2 step 11
-                # returned DEFER (defer_to_owner / defer_to_inbox / ask_owner),
+                # 无人值守：PolicyEngineV2._handle_unattended 对默认 deny
+                # 直接 DENY，不会走到这里。走到 confirm 且
+                # ``is_unattended_path`` 为真，只可能是 defer_to_* /
+                # ask_owner（engine 对 ask_owner 返回 CONFIRM）。
                 # ``metadata.is_unattended_path`` is True. We must NOT block
                 # the loop waiting for user (no human attached) and must NOT
                 # lie to the LLM ("已通知用户" — §2.1 bug). Instead:

@@ -20,33 +20,40 @@ describe("Marketplace navigation", () => {
     expect(hasMarketplaceClientVersion("1.27.40")).toBe(true);
   });
 
-  it("opens the Marketplace home through the client context endpoint", () => {
+  it("refuses to invent an official marketplace origin", () => {
     vi.stubEnv("VITE_MARKETPLACE_URL", "");
-    const result = new URL(buildMarketplaceContextUrl("1.27.40"));
-    expect(result.origin).toBe("https://marketplace.openakita.cn");
-    expect(result.pathname).toBe("/openakita/context");
+    expect(() => buildMarketplaceContextUrl("1.27.40")).toThrow("marketplace_origin_unconfigured");
+  });
+
+  it("opens the Marketplace home through the client context endpoint", () => {
+    const origin = "https://market.example.com";
+    const result = new URL(buildMarketplaceContextUrl("1.27.40", "/", origin));
+    expect(result.origin).toBe(origin);
+    expect(result.pathname).toBe("/newsclaw/context");
     expect(result.searchParams.get("version")).toBe("1.27.40");
     expect(result.searchParams.get("next")).toBe("/");
   });
 
   it("restores a clean Marketplace detail URL from an open deep link", () => {
-    const deepLink = "openakita://marketplace/open?return_url="
-      + encodeURIComponent("https://marketplace.openakita.cn/resources/example?tab=versions#versions");
-    const result = new URL(buildMarketplaceContextUrlFromDeepLink(deepLink, "1.27.40")!);
+    const origin = "https://market.example.com";
+    const deepLink = "newsclaw://marketplace/open?return_url="
+      + encodeURIComponent(`${origin}/resources/example?tab=versions#versions`);
+    const result = new URL(buildMarketplaceContextUrlFromDeepLink(deepLink, "1.27.40", origin)!);
 
-    expect(result.origin).toBe("https://marketplace.openakita.cn");
-    expect(result.pathname).toBe("/openakita/context");
+    expect(result.origin).toBe(origin);
+    expect(result.pathname).toBe("/newsclaw/context");
     expect(result.searchParams.get("version")).toBe("1.27.40");
     expect(result.searchParams.get("next")).toBe("/resources/example?tab=versions#versions");
   });
 
   it("opens a restricted handoff before storing client context without leaking the ticket into it", () => {
-    const handoff = new URL(buildMarketplaceHandoffUrl("v1.27.40-beta.1", "t".repeat(64)));
-    expect(handoff.origin).toBe("https://marketplace.openakita.cn");
+    const origin = "https://market.example.com";
+    const handoff = new URL(buildMarketplaceHandoffUrl("v1.27.40-beta.1", "t".repeat(64), "/", origin));
+    expect(handoff.origin).toBe(origin);
     expect(handoff.pathname).toBe("/auth/desktop");
     expect(handoff.searchParams.get("ticket")).toBe("t".repeat(64));
     const context = new URL(handoff.searchParams.get("next")!, handoff.origin);
-    expect(context.pathname).toBe("/openakita/context");
+    expect(context.pathname).toBe("/newsclaw/context");
     expect(context.searchParams.get("version")).toBe("1.27.40");
     expect(context.searchParams.get("next")).toBe("/");
     expect(context.searchParams.has("ticket")).toBe(false);
@@ -60,10 +67,10 @@ describe("Marketplace navigation", () => {
     expect(context.searchParams.get("next")).toBe(next);
   });
 
-  it.each(["https://evil.example/", "//evil.example/", "/\\evil.example/", "/openakita/context?version=1.0.0"])(
+  it.each(["https://evil.example/", "//evil.example/", "/\\evil.example/", "/newsclaw/context?version=1.0.0"])(
     "sanitizes the post-login destination %s",
     (next) => {
-      const handoff = new URL(buildMarketplaceHandoffUrl("1.27.40", "t".repeat(64), next));
+      const handoff = new URL(buildMarketplaceHandoffUrl("1.27.40", "t".repeat(64), next, "https://market.example.com"));
       const context = new URL(handoff.searchParams.get("next")!, handoff.origin);
       expect(context.searchParams.get("next")).toBe("/");
     },
@@ -71,31 +78,32 @@ describe("Marketplace navigation", () => {
 
   it("allows a configured Marketplace origin and local development origins", () => {
     const configured = "https://market.example.com";
-    const configuredLink = "openakita://marketplace/open?return_url="
+    const configuredLink = "newsclaw://marketplace/open?return_url="
       + encodeURIComponent("https://market.example.com/catalog");
-    const localLink = "openakita://marketplace/open?return_url="
+    const localLink = "newsclaw://marketplace/open?return_url="
       + encodeURIComponent("http://localhost:3001/catalog");
 
     expect(buildMarketplaceContextUrlFromDeepLink(configuredLink, "1.27.40", configured))
-      .toContain("https://market.example.com/openakita/context?");
+      .toContain("https://market.example.com/newsclaw/context?");
     expect(buildMarketplaceContextUrlFromDeepLink(localLink, "1.27.40", configured))
-      .toContain("http://localhost:3001/openakita/context?");
+      .toContain("http://localhost:3001/newsclaw/context?");
   });
 
   it("rejects untrusted return URLs and unsupported actions", () => {
-    const malicious = "openakita://marketplace/open?return_url="
+    const malicious = "newsclaw://marketplace/open?return_url="
       + encodeURIComponent("https://evil.example/resources/example");
 
     expect(buildMarketplaceContextUrlFromDeepLink(malicious, "1.27.40")).toBeNull();
-    expect(marketplaceDeepLinkAction("openakita://marketplace/open?return_url=x")).toBe("open");
-    expect(marketplaceDeepLinkAction("openakita://marketplace/install?token=x")).toBe("install");
-    expect(marketplaceDeepLinkAction("openakita://marketplace/unknown")).toBeNull();
+    expect(marketplaceDeepLinkAction("newsclaw://marketplace/open?return_url=x")).toBe("open");
+    expect(marketplaceDeepLinkAction("newsclaw://marketplace/install?token=x")).toBe("install");
+    expect(marketplaceDeepLinkAction("newsclaw://marketplace/unknown")).toBeNull();
   });
 
   it("prevents recursive client context targets", () => {
     const result = new URL(buildMarketplaceContextUrl(
       "1.27.40",
-      "/openakita/context?version=0.0.0&next=/catalog",
+      "/newsclaw/context?version=0.0.0&next=/catalog",
+      "https://market.example.com",
     ));
     expect(result.searchParams.get("next")).toBe("/");
   });

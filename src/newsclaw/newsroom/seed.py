@@ -7,6 +7,9 @@
   （在 GUI 调度面板里手改这两项会在下次启动时被拉回，config.yaml 头部有说明）；
 - prompt 只在 ``metadata.prompt_version`` 落后于 ``prompts.PROMPT_VERSION``
   时刷新，避免每次启动覆盖用户在 GUI 里对 prompt 的手动微调。
+- 每日任务的「当期信源 / 方针」不依赖这份缓存字符串：调度触发时由
+  executor 调用 ``with_runtime_injection`` 现读磁盘再拼，apply 后下次
+  执行就能读到新状态。
 
 调度器单例由主 Agent 初始化后才可用（serve 模式下晚于 FastAPI startup），
 因此 :func:`start_background_seeding` 以轮询方式等待，server.py 只需挂一行。
@@ -106,11 +109,21 @@ async def ensure_newsroom_tasks(scheduler) -> bool:
             updates["trigger_config"] = {"cron": cron}
         if existing.enabled != cfg.enabled:
             updates["enabled"] = cfg.enabled
-        metadata = existing.metadata or {}
+        metadata = dict(existing.metadata or {})
+        meta_changed = False
+        if metadata.get("newsroom") != kind:
+            metadata["newsroom"] = kind
+            meta_changed = True
+        if metadata.get("timeout_seconds") != cfg.task_timeout_seconds:
+            metadata["timeout_seconds"] = cfg.task_timeout_seconds
+            meta_changed = True
         if metadata.get("prompt_version", 0) < PROMPT_VERSION:
             updates["prompt"] = prompt
             updates["description"] = description
-            updates["metadata"] = {**metadata, "prompt_version": PROMPT_VERSION}
+            metadata["prompt_version"] = PROMPT_VERSION
+            meta_changed = True
+        if meta_changed:
+            updates["metadata"] = metadata
         if updates:
             await scheduler.update_task(task_id, updates)
             changed = True
@@ -134,6 +147,7 @@ def start_background_seeding() -> asyncio.Task | None:
     async def _run() -> None:
         from newsclaw.scheduler import get_active_scheduler
 
+        global _seeding_started
         waited = 0.0
         scheduler = get_active_scheduler()
         while scheduler is None and waited < _POLL_TIMEOUT:
@@ -145,11 +159,13 @@ def start_background_seeding() -> asyncio.Task | None:
                 "[Newsroom] scheduler not ready after %.0fs; skip seeding this boot",
                 _POLL_TIMEOUT,
             )
+            _seeding_started = False
             return
         try:
             await ensure_newsroom_tasks(scheduler)
         except Exception:
             logger.exception("[Newsroom] seeding failed")
+            _seeding_started = False
 
     try:
         task = asyncio.get_running_loop().create_task(_run())

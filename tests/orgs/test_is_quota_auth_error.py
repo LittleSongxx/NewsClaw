@@ -3,7 +3,7 @@
 The classifier moved + was renamed in the P9.6f2 OrgRuntime split: v1's
 ``OrgRuntime._is_quota_auth_error`` is now the module-level
 ``_looks_like_quota_or_auth_error`` in
-:mod:`openakita.orgs._runtime_agent_pipeline_executor`, exposed publicly
+:mod:`newsclaw.orgs._runtime_agent_pipeline_executor`, exposed publicly
 as the static method ``AgentPipelineExecutor.is_quota_auth_error(exc)``
 (the v1-parity-named hook the executor's pause-org branch uses). These
 tests target that authoritative entry point.

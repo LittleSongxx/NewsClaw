@@ -5,7 +5,7 @@ import { mkdirSync } from "node:fs";
  * smoke-5bug end-to-end sweep.
  *
  * Validates the four user-facing fixes in this batch (B5 / B3 / B1 /
- * B2) against the running dev stack (Vite on :5173, OpenAkita backend
+ * B2) against the running dev stack (Vite on :5173, NewsClaw backend
  * on :18900).  Each step is independently asserted; failure messages
  * include the bug id so the final report can map verdicts back to
  * commits.  Screenshots land under ``tmp_p10/_5bug_screens/``.

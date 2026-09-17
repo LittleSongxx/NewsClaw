@@ -53,7 +53,7 @@ it("pauses hidden-page polling and catches up immediately on returning to the pa
   expect(screen.getByText("New marketplace server")).toBeInTheDocument();
   view.rerender(<MCPView {...props} serviceRunning={false} />);
   await act(async () => {
-    window.dispatchEvent(new Event("openakita:mcp-changed"));
+    window.dispatchEvent(new Event("newsclaw:mcp-changed"));
     await vi.advanceTimersByTimeAsync(6000);
   });
   expect(safeFetch).toHaveBeenCalledTimes(2);
@@ -65,7 +65,7 @@ it("does not let a slow pre-install response overwrite the refreshed MCP list", 
     .mockImplementationOnce(() => new Promise(resolve => { finishInitial = resolve; }))
     .mockImplementation(async () => response([server]));
   render(<MCPView {...props} />);
-  await act(async () => { window.dispatchEvent(new Event("openakita:mcp-changed")); });
+  await act(async () => { window.dispatchEvent(new Event("newsclaw:mcp-changed")); });
   expect(screen.getByText("New marketplace server")).toBeInTheDocument();
   await act(async () => { finishInitial(response([])); });
   expect(screen.getByText("New marketplace server")).toBeInTheDocument();

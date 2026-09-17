@@ -12,13 +12,13 @@ from newsclaw.tools.file import FileTool
 @pytest.mark.parametrize(
     "dangerous_path",
     [
-        Path.home() / ".openakita" / "runtime" / "sessions",
-        Path.home() / ".openakita" / "workspaces" / "proj",
-        Path("/tmp/.openakita/runtime_stub") if Path("/tmp").exists() else None,
+        Path.home() / ".newsclaw" / "runtime" / "sessions",
+        Path.home() / ".newsclaw" / "workspaces" / "proj",
+        Path("/tmp/.newsclaw/runtime_stub") if Path("/tmp").exists() else None,
     ],
 )
-def test_grep_path_forbidden_blocks_openakita_data_plane(dangerous_path):
-    """含 ``.openakita/runtime`` / ``workspaces`` 的路径必须被拒。"""
+def test_grep_path_forbidden_blocks_newsclaw_data_plane(dangerous_path):
+    """含 ``.newsclaw/runtime`` / ``workspaces`` 的路径必须被拒。"""
     if dangerous_path is None:
         pytest.skip("posix /tmp unavailable")
     reason = FileTool._grep_path_forbidden(dangerous_path)

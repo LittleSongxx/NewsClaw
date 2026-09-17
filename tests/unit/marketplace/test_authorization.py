@@ -13,7 +13,7 @@ from newsclaw.integrations.marketplace.installer import (
 async def test_anonymous_install_cannot_exchange_a_bearer_link(tmp_path):
     manager = MarketplaceInstallManager(tmp_path)
     with pytest.raises(MarketplaceInstallError, match="marketplace_account_required"):
-        await manager.prepare("a" * 64, "https://marketplace.openakita.cn")
+        await manager.prepare("a" * 64, "https://marketplace.newsclaw.cn")
 
 
 @pytest.mark.asyncio
@@ -35,7 +35,7 @@ async def test_switching_account_after_preview_blocks_install(tmp_path, monkeypa
         "id": "job",
         "status": "ready",
         "token": "a" * 64,
-        "endpoint": "https://marketplace.openakita.cn",
+        "endpoint": "https://marketplace.newsclaw.cn",
         "account_user_id": "old-account",
     }
     account = AsyncMock()
@@ -56,11 +56,11 @@ async def test_revoked_account_blocks_reopening_existing_preview(tmp_path, monke
         "id": "job",
         "status": "ready",
         "token": "a" * 64,
-        "endpoint": "https://marketplace.openakita.cn",
+        "endpoint": "https://marketplace.newsclaw.cn",
     }
     manager._authorize = AsyncMock(
         side_effect=MarketplaceInstallError("marketplace_account_required")
     )
     with pytest.raises(MarketplaceInstallError, match="marketplace_account_required"):
-        await manager.prepare("a" * 64, "https://marketplace.openakita.cn", account=AsyncMock())
+        await manager.prepare("a" * 64, "https://marketplace.newsclaw.cn", account=AsyncMock())
     manager._authorize.assert_awaited_once()

@@ -267,8 +267,8 @@ export default function PluginAppHost({ pluginId, apiBase, onViewChange }: Plugi
       setSlow(false);
       setReloadTick((t) => t + 1);
     };
-    window.addEventListener("openakita:plugin-reloaded", onPluginReloaded);
-    return () => window.removeEventListener("openakita:plugin-reloaded", onPluginReloaded);
+    window.addEventListener("newsclaw:plugin-reloaded", onPluginReloaded);
+    return () => window.removeEventListener("newsclaw:plugin-reloaded", onPluginReloaded);
   }, [pluginId]);
 
   const handleIframeLoad = useCallback(() => {

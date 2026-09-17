@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.cancel_token`.
+"""Tests for :mod:`newsclaw.runtime.cancel_token`.
 
 Phase 1 commit 2. Asserts the cooperative semantics promised by ADR-0004
 and ADR-0007:

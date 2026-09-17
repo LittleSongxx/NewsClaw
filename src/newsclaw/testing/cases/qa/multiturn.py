@@ -1,6 +1,4 @@
-"""
-多轮对话测试用例 (35个)
-"""
+"""多轮对话 demo cases（9 条）。字符串包含判定，不是质量门。"""
 
 from newsclaw.testing.runner import TestCase
 

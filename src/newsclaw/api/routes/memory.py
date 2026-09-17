@@ -254,6 +254,24 @@ def _current_owner(request: Request) -> tuple[str, str]:
     return user_id, workspace_id
 
 
+def _stranded_default_count(store: Any, workspace_id: str) -> int:
+    """``user_id=default`` 残留条数（与桌面面板 ``desktop_user`` 列表错位）。"""
+    if store is None:
+        return 0
+    try:
+        return int(
+            store.count_memories(
+                scope="user",
+                scope_owner="",
+                user_id="default",
+                workspace_id=workspace_id or "default",
+            )
+            or 0
+        )
+    except Exception:
+        return 0
+
+
 def _owner_counts(store: Any) -> dict[str, Any]:
     db = getattr(store, "db", None)
     conn = getattr(db, "_conn", None)
@@ -341,6 +359,17 @@ def _claim_graph_nodes(
                 WHERE id IN ({placeholders})
                 """,
                 [user_id, workspace_id, *memory_ids],
+            )
+            updated += cur.rowcount if cur.rowcount is not None else 0
+        if include_default_graph_nodes:
+            cur = conn.execute(
+                """
+                UPDATE mdrm_nodes
+                SET user_id = ?, workspace_id = ?
+                WHERE COALESCE(user_id, 'default') IN ('default', '', 'anonymous')
+                  AND COALESCE(workspace_id, 'default') = ?
+                """,
+                [user_id, workspace_id, workspace_id],
             )
             updated += cur.rowcount if cur.rowcount is not None else 0
         conn.commit()
@@ -745,6 +774,9 @@ async def memory_migration_status(request: Request):
         user_id=user_id,
         workspace_id=workspace_id,
     )
+    stranded_default = (
+        _stranded_default_count(store, workspace_id) if user_id == DESKTOP_USER_ID else 0
+    )
     legacy_counts = _legacy_review_counts(store)
     all_counts = _owner_counts(store)
     graph_counts = _graph_owner_counts(_get_manager(request))
@@ -765,6 +797,8 @@ async def memory_migration_status(request: Request):
         "api_version": "v4",
         "current_owner": {"user_id": user_id, "workspace_id": workspace_id},
         "current_visible": current_visible,
+        "stranded_default": stranded_default,
+        "show_stranded_default": stranded_default > 0 and current_visible == 0,
         "legacy_quarantine": legacy_counts["total"],
         "legacy_pending": legacy_counts["pending"],
         "legacy_reviewed": legacy_counts["reviewed"],
@@ -1047,6 +1081,181 @@ async def batch_delete(request: Request):
     return {"deleted": deleted, "total": len(ids)}
 
 
+_GRAPH_TYPE_MAP = {
+    "fact": "FACT",
+    "rule": "RULE",
+    "preference": "PREFERENCE",
+    "error": "ERROR",
+    "skill": "SKILL",
+    "context": "CONTEXT",
+    "experience": "EXPERIENCE",
+    "persona_trait": "PREFERENCE",
+}
+
+_GRAPH_STOPWORDS = {
+    "任务",
+    "执行",
+    "问题",
+    "需要",
+    "以及",
+    "或者",
+    "这个",
+    "一个",
+    "没有",
+    "可以",
+    "进行",
+    "使用",
+    "完成",
+    "发现",
+    "建议",
+    "因为",
+    "所以",
+    "如果",
+    "the",
+    "and",
+    "for",
+}
+
+
+def _graph_node_type(mem: Any) -> str:
+    raw = mem.type.value if hasattr(mem.type, "value") else str(mem.type or "fact")
+    return _GRAPH_TYPE_MAP.get(raw.lower(), (raw or "FACT").upper())
+
+
+def _graph_tokens(text: str) -> set[str]:
+    words = re.findall(r"[\u4e00-\u9fff]{2,}|[A-Za-z][A-Za-z0-9_-]{2,}", text or "")
+    return {w.lower() for w in words if w.lower() not in _GRAPH_STOPWORDS}
+
+
+def _merge_semantic_memories_into_graph(
+    store: Any,
+    *,
+    user_id: str,
+    workspace_id: str,
+    nodes_out: list[dict],
+    links_out: list[dict],
+    limit: int,
+) -> None:
+    """把列表面板同一桶的语义记忆叠进图谱，避免 mode2 只剩两颗无连线复盘点。"""
+    import json as _json
+    from collections import defaultdict
+
+    existing = {n["id"] for n in nodes_out}
+    all_mems = store.load_all_memories(
+        scope="user",
+        scope_owner="",
+        user_id=user_id,
+        workspace_id=workspace_id,
+    )[:limit]
+    subject_map: dict[str, list[str]] = defaultdict(list)
+    type_map: dict[str, list[str]] = defaultdict(list)
+    tokens_by_id: dict[str, set[str]] = {}
+
+    for m in all_mems:
+        mem_type = _graph_node_type(m)
+        if m.id not in existing:
+            nodes_out.append(
+                {
+                    "id": m.id,
+                    "content": (m.content or "")[:200],
+                    "node_type": mem_type,
+                    "importance": m.importance_score,
+                    "entities": [],
+                    "action_category": "",
+                    "occurred_at": m.created_at.isoformat() if m.created_at else None,
+                    "session_id": "",
+                    "project": "",
+                    "group": f"type:{mem_type.lower()}",
+                }
+            )
+            existing.add(m.id)
+        if m.subject:
+            subject_map[m.subject].append(m.id)
+        type_map[mem_type].append(m.id)
+        tokens_by_id[m.id] = _graph_tokens(m.content or "")
+
+        linked_ids = getattr(m, "linked_memory_ids", None)
+        if not linked_ids:
+            meta = getattr(m, "metadata", {}) or {}
+            if isinstance(meta, str):
+                try:
+                    meta = _json.loads(meta)
+                except Exception:
+                    meta = {}
+            linked_ids = meta.get("linked_memory_ids", []) if isinstance(meta, dict) else []
+        if isinstance(linked_ids, list):
+            for lid in linked_ids:
+                if lid in existing:
+                    links_out.append(
+                        {
+                            "source": m.id,
+                            "target": lid,
+                            "edge_type": "linked",
+                            "dimension": "context",
+                            "weight": 0.5,
+                        }
+                    )
+
+    for ids in subject_map.values():
+        if len(ids) < 2:
+            continue
+        for i, src in enumerate(ids):
+            for tgt in ids[i + 1 : i + 3]:
+                links_out.append(
+                    {
+                        "source": src,
+                        "target": tgt,
+                        "edge_type": "same_subject",
+                        "dimension": "entity",
+                        "weight": 0.4,
+                    }
+                )
+
+    # 同类型串成一簇，12 条「规则」不会各飞各的。
+    for ids in type_map.values():
+        if len(ids) < 2:
+            continue
+        hub = ids[0]
+        for tgt in ids[1:]:
+            links_out.append(
+                {
+                    "source": hub,
+                    "target": tgt,
+                    "edge_type": "same_type",
+                    "dimension": "context",
+                    "weight": 0.25,
+                }
+            )
+
+    # 关键词重叠：早报/采集/核验等会连在一起。
+    mem_ids = list(tokens_by_id)
+    overlap_added: set[tuple[str, str]] = set()
+    for i, src in enumerate(mem_ids):
+        scored: list[tuple[int, str]] = []
+        src_tok = tokens_by_id[src]
+        if len(src_tok) < 2:
+            continue
+        for tgt in mem_ids[i + 1 :]:
+            shared = len(src_tok & tokens_by_id[tgt])
+            if shared >= 2:
+                scored.append((shared, tgt))
+        scored.sort(reverse=True)
+        for shared, tgt in scored[:3]:
+            key = tuple(sorted((src, tgt)))
+            if key in overlap_added:
+                continue
+            overlap_added.add(key)
+            links_out.append(
+                {
+                    "source": src,
+                    "target": tgt,
+                    "edge_type": "topic",
+                    "dimension": "entity",
+                    "weight": min(0.85, 0.3 + shared * 0.1),
+                }
+            )
+
+
 @router.get("/graph")
 async def get_memory_graph(request: Request, limit: int = 500):
     """Return the relational memory graph for 3D visualization."""
@@ -1057,12 +1266,12 @@ async def get_memory_graph(request: Request, limit: int = 500):
     nodes_out: list[dict] = []
     links_out: list[dict] = []
     mode = "mode1"
+    user_id, workspace_id = _current_owner(request)
 
     mode_cfg = mm._get_memory_mode()
     if mode_cfg != "mode1" and mm._ensure_relational() and mm.relational_store:
         rs = mm.relational_store
         mode = "mode2"
-        user_id, workspace_id = _current_owner(request)
         raw_nodes = rs.get_all_nodes(limit=limit, user_id=user_id, workspace_id=workspace_id)
         node_ids = {n.id for n in raw_nodes}
 
@@ -1096,74 +1305,19 @@ async def get_memory_graph(request: Request, limit: int = 500):
                         "weight": e.weight,
                     }
                 )
-    else:
-        store = _get_store(request)
-        if store:
-            import json as _json
-            from collections import defaultdict
 
-            user_id, workspace_id = _current_owner(request)
-            all_mems = store.load_all_memories(
-                scope="user",
-                scope_owner="",
-                user_id=user_id,
-                workspace_id=workspace_id,
-            )[:limit]
-            subject_map: dict[str, list[str]] = defaultdict(list)
-            for m in all_mems:
-                nodes_out.append(
-                    {
-                        "id": m.id,
-                        "content": (m.content or "")[:200],
-                        "node_type": (m.type.value if hasattr(m.type, "value") else "FACT").upper(),
-                        "importance": m.importance_score,
-                        "entities": [],
-                        "action_category": "",
-                        "occurred_at": m.created_at.isoformat() if m.created_at else None,
-                        "session_id": "",
-                        "project": "",
-                        "group": f"type:{m.type.value if hasattr(m.type, 'value') else 'fact'}",
-                    }
-                )
-                if m.subject:
-                    subject_map[m.subject].append(m.id)
-
-                linked_ids = getattr(m, "linked_memory_ids", None)
-                if not linked_ids:
-                    meta = getattr(m, "metadata", {}) or {}
-                    if isinstance(meta, str):
-                        try:
-                            meta = _json.loads(meta)
-                        except Exception:
-                            meta = {}
-                    linked_ids = meta.get("linked_memory_ids", [])
-                if isinstance(linked_ids, list):
-                    node_set = {n["id"] for n in nodes_out}
-                    for lid in linked_ids:
-                        if lid in node_set:
-                            links_out.append(
-                                {
-                                    "source": m.id,
-                                    "target": lid,
-                                    "edge_type": "linked",
-                                    "dimension": "context",
-                                    "weight": 0.5,
-                                }
-                            )
-
-            for _subj, ids in subject_map.items():
-                if len(ids) >= 2:
-                    for i in range(len(ids)):
-                        for j in range(i + 1, min(i + 3, len(ids))):
-                            links_out.append(
-                                {
-                                    "source": ids[i],
-                                    "target": ids[j],
-                                    "edge_type": "same_subject",
-                                    "dimension": "entity",
-                                    "weight": 0.4,
-                                }
-                            )
+    store = _get_store(request)
+    if store:
+        _merge_semantic_memories_into_graph(
+            store,
+            user_id=user_id,
+            workspace_id=workspace_id,
+            nodes_out=nodes_out,
+            links_out=links_out,
+            limit=limit,
+        )
+        if any(n.get("group", "").startswith("type:") for n in nodes_out) and mode == "mode2":
+            mode = "mixed"
 
     return {
         "nodes": nodes_out,

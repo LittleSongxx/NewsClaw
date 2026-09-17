@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.context` -- grouping / budget / compress."""
+"""Tests for :mod:`newsclaw.runtime.context` -- grouping / budget / compress."""
 
 from __future__ import annotations
 

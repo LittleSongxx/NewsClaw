@@ -30,7 +30,7 @@ class TestPromptCompileFunctions:
         assert "PLATFORM_OWNED_SAFETY_RULE" not in result
         assert estimate_tokens(result) <= 600
 
-    def test_agent_behavior_owns_only_openakita_specific_deltas(self):
+    def test_agent_behavior_owns_only_newsclaw_specific_deltas(self):
         from newsclaw.prompt.budget import estimate_tokens
         from newsclaw.prompt.compiler import _COMPILE_PROMPTS, _compile_with_rules
 
@@ -180,7 +180,7 @@ class TestBuildSystemPrompt:
         assert "中秋 喜欢深入思考" in prompt
         assert "{{agent_name}}" not in prompt
 
-    def test_agent_voice_empty_falls_back_to_openakita(self, tmp_path):
+    def test_agent_voice_empty_falls_back_to_newsclaw(self, tmp_path):
         """空 agent_voice 应该回退到默认产品名，不留下裸占位符。"""
         from newsclaw.prompt.builder import build_system_prompt
 

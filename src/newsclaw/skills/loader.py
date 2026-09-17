@@ -482,11 +482,11 @@ class SkillLoader:
 
         # Bundled external skills declare namespaced metadata in the form
         # ``newsclaw/skills@<dir>`` (NewsClaw 本地化命名；上游旧前缀
-        # ``openakita/skills@<dir>`` 继续作为候选，保证存量自定义预设/白名单
+        # ``newsclaw/skills@<dir>`` 继续作为候选，保证存量自定义预设/白名单
         # 仍可解析）。Preset profiles and default allowlists use that key, so
         # matching it here avoids reading SKILL.md just to learn it.
         candidates.add(f"newsclaw/skills@{skill_dir.name}")
-        candidates.add(f"openakita/skills@{skill_dir.name}")
+        candidates.add(f"newsclaw/skills@{skill_dir.name}")
         candidates.add(f"obra/superpowers@{skill_dir.name.removeprefix('superpowers-')}")
 
         try:

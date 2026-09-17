@@ -23,6 +23,13 @@ def _newsroom_editor_directive() -> str:
     return EDITOR_DIRECTIVE
 
 
+def _newsroom_collector_directive() -> str:
+    """news-collector 只采集不写稿。"""
+    from ..newsroom.prompts import COLLECTOR_DIRECTIVE
+
+    return COLLECTOR_DIRECTIVE
+
+
 SYSTEM_PRESETS: list[AgentProfile] = [
     # ── 通用基础 ──────────────────────────────────────────────────────
     AgentProfile(
@@ -90,7 +97,7 @@ SYSTEM_PRESETS: list[AgentProfile] = [
         # 类别名与具体工具名可混用（expand_tool_categories 支持）。
         tools=[
             # 文件
-            "read_file", "write_file", "edit_file", "list_directory", "glob", "grep", "run_shell",
+            "read_file", "write_file", "edit_file", "append_file", "list_directory", "glob", "grep",
             # 检索
             "web_search", "news_search", "web_fetch",
             # 记忆与技能说明
@@ -116,6 +123,28 @@ SYSTEM_PRESETS: list[AgentProfile] = [
         description_i18n={
             "zh": "AI 早报主线：采集 AI 圈新闻，产出小红书/公众号/日报三产物并沉淀 Wiki",
             "en": "AI newsroom: daily briefing, Xiaohongshu/WeChat drafts, wiki archival",
+        },
+    ),
+    # ── 早报采集员（只搜不写；content-creator 仍给聊天/组织树改稿用）──
+    AgentProfile(
+        id="news-collector",
+        name="早报采集员",
+        description="AI 早报并行采集：只搜索/抓页，交差结构化条目，不写终稿",
+        type=AgentType.SYSTEM,
+        skills=[],
+        skills_mode=SkillsMode.INCLUSIVE,
+        tools=["web_search", "news_search", "web_fetch", "get_skill_info"],
+        tools_mode="inclusive",
+        custom_prompt=_newsroom_collector_directive(),
+        icon="🔎",
+        color="#2A9D8F",
+        category="content",
+        fallback_profile_id="default",
+        created_by="system",
+        name_i18n={"zh": "早报采集员", "en": "News Collector"},
+        description_i18n={
+            "zh": "早报并行采集：只搜索与抓页，不写终稿、不写盘",
+            "en": "Newsroom collector: search and fetch only, no writing",
         },
     ),
     # ── 内容创作 ──────────────────────────────────────────────────────

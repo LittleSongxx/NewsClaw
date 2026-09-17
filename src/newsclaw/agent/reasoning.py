@@ -1,8 +1,7 @@
-"""Canonical ReasoningEngine driven by ``runtime.state_graph.StateGraph``.
+"""ReAct 推理引擎的公开封装。
 
-The public class uses the complete private runtime loop and wires a
-:class:`StateGraph` on top to make Decision-to-node routing explicit. It also
-composes the extracted guards and tool filters into engine methods.
+真主循环在 ``core/_reasoning_runtime.py`` 的 ``_reason_stream_impl``。
+本模块上的 ``decision_graph`` 是内省用 StateGraph，**未接线**，不要当成图调度。
 """
 
 from __future__ import annotations
@@ -156,7 +155,7 @@ def build_reasoning_graph() -> StateGraph:
 
 
 class ReasoningEngine(_RuntimeReasoningBase):
-    """Canonical ReAct engine with explicit :class:`StateGraph` routing.
+    """Canonical ReAct engine. ``decision_graph`` is deprecated introspection.
 
     Inherits the canonical ``reason_stream`` loop, its non-streaming ``run``
     event consumer, and shared helpers such as ``release_large_buffers``
@@ -166,8 +165,7 @@ class ReasoningEngine(_RuntimeReasoningBase):
     :meth:`evaluate_decision`, :meth:`filter_tools`,
     :meth:`should_block`, and :meth:`describe_routing`.
 
-    Honest scope: the event loop does not yet consume :attr:`decision_graph`.
-    The graph remains an introspection and extension point for callers.
+    真主循环不消费 :attr:`decision_graph`。不要把本引擎讲成图调度。
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -178,7 +176,10 @@ class ReasoningEngine(_RuntimeReasoningBase):
 
     @property
     def decision_graph(self) -> StateGraph:
-        """Constructed reasoning :class:`StateGraph` for this engine."""
+        """已弃用：仅供内省，``reason_stream`` 主循环不消费此图。
+
+        Deprecated. Do not describe NewsClaw as graph-scheduled.
+        """
         return self._decision_graph
 
     async def route_decision(self, current_node: str, decision: Decision | None) -> str | None:

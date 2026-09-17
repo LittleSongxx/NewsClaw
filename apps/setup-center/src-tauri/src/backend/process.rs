@@ -13,7 +13,7 @@ pub(crate) fn workspace_dir(id: &str) -> PathBuf {
 }
 
 pub(crate) fn service_pid_file(workspace_id: &str) -> PathBuf {
-    run_dir().join(format!("openakita-{}.pid", workspace_id))
+    run_dir().join(format!("newsclaw-{}.pid", workspace_id))
 }
 
 pub(crate) fn backend_manual_stop_marker(workspace_id: &str) -> PathBuf {
@@ -203,7 +203,7 @@ pub(crate) fn can_auto_stop_backend(workspace_id: &str, pid: u32) -> bool {
 
     // Release builds still need to replace orphaned old packaged backends after
     // an app upgrade. In dev, an untracked backend is usually a manually started
-    // `python -m openakita serve`, so keep it alive.
+    // `python -m newsclaw serve`, so keep it alive.
     !cfg!(debug_assertions)
 }
 
@@ -218,11 +218,11 @@ pub(crate) fn list_service_pids() -> Vec<ServicePidEntry> {
         let Some(name) = p.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
-        if !name.starts_with("openakita-") || !name.ends_with(".pid") {
+        if !name.starts_with("newsclaw-") || !name.ends_with(".pid") {
             continue;
         }
         let ws = name
-            .trim_start_matches("openakita-")
+            .trim_start_matches("newsclaw-")
             .trim_end_matches(".pid")
             .to_string();
         if let Some(data) = read_pid_file(&ws) {
@@ -417,7 +417,7 @@ pub(crate) fn stop_service_pid_entry(
 
 /// 启动锁文件路径
 pub(crate) fn service_lock_file(workspace_id: &str) -> PathBuf {
-    run_dir().join(format!("openakita-{}.lock", workspace_id))
+    run_dir().join(format!("newsclaw-{}.lock", workspace_id))
 }
 
 /// 尝试获取启动锁（原子创建文件），成功返回 true
@@ -701,7 +701,7 @@ pub(crate) fn kill_pid(pid: u32) -> Result<(), String> {
     }
 }
 
-/// 检查指定 PID 是否属于 OpenAkita 后端进程（python/openakita-server）。
+/// 检查指定 PID 是否属于 NewsClaw 后端进程（python/newsclaw-server）。
 /// 用于判断 PID 文件是否有效——避免 Windows PID 复用导致的误判。
 pub(crate) fn is_newsclaw_process(pid: u32) -> bool {
     if pid == 0 || !is_pid_running(pid) {
@@ -737,15 +737,15 @@ pub(crate) fn is_newsclaw_process(pid: u32) -> bool {
             win::CloseHandle(snap);
         }
 
-        // 进程名包含 python 或 openakita-server → 可能是后端
-        if exe_name.contains("openakita-server") {
+        // 进程名包含 python 或 newsclaw-server → 可能是后端
+        if exe_name.contains("newsclaw-server") {
             return true;
         }
         if !exe_name.contains("python") {
-            return false; // 既不是 python 也不是 openakita-server，肯定不是后端
+            return false; // 既不是 python 也不是 newsclaw-server，肯定不是后端
         }
 
-        // Step 2: python 进程需进一步检查命令行是否包含 openakita
+        // Step 2: python 进程需进一步检查命令行是否包含 newsclaw
         let mut c = Command::new("powershell");
         c.args([
             "-NoProfile",
@@ -759,21 +759,21 @@ pub(crate) fn is_newsclaw_process(pid: u32) -> bool {
         apply_no_window(&mut c);
         if let Ok(out) = c.output() {
             let s = String::from_utf8_lossy(&out.stdout).to_lowercase();
-            return s.contains("openakita");
+            return s.contains("newsclaw");
         }
         false
     }
     #[cfg(target_os = "linux")]
     {
         if let Ok(cmdline) = fs::read_to_string(format!("/proc/{}/cmdline", pid)) {
-            return cmdline.to_lowercase().contains("openakita");
+            return cmdline.to_lowercase().contains("newsclaw");
         }
         let output = Command::new("ps")
             .args(["-p", &pid.to_string(), "-o", "args="])
             .output();
         if let Ok(out) = output {
             let s = String::from_utf8_lossy(&out.stdout).to_lowercase();
-            return s.contains("openakita");
+            return s.contains("newsclaw");
         }
         false
     }
@@ -784,13 +784,13 @@ pub(crate) fn is_newsclaw_process(pid: u32) -> bool {
             .output();
         if let Ok(out) = output {
             let s = String::from_utf8_lossy(&out.stdout).to_lowercase();
-            return s.contains("openakita");
+            return s.contains("newsclaw");
         }
         false
     }
 }
 
-/// 扫描并杀死所有进程名为 python/pythonw 且命令行包含 "openakita" 和 "serve" 的进程。
+/// 扫描并杀死所有进程名为 python/pythonw 且命令行包含 "newsclaw" 和 "serve" 的进程。
 /// 用于托盘退出时兜底清理孤儿进程（PID 文件可能已被删除但进程仍存活）。
 /// 返回被杀掉的 PID 列表。
 pub(crate) fn kill_newsclaw_orphans() -> Vec<u32> {
@@ -817,8 +817,8 @@ pub(crate) fn kill_newsclaw_orphans() -> Vec<u32> {
                 if name_lower.contains("python") {
                     python_pids.push(pe.th32_process_id);
                 }
-                // PyInstaller 打包后端进程名为 openakita-server.exe
-                if name_lower.contains("openakita-server") {
+                // PyInstaller 打包后端进程名为 newsclaw-server.exe
+                if name_lower.contains("newsclaw-server") {
                     bundled_pids.push(pe.th32_process_id);
                 }
                 if unsafe { win::Process32NextW(snap, &mut pe) } == 0 {
@@ -830,9 +830,9 @@ pub(crate) fn kill_newsclaw_orphans() -> Vec<u32> {
             win::CloseHandle(snap);
         }
 
-        // Step 1.5: kill orphaned openakita-server.exe (PyInstaller bundled
+        // Step 1.5: kill orphaned newsclaw-server.exe (PyInstaller bundled
         // backend). The original code killed every process named like that on
-        // sight, which is unsafe when the user has another OpenAkita install
+        // sight, which is unsafe when the user has another NewsClaw install
         // running (e.g. portable + installed side by side) — we'd terminate
         // the other instance's backend. Mirror the python branch and verify
         // the command line contains the `serve` subcommand before killing;
@@ -868,7 +868,7 @@ pub(crate) fn kill_newsclaw_orphans() -> Vec<u32> {
             killed.push(ppid);
         }
 
-        // Step 2: 对每个 python 进程查命令行，判断是否是 openakita serve 进程
+        // Step 2: 对每个 python 进程查命令行，判断是否是 newsclaw serve 进程
         // 使用 PowerShell Get-CimInstance 替代已废弃的 wmic（Windows 11 已移除 wmic）
         for ppid in python_pids {
             let mut c = Command::new("powershell");
@@ -885,7 +885,7 @@ pub(crate) fn kill_newsclaw_orphans() -> Vec<u32> {
             if let Ok(out) = c.output() {
                 let s = String::from_utf8_lossy(&out.stdout).to_lowercase();
                 // 精确匹配模块调用签名
-                if s.contains("openakita.main") && (s.contains(" serve") || s.ends_with("serve")) {
+                if s.contains("newsclaw.main") && (s.contains(" serve") || s.ends_with("serve")) {
                     if is_pid_running(ppid) {
                         let _ = kill_pid(ppid);
                         killed.push(ppid);
@@ -896,7 +896,7 @@ pub(crate) fn kill_newsclaw_orphans() -> Vec<u32> {
     }
     #[cfg(not(windows))]
     {
-        // 搜索 openakita.main serve (venv 模式) 和 openakita-server (PyInstaller 模式)
+        // 搜索 newsclaw.main serve (venv 模式) 和 newsclaw-server (PyInstaller 模式)
         let patterns = [
             "ps aux | grep '[o]penakita\\.main.*serve' | awk '{print $2}'",
             "ps aux | grep '[o]penakita-server' | awk '{print $2}'",
@@ -942,7 +942,7 @@ pub(crate) fn kill_newsclaw_orphans() -> Vec<u32> {
     killed
 }
 
-/// 扫描所有进程名含 python 且命令行包含 "openakita" 和 "serve" 的进程。
+/// 扫描所有进程名含 python 且命令行包含 "newsclaw" 和 "serve" 的进程。
 /// 返回 NewsClawProcess 列表，供前端多进程检测使用。
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -1002,8 +1002,8 @@ pub(crate) fn newsclaw_list_processes() -> Vec<NewsClawProcess> {
             if let Ok(cmd_out) = c.output() {
                 let s = String::from_utf8_lossy(&cmd_out.stdout).to_string();
                 let s_lower = s.to_lowercase();
-                // 精确匹配模块调用签名，避免 venv 路径中 .openakita 误报
-                if s_lower.contains("openakita.main")
+                // 精确匹配模块调用签名，避免 venv 路径中 .newsclaw 误报
+                if s_lower.contains("newsclaw.main")
                     && (s_lower.contains(" serve") || s_lower.ends_with("serve"))
                 {
                     if is_pid_running(ppid) {
@@ -1027,7 +1027,7 @@ pub(crate) fn newsclaw_list_processes() -> Vec<NewsClawProcess> {
     }
     #[cfg(not(windows))]
     {
-        // ps aux | grep openakita.main.*serve  —— 精确匹配模块调用
+        // ps aux | grep newsclaw.main.*serve  —— 精确匹配模块调用
         if let Ok(ps_out) = Command::new("sh")
             .args(["-c", "ps aux | grep '[o]penakita\\.main.*serve'"])
             .output()
@@ -1051,7 +1051,7 @@ pub(crate) fn newsclaw_list_processes() -> Vec<NewsClawProcess> {
     out
 }
 
-/// 停止所有检测到的 OpenAkita serve 进程。
+/// 停止所有检测到的 NewsClaw serve 进程。
 /// 返回被停止的 PID 列表。
 #[tauri::command]
 pub(crate) fn newsclaw_stop_all_processes() -> Vec<u32> {
@@ -1067,7 +1067,7 @@ pub(crate) fn newsclaw_stop_all_processes() -> Vec<u32> {
         }
     }
 
-    // 第 2 层：兜底扫描所有命令行含 openakita serve 的 python 进程并杀掉
+    // 第 2 层：兜底扫描所有命令行含 newsclaw serve 的 python 进程并杀掉
     let orphans = kill_newsclaw_orphans();
     for pid in orphans {
         if !stopped.contains(&pid) {
@@ -1085,7 +1085,7 @@ mod tests {
     #[test]
     fn manual_backend_stop_marker_persists_until_explicit_start() {
         let test_dir = std::env::temp_dir().join(format!(
-            "openakita-manual-stop-test-{}-{}",
+            "newsclaw-manual-stop-test-{}-{}",
             std::process::id(),
             now_ms()
         ));

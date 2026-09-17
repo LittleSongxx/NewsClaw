@@ -336,26 +336,15 @@ def check_permission(
             decision_chain=chain,
         )
     except Exception as e:
-        # adapter 自身已 fail-closed 包过一层（engine 异常→DENY 危险/ALLOW 安全），
-        # 这里捕获的是 import 级 / 调用前置异常（极罕见）。继续保留 v1 一致语义。
+        # adapter 自身已 fail-closed（一律 DENY，含只读）。这里捕获的是
+        # import 级 / 调用前置异常；同样一律拒绝，避免只读路径 fail-open。
         chain.append({"layer": "policy_engine_v2", "error": str(e)})
-        if _should_fail_closed(tool_name):
-            logger.error(
-                f"[Permission] PolicyEngineV2 unavailable, fail-closed for {tool_name}: {e}"
-            )
-            return PermissionDecision(
-                behavior="deny",
-                reason="安全策略暂时不可用，已阻止高风险操作，请稍后重试。",
-                reason_detail=f"PolicyEngineV2 not available for risky tool: {e}",
-                policy_name="PolicyEngineV2Unavailable",
-                decision_chain=chain,
-            )
-        logger.warning(
-            f"[Permission] PolicyEngineV2 unavailable, fail-open for safe read path: {e}"
+        logger.error(
+            f"[Permission] PolicyEngineV2 unavailable, fail-closed for {tool_name}: {e}"
         )
         return PermissionDecision(
-            behavior="allow",
-            reason="",
+            behavior="deny",
+            reason="安全策略暂时不可用，已阻止本次工具调用，请稍后重试。",
             reason_detail=f"PolicyEngineV2 not available: {e}",
             decision_chain=chain,
         )

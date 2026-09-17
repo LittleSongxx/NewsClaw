@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.supervisor`.
+"""Tests for :mod:`newsclaw.runtime.supervisor`.
 
 Phase 3 commit 3. Covers the full outer/inner loop integration of
 TaskLedger + ProgressLedger + StallDetector + Checkpointer + StreamBus

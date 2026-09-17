@@ -14,7 +14,8 @@ import { toast } from "sonner";
 /**
  * 本地 Wiki 知识库（/api/wiki/*）。
  *
- * 数据源是本地 Markdown 知识库（默认 data/wiki/，也可指向你的 Obsidian 库）：
+ * 数据源是 newsroom 配置的 ``obsidian_vault``。未配置时整条 Wiki 关闭，
+ * 不会回落到 data/wiki。
  * 每期早报的要点由 wiki_upsert 工具沉淀为「主题 / 公司」原子页，页内按日期分节、
  * 页面之间用 [[双链]] 互链，MOC.md 是自动维护的索引页。
  *
@@ -33,6 +34,7 @@ type WikiPage = {
 
 type WikiInfo = {
   root: string;
+  enabled?: boolean;
   exists: boolean;
   page_count: number;
   topic_count: number;
@@ -251,6 +253,12 @@ export function WikiView({ serviceRunning, apiBaseUrl = "" }: { serviceRunning: 
           </Button>
         </div>
       </div>
+
+      {info && info.enabled === false && (
+        <Card className="p-4 text-sm text-muted-foreground">
+          未配置 obsidian_vault，本地 Wiki 已关闭。在早报设置里填入 Obsidian 库路径后才会写入与展示。
+        </Card>
+      )}
 
       {mode === "graph" ? (
         <Card className="p-0 gap-0 border-border/50 shadow-sm">

@@ -4,7 +4,7 @@ from newsclaw.utils.errors import format_user_friendly_error
 def test_format_user_friendly_error_hides_plugin_cache_permission_path():
     raw = (
         "[WinError 5] 拒绝访问。: "
-        "'C:\\Users\\Peilong_Hong\\.openakita\\modules\\happyhorse-video\\"
+        "'C:\\Users\\Peilong_Hong\\.newsclaw\\modules\\happyhorse-video\\"
         "site-packages-py311-runtime\\certifi-2026.4.22.dist-info'"
     )
 
@@ -18,7 +18,7 @@ def test_format_user_friendly_error_hides_plugin_cache_permission_path():
 def test_format_user_friendly_error_hides_traceback_path():
     raw = (
         "Traceback (most recent call last):\n"
-        '  File "D:\\NewsClaw\\src\\openakita\\foo.py", line 12, in run\n'
+        '  File "D:\\NewsClaw\\src\\newsclaw\\foo.py", line 12, in run\n'
         "RuntimeError: boom"
     )
 

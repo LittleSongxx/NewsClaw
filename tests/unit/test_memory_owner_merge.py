@@ -201,17 +201,19 @@ def test_merge_owner_endpoint_dry_run_then_execute(tmp_path):
 
     client = _memory_client(manager)
 
-    # Before merge the desktop panel (desktop_user) sees nothing.
-    assert client.get("/api/memories").json()["total"] == 0
-
+    # 不先打 GET /api/memories：列表面板会自动吸收 default 桶，干跑就看不到源了。
     dry = client.post("/api/memories/merge-owner", json={})
     assert dry.status_code == 200
     dry_body = dry.json()
     assert dry_body["dry_run"] is True
     assert dry_body["source_total"] == 2
     assert dry_body["merged"] == 2
-    # Dry run wrote nothing.
-    assert client.get("/api/memories").json()["total"] == 0
+    # Dry run wrote nothing — 源桶仍在 default。
+    assert set(_active_contents(manager, "default")) == {
+        "用户之前在苏州工作过三年",
+        "项目使用 FastAPI 作为后端框架",
+    }
+    assert _active_contents(manager, "desktop_user") == []
 
     real = client.post("/api/memories/merge-owner", json={"dry_run": False})
     assert real.status_code == 200
@@ -223,6 +225,29 @@ def test_merge_owner_endpoint_dry_run_then_execute(tmp_path):
     assert listing["total"] == 2
     contents = {m["content"] for m in listing["memories"]}
     assert contents == {"用户之前在苏州工作过三年", "项目使用 FastAPI 作为后端框架"}
+
+
+def test_graph_overlays_semantic_memories_on_sparse_mode2(tmp_path):
+    manager = _manager(tmp_path)
+    manager.start_session("session-a", user_id="desktop_user")
+    _put(manager, "AI 早报每条新闻需包含标题、来源和原始链接", user_id="desktop_user")
+    _put(manager, "AI 早报时间窗为最近 24-48 小时", user_id="desktop_user")
+    client = _memory_client(manager)
+    graph = client.get("/api/memories/graph?limit=50").json()
+    assert graph["meta"]["total_nodes"] >= 2
+    contents = {n["content"] for n in graph["nodes"]}
+    assert any("早报" in c for c in contents)
+    assert graph["meta"]["total_edges"] >= 1
+
+
+def test_migration_status_flags_stranded_default_when_list_empty(tmp_path):
+    manager = _manager(tmp_path)
+    _put(manager, "用户之前在苏州工作过三年", user_id="default")
+    client = _memory_client(manager)
+    status = client.get("/api/memories/migration-status").json()
+    assert status["current_visible"] == 0
+    assert status["stranded_default"] == 1
+    assert status["show_stranded_default"] is True
 
 
 def test_merge_owner_endpoint_503_without_manager():

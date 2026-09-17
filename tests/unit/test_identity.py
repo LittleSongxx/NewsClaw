@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-# ``Identity`` is canonically defined in ``openakita.agent.identity`` (ADR-0003
+# ``Identity`` is canonically defined in ``newsclaw.agent.identity`` (ADR-0003
 # split). The ``core.identity`` shim re-exports it, but ``monkeypatch.setattr``
 # must target the module where ``_sync_identity_file`` actually looks the helper
 # up, i.e. the canonical agent module — patching the shim would be a no-op.
@@ -62,7 +62,7 @@ class TestIdentityLoading:
         assert isinstance(prompt, str)
         assert len(prompt) > 0
 
-    def test_get_system_prompt_does_not_inject_openakita_self_identity(self, tmp_path):
+    def test_get_system_prompt_does_not_inject_newsclaw_self_identity(self, tmp_path):
         identity_dir = tmp_path / "identity"
         identity_dir.mkdir()
         (identity_dir / "SOUL.md").write_text("# Soul\n\n你是 CloseBeta。", encoding="utf-8")

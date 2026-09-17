@@ -3,11 +3,10 @@ Agent 主类 - 协调所有模块
 
 这是 NewsClaw 的核心，负责:
 - 接收用户输入
-- 协调各个模块
-- 执行工具调用
-- 执行 Ralph 循环
+- 协调 Brain / 工具 / 会话
+- 通过 ReasoningEngine 跑 ReAct 循环
 - 管理对话和记忆
-- 自我进化（技能搜索、安装、生成）
+- 技能搜索、安装与热更新
 
 Skills 系统遵循 Agent Skills 规范 (agentskills.io)
 MCP 系统遵循 Model Context Protocol 规范 (modelcontextprotocol.io)
@@ -51,7 +50,7 @@ if TYPE_CHECKING:
 # agent.core -> _agent_runtime -> shim). See ADR-0003.
 from newsclaw.agent.errors import UserCancelledError
 from newsclaw.agent.identity import Identity
-from newsclaw.agent.ralph import RalphLoop, Task, TaskResult
+from newsclaw.agent.ralph import Task, TaskResult
 from newsclaw.agent.skill_manager import SkillManager
 from newsclaw.agent.user_profile import get_profile_manager
 
@@ -513,7 +512,7 @@ class Agent:
     """
     NewsClaw 主类
 
-    一个全能自进化AI助手，基于 Ralph Wiggum 模式永不放弃。
+    协调身份、模型、工具与 ReAct 推理循环。
     """
 
     # 基础工具定义 (Claude API tool use format)
@@ -630,6 +629,30 @@ class Agent:
         else:
             tls[key] = value
 
+    def _adopt_session_on_current_task(
+        self,
+        session: Any = None,
+        session_id: str | None = None,
+        conversation_id: str | None = None,
+    ) -> None:
+        """把会话状态绑到当前 asyncio 任务（ContextVar 只向子任务传播）。
+
+        流式 ``chat_with_session_stream`` 把 ``_prepare_session_context`` 放到
+        ``asyncio.create_task`` 里跑，好让准备阶段心跳还能往外推。子任务写入的
+        ``_current_session`` 只落在子任务 TLS key 上，ContextVar 不会回写父任务。
+        工具（含 ``delegate_to_agent``）跑在父任务上，准备成功后必须再绑一次，
+        否则会报 "No active session — delegation requires a session context"。
+
+        给 ``_current_session`` 赋值会同时 ``_inherited_task_key.set(key)``，
+        之后再 ``create_task`` 的工具协程才能继承同一把 key。
+        """
+        if session is not None:
+            self._current_session = session
+        if session_id:
+            self._current_session_id = session_id
+        if conversation_id:
+            self._current_conversation_id = conversation_id
+
     def __init__(
         self,
         name: str | None = None,
@@ -646,11 +669,6 @@ class Agent:
 
         self.identity = Identity()
         self.brain = brain or Brain(api_key=api_key)
-        self.ralph = RalphLoop(
-            max_iterations=settings.max_iterations,
-            on_iteration=self._on_iteration,
-            on_error=self._on_error,
-        )
 
         # 初始化基础工具
         # 显式传入 settings.project_root，确保 Windows 自启动场景不会落到 System32。
@@ -1929,9 +1947,10 @@ class Agent:
         """
         加载已安装的技能 (遵循 Agent Skills 规范)
 
-        技能从以下目录加载:
-        - skills/ (项目级别)
-        - .cursor/skills/ (Cursor 兼容)
+        技能从以下目录加载（与 skills/loader.py 的 SKILL_DIRECTORIES 一致）:
+        - __builtin__（随包分发的内置技能）
+        - 工作区 skills（settings.skills_path，不是 .cursor/skills）
+        - 项目 skills/
         """
         await self.skill_manager.load_installed_skills()
         self._skill_catalog_text = self.skill_manager.catalog_text
@@ -1968,14 +1987,13 @@ class Agent:
         self._skill_activation.update_available_toolsets(categories)
 
     def _start_skill_watcher(self) -> None:
-        """F9: Start watching skill directories for hot-reload."""
+        """监视 loader 实际扫描的技能目录（与 SKILL_DIRECTORIES 对齐）。"""
         try:
             from ..skills.watcher import SkillWatcher
 
-            watch_dirs = [
-                settings.skills_path,
-                settings.project_root / ".cursor" / "skills",
-            ]
+            watch_dirs = self.skill_loader.discover_skill_directories(
+                settings.project_root
+            )
             self._skill_watcher = SkillWatcher(
                 directories=watch_dirs,
                 on_change=self._on_skills_dir_changed,
@@ -3365,8 +3383,10 @@ class Agent:
                 "\n\n---\n"
                 "## 🔒 子 Agent 工作模式\n"
                 "你当前是被主 Agent 委派的**子 Agent**，专注完成被分配的任务即可。\n"
+                "你**看不到父对话历史**：上下文默认是空的，只收到任务指令、"
+                "委派原因和显式附件。\n"
                 "**禁止**使用 delegate_to_agent、delegate_parallel、create_agent、"
-                "spawn_agent 等委派工具。不要创建或委派其他 Agent。\n"
+                "spawn_agent 等委派工具。不要创建或委派其他 Agent（单跳，没有孙 Agent）。\n"
                 "直接用你自己的专业工具（如 web_search、browser、read_file 等）完成任务。\n"
                 "\n"
                 "### 数据结论零伪造原则（必须遵守）\n"
@@ -3427,7 +3447,7 @@ class Agent:
 1. `delegate_to_agent(agent_id, message, reason)` — 首选，直接委派
 2. `spawn_agent(inherit_from, message, ...)` — 需要定制或并行副本时
 3. `delegate_parallel(tasks=[...])` — 多个独立任务同时执行
-4. `create_agent(...)` — 最后手段，系统中完全没有相关 Agent 时才用
+4. `create_agent(...)` — 已禁用；现场造人格不被支持，请改用 spawn_agent
 
 ### 规则
 
@@ -3435,6 +3455,7 @@ class Agent:
 - 独立任务用 `delegate_parallel` 并行，有依赖的串行
 - message 必须包含充分上下文，让目标 Agent 独立完成
 - 结果返回后整合并用你自己的语气回复用户
+- **空上下文派工**：子 Agent 默认看不到父对话，只收任务说明 + 显式附件
 - **单跳委派**：子 Agent 被剥离全部委派工具，无法再向下委派（不存在孙 Agent），不要规划多层递归委派；每会话最多 5 个动态 Agent
 - 对话历史中的 <<DELEGATION_TRACE>> 和 <<TOOL_TRACE>>（旧版 [子Agent工作总结] / [执行摘要]）是已完成的事实，不要重复执行
 - **重要**：这两个 marker 是系统注入的、由真实工具凭证支撑的回放摘要；不要在你自己的回复中模仿这种格式编造执行结果"""
@@ -6396,6 +6417,13 @@ class Agent:
                     with contextlib.suppress(asyncio.CancelledError):
                         await _prepare_task
 
+            # 子任务 prepare 成功后，会话 TLS 仍挂在子任务 key 上；工具跑在本任务。
+            self._adopt_session_on_current_task(
+                session=session,
+                session_id=session_id,
+                conversation_id=conversation_id,
+            )
+
             yield {"type": "preparation_stage", "stage": "ready"}
 
             _compiler_hint = self._build_slow_compiler_hint(session_id)
@@ -8156,28 +8184,33 @@ class Agent:
 
         task.mark_in_progress()
         conversation_id = task.session_id or f"task:{task.id}"
-        self._current_session_id = conversation_id
         # headless（调度/CLI）任务此前只设置会话 id 字符串，没有 Session 对象，
         # 导致 delegate_* 等依赖 ``agent._current_session`` 的工具报
         # "No active session"。这里补一个最小会话，并把归属 profile 设为自身，
         # 让编排器按正确的 Agent 身份路由与聚合。
-        if getattr(self, "_current_session", None) is None:
+        session = getattr(self, "_current_session", None)
+        if session is None:
             try:
                 from ..sessions.session import Session
 
-                _headless_session = Session.create(
+                session = Session.create(
                     channel="scheduler",
                     chat_id=conversation_id,
                     user_id="owner",
                     chat_type="private",
                     display_name="scheduled task",
                 )
-                _headless_session.context.agent_profile_id = (
+                session.context.agent_profile_id = (
                     getattr(self, "_agent_profile_id", "default") or "default"
                 )
-                self._current_session = _headless_session
             except Exception as exc:  # 会话创建失败不应阻断任务本体
                 logger.debug("[Task] headless session unavailable: %s", exc)
+                session = None
+        self._adopt_session_on_current_task(
+            session=session,
+            session_id=conversation_id,
+            conversation_id=conversation_id,
+        )
 
         # 记忆 owner 对齐：调度/CLI 无头任务是 owner 的代理执行，长期记忆应与
         # 桌面面板同桶（desktop_user），否则会出现"面板 0 条、审查却有 N 条"的
@@ -8446,14 +8479,6 @@ class Agent:
         logger.info(f"Self-check complete: {results['status']}")
 
         return results
-
-    def _on_iteration(self, iteration: int, task: Task) -> None:
-        """Ralph 循环迭代回调"""
-        logger.debug(f"Ralph iteration {iteration} for task {task.id}")
-
-    def _on_error(self, error: str, task: Task) -> None:
-        """Ralph 循环错误回调"""
-        logger.warning(f"Ralph error for task {task.id}: {error}")
 
     @property
     def is_initialized(self) -> bool:

@@ -485,7 +485,7 @@ def _resolve_pip_runner() -> tuple[str, list[str]]:
     against the default pypi.org.
 
     In a PyInstaller-frozen build ``sys.executable`` points at
-    ``openakita-server.exe`` which intercepts Click args and refuses
+    ``newsclaw-server.exe`` which intercepts Click args and refuses
     ``-m pip``. We must instead use ``runtime_env.get_python_executable()``
     which resolves to the real ``_internal/python.exe`` (or the workspace /
     user venv when one was bootstrapped). For source / pip-installed
@@ -553,7 +553,7 @@ def _run_pip_with_progress(
 ) -> subprocess.CompletedProcess[str]:
     # Separate file handles avoid pipe backpressure and allow a timeout even when
     # pip is silent. Keep only a bounded tail in memory for failure diagnostics.
-    with tempfile.TemporaryDirectory(prefix="openakita-pip-") as temp:
+    with tempfile.TemporaryDirectory(prefix="newsclaw-pip-") as temp:
         path = Path(temp) / "output.log"
         with (
             path.open("wb") as output,
@@ -840,7 +840,7 @@ def install_from_git(
 
     git_url = _normalize_git_url(source)
 
-    with tempfile.TemporaryDirectory(prefix="openakita-git-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="newsclaw-git-") as tmp:
         tmp_path = Path(tmp)
         clone_dir = tmp_path / "repo"
         cmd = ["git", "clone", "--depth", "1"]
@@ -943,7 +943,7 @@ def install_from_url(
     if progress:
         progress.update("downloading", f"正在下载: {url[:80]}", 10)
 
-    with tempfile.TemporaryDirectory(prefix="openakita-plugin-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="newsclaw-plugin-") as tmp:
         tmp_path = Path(tmp)
         archive = tmp_path / "plugin.zip"
         _download_to_file(url, archive)

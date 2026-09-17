@@ -47,10 +47,10 @@ export function friendlyFetchError(rawError: string, t: (k: string, vars?: Recor
 
 /**
  * 前端版 infer_capabilities：根据模型名推断能力。
- * 与 Python 端 openakita.llm.capabilities.infer_capabilities 的关键词规则保持一致。
+ * 与 Python 端 newsclaw.llm.capabilities.infer_capabilities 的关键词规则保持一致。
  *
  * ⚠ 维护提示：如果 Python 端的推断规则有修改，需要同步更新此函数。
- * 参见: src/openakita/llm/capabilities.py → infer_capabilities()
+ * 参见: src/newsclaw/llm/capabilities.py → infer_capabilities()
  */
 export function inferCapabilities(modelName: string, _providerSlug?: string | null): Record<string, boolean> {
   const m = modelName.toLowerCase();
@@ -350,7 +350,7 @@ export async function safeFetchResponse(url: string, init?: RequestInit): Promis
     if (body?.error === "setup_required") {
       try {
         window.dispatchEvent(
-          new CustomEvent("openakita:setup-required", { detail: body }),
+          new CustomEvent("newsclaw:setup-required", { detail: body }),
         );
       } catch { /* ignore in non-browser env */ }
       // The thrown error message may briefly surface in toast handlers

@@ -211,7 +211,7 @@ def test_execute_node_tool_emits_called_and_completed_events(monkeypatch) -> Non
     result, is_error = asyncio.run(
         execute_node_tool(
             tool_name="web_search",
-            tool_input={"query": "openakita"},
+            tool_input={"query": "newsclaw"},
             org_id="o1",
             node_id="screenwriter",
             command_id="cmd_a",
@@ -399,7 +399,7 @@ def test_run_with_tools_runs_one_round_when_tool_use_emitted(monkeypatch) -> Non
                         type="tool_use",
                         id="tu_1",
                         name="web_search",
-                        input={"query": "openakita"},
+                        input={"query": "newsclaw"},
                     )
                 ]
             )

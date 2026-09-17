@@ -72,7 +72,7 @@ class InboxService:
         if self._task is not None and not self._task.done():
             return
         self._stop_event = asyncio.Event()
-        self._task = asyncio.create_task(self._run_loop(), name="openakita-inbox-refresh")
+        self._task = asyncio.create_task(self._run_loop(), name="newsclaw-inbox-refresh")
         logger.info("[Inbox] background refresh loop started")
 
     async def stop(self) -> None:

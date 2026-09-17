@@ -1,4 +1,4 @@
-"""Tests for openakita.plugins.compat — plugin version compatibility checking.
+"""Tests for newsclaw.plugins.compat — plugin version compatibility checking.
 
 Critical regression coverage for the v1↔v2 plugin_api compatibility window
 that was introduced when the host bumped to PLUGIN_API_VERSION = "2.0.0".

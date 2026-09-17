@@ -1,12 +1,12 @@
-import { NativeAuth, type AuthorizationResult } from '@openakita/native-auth';
+import { NativeAuth, type AuthorizationResult } from '@newsclaw/native-auth';
 import { getAccessToken } from './auth';
 import { getActiveServer } from './servers';
 import type { AccountStatusSummary } from '../utils/accountStatusEvents';
 
 const STORAGE_KEY = 'newsclaw.native-account-attempt';
 const REDIRECTS = new Set([
-  'https://account.openakita.cn/oauth/mobile/callback',
-  'com.openakita.mobile:/oauth/callback',
+  'https://account.newsclaw.cn/oauth/mobile/callback',
+  'com.newsclaw.mobile:/oauth/callback',
 ]);
 type Attempt = { base: string; id: string; state: string; redirect: string; expiresAt: number };
 

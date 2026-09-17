@@ -280,7 +280,7 @@ class WebSearchHandler:
             # provider_id 显式给的但不存在
             return (
                 f"错误：未知的搜索源 ID {provider_id!r}。"
-                "请用 bocha / tavily / searxng / jina / duckduckgo，"
+                "请用 tavily / bocha / serper / searxng / jina / duckduckgo，"
                 "或在设置中查看已注册源。"
             )
         except NetworkUnreachableError as exc:
@@ -365,7 +365,7 @@ class WebSearchHandler:
         except KeyError:
             return (
                 f"错误：未知的搜索源 ID {provider_id!r}。"
-                "请用 bocha / tavily / searxng / jina / duckduckgo。"
+                "请用 tavily / bocha / serper / searxng / jina / duckduckgo。"
             )
         except NetworkUnreachableError as exc:
             logger.warning("[news_search] %s", exc)

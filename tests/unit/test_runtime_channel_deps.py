@@ -34,14 +34,14 @@ def test_channel_deps_packaged_mode_rejects_frozen_sys_executable(monkeypatch):
     )
     monkeypatch.setattr(
         "newsclaw.runtime_channel_deps.CHANNEL_DEPS",
-        {"feishu": [("definitely_missing_openakita_dep", "definitely-missing-openakita-dep")]},
+        {"feishu": [("definitely_missing_newsclaw_dep", "definitely-missing-newsclaw-dep")]},
     )
 
     result = ensure_channel_dependencies(workspace_env={"FEISHU_ENABLED": "true"})
 
     assert result["status"] == "error"
     assert "托管 Python" in result["message"]
-    assert result["missing"] == ["definitely-missing-openakita-dep"]
+    assert result["missing"] == ["definitely-missing-newsclaw-dep"]
 
 
 def test_purge_incompatible_websockets_removes_16_keeps_15(tmp_path):
@@ -182,8 +182,8 @@ def test_ensure_channel_deps_returns_install_errors(monkeypatch, tmp_path):
         {
             "feishu": [
                 (
-                    "definitely_missing_openakita_dep_for_test",
-                    "definitely-missing-openakita-dep-for-test",
+                    "definitely_missing_newsclaw_dep_for_test",
+                    "definitely-missing-newsclaw-dep-for-test",
                 )
             ]
         },
@@ -208,9 +208,9 @@ def test_ensure_channel_deps_returns_install_errors(monkeypatch, tmp_path):
     result = ensure_channel_dependencies(workspace_env={"FEISHU_ENABLED": "true"})
 
     assert result["status"] == "error"
-    assert result["missing"] == ["definitely-missing-openakita-dep-for-test"]
+    assert result["missing"] == ["definitely-missing-newsclaw-dep-for-test"]
     assert "errors" in result
-    assert "definitely-missing-openakita-dep-for-test" in result["errors"]
+    assert "definitely-missing-newsclaw-dep-for-test" in result["errors"]
     assert (
-        "Could not find a version" in result["errors"]["definitely-missing-openakita-dep-for-test"]
+        "Could not find a version" in result["errors"]["definitely-missing-newsclaw-dep-for-test"]
     )

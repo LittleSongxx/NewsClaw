@@ -1,12 +1,7 @@
-"""
-Teammate/Swarm 多 Agent 后端
+"""NOT WIRED — do not mention as shipped.
 
-参考 Claude Code 的 AgentTool + Swarm 设计:
-- InProcessBackend: 进程内并发 (asyncio.Task)
-- SubprocessBackend: 独立进程执行
-- Leader-Teammate 模型: team lead 分配任务
-
-与现有 AgentOrchestrator 共存，逐步增强。
+进程内 Teammate 草稿。没有 SubprocessBackend。
+生产编排走 AgentOrchestrator，不经过本模块。
 """
 
 from __future__ import annotations

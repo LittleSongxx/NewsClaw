@@ -7,7 +7,7 @@ Tool priority (LLM should follow this order):
 1. delegate_to_agent — use existing agent directly
 2. spawn_agent — inherit + customize an existing agent (ephemeral)
 3. delegate_parallel — parallel delegation (can mix delegate + spawn)
-4. create_agent — last resort, create from scratch (defaults to ephemeral)
+4. create_agent — disabled; inherit an existing profile with spawn_agent instead
 """
 
 AGENT_TOOLS = [
@@ -67,9 +67,9 @@ AGENT_TOOLS = [
                 "context": {
                     "type": "string",
                     "description": (
-                        "为子Agent提供的背景上下文（可选）。"
-                        "子Agent可能看不到完整对话历史，请提供完成任务所需的关键信息"
-                        "（已知结论、相关约束、期望输出格式等）。"
+                        "为子 Agent 提供的显式附件（可选）。"
+                        "子 Agent 默认看不到父对话，只收到任务指令、reason 和本字段；"
+                        "请把完成任务所需的关键信息全部写进 message 或 context。"
                     ),
                 },
                 "run_in_background": {
@@ -80,9 +80,8 @@ AGENT_TOOLS = [
                 "fork": {
                     "type": "boolean",
                     "description": (
-                        "Fork 模式：子代理继承当前完整对话上下文和 prompt cache。"
-                        "省略 agent_id 时自动开启 fork 模式，创建自身的克隆体。"
-                        "适用场景：需要子代理理解完整对话背景来处理子任务。"
+                        "已忽略。子 Agent 一律空上下文派工，不会继承父对话。"
+                        "需要背景时请写入 message 或 context。"
                     ),
                     "default": False,
                 },
@@ -289,31 +288,15 @@ AGENT_TOOLS = [
         "name": "create_agent",
         "category": "Agent",
         "description": (
-            "Create a completely new agent from scratch. "
-            "⚠️ This is the LAST RESORT — only use when NO existing agent can be "
-            "delegated to or spawned from. "
-            "Prefer delegate_to_agent (direct use) or spawn_agent (inherit + customize) first. "
-            "Created agents are ephemeral by default (auto-cleanup after task). "
-            "Set persistent=true only if the user explicitly wants to keep the agent."
+            "DISABLED. Creating a new personality at runtime is not supported. "
+            "Use spawn_agent to inherit an existing profile, or delegate_to_agent "
+            "to send work to a predefined agent."
         ),
         "detail": (
-            "创建全新 Agent。⚠️ 这是**最后手段**。\n\n"
-            "**使用前请确认**：\n"
-            "1. ✅ 已检查所有现有 Agent，没有一个能直接使用（delegate_to_agent）\n"
-            "2. ✅ 已检查所有现有 Agent，没有一个能继承定制（spawn_agent）\n"
-            "3. ✅ 确实需要一个全新角色\n\n"
-            "**默认行为**：\n"
-            "- 创建的 Agent 默认是临时的（ephemeral），任务结束后自动销毁\n"
-            "- 不会污染系统 Agent 列表\n"
-            "- 设置 persistent=true 可永久保存（仅在用户明确要求时使用）\n\n"
-            "**记忆与身份**：\n"
-            "- 默认共享身份与记忆，适合一次性或通用任务\n"
-            '- 当用户要长期保存某个专业 Agent，或该 Agent 需要形成独立偏好/经验时，可设置 memory_isolation="isolated"（旧名 memory_mode 同义，已废弃）\n'
-            "- memory_inherit_global=true 表示独立记忆也能参考全局记忆，通常保持默认即可\n\n"
-            "**限制**：\n"
-            "- 每个会话最多创建 5 个动态 Agent\n"
-            "- 动态 Agent 不能再创建新 Agent\n"
-            "- 如果系统检测到已有类似 Agent，会建议使用 spawn_agent 代替"
+            "create_agent 已禁用。面试故事与产品约定是「预定义画像，不现场造人格」。\n\n"
+            "请改用：\n"
+            "1. `delegate_to_agent` — 直接委派给已有 Agent\n"
+            "2. `spawn_agent` — 继承已有画像并做临时定制\n"
         ),
         "input_schema": {
             "type": "object",

@@ -81,7 +81,7 @@ class _FakeAgent:
     ``_tools`` surface that :class:`NodeToolHost` reads.
 
     Construction is deliberately minimal so the test does not pull in
-    the full ``openakita.core.agent.Agent`` import graph (browser /
+    the full ``newsclaw.core.agent.Agent`` import graph (browser /
     MCP / desktop / persona managers). Real production wiring binds
     to the desktop ``Agent`` which has all 20 handlers + plugin
     handlers registered through the same path tested here.
@@ -158,8 +158,8 @@ async def test_node_tool_host_injects_stable_schema_declared_idempotency_key(
                         "client_request_id": {"type": "string"},
                     },
                 },
-                "x-openakita-execution": {"kind": "external_task", "timeout_s": 900},
-                "x-openakita-idempotency-param": "client_request_id",
+                "x-newsclaw-execution": {"kind": "external_task", "timeout_s": 900},
+                "x-newsclaw-idempotency-param": "client_request_id",
             }
         ],
     )
@@ -211,7 +211,7 @@ async def test_node_tool_host_unifies_video_resolution_and_normalizes_duration(
                 "duration": {"type": "integer"},
             },
         },
-        "x-openakita-media-contract": {
+        "x-newsclaw-media-contract": {
             "kind": "video",
             "model_param": "model_id",
             "resolution_param": "resolution",

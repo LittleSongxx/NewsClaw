@@ -9,7 +9,7 @@ from newsclaw.api.routes.chat import (
 )
 
 
-def test_extract_source_used_from_openakita_marker():
+def test_extract_source_used_from_newsclaw_marker():
     event = {
         "type": "tool_call_end",
         "tool": "web_fetch",

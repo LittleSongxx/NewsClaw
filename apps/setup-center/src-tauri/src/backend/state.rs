@@ -125,7 +125,7 @@ pub(crate) fn ensure_workspace_scaffold(dir: &Path) -> Result<(), String> {
     let env_path = dir.join(".env");
     if !env_path.exists() {
         let content = [
-            "# OpenAkita workspace environment (managed by Setup Center)",
+            "# NewsClaw workspace environment (managed by Setup Center)",
             "#",
             "# - Only keys you explicitly set in Setup Center are written here.",
             "# - Clearing a value removes the key from this file.",

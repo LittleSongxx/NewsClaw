@@ -231,34 +231,13 @@ export function LoginView({
         )}
       </form>
 
-      <div style={{
+      <p style={{
         marginTop: 16,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 6,
+        fontSize: 12,
+        color: "var(--text3, #94a3b8)",
       }}>
-        <p style={{
-          margin: 0,
-          fontSize: 12,
-          color: "var(--text3, #94a3b8)",
-        }}>
-          {t("login.hint")}
-        </p>
-        <a
-          href="https://openakita.ai"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: 12,
-            color: "var(--brand, #2563eb)",
-            textDecoration: "none",
-            opacity: 0.8,
-          }}
-        >
-          openakita.ai - {t("login.downloadDesktop", { defaultValue: "下载桌面端" })}
-        </a>
-      </div>
+        {t("login.hint")}
+      </p>
     </div>
   );
 }

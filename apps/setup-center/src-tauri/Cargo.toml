@@ -1,8 +1,8 @@
 [package]
-name = "openakita-setup-center"
+name = "newsclaw-setup-center"
 version = "1.27.42"
-description = "OpenAkita Setup Center"
-authors = ["OpenAkita"]
+description = "NewsClaw Setup Center"
+authors = ["NewsClaw"]
 license = "AGPL-3.0-only"
 edition = "2021"
 
@@ -52,7 +52,7 @@ libc = "0.2"
 [target.'cfg(windows)'.dependencies]
 # Used by src/crash_handler.rs to install SetUnhandledExceptionFilter +
 # MiniDumpWriteDump for native crashes (0xc0000005 / 0xc0000374 / 0xc000001d).
-# Dumps land in ~/.openakita/crashdumps/openakita-{pid}-{ts}.dmp and are
+# Dumps land in ~/.newsclaw/crashdumps/newsclaw-{pid}-{ts}.dmp and are
 # auto-packaged by build_feedback_zip so users can submit them via the
 # normal "send feedback" flow without admin rights or HKLM LocalDumps.
 windows-sys = { version = "0.59", features = [

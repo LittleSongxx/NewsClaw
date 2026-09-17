@@ -13,7 +13,7 @@ Post-cleanup the matrix is owned by the backend:
   GET /api/config/security/approval-matrix
 
 returns ``rows = [{role, approval_class, decisions: {<mode>: <action>}}]``
-computed live from ``openakita.core.policy_v2.matrix.lookup``. The
+computed live from ``newsclaw.core.policy_v2.matrix.lookup``. The
 frontend just renders whatever the backend gives it.
 
 This test
@@ -137,6 +137,37 @@ def test_readonly_scoped_always_allows(mode: ConfirmationMode) -> None:
         lookup_matrix(SessionRole.AGENT, mode, ApprovalClass.READONLY_SCOPED)
         == DecisionAction.ALLOW
     )
+
+
+def test_dont_ask_denies_unpreapproved_mutating_and_exec() -> None:
+    """DONT_ASK = 未预批则拒绝：DEFAULT 里 CONFIRM 的格子改 DENY。"""
+    for klass in (
+        ApprovalClass.MUTATING_SCOPED,
+        ApprovalClass.MUTATING_GLOBAL,
+        ApprovalClass.EXEC_CAPABLE,
+        ApprovalClass.CONTROL_PLANE,
+        ApprovalClass.DESTRUCTIVE,
+        ApprovalClass.UNKNOWN,
+    ):
+        action = lookup_matrix(SessionRole.AGENT, ConfirmationMode.DONT_ASK, klass)
+        assert action == DecisionAction.DENY, (
+            f"DONT_ASK × {klass.value} expected DENY, got {action.value}"
+        )
+
+
+def test_dont_ask_keeps_already_allow_classes() -> None:
+    for klass in (
+        ApprovalClass.READONLY_SCOPED,
+        ApprovalClass.READONLY_GLOBAL,
+        ApprovalClass.READONLY_SEARCH,
+        ApprovalClass.EXEC_LOW_RISK,
+        ApprovalClass.INTERACTIVE,
+        ApprovalClass.NETWORK_OUT,
+    ):
+        action = lookup_matrix(SessionRole.AGENT, ConfirmationMode.DONT_ASK, klass)
+        assert action == DecisionAction.ALLOW, (
+            f"DONT_ASK × {klass.value} expected ALLOW, got {action.value}"
+        )
 
 
 def test_destructive_must_confirm_in_interactive_modes() -> None:

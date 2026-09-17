@@ -50,7 +50,7 @@ describe("MarkdownContent code block copy", () => {
   it("does not add a copy button to inline code", () => {
     render(
       <MarkdownContent
-        content="Run `openakita serve` to start."
+        content="Run `newsclaw serve` to start."
         mdModules={mdModules}
         className="chatMdContent"
       />,

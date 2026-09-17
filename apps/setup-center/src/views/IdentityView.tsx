@@ -7,6 +7,7 @@ import {
   IconAlertCircle,
 } from "../icons";
 import { ModalOverlay } from "../components/ModalOverlay";
+import { IS_WEB } from "../platform";
 
 type IdentityFile = {
   name: string;
@@ -93,7 +94,8 @@ export function IdentityView({ serviceRunning, apiBaseUrl }: Props) {
     try {
       const res = await safeFetch(`${API}/api/identity/files`);
       const data = await res.json();
-      setFiles(data.files || []);
+      const listed: IdentityFile[] = data.files || [];
+      setFiles(IS_WEB ? listed.filter((f) => !f.name.startsWith("personas/")) : listed);
     } catch (e) {
       setError(String(e));
     }

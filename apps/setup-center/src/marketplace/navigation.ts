@@ -1,8 +1,7 @@
-const OFFICIAL_MARKETPLACE_ORIGIN = "https://marketplace.openakita.cn";
 const CLIENT_VERSION_PATTERN = /^[vV]?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/;
 
-/** 桌面外壳注册的是 newsclaw://，回跳链接里也还存在 rename 前的 openakita://。 */
-const DEEP_LINK_PROTOCOLS = new Set(["newsclaw:", "openakita:"]);
+/** 桌面外壳注册的是 newsclaw://，回跳链接里也还存在 rename 前的 newsclaw://。 */
+const DEEP_LINK_PROTOCOLS = new Set(["newsclaw:", "newsclaw:"]);
 
 const isMarketplaceDeepLink = (url: URL): boolean =>
   DEEP_LINK_PROTOCOLS.has(url.protocol) && url.hostname === "marketplace";
@@ -24,8 +23,11 @@ function normalizeOrigin(value: string): string | null {
 }
 
 export function marketplaceOrigin(configured?: string): string {
-  return normalizeOrigin(configured || import.meta.env.VITE_MARKETPLACE_URL || "")
-    || OFFICIAL_MARKETPLACE_ORIGIN;
+  const origin = normalizeOrigin(configured || import.meta.env.VITE_MARKETPLACE_URL || "");
+  if (!origin) {
+    throw new Error("marketplace_origin_unconfigured");
+  }
+  return origin;
 }
 
 export function normalizeMarketplaceClientVersion(value: string): string | null {
@@ -47,7 +49,7 @@ function safeMarketplacePath(value: string): string {
   try {
     const parsed = new URL(candidate, "https://marketplace.invalid");
     if (parsed.origin !== "https://marketplace.invalid") return "/";
-    if (parsed.pathname.startsWith("/openakita/context")) return "/";
+    if (parsed.pathname.startsWith("/newsclaw/context")) return "/";
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   } catch {
     return "/";
@@ -64,7 +66,7 @@ export function buildMarketplaceContextUrl(
     throw new Error("marketplace_client_version_invalid");
   }
 
-  const contextUrl = new URL("/openakita/context", marketplaceOrigin(configuredOrigin));
+  const contextUrl = new URL("/newsclaw/context", marketplaceOrigin(configuredOrigin));
   contextUrl.searchParams.set("version", normalizedVersion);
   contextUrl.searchParams.set("next", safeMarketplacePath(next));
   return contextUrl.toString();
@@ -98,8 +100,11 @@ export function marketplaceDeepLinkAction(value: string): MarketplaceDeepLinkAct
 
 function isTrustedMarketplaceReturnUrl(returnUrl: URL, configuredOrigin?: string): boolean {
   if (returnUrl.username || returnUrl.password) return false;
-  if (returnUrl.origin === OFFICIAL_MARKETPLACE_ORIGIN) return true;
-  if (returnUrl.origin === marketplaceOrigin(configuredOrigin)) return true;
+  try {
+    if (returnUrl.origin === marketplaceOrigin(configuredOrigin)) return true;
+  } catch {
+    // 未配置市场 URL 时，只信任本机回跳
+  }
   return returnUrl.protocol === "http:"
     && ["localhost", "127.0.0.1", "[::1]"].includes(returnUrl.hostname);
 }

@@ -2,7 +2,8 @@
 
 清单同时服务三个读者：
 - 管线 Agent：按 ``kind`` 采集（search 走搜索工具，site 走浏览器直采）；
-- 每周复盘任务：依据自评与人工反馈调整 weight / keywords / topics，改写本文件；
+- 每周复盘任务：只读本文件，改进建议写 ``issues/review-proposal.md``，
+  **禁止** Agent 直接改 yaml 当闭环；人审后由 WebUI / 人工落盘；
 - WebUI 工作台：直接编辑并保存（PUT /api/newsroom/sources）。
 
 清单的默认值唯一来源是 :class:`SourceBook` 的字段缺省（首次读取时落盘）。
@@ -164,8 +165,9 @@ class SourceBook:
 
 _SOURCES_HEADER = """\
 # AI 早报信源清单。weight(1-5) 决定采集预算分配；topics 对齐文件内主题列表。
-# kind: search = query 走搜索工具；site = url 浏览器直采（适合搜索收录差的站点）。
-# 每周复盘任务会依据自评与人工反馈自动调整本文件；也可在 WebUI 工作台手动编辑。
+# kind: search = query 走搜索工具；site = url 走 web_fetch（适合搜索收录差的站点）。
+# 每周复盘只写 issues/review-proposal.md + review-proposal.json，不直接改本文件；
+# 人审后由 apply_proposal / WebUI 落盘。
 """
 
 

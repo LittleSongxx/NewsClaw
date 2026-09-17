@@ -42,8 +42,8 @@ def require_desktop_account(request: Request) -> None:
 
 
 def trusted_marketplace_origin(value: str) -> str:
-    configured = os.environ.get("NEWSCLAW_MARKETPLACE_URL", "https://marketplace.openakita.cn")
-    allowed = {"https://marketplace.openakita.cn", configured.rstrip("/")}
+    configured = os.environ.get("NEWSCLAW_MARKETPLACE_URL", "").strip().rstrip("/")
+    allowed = {configured} if configured else set()
     candidate = value.rstrip("/")
     parsed = urlsplit(candidate)
     # Developer targets must be explicitly configured; deep links cannot choose

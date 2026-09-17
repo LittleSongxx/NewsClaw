@@ -1,4 +1,4 @@
-"""Tests for ``openakita.runtime.models``.
+"""Tests for ``newsclaw.runtime.models``.
 
 Phase 1 / commit 1 (foundation). Asserts:
 * dataclass round-trip through JSON-able dicts is lossless;

@@ -151,13 +151,13 @@ export default function SecurityView({ apiBaseUrl, serviceRunning }: SecurityVie
   const [sandbox, setSandbox] = useState<SandboxConfig>({ enabled: true, backend: "auto", sandbox_risk_levels: ["HIGH"], exempt_commands: [] });
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [checkpoints, setCheckpoints] = useState<CheckpointEntry[]>([]);
-  const [confirmConfig, setConfirmConfig] = useState<ConfirmConfig>({ mode: "trust", timeout_seconds: 60, default_on_timeout: "deny", confirm_ttl: 120 });
+  const [confirmConfig, setConfirmConfig] = useState<ConfirmConfig>({ mode: "default", timeout_seconds: 60, default_on_timeout: "deny", confirm_ttl: 120 });
   const [selfProtect, setSelfProtect] = useState<SelfProtectConfig>({ enabled: true, protected_dirs: ["data/", "identity/", "logs/", "src/"], death_switch_threshold: 3, death_switch_total_multiplier: 3, audit_to_file: true, audit_path: "", readonly_mode: false });
   const [allowlist, setAllowlist] = useState<AllowlistData>({ commands: [], tools: [] });
-  // 出厂默认 = "trust"：与后端 PolicyConfigV2 schema 一致。GET /security/options
-  // 在配置缺失时也返回 trust，下面 fetchAll 会用真实值覆盖；这里仅决定第一次
-  // 渲染（loading）时的占位。
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>("trust");
+  // 出厂默认 = "protect"：与后端 PolicyConfigV2 schema 一致。GET /security/options
+  // 在配置缺失时也返回 protect，下面 fetchAll 会用真实值覆盖；这里仅决定第一次
+  // 渲染（loading）时的占位。已落盘 trust/off 不以出厂值覆盖。
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>("protect");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [savingAction, setSavingAction] = useState<string | null>(null);
   const [loadingAll, setLoadingAll] = useState(false);
@@ -566,18 +566,18 @@ export default function SecurityView({ apiBaseUrl, serviceRunning }: SecurityVie
   const advancedVisible = permissionMode === "custom" || showAdvanced;
   const MODE_CARDS: Array<{ id: PermissionMode; title: string; desc: string; icon: typeof ShieldCheck; tone: string }> = [
     {
-      id: "trust",
-      title: t("security.modeTrustTitle"),
-      desc: t("security.modeTrustCardDesc"),
-      icon: ShieldCheck,
-      tone: "text-emerald-600 bg-emerald-500/10 border-emerald-500/20",
-    },
-    {
       id: "protect",
       title: t("security.modeProtectTitle"),
       desc: t("security.modeProtectCardDesc"),
       icon: Shield,
       tone: "text-blue-600 bg-blue-500/10 border-blue-500/20",
+    },
+    {
+      id: "trust",
+      title: t("security.modeTrustTitle"),
+      desc: t("security.modeTrustCardDesc"),
+      icon: ShieldCheck,
+      tone: "text-emerald-600 bg-emerald-500/10 border-emerald-500/20",
     },
     {
       id: "strict",

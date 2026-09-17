@@ -1,4 +1,4 @@
-# OpenAkita desktop package build script (Windows PowerShell)
+# NewsClaw desktop package build script (Windows PowerShell)
 # Usage: .\build_core.ps1
 
 param([switch]$Fast)

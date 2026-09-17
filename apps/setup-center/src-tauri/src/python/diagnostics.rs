@@ -241,7 +241,7 @@ pub(crate) fn make_backend_offline_diagnostic(
                 bootstrap_dir.join("python").display()
             )],
             auto_fix: false,
-            fix_hint: Some("请重装 OpenAkita 以恢复内置运行时".into()),
+            fix_hint: Some("请重装 NewsClaw 以恢复内置运行时".into()),
         });
     }
 

@@ -1,6 +1,6 @@
 import type { WebInstallContext } from './web';
 
-export const WEB_INSTALL_ARRIVED = 'openakita:web-install-arrived';
+export const WEB_INSTALL_ARRIVED = 'newsclaw:web-install-arrived';
 const SOURCES = 'newsclaw.marketplace.sources.v1';
 const CHANNEL = 'newsclaw.marketplace.relay.v1';
 export const randomRelayId = () => Array.from(crypto.getRandomValues(new Uint8Array(32)),
@@ -111,7 +111,7 @@ export class WebInstallRelay {
     };
     const onDirect = async (event: MessageEvent) => {
       const data = event.data;
-      if (data?.type !== 'openakita:install-request:v1' ||
+      if (data?.type !== 'newsclaw:install-request:v1' ||
         this.marketWindows.get(data.state) !== event.source) return;
       const session = this.sources.find(item => item.state === data.state);
       if (!session || session.expires <= Date.now() || session.endpoint !== event.origin ||
@@ -129,7 +129,7 @@ export class WebInstallRelay {
           this.storage.setItem(SOURCES, JSON.stringify(this.sources));
         }
         if (receipt.receiver === this.instance || receipt.receiver === source.acceptedBy) {
-          (event.source as Window).postMessage({ type: 'openakita:install-ack:v1',
+          (event.source as Window).postMessage({ type: 'newsclaw:install-ack:v1',
             state: data.state, token: data.token }, event.origin);
         }
       } catch { /* Keep the same instruction available for explicit fallback. */ }

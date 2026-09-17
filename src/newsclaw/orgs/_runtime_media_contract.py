@@ -89,7 +89,7 @@ def bind_media_contract(
     """Bind pixels and normalize model duration before a paid tool call."""
 
     bound = dict(tool_input)
-    metadata = tool_definition.get("x-openakita-media-contract") if tool_definition else None
+    metadata = tool_definition.get("x-newsclaw-media-contract") if tool_definition else None
     if not command_id or not isinstance(metadata, Mapping):
         return bound, []
     kind = str(metadata.get("kind") or "").strip().lower()

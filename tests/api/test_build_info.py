@@ -1,7 +1,7 @@
 """P-RC-2 P2.8 -- backend build-info endpoint test.
 
 We mount the router on a stand-alone FastAPI app to avoid pulling
-the full ``openakita.api.server.create_app`` graph (which triggers
+the full ``newsclaw.api.server.create_app`` graph (which triggers
 agent / channels / plugins imports). This mirrors the lightweight
 fixture used in ``tests/api/test_orgs_v2_stream.py``.
 """

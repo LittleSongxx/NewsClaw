@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`openakita.runtime.channel_routing`.
+"""Unit tests for :mod:`newsclaw.runtime.channel_routing`.
 
 These exercise the gateway-facing flag/store/topology decision tree
 without touching the 5,000-line channels gateway itself. Phase 6

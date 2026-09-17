@@ -37,8 +37,8 @@ export type InstallTask = {
   notifiedPhase?: string;
   changedAt: number;
 };
-export const INSTALL_TASK_OPEN = 'openakita:install-task-open';
-export const INSTALL_TASK_REFRESH = 'openakita:install-task-refresh';
+export const INSTALL_TASK_OPEN = 'newsclaw:install-task-open';
+export const INSTALL_TASK_REFRESH = 'newsclaw:install-task-refresh';
 const STORAGE = 'newsclaw.marketplace.tasks.v3';
 const PREVIOUS_STORAGE = 'newsclaw.marketplace.tasks.v2';
 const LEGACY_STORAGE = 'newsclaw.marketplace.tasks.v1';

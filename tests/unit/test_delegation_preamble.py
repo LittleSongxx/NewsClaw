@@ -59,7 +59,7 @@ class TestDelegationPreambleInjection:
         """Delegation preamble should appear BEFORE identity content."""
         prompt = self._build_prompt(is_sub_agent=False)
         preamble_pos = prompt.find("协作优先原则")
-        identity_markers = ["Ralph Wiggum", "核心执行原则", "三条铁律"]
+        identity_markers = ["ReAct", "核心执行原则", "三条铁律"]
         for marker in identity_markers:
             marker_pos = prompt.find(marker)
             if marker_pos >= 0:

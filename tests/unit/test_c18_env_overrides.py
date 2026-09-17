@@ -152,7 +152,7 @@ class TestInvalidValues:
         new_cfg, report = eo.apply_env_overrides(
             cfg, environ={"NEWSCLAW_UNATTENDED_STRATEGY": "yolo_mode"}
         )
-        assert new_cfg.unattended.default_strategy == "ask_owner"
+        assert new_cfg.unattended.default_strategy == "deny"
         assert len(report.skipped_errors) == 1
 
     def test_post_validation_failure_falls_back(self, tmp_path: Path) -> None:

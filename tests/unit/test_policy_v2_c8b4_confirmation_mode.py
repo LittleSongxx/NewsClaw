@@ -31,7 +31,7 @@ class TestReadPermissionModeLabel:
             (ConfirmationMode.DEFAULT, "smart"),
             (ConfirmationMode.STRICT, "cautious"),
             (ConfirmationMode.ACCEPT_EDITS, "smart"),  # v2-only → 归并到 smart
-            (ConfirmationMode.DONT_ASK, "yolo"),  # v2-only → 归并到 yolo
+            (ConfirmationMode.DONT_ASK, "cautious"),  # 未预批则拒绝，不是 yolo
         ],
     )
     def test_5_mode_mapping(self, v2_mode: ConfirmationMode, v1_label: str) -> None:
@@ -54,7 +54,7 @@ class TestReadPermissionModeLabel:
             reset_engine_v2()
 
     def test_fallback_when_v2_unavailable(self, monkeypatch) -> None:
-        """v2 拉取失败应回到 'yolo' 而非抛异常。"""
+        """v2 拉取失败应回到 'cautious'，不再 fail-soft 到 yolo。"""
         from newsclaw.core.policy_v2 import confirmation_mode as cm
 
         def _boom():
@@ -62,7 +62,7 @@ class TestReadPermissionModeLabel:
 
         monkeypatch.setattr("newsclaw.core.policy_v2.global_engine.get_config_v2", _boom)
         # Re-import inside function so monkeypatch takes effect on the local import
-        assert cm.read_permission_mode_label() == "yolo"
+        assert cm.read_permission_mode_label() == "cautious"
 
 
 class TestCoerceV1LabelToV2Mode:
@@ -84,7 +84,7 @@ class TestCoerceV1LabelToV2Mode:
 
     def test_unknown_falls_back_to_default(self) -> None:
         assert coerce_v1_label_to_v2_mode("nonsense") == ConfirmationMode.DEFAULT
-        assert coerce_v1_label_to_v2_mode("") == ConfirmationMode.TRUST  # empty → "yolo" → TRUST
+        assert coerce_v1_label_to_v2_mode("") == ConfirmationMode.DEFAULT
 
 
 class TestPolicyEngineFieldsDeleted:

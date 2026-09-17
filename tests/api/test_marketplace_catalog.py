@@ -10,13 +10,13 @@ from newsclaw.api.routes import marketplace
 
 @pytest.fixture
 def catalog_client(monkeypatch):
-    monkeypatch.delenv("NEWSCLAW_MARKETPLACE_URL", raising=False)
+    monkeypatch.setenv("NEWSCLAW_MARKETPLACE_URL", "https://market.example.com")
     app = FastAPI()
     app.include_router(marketplace.router)
     get = AsyncMock(
         return_value=httpx.Response(
             200,
-            request=httpx.Request("GET", "https://marketplace.openakita.cn/api/v1/resources"),
+            request=httpx.Request("GET", "https://market.example.com/api/v1/resources"),
             json={
                 "items": [{"id": "one", "slug": "demo", "name": "Demo", "resource_type": "skill"}],
                 "total": 1,
@@ -36,9 +36,9 @@ def test_public_catalog_filters_skills_without_forwarding_credentials(catalog_cl
     )
     assert response.status_code == 200
     assert response.json()["items"][0]["slug"] == "demo"
-    assert response.json()["origin"] == "https://marketplace.openakita.cn"
+    assert response.json()["origin"] == "https://market.example.com"
     get.assert_awaited_once_with(
-        "https://marketplace.openakita.cn/api/v1/resources",
+        "https://market.example.com/api/v1/resources",
         params={
             "type": "skill",
             "q": "demo",
@@ -71,7 +71,7 @@ def test_catalog_rejects_invalid_queries(catalog_client, query):
 def test_invalid_catalog_is_unavailable_not_empty(catalog_client, payload):
     client, get = catalog_client
     get.return_value = httpx.Response(
-        200, request=httpx.Request("GET", "https://marketplace.openakita.cn"), json=payload
+        200, request=httpx.Request("GET", "https://market.example.com"), json=payload
     )
     response = client.get("/api/marketplace/skills")
     assert response.status_code == 502

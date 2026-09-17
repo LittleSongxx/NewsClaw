@@ -17,6 +17,7 @@ from .store import (
     MOC_FILENAME,
     TOPIC_PAGES,
     PageInfo,
+    WikiDisabledError,
     WikiEntry,
     backlinks,
     graph_data,
@@ -25,7 +26,9 @@ from .store import (
     rebuild_moc,
     sanitize_page_name,
     search,
+    topic_pages,
     upsert_daily_section,
+    wiki_enabled,
     wiki_root,
 )
 
@@ -33,6 +36,7 @@ __all__ = [
     "MOC_FILENAME",
     "TOPIC_PAGES",
     "PageInfo",
+    "WikiDisabledError",
     "WikiEntry",
     "backlinks",
     "graph_data",
@@ -41,6 +45,8 @@ __all__ = [
     "rebuild_moc",
     "sanitize_page_name",
     "search",
+    "topic_pages",
     "upsert_daily_section",
+    "wiki_enabled",
     "wiki_root",
 ]

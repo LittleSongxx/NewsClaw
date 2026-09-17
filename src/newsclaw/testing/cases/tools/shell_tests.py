@@ -1,6 +1,4 @@
-"""
-Shell 工具测试用例 (40个)
-"""
+"""Shell 工具 demo cases（13 条）。字符串包含判定，不是质量门。"""
 
 from newsclaw.testing.runner import TestCase
 
@@ -57,7 +55,7 @@ SHELL_TESTS = [
         category="tools",
         subcategory="shell",
         description="创建临时文件",
-        input={"command": "touch /tmp/test_openakita.txt && echo success"},
+        input={"command": "touch /tmp/test_newsclaw.txt && echo success"},
         expected="success",
         tags=["shell", "file"],
     ),
@@ -67,7 +65,7 @@ SHELL_TESTS = [
         subcategory="shell",
         description="写入文件",
         input={
-            "command": "echo 'test content' > /tmp/test_openakita.txt && cat /tmp/test_openakita.txt"
+            "command": "echo 'test content' > /tmp/test_newsclaw.txt && cat /tmp/test_newsclaw.txt"
         },
         expected="contains:test content",
         tags=["shell", "file"],
@@ -78,7 +76,7 @@ SHELL_TESTS = [
         subcategory="shell",
         description="追加文件",
         input={
-            "command": "echo 'appended' >> /tmp/test_openakita.txt && tail -1 /tmp/test_openakita.txt"
+            "command": "echo 'appended' >> /tmp/test_newsclaw.txt && tail -1 /tmp/test_newsclaw.txt"
         },
         expected="contains:appended",
         tags=["shell", "file"],

@@ -41,7 +41,7 @@ DEFAULT_IGNORE_DIRS = {
 # Extra prune list applied only to grep (heavier/longer than glob/list).
 # Treats the NewsClaw data plane and any vendored Python install as no-go
 # zones — the LLM should never need to recursively scan these. Previously a
-# misrouted grep on `~/.openakita` could lock up the worker for minutes
+# misrouted grep on `~/.newsclaw` could lock up the worker for minutes
 # (see incident 2026-05-09 P0-1).
 GREP_EXTRA_BLOCKED_DIR_NAMES = {
     "site-packages",
@@ -66,10 +66,10 @@ GREP_EXTRA_BLOCKED_DIR_NAMES = {
 }
 
 GREP_HARD_FORBIDDEN_PATH_FRAGMENTS = (
-    "/.openakita/runtime",
-    "/.openakita/workspaces",
-    "\\.openakita\\runtime",
-    "\\.openakita\\workspaces",
+    "/.newsclaw/runtime",
+    "/.newsclaw/workspaces",
+    "\\.newsclaw\\runtime",
+    "\\.newsclaw\\workspaces",
 )
 
 GREP_DEFAULT_MAX_FILES = 5000

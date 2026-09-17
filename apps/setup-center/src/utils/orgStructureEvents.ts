@@ -1,4 +1,4 @@
-export const ORG_STRUCTURE_CHANGED_EVENT = "openakita:org-structure-changed";
+export const ORG_STRUCTURE_CHANGED_EVENT = "newsclaw:org-structure-changed";
 
 export type OrgStructureChangeAction = "created" | "updated" | "deleted";
 

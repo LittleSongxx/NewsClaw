@@ -37,7 +37,7 @@ from newsclaw.core.risk_intent import (
         ("帮我装这个技能 https://github.com/owner/repo", "github.com/owner/repo", None),
         ("安装一下 https://gitee.com/foo/bar 这个技能", "gitee.com/foo/bar", None),
         ("install this skill: https://gitlab.com/x/y", "gitlab.com/x/y", None),
-        ("把这个技能装上 https://github.com/openakita/skill-pack", "skill-pack", None),
+        ("把这个技能装上 https://github.com/newsclaw/skill-pack", "skill-pack", None),
         # URL 直接指向 SKILL.md
         ("https://github.com/owner/repo/blob/main/SKILL.md 帮我配一下", "SKILL.md", None),
         # 本地路径（绝对/相对）+ 装动词

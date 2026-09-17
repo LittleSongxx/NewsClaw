@@ -155,7 +155,7 @@ def build_agent_lifecycle_graph() -> StateGraph:
 
 
 class Agent(_RuntimeAgentBase):
-    """Canonical Agent with an explicit lifecycle :class:`StateGraph`.
+    """Canonical Agent。主循环是 ReAct，不是 lifecycle StateGraph。
 
     Inherits every public method (``run_task``, ``chat``, ``shutdown``,
     ``handle_message``, etc.) from the private runtime base. The public additions are
@@ -165,8 +165,7 @@ class Agent(_RuntimeAgentBase):
     :meth:`format_attachment_reference`, and
     :meth:`should_skip_risk_gate`.
 
-    Runtime initialization owns Ralph loop wiring, skill catalogue loading,
-    and MCP discovery. The graph is an introspection and extension point.
+    初始化会加载技能与工具。``lifecycle_graph`` 仅供内省，不是已交付主循环。
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

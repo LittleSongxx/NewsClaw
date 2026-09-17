@@ -4,7 +4,7 @@ import { copyToClipboard } from "../utils/clipboard";
 export function TroubleshootPanel({ t }: { t: (k: string) => string }) {
   const [copied, setCopied] = useState<string | null>(null);
   const isWin = navigator.platform?.toLowerCase().includes("win");
-  const listCmd = isWin ? 'tasklist | findstr python' : 'ps aux | grep openakita';
+  const listCmd = isWin ? 'tasklist | findstr python' : 'ps aux | grep newsclaw';
   const killCmd = isWin ? 'taskkill /F /PID <PID>' : 'kill -9 <PID>';
 
   const copyText = async (text: string, id: string) => {

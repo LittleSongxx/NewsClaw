@@ -158,7 +158,7 @@ def default_blocked_commands() -> list[str]:
 # strict / off" presets)
 # ---------------------------------------------------------------------------
 #
-# 历史上"出厂默认 = trust"的语义并行散落在三个位置：
+# 历史上出厂默认曾写死 ``trust``，语义并行散落在三个位置：
 #   1. ``policy_v2/schema.py`` 字段默认（``SecurityProfileConfig.current``、
 #      ``ConfirmationConfig.mode``）
 #   2. ``api/routes/config.py::_apply_security_profile_defaults`` 用户点
@@ -166,9 +166,9 @@ def default_blocked_commands() -> list[str]:
 #   3. ``apps/setup-center/src/views/SecurityView.tsx`` loading 占位
 #
 # 三处任意一处偏移，都会出现"UI 显示 trust、引擎按 protect 运行"这类隐式
-# 不一致（v1.27.12 → v1.27.13 默认值切换时就栽过这个坑）。本节把
-# bundle 收成单一真源：schema 默认字段通过 ``factory_default_*`` helper
-# 取出，``_apply_security_profile_defaults`` 直接 deep-copy ``PROFILE_BUNDLES``。
+# 不一致。本节把 bundle 收成单一真源：schema 默认字段通过
+# ``factory_default_*`` helper 取出，``_apply_security_profile_defaults``
+# 直接 deep-copy ``PROFILE_BUNDLES``。
 #
 # bundle 的字段集与 ``POLICIES.yaml`` 的 raw dict 结构对齐——``security.enabled``
 # / ``security.confirmation.mode`` / ``security.sandbox.enabled`` 等——所以
@@ -177,13 +177,13 @@ def default_blocked_commands() -> list[str]:
 # ``PolicyConfigV2`` 的字段级 schema 默认与 bundle 在以下字段**有意保留差异**：
 # - ``sandbox.enabled``：schema 默认 ``True`` 作 belt-and-suspenders；
 #   bundle ``trust`` 设 ``False`` 是 UI 套餐承诺"信任方案下不进沙箱"。
-# 也就是 fresh install（走 schema 默认）= TRUST 模式 + sandbox 仍开；用户
-# 主动点"信任方案"按钮（走 bundle）= TRUST 模式 + sandbox 关。这条非对称
-# 由 ``PolicyConfigV2`` docstring 显式记录，本模块不强行抹平。
+# 出厂是 ``protect``（先问再做）：fresh install 走 schema 默认 = DEFAULT 模式
+# + sandbox 仍开；用户主动点"信任方案"才切到 TRUST 并关沙箱。已落盘
+# ``trust`` / ``off`` 的用户 YAML 不以出厂值覆盖。
 
-FACTORY_DEFAULT_PROFILE: str = "trust"
+FACTORY_DEFAULT_PROFILE: str = "protect"
 """出厂默认 profile 名。fresh install / lenient fallback / 未知输入 兜底
-都应落到这个值。改这里前请同步 ``docs/release-notes/``。"""
+都应落到这个值。已有 YAML 仍写 trust/off 的，以文件为准。"""
 
 PROFILE_BUNDLES: dict[str, dict[str, Any]] = {
     "trust": {
@@ -212,11 +212,12 @@ PROFILE_BUNDLES: dict[str, dict[str, Any]] = {
     },
     "off": {
         # off 同时把 security.enabled 关掉，使二者保持单一语义：
-        # "整套策略停摆"。engine.preflight 任一为关都会短路 ALLOW，
-        # 但只有这里二者同时被写下，未来导出/迁移/审计才不会出现
-        # "enabled=True 但 profile=off" 这种荒谬组合。
+        # "整套策略锁定，拒绝全部工具"。engine.preflight 任一为关都会
+        # 短路 DENY（reason 仍是 ``security profile is off``）。
+        # confirmation.mode 保留键以维持 bundle 形状；写成 strict，
+        # 不再伪装成 trust（off 不是无防护放行）。
         "enabled": False,
-        "confirmation": {"mode": "trust"},
+        "confirmation": {"mode": "strict"},
         "sandbox": {"enabled": False},
         "shell_risk": {"enabled": False},
         "death_switch": {"enabled": False},

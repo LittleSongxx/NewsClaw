@@ -1,19 +1,12 @@
 """
-测试用例集合
+内置 demo cases，不是 300 例评测套件。
 
-包含 300 个测试用例：
-- qa/: 100 个问答测试
-  - basic.py: 基础知识 (30个)
-  - reasoning.py: 推理逻辑 (35个)
-  - multiturn.py: 多轮对话 (35个)
-- tools/: 100 个工具测试
-  - shell_tests.py: Shell 命令 (40个)
-  - file_tests.py: 文件操作 (30个)
-  - api_tests.py: API 调用 (30个)
-- search/: 100 个搜索测试
-  - web_search.py: 网络搜索 (40个)
-  - code_search.py: 代码搜索 (30个)
-  - doc_search.py: 文档搜索 (30个)
+真实计数以 get_test_count() / get_category_counts() 为准（当前 99 条）：
+- qa/: 问答 39（basic 15、reasoning 15、multiturn 9）
+- tools/: 工具 38（shell 13、file 10、api 10、browser 5）
+- search/: 搜索 22（web 7、code 10、doc 5）
+
+不要把本目录当成质量门或准确率基准。
 """
 
 # 延迟导入以避免循环依赖
@@ -46,18 +39,18 @@ def load_all_tests():
 
     all_tests = []
 
-    # QA 测试 (100)
+    # QA demo（39）
     all_tests.extend(qa_basic())
     all_tests.extend(qa_reasoning())
     all_tests.extend(qa_multiturn())
 
-    # 工具测试 (100)
+    # 工具 demo（38，含 browser）
     all_tests.extend(tools_shell())
     all_tests.extend(tools_file())
     all_tests.extend(tools_api())
     all_tests.extend(tools_browser())
 
-    # 搜索测试 (100)
+    # 搜索 demo（22）
     all_tests.extend(search_web())
     all_tests.extend(search_code())
     all_tests.extend(search_doc())

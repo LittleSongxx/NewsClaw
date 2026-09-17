@@ -103,8 +103,8 @@ class MemoryHandler:
             riskgate_execution_hint=(
                 "请优先使用 `memory_delete_by_query` 工具（dry_run=True 先预览，"
                 "再用预览返回的 confirm_token 执行删除；不需要再次调用 ask_user）。"
-                "**禁止**用 `grep` / `glob` 在用户主目录或 `.openakita/runtime`、"
-                "`.openakita/workspaces` 等运行时数据目录递归搜索；那是程序内部存储，"
+                "**禁止**用 `grep` / `glob` 在用户主目录或 `.newsclaw/runtime`、"
+                "`.newsclaw/workspaces` 等运行时数据目录递归搜索；那是程序内部存储，"
                 "会让后端卡死。"
             ),
         )

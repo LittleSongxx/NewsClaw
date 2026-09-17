@@ -1,5 +1,7 @@
 """Runtime v2 organisation surfaces.
 
+实验性第二运行时：聊天主路径是 ReAct，不是本包。面试主故事不讲。
+
 * **Org entity persistence** (P-RC-3): :class:`JsonOrgStore` /
   :class:`SqliteOrgStore` -- duck-typed contract list / get /
   create / patch / delete + close. Default JSON; opt into SQLite

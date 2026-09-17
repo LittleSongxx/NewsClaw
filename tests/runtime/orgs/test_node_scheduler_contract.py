@@ -1,7 +1,7 @@
 """Contract suite for v2 OrgNodeScheduler (P-RC-9 P9.3d).
 
 Twelve cases pin the public surface and internal invariants of
-``openakita.orgs.node_scheduler.OrgNodeScheduler``
+``newsclaw.orgs.node_scheduler.OrgNodeScheduler``
 against a single in-memory backend (NodeScheduler has no
 JSON/SQLite split -- persistence is delegated to the injected
 :class:`ScheduleStore` Protocol).

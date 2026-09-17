@@ -2433,7 +2433,7 @@ class OrgCommandService:
                         self._inflight_by_org.pop(request.org_id, None)
 
         loop = asyncio.get_running_loop()
-        task = loop.create_task(_run(), name=f"openakita-orgs-supervisor-{command_id}")
+        task = loop.create_task(_run(), name=f"newsclaw-orgs-supervisor-{command_id}")
         # Register the task + by-org index synchronously, before the
         # first ``await``, so cancel-while-still-pending races land
         # against a live task slot.
@@ -2494,7 +2494,7 @@ class OrgCommandService:
         loop = asyncio.get_running_loop()
         run_task: asyncio.Task[Any] = loop.create_task(
             supervisor.run(),
-            name=f"openakita-orgs-supervisor-run-{command_id}",
+            name=f"newsclaw-orgs-supervisor-run-{command_id}",
         )
         soft = budget.watchdog_s
         soft_state: dict[str, bool] = {"fired": False}
@@ -2502,7 +2502,7 @@ class OrgCommandService:
         if 0.0 < soft < float(ceiling):
             watchdog = loop.create_task(
                 self._soft_ceiling_watchdog(supervisor, command_id, run_task, soft, soft_state),
-                name=f"openakita-orgs-supervisor-soft-watchdog-{command_id}",
+                name=f"newsclaw-orgs-supervisor-soft-watchdog-{command_id}",
             )
         try:
             try:
@@ -2791,7 +2791,7 @@ class OrgCommandService:
         self._reconcile_stop_event = asyncio.Event()
         self._reconcile_task = loop.create_task(
             self._reconcile_loop(interval),
-            name="openakita-orgs-reconcile-loop",
+            name="newsclaw-orgs-reconcile-loop",
         )
         logger.info("[OrgCmd] reconcile loop started (interval=%ds)", interval)
 

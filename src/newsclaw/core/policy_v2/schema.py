@@ -132,11 +132,9 @@ class SecurityProfileConfig(_Strict):
     出厂默认通过 ``factory_default_profile_current()`` 从
     ``policy_v2/defaults.py::FACTORY_DEFAULT_PROFILE`` 取——单一真源，与
     ``api/routes/config.py::_apply_security_profile_defaults`` 套用的 bundle
-    共用同一份 ``PROFILE_BUNDLES``。当前 = ``"trust"``：fresh install 落到
-    推荐的"少打扰但保留矩阵安全网"档（DESTRUCTIVE → CONFIRM、UNKNOWN →
-    CONFIRM、safety_immune、death_switch 仍生效）。用户想要更严格的门可在
-    SecurityView 切到 ``protect`` / ``strict``；既有 ``POLICIES.yaml`` 永远
-    覆盖此默认。
+    共用同一份 ``PROFILE_BUNDLES``。当前 = ``"protect"``：fresh install 落到
+    先问再做档。用户想少打扰可在 SecurityView 切到 ``trust``；既有
+    ``POLICIES.yaml`` 永远覆盖此默认（已落盘 trust/off 不暗改）。
     """
 
     current: Literal["trust", "protect", "strict", "off", "custom"] = Field(
@@ -177,11 +175,10 @@ class ConfirmationConfig(_Strict):
 
     ``mode`` 默认通过 ``factory_default_confirmation_mode()`` 从
     ``policy_v2/defaults.py::PROFILE_BUNDLES[FACTORY_DEFAULT_PROFILE]`` 取——
-    单一真源。当前 = ``ConfirmationMode.TRUST``，与 ``SecurityProfileConfig.current``
-    = ``"trust"`` 配套：出厂体验是"高频工具 ALLOW、DESTRUCTIVE / UNKNOWN 仍
-    CONFIRM、safety_immune 路径仍 CONFIRM、death_switch 仍生效"。需要更严的
-    ``default`` / ``strict`` 模式由用户主动在 SecurityView 切换或在 YAML 显
-    式覆盖。
+    单一真源。当前 = ``ConfirmationMode.DEFAULT``，与 ``SecurityProfileConfig.current``
+    = ``"protect"`` 配套：出厂先问再做。需要更松的 ``trust`` 或更严的
+    ``strict`` 由用户主动在 SecurityView 切换或在 YAML 显式覆盖。已落盘
+    配置不以出厂值覆盖。
     """
 
     mode: ConfirmationMode = Field(default_factory=factory_default_confirmation_mode)
@@ -306,7 +303,12 @@ class SandboxConfig(_Strict):
 
 
 class UnattendedConfig(_Strict):
-    """计划任务/Webhook/spawn 派生时的 confirm 处理策略。"""
+    """计划任务 / ``newsclaw run`` / Webhook 等无人值守路径的 CONFIRM 处理。
+
+    默认 ``deny``：没有真人同步确认通道时，CONFIRM 类工具直接拒绝，
+    避免模型“决策了却挂起等审批”、也避免静默自动放行写操作。
+    需要挂起审批时显式改成 ``ask_owner`` / ``defer_to_*``。
+    """
 
     default_strategy: Literal[
         "deny",
@@ -314,7 +316,7 @@ class UnattendedConfig(_Strict):
         "defer_to_owner",
         "defer_to_inbox",
         "ask_owner",
-    ] = "ask_owner"
+    ] = "deny"
 
 
 class DeathSwitchConfig(_Strict):
@@ -439,27 +441,21 @@ class PolicyConfigV2(_Strict):
     - ``ConfirmationMode`` / ``SessionRole`` / ``ApprovalClass`` 用 v2 enum，
       字符串自动 coerce，错值直接抛 ValidationError
 
-    出厂语义（v1.27.13+，fresh install / 缺失 POLICIES.yaml / lenient fallback）：
-    - ``profile.current = "trust"``：UI 高亮"信任方案"卡片。该字段**仅**
+    出厂语义（fresh install / 缺失 POLICIES.yaml / lenient fallback）：
+    - ``profile.current = "protect"``：UI 高亮"保护 / 先问"卡片。该字段**仅**
       被 ``engine.evaluate_tool_call`` 用来识别 ``"off"``，其余值对引擎
       决策完全无差异——profile.current 是 UI 标签，不是引擎真源。
-    - ``confirmation.mode = TRUST``：引擎决策真源。矩阵把 READONLY /
-      MUTATING / EXEC_CAPABLE / CONTROL_PLANE / NETWORK_OUT 等多数类
-      direct ALLOW，但 DESTRUCTIVE / UNKNOWN 仍 CONFIRM，因此 trust 不
-      等同 "yolo 裸奔"。
+    - ``confirmation.mode = DEFAULT``：引擎决策真源。写盘 / 高权执行走
+      CONFIRM；只读与低危执行仍 ALLOW。``profile=off`` / ``enabled=False``
+      短路为全部 DENY。
     - ``sandbox / shell_risk / death_switch / checkpoint`` 默认 ``enabled=True``：
       作为 belt-and-suspenders fail-safe。这与 ``api/routes/config.py::
       _apply_security_profile_defaults("trust")`` 套用的 bundle 之间有意保留
       差异——bundle 是 UI 套餐（用户主动点"信任方案"按钮才整体覆盖），
-      schema 默认是原子字段层的"安全侧"。引擎在 TRUST 模式下走矩阵直接
-      ALLOW shell 类时，``sandbox.enabled=True`` 仍会让 ``run_shell``
-      在 ``CommandSandbox`` 模式检查后通过 ``asyncio.create_subprocess_shell``
-      执行（不强制 docker/wsl，详见 ``core/sandbox.py``）。
+      schema 默认是原子字段层的"安全侧"。
 
     并行真源：``schema.py`` 的字段默认 与 ``_apply_security_profile_defaults``
-    的 bundle 是两份并行 source-of-truth，未来如改 trust profile 含义需同步两处
-    （单元测试 ``test_security_permission_mode_api.py`` 与
-    ``test_policy_v2_loader.py::TestSchemaDefaults`` 互为锚点）。
+    的 bundle 共用 ``FACTORY_DEFAULT_PROFILE``；已落盘 YAML 不以出厂值覆盖。
     """
 
     enabled: _StrictBool = True

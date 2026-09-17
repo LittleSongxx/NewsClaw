@@ -49,7 +49,6 @@ from .context import (
 from .death_switch import get_death_switch_tracker
 from .enums import (
     ApprovalClass,
-    ConfirmationMode,
     DecisionAction,
     DecisionSource,
     SessionRole,
@@ -121,15 +120,13 @@ class PolicyEngineV2:
         - ``owner_only.tools`` 显式 owner-only 工具
         - ``approval_classes.overrides`` 用户对 ApprovalClass 的 override
         - ``unattended.default_strategy`` 计划任务的兜底策略
-        默认 ``PolicyConfigV2()``——纯 schema 默认。自 v1.27.13 起：
-        - ``confirmation.mode = TRUST``（出厂"不打扰"档；DESTRUCTIVE/UNKNOWN
-          仍走 CONFIRM，矩阵兜底见 ``policy_v2/matrix.py``）
-        - ``profile.current = "trust"``（UI 标签真源；引擎不读它做决策）
+        默认 ``PolicyConfigV2()``——纯 schema 默认。出厂是 protect：
+        - ``confirmation.mode = DEFAULT``（先问再做；矩阵兜底见 ``policy_v2/matrix.py``）
+        - ``profile.current = "protect"``（UI 标签真源；引擎不读它做决策，
+          只有 ``"off"`` 会短路拒绝全部工具）
         - ``sandbox / shell_risk / death_switch / checkpoint`` 仍默认 ``enabled=True``
-          作为 belt-and-suspenders fail-safe——这与 ``_apply_security_profile_defaults``
-          套用的 "trust profile bundle"（其中 sandbox 被关掉）有意保留差异：
-          schema 默认是"原子字段都开 + 模式 TRUST"，profile bundle 是 UI 套餐
-          整体语义。测试与首启都 OK。
+          作为 belt-and-suspenders fail-safe。用户主动点"信任方案"才会
+          切到 TRUST 并关沙箱。已落盘 trust/off 的 YAML 以文件为准。
 
         ``audit_hook`` 接收 ``evaluate_tool_call`` 决策；``audit_intent_hook``
         接收 ``evaluate_message_intent`` 决策。两者签名形参不同，分开传以避
@@ -320,7 +317,7 @@ class PolicyEngineV2:
             return self._finalize(
                 chain=chain,
                 step_name="security_profile_off",
-                action=DecisionAction.ALLOW,
+                action=DecisionAction.DENY,
                 reason="security profile is off",
                 clf=off_clf,
             )
@@ -343,6 +340,19 @@ class PolicyEngineV2:
         # ``most_strict`` 比 classifier 更严的（防止用户错配削弱安全）。
         clf_result = self._apply_class_override(tool, clf_result, chain)
         clf_result = self._apply_execution_switches(tool, event.params, clf_result)
+
+        # 早报硬门必须在 matrix ALLOW / immune CONFIRM 之前：否则 add_memory
+        # （EXEC_LOW_RISK）和 trust 模式下的 write_file 会短路放行，直接改
+        # sources.yaml。这里只拒绝，不放行。
+        newsroom_deny = self._deny_newsroom_side_effect(tool, event.params, ctx)
+        if newsroom_deny is not None:
+            return self._finalize(
+                chain=chain,
+                step_name=newsroom_deny.step_name,
+                action=newsroom_deny.action,
+                reason=newsroom_deny.reason,
+                clf=clf_result,
+            )
 
         # Step 3: safety_immune（C5: union config + ctx; C6: PathSpec 完整匹配）
         immune = self._check_safety_immune(tool, event.params, ctx)
@@ -495,6 +505,16 @@ class PolicyEngineV2:
 
         # Step 11: unattended branch（C5 5 strategies；C12 wire pending_approvals）
         if ctx.is_unattended:
+            newsroom_allow = self._allow_newsroom_unattended(tool, event.params, ctx)
+            if newsroom_allow is not None:
+                return self._finalize(
+                    chain=chain,
+                    step_name=newsroom_allow.step_name,
+                    action=newsroom_allow.action,
+                    reason=newsroom_allow.reason,
+                    clf=clf_result,
+                    is_unattended_path=True,
+                )
             effective_strategy = self._effective_unattended_strategy(ctx)
             ua = self._handle_unattended(clf_result, effective_strategy)
             chain.append(
@@ -563,21 +583,7 @@ class PolicyEngineV2:
                     ],
                 )
 
-        # trust 模式 → 全部 ALLOW（v1 RiskGate 在 trust 模式下不拦截，对齐）
-        if ctx.confirmation_mode == ConfirmationMode.TRUST:
-            return PolicyDecisionV2(
-                action=DecisionAction.ALLOW,
-                reason="trust mode bypasses legacy message-intent signal",
-                chain=chain
-                + [
-                    DecisionStep(
-                        name="intent_trust_bypass",
-                        action=DecisionAction.ALLOW,
-                    )
-                ],
-            )
-
-        # 其他模式：风险信号 → CONFIRM；无信号 → ALLOW
+        # 风险信号 → CONFIRM；无信号 → ALLOW。TRUST 不再旁路意图门。
         risk_signal = _extract_risk_signal(event.risk_intent)
         if risk_signal is None or risk_signal == "readonly":
             return PolicyDecisionV2(
@@ -981,6 +987,28 @@ class PolicyEngineV2:
         if klass in _READONLY_CLASSES_FOR_DEATH_SWITCH:
             return None
         return DecisionAction.DENY
+
+    @staticmethod
+    def _deny_newsroom_side_effect(tool: str, params: dict[str, Any] | None, ctx: PolicyContext):
+        """懒导入早报拒绝门：保护文件 + 复盘禁止 add_memory。"""
+        try:
+            from newsclaw.newsroom.policy import deny_newsroom_side_effect
+
+            return deny_newsroom_side_effect(tool, params, ctx)
+        except Exception:
+            logger.exception("[PolicyEngineV2] newsroom deny guard failed")
+            return None
+
+    @staticmethod
+    def _allow_newsroom_unattended(tool: str, params: dict[str, Any] | None, ctx: PolicyContext):
+        """懒导入早报受控放行：仅无人值守的 daily/review 任务。"""
+        try:
+            from newsclaw.newsroom.policy import allow_newsroom_unattended
+
+            return allow_newsroom_unattended(tool, params, ctx)
+        except Exception:
+            logger.exception("[PolicyEngineV2] newsroom allow guard failed")
+            return None
 
     def _effective_unattended_strategy(self, ctx: PolicyContext) -> str:
         """计算生效 unattended strategy：ctx override > config default。

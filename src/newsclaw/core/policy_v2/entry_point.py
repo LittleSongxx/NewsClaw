@@ -32,13 +32,13 @@ Classification matrix
 |                      | capability   |                |                      |
 +======================+==============+================+======================+
 | CLI + TTY            | ``tty``      | False          | (use Rich prompt)    |
-| CLI + non-TTY (pipe) | ``none``     | True           | ``ask_owner``        |
-| ``newsclaw run``    | ``none``     | True           | ``ask_owner``        |
+| CLI + non-TTY (pipe) | ``none``     | True           | ``deny``             |
+| ``newsclaw run``     | ``none``     | True           | ``deny``             |
 | HTTP /chat (SSE)     | ``sse``      | False          | (use SSE)            |
 | HTTP /chat/sync      | ``none``     | True           | ``defer_to_inbox``   |
-| IM webhook           | ``none``     | True           | ``ask_owner``        |
-| Webhook (generic)    | ``none``     | True           | ``ask_owner``        |
-| Scheduler            | ``none``     | True           | ``ask_owner``        |
+| IM webhook           | ``none``     | True           | ``deny``（可用配置改）|
+| Webhook (generic)    | ``none``     | True           | ``deny``             |
+| Scheduler            | ``none``     | True           | ``deny``（跟配置）   |
 | Desktop (Tauri)      | ``sse``      | False          | (use SSE)            |
 +----------------------+--------------+----------------+----------------------+
 
@@ -69,9 +69,10 @@ class EntryClassification:
             UI. ``sse`` = setup-center / desktop / web SSE,
             ``tty`` = terminal Rich prompt, ``none`` = no live channel.
         default_strategy: Recommended ``unattended_strategy`` when the
-            session doesn't override. One of: ``ask_owner`` /
+            session doesn't override. One of: ``deny`` /
             ``defer_to_owner`` / ``defer_to_inbox`` / ``auto_approve`` /
-            ``deny``. Empty string means "fall back to global config".
+            ``ask_owner``. Empty string means "fall back to global config"
+            （配置默认也是 ``deny``）。
         reason: Human-readable label for debug/audit.
     """
 
@@ -138,7 +139,7 @@ def classify_entry(
         return EntryClassification(
             is_unattended=True,
             confirm_capability="none",
-            default_strategy="ask_owner",
+            default_strategy="deny",
             reason=f"force_unattended (channel={channel_norm!r})",
         )
 
@@ -160,7 +161,7 @@ def classify_entry(
         return EntryClassification(
             is_unattended=True,
             confirm_capability="none",
-            default_strategy="ask_owner",
+            default_strategy="deny",
             reason="cli without tty (piped stdin)",
         )
 
@@ -176,7 +177,7 @@ def classify_entry(
         return EntryClassification(
             is_unattended=True,
             confirm_capability="none",
-            default_strategy="ask_owner",
+            default_strategy="deny",
             reason=f"im-webhook ({channel_norm})",
         )
 
@@ -199,14 +200,12 @@ def classify_entry(
     if channel_norm in ("evolution", "evolution-self-fix"):
         # C15 §17.1 — Evolution.self_check runs the fix agent fully
         # headless. Like scheduler, there's no live operator on the
-        # other end. ``ask_owner`` keeps the deferred-approval inbox
-        # pattern consistent: any CONFIRM-class tool the fix agent
-        # tries to invoke routes to setup-center pending_approvals
-        # for the operator to review when they're next online.
+        # other end. Default ``deny``：无人值守修自身时 CONFIRM 工具直接拒绝，
+        # 避免挂起等审批；需要挂起时改 POLICIES / ENV。
         return EntryClassification(
             is_unattended=True,
             confirm_capability="none",
-            default_strategy="ask_owner",
+            default_strategy="deny",
             reason=f"evolution self-fix ({channel_norm})",
         )
 
@@ -214,16 +213,16 @@ def classify_entry(
         return EntryClassification(
             is_unattended=True,
             confirm_capability="none",
-            default_strategy="ask_owner",
+            default_strategy="deny",
             reason="generic webhook",
         )
 
-    # Unknown channel — default to unattended (safe). Audit log should
+    # Unknown channel — default to unattended + deny (safe). Audit log should
     # surface this so new channels are explicitly classified above.
     return EntryClassification(
         is_unattended=True,
         confirm_capability="none",
-        default_strategy="ask_owner",
+        default_strategy="deny",
         reason=f"unknown channel {channel_norm!r} (default unattended)",
     )
 

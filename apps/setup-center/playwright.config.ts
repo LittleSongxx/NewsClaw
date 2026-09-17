@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * Playwright configuration for the OpenAkita setup-center frontend.
+ * Playwright configuration for the NewsClaw setup-center frontend.
  * Targets the running Vite dev server at http://127.0.0.1:5173 and
  * the backend at http://127.0.0.1:18900 (already started outside).
  *

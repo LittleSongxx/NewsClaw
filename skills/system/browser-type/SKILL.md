@@ -22,7 +22,7 @@ category: Browser
 
 **在搜索框输入**:
 ```json
-{"selector": "input[name='q']", "text": "OpenAkita"}
+{"selector": "input[name='q']", "text": "NewsClaw"}
 ```
 
 **填写用户名**:

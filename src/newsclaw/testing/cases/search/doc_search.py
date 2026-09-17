@@ -1,6 +1,4 @@
-"""
-文档搜索测试用例 (30个)
-"""
+"""文档搜索 demo cases（5 条）。字符串包含判定，不是质量门。"""
 
 from newsclaw.testing.runner import TestCase
 

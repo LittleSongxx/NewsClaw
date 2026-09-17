@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 // `[来源:不确定]` 反幻觉来源标签从"裸文本"渲染成可视化 badge。
 //
 // 这是 OpenNewsClaw 防幻觉机制的一部分——后端 prompt 要求 LLM 在涉及外部事实的
-// 句段后显式标注来源（详见 src/openakita/prompt/builder.py），过去前端原样
+// 句段后显式标注来源（详见 src/newsclaw/prompt/builder.py），过去前端原样
 // 显示成 `[来源:工具]`，看起来像"模型 leak 出了系统提示词"，本组件统一渲染
 // 为带 tooltip 的彩色徽章。
 //

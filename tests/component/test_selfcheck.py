@@ -69,7 +69,7 @@ class TestSelfCheckResilience:
         monkeypatch,
     ):
         workspace_root = tmp_path / "workspace"
-        package_root = tmp_path / "package" / "openakita"
+        package_root = tmp_path / "package" / "newsclaw"
         bundled_prompt = package_root / "prompts" / "selfcheck" / "system.md"
         workspace_root.mkdir()
         bundled_prompt.parent.mkdir(parents=True)
@@ -86,7 +86,7 @@ class TestSelfCheckResilience:
 
     def test_missing_prompts_fail_closed(self, mock_brain, tmp_path, monkeypatch):
         workspace_root = tmp_path / "workspace"
-        package_root = tmp_path / "package" / "openakita"
+        package_root = tmp_path / "package" / "newsclaw"
         workspace_root.mkdir()
         package_root.mkdir(parents=True)
         monkeypatch.setattr("newsclaw.config.settings.project_root", workspace_root)
@@ -158,7 +158,7 @@ class TestSelfCheckResilience:
         log_dir = tmp_path / "logs"
         log_dir.mkdir()
         (log_dir / "error.log").write_text(
-            "2026-03-31 00:00:00,000 - openakita.tools.browser - ERROR - Browser failed\n",
+            "2026-03-31 00:00:00,000 - newsclaw.tools.browser - ERROR - Browser failed\n",
             encoding="utf-8",
         )
 
@@ -191,10 +191,10 @@ class TestSelfCheckResilience:
         log_dir = tmp_path / "logs"
         log_dir.mkdir()
         (log_dir / "error.log").write_text(
-            "2026-03-31 00:00:00,000 - openakita.tools.browser - ERROR - Browser failed\n",
+            "2026-03-31 00:00:00,000 - newsclaw.tools.browser - ERROR - Browser failed\n",
             encoding="utf-8",
         )
-        package_root = tmp_path / "empty-package" / "openakita"
+        package_root = tmp_path / "empty-package" / "newsclaw"
         package_root.mkdir(parents=True)
         monkeypatch.setattr("newsclaw.config.settings.project_root", tmp_path)
         monkeypatch.setattr(

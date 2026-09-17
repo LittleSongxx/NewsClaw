@@ -86,9 +86,10 @@ class SkillManager:
         """
         加载已安装的技能。
 
-        技能从以下目录加载:
-        - skills/ (项目级别)
-        - .cursor/skills/ (Cursor 兼容)
+        技能从以下目录加载（与 skills/loader.py 的 SKILL_DIRECTORIES 一致）:
+        - __builtin__（随包分发的内置技能）
+        - 工作区 skills（settings.skills_path，不是 .cursor/skills）
+        - 项目 skills/
         """
         # 外部技能 allowlist 过滤（支持 DEFAULT_DISABLED_SKILLS 默认禁用）。
         # 先读取 allowlist，并在扫描阶段跳过未启用的外部技能（upstream

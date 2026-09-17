@@ -34,10 +34,12 @@ CLIENT_ID = DEFAULT_ACCOUNT_CLIENT_ID
 CALLBACK_HOST = "127.0.0.1"
 CALLBACK_PORT = 1455
 CALLBACK_URI = f"http://{CALLBACK_HOST}:{CALLBACK_PORT}/auth/callback"
+# 移动端回调白名单：不是「已有官方云」的默认入口。只有调用方显式配了
+# 同一 host 的账户 URL 时才会走到这条路径。
 NATIVE_CALLBACK_URIS = frozenset(
     {
-        "https://account.openakita.cn/oauth/mobile/callback",
-        "com.openakita.mobile:/oauth/callback",
+        "https://account.newsclaw.cn/oauth/mobile/callback",
+        "com.newsclaw.mobile:/oauth/callback",
     }
 )
 DEVICE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
@@ -58,7 +60,7 @@ class TokenStore(Protocol):
 
 class KeyringTokenStore:
     service = "NewsClaw Account"
-    username = "openakita-desktop-refresh-token"
+    username = "newsclaw-desktop-refresh-token"
 
     def __init__(self, *, username: str | None = None) -> None:
         self.username = username or type(self).username

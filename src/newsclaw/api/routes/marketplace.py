@@ -26,9 +26,13 @@ async def list_marketplace_skills(
     offset: int = Query(default=0, ge=0),
 ):
     """Read the public catalog without forwarding local credentials or granting acquisition."""
-    origin = trusted_marketplace_origin(
-        os.environ.get("NEWSCLAW_MARKETPLACE_URL", "https://marketplace.openakita.cn")
-    )
+    raw_origin = os.environ.get("NEWSCLAW_MARKETPLACE_URL", "").strip()
+    if not raw_origin:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "marketplace_unconfigured"},
+        )
+    origin = trusted_marketplace_origin(raw_origin)
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
             response = await client.get(

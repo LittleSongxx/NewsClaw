@@ -42,6 +42,15 @@ class WikiHandler:
         day = str(params.get("day") or "").strip()
         if not day:
             return json.dumps({"ok": False, "error": "day 必填（YYYY-MM-DD）"}, ensure_ascii=False)
+        try:
+            from datetime import date as _date
+
+            _date.fromisoformat(day)
+        except ValueError:
+            return json.dumps(
+                {"ok": False, "error": f"day 必须是 YYYY-MM-DD：{day}"},
+                ensure_ascii=False,
+            )
 
         raw_entries = params.get("entries") or []
         entries: list[store.WikiEntry] = []
@@ -58,6 +67,16 @@ class WikiHandler:
         links = [str(x) for x in (params.get("links") or []) if str(x).strip()]
         summary = str(params.get("summary") or "").strip()
 
+        if not store.wiki_enabled():
+            return json.dumps(
+                {
+                    "ok": False,
+                    "skipped": True,
+                    "error": "obsidian_vault 未配置，已跳过 Wiki 写入",
+                },
+                ensure_ascii=False,
+            )
+
         try:
             result = store.upsert_daily_section(
                 page,
@@ -70,6 +89,10 @@ class WikiHandler:
             moc = store.rebuild_moc()
             result["moc"] = str(moc.relative_to(store.wiki_root()))
             result["ok"] = True
+        except store.WikiDisabledError as exc:
+            return json.dumps(
+                {"ok": False, "skipped": True, "error": str(exc)}, ensure_ascii=False
+            )
         except ValueError as exc:  # 页面名非法等用户可纠正的问题
             return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
         except OSError as exc:

@@ -56,6 +56,8 @@ type MigrationStatus = {
   api_version?: string;
   current_owner: { user_id: string; workspace_id: string };
   current_visible: number;
+  stranded_default?: number;
+  show_stranded_default?: boolean;
   legacy_quarantine: number;
   legacy_pending?: number;
   legacy_reviewed?: number;
@@ -236,12 +238,13 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
   const [totalCount, setTotalCount] = useState(0);
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(null);
   const [claimingLegacy, setClaimingLegacy] = useState(false);
+  const [claimingStranded, setClaimingStranded] = useState(false);
   const [dismissingLegacy, setDismissingLegacy] = useState(false);
   // 本会话内点了"稍后提醒"，刷新页面后会重新出现。
   // 用 sessionStorage 而不是 React state，是为了切到别的 Tab 再回来 banner 不会回来。
   const [sessionLegacyDismissed, setSessionLegacyDismissed] = useState<boolean>(() => {
     try {
-      return window.sessionStorage.getItem("openakita.legacy_banner_snoozed") === "1";
+      return window.sessionStorage.getItem("newsclaw.legacy_banner_snoozed") === "1";
     } catch {
       return false;
     }
@@ -341,6 +344,28 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
     }
   }, [API_BASE, loadStats]);
 
+  const handleClaimStrandedDefault = async () => {
+    setClaimingStranded(true);
+    try {
+      const res = await safeFetch(`${API_BASE}/api/memories/merge-owner`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dry_run: false,
+          from_owner: "default",
+          to_owner: "desktop_user",
+        }),
+      });
+      const data = await res.json();
+      toast.success(t("memory.strandedDefaultSuccess", { merged: data.merged ?? 0 }));
+      await Promise.all([loadMemories(), loadStats(), loadMigrationStatus()]);
+    } catch (e: any) {
+      toast.error(e.message || t("memory.strandedDefaultFailed"));
+    } finally {
+      setClaimingStranded(false);
+    }
+  };
+
   const handleClaimLegacy = async () => {
     setClaimingLegacy(true);
     try {
@@ -362,7 +387,7 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
       // 残留的 sessionStorage 静默拦住。后端 dismiss sentinel 已在路由里被清，
       // 这里把前端 snooze 一起对齐。
       try {
-        window.sessionStorage.removeItem("openakita.legacy_banner_snoozed");
+        window.sessionStorage.removeItem("newsclaw.legacy_banner_snoozed");
       } catch {
         /* ignore */
       }
@@ -379,7 +404,7 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
   const handleSnoozeLegacy = () => {
     // 本会话临时关闭：只写 sessionStorage，刷新或下次启动还会再问。
     try {
-      window.sessionStorage.setItem("openakita.legacy_banner_snoozed", "1");
+      window.sessionStorage.setItem("newsclaw.legacy_banner_snoozed", "1");
     } catch {
       /* ignore */
     }
@@ -396,7 +421,7 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
       });
       // 同时关掉本会话的 snooze，避免下次后端重置后又被本地 snooze 拦住。
       try {
-        window.sessionStorage.removeItem("openakita.legacy_banner_snoozed");
+        window.sessionStorage.removeItem("newsclaw.legacy_banner_snoozed");
       } catch {
         /* ignore */
       }
@@ -576,6 +601,9 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
       ? migrationStatus.show_banner
       : !!migrationStatus && migrationStatus.has_recoverable_legacy && pendingLegacy > 0;
   const showLegacyRecovery = backendSaysShow && !sessionDismissed && pendingLegacy > 0;
+  const strandedDefault = migrationStatus?.stranded_default ?? 0;
+  const showStrandedDefault =
+    !!migrationStatus?.show_stranded_default && strandedDefault > 0 && !showLegacyRecovery;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -609,6 +637,28 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
       )}
 
       {/* Toolbar */}
+      {showStrandedDefault && (
+        <Card className="gap-0 border-sky-500/30 bg-sky-500/10 py-0 shadow-sm shrink-0">
+          <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-sky-700 dark:text-sky-300">
+                {t("memory.strandedDefaultTitle")}
+              </div>
+              <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {t("memory.strandedDefaultDesc", { count: strandedDefault })}
+              </div>
+            </div>
+            <Button
+              onClick={handleClaimStrandedDefault}
+              disabled={claimingStranded}
+              className="h-9 shrink-0"
+            >
+              {claimingStranded ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
+              {t("memory.strandedDefaultAction")}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       {showLegacyRecovery && (
         <Card className="gap-0 border-amber-500/30 bg-amber-500/10 py-0 shadow-sm shrink-0">
           <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">

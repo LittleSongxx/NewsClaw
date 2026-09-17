@@ -73,7 +73,7 @@ def test_system_presets_do_not_reference_removed_external_skills() -> None:
         skill
         for preset in SYSTEM_PRESETS
         for skill in preset.skills
-        if skill.startswith(("openakita/skills@", "obra/superpowers@"))
+        if skill.startswith(("newsclaw/skills@", "obra/superpowers@"))
     }
 
     assert external_references <= available_names
@@ -132,14 +132,14 @@ def test_namespaced_preset_reference_keeps_registry_skill(tmp_path: Path) -> Non
     skill_dir = skills_root / "demo-skill"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
-        "---\nname: openakita/skills@demo-skill\ndescription: Demo skill\n---\n\n# Demo\n",
+        "---\nname: newsclaw/skills@demo-skill\ndescription: Demo skill\n---\n\n# Demo\n",
         encoding="utf-8",
     )
     loader = SkillLoader()
     loader.load_from_directory(skills_root)
 
     loader.prune_external_by_allowlist(
-        set(), agent_referenced_skills={"openakita/skills@demo-skill"}
+        set(), agent_referenced_skills={"newsclaw/skills@demo-skill"}
     )
 
     assert loader.get_skill("demo-skill") is not None

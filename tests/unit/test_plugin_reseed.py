@@ -1,7 +1,7 @@
 """Unit tests for the *action* half of plugin re-seed (hygiene #4).
 
-Covers :func:`openakita.plugins.reseed.apply_reseed` (the pure copier) and
-the :class:`openakita.cli.plugins_cmd.plugins_app` Typer sub-app.
+Covers :func:`newsclaw.plugins.reseed.apply_reseed` (the pure copier) and
+the :class:`newsclaw.cli.plugins_cmd.plugins_app` Typer sub-app.
 
 The CLI is exercised via :class:`typer.testing.CliRunner` so we never have
 to spawn a subprocess.
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-# Workaround for pre-existing openakita import cycle: pre-load ``openakita.agent``
+# Workaround for pre-existing newsclaw import cycle: pre-load ``newsclaw.agent``
 # so ``core.capabilities`` finishes loading before ``plugins.api`` re-enters.
 # Without this, running this file in isolation fails at collection time.
 import newsclaw.agent  # noqa: F401  pylint: disable=unused-import

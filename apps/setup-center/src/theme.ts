@@ -53,7 +53,7 @@ export function applyTheme(theme: Theme) {
   }
 }
 
-export const THEME_CHANGE_EVENT = "openakita-theme-change";
+export const THEME_CHANGE_EVENT = "newsclaw-theme-change";
 
 let _previewBackup: Theme | null = null;
 

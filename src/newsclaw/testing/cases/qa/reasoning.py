@@ -1,6 +1,4 @@
-"""
-推理和逻辑测试用例 (35个)
-"""
+"""推理和逻辑 demo cases（15 条）。字符串包含判定，不是质量门。"""
 
 from newsclaw.testing.runner import TestCase
 

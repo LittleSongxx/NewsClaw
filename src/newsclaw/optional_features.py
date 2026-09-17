@@ -344,7 +344,7 @@ def install_playwright_runtime(progress: Any | None = None) -> Path:
             else None
         ),
     )
-    with tempfile.TemporaryDirectory(prefix="openakita-playwright-") as temp_name:
+    with tempfile.TemporaryDirectory(prefix="newsclaw-playwright-") as temp_name:
         temp = Path(temp_name)
         extracted = temp / "driver"
         prefix = "playwright/driver/"

@@ -1,4 +1,4 @@
-"""Tests for openakita.plugins.bundles — BundleMapper ecosystem detection."""
+"""Tests for newsclaw.plugins.bundles — BundleMapper ecosystem detection."""
 
 from __future__ import annotations
 

@@ -3,7 +3,7 @@
 R5-18 — 零配置首次安装
 ======================
 
-新用户 ``pip install openakita`` 后无 ``identity/POLICIES.yaml``、无环境
+新用户 ``pip install newsclaw`` 后无 ``identity/POLICIES.yaml``、无环境
 变量、无 ``data/`` 目录, 第一次跑 CLI 应该:
 
 1. ``policy_v2.get_engine_v2()`` 不抛异常, 用 builtin 安全默认构建
@@ -89,10 +89,7 @@ class TestR518ZeroConfigFirstInstall:
             ToolCallEvent(tool="totally_unknown_tool_xyz", params={}),
             _ctx(),
         )
-        # In default/strict modes UNKNOWN should require confirmation.
-        # dont_ask is the only mode that could conceivably allow, but per
-        # design (see test_classifier::TestUnknownStrict) UNKNOWN remains
-        # CONFIRM even there.
+        # 出厂 default 下 UNKNOWN 必须 CONFIRM；DONT_ASK 改为 DENY，见矩阵测试。
         assert decision.action == DecisionAction.CONFIRM
 
     def test_zero_config_builtin_9_categories_intact(self):

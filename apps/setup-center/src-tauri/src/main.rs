@@ -4,5 +4,5 @@
 )]
 
 fn main() {
-    openakita_setup_center::run();
+    newsclaw_setup_center::run();
 }

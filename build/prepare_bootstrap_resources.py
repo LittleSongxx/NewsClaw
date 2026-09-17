@@ -323,7 +323,7 @@ def build_wheel() -> Path:
     out_dir = BUILD_BOOTSTRAP_WHEELS
     shutil.rmtree(out_dir, ignore_errors=True)
     out_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="openakita-wheel-build-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="newsclaw-wheel-build-") as tmp:
         # Running `python -m build` from repo root imports the local build/
         # script directory instead of PyPA's build package.
         subprocess.run(
@@ -935,7 +935,7 @@ def clean_output_dir(output_dir: Path) -> None:
         shutil.rmtree(output_dir, ignore_errors=True)
         return
     raise RuntimeError(
-        "Refusing to clean non-build output directory without an OpenAkita "
+        "Refusing to clean non-build output directory without an NewsClaw "
         f"bootstrap manifest: {output_dir}"
     )
 

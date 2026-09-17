@@ -55,7 +55,13 @@ def validate_marketplace_endpoint(value: str) -> str:
         for item in os.environ.get("NEWSCLAW_MARKETPLACE_ALLOWED_HOSTS", "").split(",")
         if item.strip()
     }
-    allowed_https = {"marketplace.openakita.cn", *configured}
+    extra_url = os.environ.get("NEWSCLAW_MARKETPLACE_URL", "").strip()
+    if extra_url:
+        extra_host = (urlparse(extra_url).hostname or "").lower()
+        if extra_host:
+            configured.add(extra_host)
+    # 没有内置官方云域名；HTTPS 主机必须由 ENV 显式放行。
+    allowed_https = configured
     if parsed.scheme == "https" and host in allowed_https:
         return f"https://{parsed.netloc}"
     if parsed.scheme == "http" and host in {"localhost", "127.0.0.1", "::1"}:
@@ -281,7 +287,7 @@ class MarketplaceInstallManager:
         try:
             async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
                 response = await client.post(
-                    f"{endpoint}/api/internal/openakita/install-instructions/{action}",
+                    f"{endpoint}/api/internal/newsclaw/install-instructions/{action}",
                     json={"token": token, "device_id": self.device_id, "account_proof": proof},
                 )
         except httpx.HTTPError as exc:
@@ -395,7 +401,7 @@ class MarketplaceInstallManager:
         try:
             async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
                 response = await client.post(
-                    f"{job['endpoint']}/api/internal/openakita/install-instructions/report",
+                    f"{job['endpoint']}/api/internal/newsclaw/install-instructions/report",
                     json=body,
                 )
                 return response.status_code == 200
@@ -570,7 +576,7 @@ class MarketplaceInstallManager:
                 raise MarketplaceInstallError("marketplace_compatibility_invalid") from exc
 
     async def _install(self, job: dict[str, Any], package_path: Path, request: Any) -> bool:
-        temp_root = Path(tempfile.mkdtemp(prefix="openakita-marketplace-"))
+        temp_root = Path(tempfile.mkdtemp(prefix="newsclaw-marketplace-"))
         try:
             extracted = temp_root / "content"
             job["stage"] = "extracting"

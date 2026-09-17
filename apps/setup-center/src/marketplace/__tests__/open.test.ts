@@ -27,13 +27,13 @@ describe("desktop identity handoff navigation", () => {
     mocks.fetch.mockResolvedValue(Response.json({ ticket: null }));
     await openMarketplaceWithAccount("1.27.40", "http://127.0.0.1:18900");
     const opened = new URL(mocks.open.mock.calls[0][0]);
-    expect(opened.pathname).toBe("/openakita/context");
+    expect(opened.pathname).toBe("/newsclaw/context");
     expect(opened.searchParams.get("next")).toBe("/");
   });
   it("publishes the recovered desktop identity before opening the browser", async () => {
     const account = { status: "active", profile: { name: "Recovered account" } };
     const changed = vi.fn();
-    window.addEventListener("openakita:account-status-changed", changed);
+    window.addEventListener("newsclaw:account-status-changed", changed);
     try {
       mocks.fetch.mockResolvedValue(Response.json({ ticket: "a".repeat(64), account }));
       mocks.open.mockImplementation(() => {
@@ -43,7 +43,7 @@ describe("desktop identity handoff navigation", () => {
       await openMarketplaceWithAccount("1.27.40", "http://127.0.0.1:18900");
       expect(mocks.open).toHaveBeenCalledOnce();
     } finally {
-      window.removeEventListener("openakita:account-status-changed", changed);
+      window.removeEventListener("newsclaw:account-status-changed", changed);
     }
   });
   it("never asks a remote service for its owner's credential", async () => {
@@ -51,7 +51,7 @@ describe("desktop identity handoff navigation", () => {
     await openMarketplaceWithAccount("1.27.40", "https://remote.example.com");
     expect(mocks.invoke).not.toHaveBeenCalled();
     expect(mocks.fetch).not.toHaveBeenCalled();
-    expect(new URL(mocks.open.mock.calls[0][0]).pathname).toBe("/openakita/context");
+    expect(new URL(mocks.open.mock.calls[0][0]).pathname).toBe("/newsclaw/context");
   });
   it("does not fall back to the browser identity when handoff fails", async () => {
     mocks.fetch.mockResolvedValue(new Response("", { status: 503 }));
@@ -73,6 +73,6 @@ describe("desktop identity handoff navigation", () => {
     mocks.fetch.mockResolvedValueOnce(new Response("", { status: 404 }))
       .mockResolvedValueOnce(Response.json({ enabled: false }));
     await openMarketplaceWithAccount("1.27.40", "http://127.0.0.1:18900");
-    expect(new URL(mocks.open.mock.calls[0][0]).pathname).toBe("/openakita/context");
+    expect(new URL(mocks.open.mock.calls[0][0]).pathname).toBe("/newsclaw/context");
   });
 });

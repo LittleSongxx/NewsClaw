@@ -584,7 +584,7 @@ def _collect_sanitized_config() -> dict:
         if not k.startswith(
             (
                 "NEWSCLAW",
-                "OPENAKITA",  # rename 前的环境变量前缀，仍可能出现在旧部署里
+                "NEWSCLAW",  # rename 前的环境变量前缀，仍可能出现在旧部署里
                 "ANTHROPIC",
                 "OPENAI",
                 "FEISHU",
@@ -696,7 +696,7 @@ def _build_diagnostic_zip() -> bytes:
 async def export_diagnostics():
     """Download diagnostics from the running backend's workspace."""
     payload = await asyncio.to_thread(_build_diagnostic_zip)
-    filename = f"openakita-diagnostic-{int(time.time())}.zip"
+    filename = f"newsclaw-diagnostic-{int(time.time())}.zip"
     return Response(
         payload,
         media_type="application/zip",
@@ -995,7 +995,7 @@ async def download_feedback_package(report_id: str):
     return FileResponse(
         path,
         media_type="application/zip",
-        filename=f"openakita-feedback-{safe_id}.zip",
+        filename=f"newsclaw-feedback-{safe_id}.zip",
     )
 
 
@@ -1025,13 +1025,13 @@ def _add_diagnostic_files(zf: zipfile.ZipFile, *, upload_logs: bool, upload_debu
 
         log_data = _tail_file(main_log, LOG_TAIL_BYTES)
         if log_data:
-            zf.writestr("logs/openakita.log", log_data)
+            zf.writestr("logs/newsclaw.log", log_data)
         err_data = _tail_file(error_log, LOG_TAIL_BYTES)
         if err_data:
             zf.writestr("logs/error.log", err_data)
-        serve_data = _tail_file(logs_dir / "openakita-serve.log", LOG_TAIL_BYTES)
+        serve_data = _tail_file(logs_dir / "newsclaw-serve.log", LOG_TAIL_BYTES)
         if serve_data:
-            zf.writestr("logs/openakita-serve.log", serve_data)
+            zf.writestr("logs/newsclaw-serve.log", serve_data)
 
         global_logs = _resolve_global_logs_dir()
         fe_data = _tail_file(global_logs / "frontend.log", FRONTEND_LOG_TAIL_BYTES)

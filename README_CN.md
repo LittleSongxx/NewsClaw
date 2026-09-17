@@ -48,10 +48,11 @@ Everything stays on your machine (`~/.newsclaw` plus the workspace `data/`), and
 **④ Review (self-evolution).** Every Sunday a review agent reads the last seven issues' scores and your per-issue feedback, then edits three things: `sources.yaml` (source quality), `editorial-policy.md` (topic taste, voice, structure templates) and memory (rules and experience). The next day's pipeline picks the changes up — that is where "self-evolving" actually lands.
 
 ```yaml
-# data/newsroom/config.yaml
+# data/newsroom/config.yaml (field names match the code)
 enabled: true
-daily_cron: "0 7 * * *"      # daily pipeline
-weekly_cron: "0 10 * * 1"    # weekly review
+daily_cron: "0 8 * * *"      # daily pipeline, local timezone
+review_cron: "0 20 * * 0"    # Sunday 20:00 review
+# obsidian_vault: ""         # empty = skip Wiki; set an absolute vault path to write
 ```
 
 ---
@@ -139,7 +140,7 @@ pip install -e ".[dev]"
 
 newsclaw init                 # setup wizard: model keys, IM channels
 newsclaw                      # interactive terminal session
-newsclaw run "summarise today's AI news"    # single task (unattended semantics)
+newsclaw run "summarise today's AI news"    # single task; unattended CONFIRM defaults to deny
 newsclaw serve                # service mode: IM channels + HTTP API (127.0.0.1:18900)
 
 # Desktop
@@ -161,9 +162,11 @@ CI runs lint, tests, the wheel build and a frontend type check; green is the bar
 
 ## License
 
-**AGPL-3.0-only** — see [LICENSE](LICENSE).
+**AGPL-3.0-only** — see [LICENSE](LICENSE). Do not relicense to MIT or strip LICENSE / NOTICE / TRADEMARK / copyright lines.
 
-This project is derived from [OpenAkita](https://github.com/openakita/openakita) (also AGPL-3.0-only). Product positioning, feature scope and code were reworked here, and the **upstream copyright, licence and attribution notices are preserved as required**: see [NOTICE](NOTICE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [identity/CREDITS.md](identity/CREDITS.md) and [TRADEMARK.md](TRADEMARK.md). AGPL-3.0-only is a fully open-source, OSI-approved licence, and as a derivative work this repository continues to be released under it.
+This project is an **unofficial fork** of [OpenAkita](https://github.com/openakita/openakita) (also AGPL-3.0-only). Product positioning, feature scope and code were reworked here; **upstream copyright, licence and attribution notices are preserved as required**: see [NOTICE](NOTICE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [identity/CREDITS.md](identity/CREDITS.md) and [TRADEMARK.md](TRADEMARK.md).
+
+There is **no standalone NewsClaw cloud** and no official account / marketplace hostname. `NEWSCLAW_ACCOUNT_MODE` defaults to `disabled`; account or marketplace integrations need an explicit URL. The plugin UI SDK (`openakita_plugin_sdk`, upstream PyPI name kept so existing plugins keep importing) is a **separate MIT-licensed** companion: plugin authors may ship call-site code under MIT, but running it inside this repository remains bound by the host AGPL-3.0-only.
 
 ## What is not in this repository
 

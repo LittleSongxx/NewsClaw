@@ -1,4 +1,4 @@
-"""V2-only smoke test for :class:`openakita.agent.brain.Brain`.
+"""V2-only smoke test for :class:`newsclaw.agent.brain.Brain`.
 
 N-G7-1 (P-RC-7 G-RC-7 audit nit): the three deleted parity files
 (``test_brain_parity.py`` / ``test_context_parity.py`` /
@@ -6,7 +6,7 @@ N-G7-1 (P-RC-7 G-RC-7 audit nit): the three deleted parity files
 ``brain.get_current_endpoint_info()`` against the legacy shim. With
 the shim deleted at P7.14 the v1-vs-v2 comparison is now
 tautological, but we still want one fast smoke that builds a real
-:class:`openakita.agent.brain.Brain` against a stub LLMClient and
+:class:`newsclaw.agent.brain.Brain` against a stub LLMClient and
 asserts the canonical ``{name, model, healthy}`` endpoint-info shape.
 
 This is the v2-only re-statement of the prior N6 parity case at
@@ -27,7 +27,7 @@ class _StubLLMEndpoint:
 
 
 class _StubLLMClient:
-    """Mirror enough of :class:`openakita.llm.client.LLMClient` to drive
+    """Mirror enough of :class:`newsclaw.llm.client.LLMClient` to drive
     :class:`EndpointFailoverView.current_endpoint_info` without touching
     settings, providers, or compiler endpoints.
     """
