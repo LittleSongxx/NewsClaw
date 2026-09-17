@@ -1,0 +1,1 @@
+"""NewsClaw Account integration primitives."""
