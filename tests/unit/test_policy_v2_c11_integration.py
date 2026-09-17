@@ -362,19 +362,15 @@ class TestStep6Matrix:
             f"{decision.action} via {_last_step(decision)}"
         )
 
-    def test_c11_12_unknown_in_dont_ask_still_confirm(self):
-        """Case 12 — UNKNOWN × DONT_ASK 仍 CONFIRM (safety-by-default).
-
-        DONT_ASK 是 "不要打扰我", 但 UNKNOWN 表示 "我们不知道工具风险" —
-        静默放行违反 safety-by-default. 应仍 CONFIRM.
-        """
+    def test_c11_12_unknown_in_dont_ask_denies(self):
+        """Case 12 — UNKNOWN × DONT_ASK → DENY（未预批则拒绝，不再 CONFIRM）。"""
         engine = _make_engine()
         decision = engine.evaluate_tool_call(
             ToolCallEvent(tool="some_brand_new_unmapped_tool_xyz", params={}),
             _ctx(mode=ConfirmationMode.DONT_ASK),
         )
-        assert decision.action == DecisionAction.CONFIRM, (
-            f"UNKNOWN tool in DONT_ASK should still CONFIRM, got {decision.action}"
+        assert decision.action == DecisionAction.DENY, (
+            f"UNKNOWN tool in DONT_ASK should DENY, got {decision.action}"
         )
         assert decision.approval_class == ApprovalClass.UNKNOWN
 
@@ -765,12 +761,10 @@ class TestRound2EvaluateMessageIntent:
         )
         assert "intent_role_block" in _step_names(decision)
 
-    def test_c11_27_intent_trust_mode_bypasses_gate(self):
-        """Case 27 — intent · TRUST mode → ALLOW (bypass).
+    def test_c11_27_intent_trust_mode_does_not_bypass_gate(self):
+        """Case 27 — intent · TRUST mode 对破坏指令不得无条件 ALLOW。
 
-        engine 设计: TRUST 模式 pre-LLM 闸门一律放行 (用户显式 yolo).
-        关键安全保证: 工具级仍走完 evaluate_tool_call, intent gate 只是
-        "提前告诉用户这条消息可能危险"的 UI 信号.
+        已删除 intent_trust_bypass；TRUST 与 DEFAULT 一样走风险信号门。
         """
         engine = _make_engine()
         decision = engine.evaluate_message_intent(
@@ -780,8 +774,9 @@ class TestRound2EvaluateMessageIntent:
             ),
             _ctx(mode=ConfirmationMode.TRUST),
         )
-        assert decision.action == DecisionAction.ALLOW
-        assert "intent_trust_bypass" in _step_names(decision)
+        assert decision.action != DecisionAction.ALLOW
+        assert "intent_trust_bypass" not in _step_names(decision)
+        assert "intent_risk" in _step_names(decision)
 
     def test_c11_28_intent_default_risky_signal_confirms(self):
         """Case 28 — intent · DEFAULT mode + risky signal → CONFIRM.

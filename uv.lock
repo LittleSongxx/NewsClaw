@@ -8,11 +8,11 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 conflicts = [[
-    { package = "openakita", extra = "all" },
-    { package = "openakita", extra = "finance-auto" },
+    { package = "newsclaw", extra = "all" },
+    { package = "newsclaw", extra = "finance-auto" },
 ], [
-    { package = "openakita", extra = "finance-auto" },
-    { package = "openakita", extra = "wework-ws" },
+    { package = "newsclaw", extra = "finance-auto" },
+    { package = "newsclaw", extra = "wework-ws" },
 ]]
 
 [[package]]
@@ -44,7 +44,7 @@ dependencies = [
     { name = "frozenlist" },
     { name = "multidict" },
     { name = "propcache" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "yarl" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ee/ab/93ce242f899b68c51b0578c027aafa791ab3614cb9345fa5d37b5f5c8e3e/aiohttp-3.14.0.tar.gz", hash = "sha256:2882de819734c715fd1b9c11c97e09fa020d14438203d1d354d8ed1702791c9b", size = 7940674, upload-time = "2026-06-01T19:41:02.763Z" }
@@ -157,7 +157,7 @@ version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "frozenlist" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/61/62/06741b579156360248d1ec624842ad0edf697050bbaf7c3e46394e106ad1/aiosignal-1.4.0.tar.gz", hash = "sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7", size = 25007, upload-time = "2025-07-03T22:54:43.528Z" }
 wheels = [
@@ -216,7 +216,7 @@ version = "4.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "idna" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/19/14/2c5dd9f512b66549ae92767a9c7b330ae88e1932ca57876909410251fe13/anyio-4.13.0.tar.gz", hash = "sha256:334b70e641fd2221c1505b3890c69882fe4a2df910cba14d97019b90b24439dc", size = 231622, upload-time = "2026-03-24T12:59:09.671Z" }
 wheels = [
@@ -381,7 +381,7 @@ name = "cffi"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pycparser", marker = "implementation_name != 'PyPy' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "pycparser", marker = "implementation_name != 'PyPy' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/eb/56/b1ba7935a17738ae8453301356628e8147c79dbb825bcbc73dc7401f9846/cffi-2.0.0.tar.gz", hash = "sha256:44d1b5909021139fe36001ae048dbdde8214afa20200eda0f64c068cac5d5529", size = 523588, upload-time = "2025-09-08T23:24:04.541Z" }
 wheels = [
@@ -540,7 +540,7 @@ name = "click"
 version = "8.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9b/98/518d8e5081007684232226f475082b30087d0f585e8457db087298259f49/click-8.4.1.tar.gz", hash = "sha256:918b5633eddf6b41c32d4f454bf0de810065c74e3f7dbf8ee5452f8be88d3e96", size = 353007, upload-time = "2026-05-22T04:08:37.769Z" }
 wheels = [
@@ -666,7 +666,7 @@ wheels = [
 
 [package.optional-dependencies]
 toml = [
-    { name = "tomli", marker = "python_full_version <= '3.11' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "tomli", marker = "python_full_version <= '3.11' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 
 [[package]]
@@ -680,7 +680,7 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 dependencies = [
-    { name = "cffi", marker = "(platform_python_implementation != 'PyPy' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "cffi", marker = "(platform_python_implementation != 'PyPy' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a7/35/c495bffc2056f2dadb32434f1feedd79abde2a7f8363e1974afa9c33c7e2/cryptography-45.0.7.tar.gz", hash = "sha256:4b1654dfc64ea479c242508eb8c724044f1e964a47d1d1cacc5132292d851971", size = 744980, upload-time = "2025-09-01T11:15:03.146Z" }
 wheels = [
@@ -727,7 +727,7 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 dependencies = [
-    { name = "cffi", marker = "(platform_python_implementation != 'PyPy' and extra == 'extra-9-openakita-all') or (platform_python_implementation != 'PyPy' and extra != 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "cffi", marker = "(platform_python_implementation != 'PyPy' and extra == 'extra-9-newsclaw-all') or (platform_python_implementation != 'PyPy' and extra != 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/47/93/ac8f3d5ff04d54bc814e961a43ae5b0b146154c89c61b47bb07557679b18/cryptography-46.0.7.tar.gz", hash = "sha256:e4cfd68c5f3e0bfdad0d38e023239b96a2fe84146481852dffbcca442c245aa5", size = 750652, upload-time = "2026-04-08T01:57:54.692Z" }
 wheels = [
@@ -1138,8 +1138,8 @@ wheels = [
 
 [package.optional-dependencies]
 brotli = [
-    { name = "brotli", marker = "platform_python_implementation == 'CPython' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
-    { name = "brotlicffi", marker = "platform_python_implementation != 'CPython' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "brotli", marker = "platform_python_implementation == 'CPython' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
+    { name = "brotlicffi", marker = "platform_python_implementation != 'CPython' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 http2 = [
     { name = "h2" },
@@ -1180,7 +1180,7 @@ name = "importlib-metadata"
 version = "9.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp", marker = "python_full_version < '3.13' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "zipp", marker = "python_full_version < '3.13' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/6f/7e/1e7e8dc30634b93ebb3d58a3dea569ad146e656218d3960ab04f62047b29/importlib_metadata-9.0.1.tar.gz", hash = "sha256:ab830580bc0ef3db61ce8fae716389e5462b67e033018bab6d8f80ef17172f99", size = 59124, upload-time = "2026-08-28T15:30:34.646Z" }
 wheels = [
@@ -1213,7 +1213,7 @@ name = "jaraco-context"
 version = "6.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "backports-tarfile", marker = "python_full_version < '3.12' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "backports-tarfile", marker = "python_full_version < '3.12' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/af/50/4763cd07e722bb6285316d390a164bc7e479db9d90daa769f22578f698b4/jaraco_context-6.1.2.tar.gz", hash = "sha256:f1a6c9d391e661cc5b8d39861ff077a7dc24dc23833ccee564b234b81c82dfe3", size = 16801, upload-time = "2026-03-20T22:13:33.922Z" }
 wheels = [
@@ -1375,13 +1375,13 @@ name = "keyring"
 version = "25.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "importlib-metadata", marker = "python_full_version < '3.12' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "importlib-metadata", marker = "python_full_version < '3.12' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "jaraco-classes" },
     { name = "jaraco-context" },
     { name = "jaraco-functools" },
-    { name = "jeepney", marker = "sys_platform == 'linux' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
-    { name = "pywin32-ctypes", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
-    { name = "secretstorage", marker = "sys_platform == 'linux' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "jeepney", marker = "sys_platform == 'linux' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
+    { name = "pywin32-ctypes", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
+    { name = "secretstorage", marker = "sys_platform == 'linux' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/43/4b/674af6ef2f97d56f0ab5153bf0bfa28ccb6c3ed4d1babf4305449668807b/keyring-25.7.0.tar.gz", hash = "sha256:fe01bd85eb3f8fb3dd0405defdeac9a5b4f6f0439edbb3149577f244a2e8245b", size = 63516, upload-time = "2025-11-16T16:26:09.482Z" }
 wheels = [
@@ -1677,12 +1677,12 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "python-multipart" },
-    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "sse-starlette" },
     { name = "starlette" },
     { name = "typing-extensions" },
     { name = "typing-inspection" },
-    { name = "uvicorn", marker = "sys_platform != 'emscripten' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "uvicorn", marker = "sys_platform != 'emscripten' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/27/3c/347cf965d313f5d41764e7d46bea6ffe7d9ef13b983cc429b0340962a082/mcp-1.27.2.tar.gz", hash = "sha256:8e02db104096d1c25b28e64bde29a5c32b31bc241710213e12fd4d84985bdfef", size = 621116, upload-time = "2026-05-29T17:16:04.039Z" }
 wheels = [
@@ -1713,8 +1713,8 @@ version = "0.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyperclip" },
-    { name = "python3-xlib", marker = "sys_platform == 'linux' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
-    { name = "rubicon-objc", marker = "sys_platform == 'darwin' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "python3-xlib", marker = "sys_platform == 'linux' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
+    { name = "rubicon-objc", marker = "sys_platform == 'darwin' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/28/fa/b2ba8229b9381e8f6381c1dcae6f4159a7f72349e414ed19cfbbd1817173/MouseInfo-0.1.3.tar.gz", hash = "sha256:2c62fb8885062b8e520a3cce0a297c657adcc08c60952eb05bc8256ef6f7f6e7", size = 10850, upload-time = "2020-03-27T21:20:10.136Z" }
 
@@ -1850,7 +1850,7 @@ version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ast-serialize" },
-    { name = "librt", marker = "platform_python_implementation != 'PyPy' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "librt", marker = "platform_python_implementation != 'PyPy' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "mypy-extensions" },
     { name = "pathspec" },
     { name = "typing-extensions" },
@@ -1942,7 +1942,7 @@ wheels = [
 ]
 
 [[package]]
-name = "openakita"
+name = "newsclaw"
 version = "1.27.40"
 source = { editable = "." }
 dependencies = [
@@ -1951,8 +1951,8 @@ dependencies = [
     { name = "aiosqlite" },
     { name = "anthropic" },
     { name = "beautifulsoup4" },
-    { name = "cryptography", version = "45.0.7", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-9-openakita-finance-auto'" },
-    { name = "cryptography", version = "46.0.7", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-9-openakita-all' or extra != 'extra-9-openakita-finance-auto' or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "cryptography", version = "45.0.7", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-9-newsclaw-finance-auto'" },
+    { name = "cryptography", version = "46.0.7", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-9-newsclaw-all' or extra != 'extra-9-newsclaw-finance-auto' or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "ddgs" },
     { name = "fastapi" },
     { name = "filelock" },
@@ -1997,12 +1997,12 @@ all = [
 ]
 desktop = [
     { name = "keyring" },
-    { name = "mss", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "mss", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "openakita-plugin-sdk" },
     { name = "psutil" },
-    { name = "pyautogui", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "pyautogui", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "pyperclip" },
-    { name = "pywinauto", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "pywinauto", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "websockets" },
 ]
 dev = [
@@ -2057,7 +2057,7 @@ windows = [
     { name = "psutil" },
     { name = "pyautogui" },
     { name = "pyperclip" },
-    { name = "pywinauto", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "pywinauto", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 
 [package.metadata]
@@ -2508,10 +2508,10 @@ dependencies = [
     { name = "mouseinfo" },
     { name = "pygetwindow" },
     { name = "pymsgbox" },
-    { name = "pyobjc-core", marker = "sys_platform == 'darwin' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
-    { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "pyobjc-core", marker = "sys_platform == 'darwin' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
+    { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "pyscreeze" },
-    { name = "python3-xlib", marker = "sys_platform == 'linux' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "python3-xlib", marker = "sys_platform == 'linux' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "pytweening" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/65/ff/cdae0a8c2118a0de74b6cf4cbcdcaf8fd25857e6c3f205ce4b1794b27814/PyAutoGUI-0.9.54.tar.gz", hash = "sha256:dd1d29e8fd118941cb193f74df57e5c6ff8e9253b99c7b04f39cfc69f3ae04b2", size = 61236, upload-time = "2023-05-24T20:11:32.972Z" }
@@ -2727,8 +2727,8 @@ wheels = [
 
 [package.optional-dependencies]
 crypto = [
-    { name = "cryptography", version = "45.0.7", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-9-openakita-finance-auto'" },
-    { name = "cryptography", version = "46.0.7", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-9-openakita-all' or extra != 'extra-9-openakita-finance-auto' or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "cryptography", version = "45.0.7", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-9-newsclaw-finance-auto'" },
+    { name = "cryptography", version = "46.0.7", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-9-newsclaw-all' or extra != 'extra-9-newsclaw-finance-auto' or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 
 [[package]]
@@ -2837,7 +2837,7 @@ name = "pyscreeze"
 version = "1.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pillow", marker = "python_full_version < '3.12' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "pillow", marker = "python_full_version < '3.12' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ee/f0/cb456ac4f1a73723d5b866933b7986f02bacea27516629c00f8e7da94c2d/pyscreeze-1.0.1.tar.gz", hash = "sha256:cf1662710f1b46aa5ff229ee23f367da9e20af4a78e6e365bee973cad0ead4be", size = 27826, upload-time = "2024-08-20T23:03:07.291Z" }
 
@@ -2846,7 +2846,7 @@ name = "pytest"
 version = "8.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "iniconfig" },
     { name = "packaging" },
     { name = "pluggy" },
@@ -2906,7 +2906,7 @@ name = "python-telegram-bot"
 version = "22.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "httpcore", marker = "python_full_version >= '3.14' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "httpcore", marker = "python_full_version >= '3.14' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "httpx" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e4/25/2258161b1069e66d6c39c0a602dbe57461d4767dc0012539970ea40bc9d6/python_telegram_bot-22.7.tar.gz", hash = "sha256:784b59ea3852fe4616ad63b4a0264c755637f5d725e87755ecdee28300febf61", size = 1516454, upload-time = "2026-03-16T09:36:03.174Z" }
@@ -2974,9 +2974,9 @@ name = "pywinauto"
 version = "0.6.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "comtypes", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
-    { name = "python-xlib", marker = "sys_platform == 'linux' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
-    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "comtypes", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
+    { name = "python-xlib", marker = "sys_platform == 'linux' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
+    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "six" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/2c/85/cc65e3b64e7473cc86c07f0b5c415d509402c03ef19dadc39c583835eb5f/pywinauto-0.6.9.tar.gz", hash = "sha256:94d710bfa796df245250f952ffa65d97233d9807bcd42e052b71b81af469b6de", size = 434734, upload-time = "2025-01-06T11:30:01.801Z" }
@@ -3044,7 +3044,7 @@ name = "qrcode"
 version = "8.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8f/b2/7fc2931bfae0af02d5f53b174e9cf701adbb35f39d69c2af63d4a39f81a9/qrcode-8.2.tar.gz", hash = "sha256:35c3f2a4172b33136ab9f6b3ef1c00260dd2f66f858f24d88418a015f446506c", size = 43317, upload-time = "2025-05-01T15:44:24.726Z" }
 wheels = [
@@ -3058,7 +3058,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
     { name = "rpds-py" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/22/f5/df4e9027acead3ecc63e50fe1e36aca1523e1719559c499951bb4b53188f/referencing-0.37.0.tar.gz", hash = "sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8", size = 78036, upload-time = "2025-10-13T15:30:48.871Z" }
 wheels = [
@@ -3281,8 +3281,8 @@ name = "secretstorage"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cryptography", version = "45.0.7", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-9-openakita-finance-auto'" },
-    { name = "cryptography", version = "46.0.7", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-9-openakita-all' or extra != 'extra-9-openakita-finance-auto' or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "cryptography", version = "45.0.7", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-9-newsclaw-finance-auto'" },
+    { name = "cryptography", version = "46.0.7", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-9-newsclaw-all' or extra != 'extra-9-newsclaw-finance-auto' or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "jeepney" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
@@ -3427,7 +3427,7 @@ version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/25/44/ec35f1b6e83094b997da438a02c8c9b0ade2b1e84cfc48bd4656780760a6/starlette-1.2.1.tar.gz", hash = "sha256:9b9b5ebb992e67d6093741e63c2f59e4f6fff986f81163c087867bd7b924b3f6", size = 2701854, upload-time = "2026-05-31T01:07:51.847Z" }
 wheels = [
@@ -3502,7 +3502,7 @@ name = "tqdm"
 version = "4.68.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/06/b3/36c8ecf72e8925200671613332db156d84b99b3aee742a41c1938ebb0808/tqdm-4.68.1.tar.gz", hash = "sha256:fc163d96b287bd031e1aa24421ce4411b25559bd0a1be4fe649bdaa4d2c02bf5", size = 171236, upload-time = "2026-06-05T17:23:15.267Z" }
 wheels = [
@@ -3515,7 +3515,7 @@ version = "0.26.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-9-openakita-all' and extra == 'extra-9-openakita-finance-auto') or (extra == 'extra-9-openakita-finance-auto' and extra == 'extra-9-openakita-wework-ws')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-9-newsclaw-all' and extra == 'extra-9-newsclaw-finance-auto') or (extra == 'extra-9-newsclaw-finance-auto' and extra == 'extra-9-newsclaw-wework-ws')" },
     { name = "rich" },
     { name = "shellingham" },
 ]

@@ -27,7 +27,7 @@ async def test_native_callback_requires_instance_authentication_and_never_return
             headers=headers,
             json={
                 "flow": "native",
-                "redirect_uri": "https://account.openakita.cn/oauth/mobile/callback",
+                "redirect_uri": "https://account.newsclaw.cn/oauth/mobile/callback",
             },
         )
         assert start.status_code == 200

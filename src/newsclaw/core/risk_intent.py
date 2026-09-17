@@ -256,10 +256,10 @@ _NON_ACTION_DISCUSSION_RE = re.compile(
 # 把组织协作链路打断（详见 2026-04-28 12:57:57 / 12:58:01 拦截日志）。
 #
 # 来源：
-#   - openakita/orgs/runtime.py::_format_incoming_message  (13 种 [收到xxx])
-#   - openakita/orgs/runtime.py::_push_summary_command_to_root ([用户指令最终汇总])
-#   - openakita/core/_reasoning_runtime.py 多处自注入  ([系统] / [系统提示])
-#   - openakita/core/_agent_runtime.py::_prepare_session_context  ([以上是之前的对话历史)
+#   - newsclaw/orgs/runtime.py::_format_incoming_message  (13 种 [收到xxx])
+#   - newsclaw/orgs/runtime.py::_push_summary_command_to_root ([用户指令最终汇总])
+#   - newsclaw/core/_reasoning_runtime.py 多处自注入  ([系统] / [系统提示])
+#   - newsclaw/core/_agent_runtime.py::_prepare_session_context  ([以上是之前的对话历史)
 ORG_SYNTH_PREFIXES: tuple[str, ...] = (
     # reasoning_engine / agent 自注入
     "[系统]",
@@ -322,7 +322,7 @@ class RiskIntentResult:
 # When the user confirms a high-risk action whose classification has no
 # direct controlled-action entry, we previously dropped them back into a
 # free-form ReAct loop with the original message — and the LLM happily
-# decided to grep the entire ``~/.openakita`` tree to "find" what to delete
+# decided to grep the entire ``~/.newsclaw`` tree to "find" what to delete
 # (incident 2026-05-09 P0-1).
 #
 # Instead we now persist a structured ``AuthorizedIntent`` that

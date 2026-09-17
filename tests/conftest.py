@@ -26,6 +26,18 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+
+@pytest.fixture(autouse=True)
+def _explicit_optional_cloud_urls(monkeypatch):
+    """测试里若要打账户/市场 HTTP，必须有显式 URL；生产默认仍然是关闭/未配置。"""
+    monkeypatch.setenv("NEWSCLAW_ACCOUNT_BASE_URL", "https://accounts.example.com")
+    monkeypatch.setenv(
+        "NEWSCLAW_MARKETPLACE_ALLOWED_HOSTS",
+        "market.example.com,marketplace.newsclaw.cn",
+    )
+    if "NEWSCLAW_MARKETPLACE_URL" not in os.environ:
+        monkeypatch.setenv("NEWSCLAW_MARKETPLACE_URL", "https://market.example.com")
+
 from tests.fixtures.mock_llm import MockBrain, MockLLMClient, MockResponse
 
 
@@ -152,8 +164,8 @@ def call_tool_text_helper():
 def _disable_desktop_notifications(monkeypatch):
     """禁止测试过程中弹出真实的桌面通知。
 
-    Phase 2 commit 11 把 ``desktop_notify`` 模块从 ``openakita.core``
-    搬到了 ``openakita.agent``，旧路径仅保留 re-export shim。要让
+    Phase 2 commit 11 把 ``desktop_notify`` 模块从 ``newsclaw.core``
+    搬到了 ``newsclaw.agent``，旧路径仅保留 re-export shim。要让
     no-op 保护无论调用方走哪条 import 路径都生效，需要同时
     monkeypatch 两个模块的 send/notify 函数名字。
     """

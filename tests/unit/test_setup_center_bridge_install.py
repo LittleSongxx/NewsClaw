@@ -99,7 +99,7 @@ def test_install_skillhub_registry_package_rejects_zip_slip(
 
     assert not (tmp_path / "outside.txt").exists()
     assert not (tmp_path / "skills" / "demo").exists()
-    assert not list((tmp_path / "skills").glob(".openakita-skillhub-*"))
+    assert not list((tmp_path / "skills").glob(".newsclaw-skillhub-*"))
 
 
 def test_git_proxy_validation_rejects_malformed_fullwidth_proxy(monkeypatch: pytest.MonkeyPatch):
@@ -159,7 +159,7 @@ def test_broken_residual_skill_dir_is_quarantined_when_delete_fails(
     bridge._ensure_target_available(broken, "github:owner/broken")
 
     assert not broken.exists()
-    quarantined = list((skills_dir / ".openakita-broken").glob("broken-*"))
+    quarantined = list((skills_dir / ".newsclaw-broken").glob("broken-*"))
     assert len(quarantined) == 1
     assert (quarantined[0] / ".git").exists()
 

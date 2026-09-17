@@ -13,11 +13,8 @@ Product layer (``profile.current``) and runtime layer
 that *writes* a bundle of defaults across multiple independent fields,
 and the engine only reads those fields, not ``profile.current``.
 
-Stage 1 introduced one production-code consumer of ``profile.current``
-itself — ``FilesystemHandler._allowed_roots()`` — which short-circuits
-on ``("off", "trust")``. If a future change drifts the
-``profile → fields`` mapping or the engine ↔ profile contract, those two
-layers can disagree (e.g. filesystem allows but engine confirms).
+``FilesystemHandler._allowed_roots()`` 只对 ``trust`` 跳过白名单；
+``off`` 不再清空路径名单。引擎在 off / enabled=False 时一律 DENY。
 
 These tests pin the whole chain so any such drift fails loudly:
 
@@ -108,7 +105,7 @@ class TestProfileFieldMapping:
         assert cfg.profile.current == "off"
         assert cfg.enabled is False, (
             "off profile must disable security globally (enabled=False); "
-            "this is what makes engine.preflight short-circuit to ALLOW "
+            "this is what makes engine.preflight short-circuit to DENY "
             "regardless of confirmation.mode."
         )
 
@@ -174,9 +171,9 @@ class TestTrustProfileE2E:
 
 
 class TestOffProfileE2E:
-    """Off profile ⇒ security disabled globally, all evaluations short-circuit."""
+    """Off profile ⇒ 锁定并拒绝全部工具。"""
 
-    def test_off_write_anywhere_allows(self, tmp_path: Path) -> None:
+    def test_off_write_anywhere_denies(self, tmp_path: Path) -> None:
         cfg = _build_cfg_from_profile("off")
         engine = PolicyEngineV2(config=cfg)
         ctx = _ctx_from_cfg(cfg, tmp_path)
@@ -184,11 +181,10 @@ class TestOffProfileE2E:
             ToolCallEvent(tool="write_file", params={"path": "/anywhere/x"}),
             ctx,
         )
-        assert decision.action == DecisionAction.ALLOW
+        assert decision.action == DecisionAction.DENY
+        assert decision.reason == "security profile is off"
 
-    def test_off_delete_allows_no_safety_net(self, tmp_path: Path) -> None:
-        """off profile is the operator's explicit 'I know what I'm doing' switch
-        and bypasses even the destructive safety net — that's its purpose."""
+    def test_off_delete_denies(self, tmp_path: Path) -> None:
         cfg = _build_cfg_from_profile("off")
         engine = PolicyEngineV2(config=cfg)
         ctx = _ctx_from_cfg(cfg, tmp_path)
@@ -196,10 +192,10 @@ class TestOffProfileE2E:
             ToolCallEvent(tool="delete_file", params={"path": "/etc/passwd"}),
             ctx,
         )
-        assert decision.action == DecisionAction.ALLOW, (
-            "off profile must short-circuit to ALLOW even for DESTRUCTIVE; "
-            "it is the global 'security disabled' switch."
+        assert decision.action == DecisionAction.DENY, (
+            "off profile must short-circuit to DENY even for DESTRUCTIVE."
         )
+        assert decision.reason == "security profile is off"
 
 
 class TestProtectProfileE2E:

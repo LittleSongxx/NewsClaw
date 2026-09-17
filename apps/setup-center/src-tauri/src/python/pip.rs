@@ -217,7 +217,7 @@ pub(crate) fn install_bundled_python_sync(
     _log_path: Option<PathBuf>,
 ) -> Result<BundledPythonInstallResult, String> {
     let py = managed_python_seed_path().ok_or_else(|| {
-        "安装包内置 Python 不可用。请重新安装 OpenAkita 以恢复 resources/bootstrap/python"
+        "安装包内置 Python 不可用。请重新安装 NewsClaw 以恢复 resources/bootstrap/python"
             .to_string()
     })?;
     Ok(bundled_python_install_result(
@@ -328,14 +328,14 @@ pub(crate) fn venv_python_path(venv_dir: &str) -> PathBuf {
 }
 
 /// 解析可用的 Python 解释器路径。
-/// 只使用 OpenAkita 管理的环境：venv → bootstrap Python seed。
+/// 只使用 NewsClaw 管理的环境：venv → bootstrap Python seed。
 pub(crate) fn resolve_python(venv_dir: &str) -> Result<(PathBuf, Option<String>), String> {
     let venv_py = venv_python_path(venv_dir);
     if venv_py.exists() {
         return Ok((venv_py, None));
     }
     let py = find_pip_python().ok_or_else(|| {
-        "未找到可用 Python 解释器（venv/bootstrap）。请重新安装 OpenAkita 以恢复内置 Python。"
+        "未找到可用 Python 解释器（venv/bootstrap）。请重新安装 NewsClaw 以恢复内置 Python。"
             .to_string()
     })?;
     Ok((py, None))
@@ -601,7 +601,7 @@ pub(crate) async fn pip_install(
     spawn_blocking_result(move || {
         let install_id = install_id.unwrap_or_else(|| PIP_INSTALL_DEFAULT_ID.to_string());
         let install_id_ref = install_id.as_str();
-        pip_install_set_stage(install_id_ref, "安装 openakita（pip）", 30);
+        pip_install_set_stage(install_id_ref, "安装 newsclaw（pip）", 30);
         pip_install_append_line(
             install_id_ref,
             &format!("\n=== pip install started at {} ===\n", now_epoch_secs()),
@@ -664,7 +664,7 @@ pub(crate) async fn pip_install(
             std::time::Duration::from_secs(PIP_INSTALL_TOTAL_TIMEOUT_SECS),
         );
 
-        emit_stage("安装 openakita（pip）", 70);
+        emit_stage("安装 newsclaw（pip）", 70);
         let mut c = Command::new(&py);
         apply_no_window(&mut c);
         strip_harmful_python_env(&mut c);
@@ -717,24 +717,24 @@ pub(crate) async fn pip_install(
             "-c",
             "import newsclaw; import newsclaw.setup_center.bridge; print(getattr(newsclaw,'__version__',''))",
         ]);
-        let v = verify.output().map_err(|e| format!("verify openakita failed: {e}"))?;
+        let v = verify.output().map_err(|e| format!("verify newsclaw failed: {e}"))?;
         if !v.status.success() {
             let stdout = String::from_utf8_lossy(&v.stdout).to_string();
             let stderr = String::from_utf8_lossy(&v.stderr).to_string();
             pip_install_finish_progress(install_id_ref, true);
             return Err(format!(
-                "openakita 已安装，但缺少 Setup Center 所需模块（openakita.setup_center.bridge）。\n这通常意味着你安装的 openakita 版本过旧或来源不包含该模块。\nstdout:\n{}\nstderr:\n{}",
+                "newsclaw 已安装，但缺少 Setup Center 所需模块（newsclaw.setup_center.bridge）。\n这通常意味着你安装的 newsclaw 版本过旧或来源不包含该模块。\nstdout:\n{}\nstderr:\n{}",
                 stdout, stderr
             ));
         }
 
         let ver = String::from_utf8_lossy(&v.stdout).trim().to_string();
         log.push_str("=== verify ===\n");
-        log.push_str("import openakita.setup_center.bridge: OK\n");
-        emit_line("import openakita.setup_center.bridge: OK\n");
+        log.push_str("import newsclaw.setup_center.bridge: OK\n");
+        emit_line("import newsclaw.setup_center.bridge: OK\n");
         if !ver.is_empty() {
-            log.push_str(&format!("openakita version: {ver}\n"));
-            emit_line(&format!("openakita version: {ver}\n"));
+            log.push_str(&format!("newsclaw version: {ver}\n"));
+            emit_line(&format!("newsclaw version: {ver}\n"));
         }
         emit_stage("完成", 100);
         pip_install_finish_progress(install_id_ref, false);
@@ -785,9 +785,9 @@ mod tests {
     #[test]
     fn test_venv_python_path_platform_layout() {
         let dir = if cfg!(windows) {
-            r"C:\Users\test\.openakita\venv"
+            r"C:\Users\test\.newsclaw\venv"
         } else {
-            "/home/test/.openakita/venv"
+            "/home/test/.newsclaw/venv"
         };
         let py = venv_python_path(dir);
         if cfg!(windows) {
@@ -802,9 +802,9 @@ mod tests {
     #[test]
     fn test_venv_pythonw_path_consistent_with_python_path() {
         let dir = if cfg!(windows) {
-            r"C:\Users\test\.openakita\venv"
+            r"C:\Users\test\.newsclaw\venv"
         } else {
-            "/home/test/.openakita/venv"
+            "/home/test/.newsclaw/venv"
         };
         let py = venv_python_path(dir);
         let pyw = venv_pythonw_path(dir);
@@ -822,7 +822,7 @@ mod tests {
     #[test]
     fn test_ensure_pip_available_seeds_uv_venv_without_pip() {
         let temp =
-            std::env::temp_dir().join(format!("openakita-pip-seed-test-{}", std::process::id()));
+            std::env::temp_dir().join(format!("newsclaw-pip-seed-test-{}", std::process::id()));
         if temp.exists() {
             let _ = fs::remove_dir_all(&temp);
         }

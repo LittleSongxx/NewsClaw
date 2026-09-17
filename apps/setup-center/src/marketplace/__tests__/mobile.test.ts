@@ -4,20 +4,20 @@ vi.mock('../../platform/servers', () => ({ getActiveServer: () => mocks.server }
 vi.mock('../../platform/auth', () => ({ getAccessToken: () => mocks.token }));
 vi.mock('../../platform/detect', () => ({ IS_CAPACITOR: true }));
 vi.mock('@capacitor/browser', () => ({ Browser: { open: mocks.open } }));
-vi.mock('@openakita/native-auth', () => ({ NativeAuth: { getRedirectUri: mocks.redirectUri } }));
+vi.mock('@newsclaw/native-auth', () => ({ NativeAuth: { getRedirectUri: mocks.redirectUri } }));
 import { acceptMobileInstall, installRequest, marketplaceOpenErrorKey, openMarketplace, pendingInstall, saveInstall } from '../mobile';
 
-const origin = 'https://marketplace.openakita.cn';
+const origin = 'https://marketplace.newsclaw.cn';
 async function link() {
   await openMarketplace('1.27.40');
   const context = new URL(mocks.open.mock.lastCall![0].url);
-  return `${origin}/openakita/install#` + new URLSearchParams({ token: 'a'.repeat(64), state: context.searchParams.get('state')!, endpoint: origin });
+  return `${origin}/newsclaw/install#` + new URLSearchParams({ token: 'a'.repeat(64), state: context.searchParams.get('state')!, endpoint: origin });
 }
 beforeEach(() => {
   localStorage.clear(); vi.clearAllMocks();
   mocks.server = { id: 'one', url: 'https://one.example', name: 'Home' }; mocks.token = 'one-token';
   mocks.fetch.mockReset().mockImplementation(async () => new Response(JSON.stringify({ version: '1.27.40' })));
-  mocks.redirectUri.mockReset().mockResolvedValue({ uri: 'https://account.openakita.cn/oauth/mobile/callback' });
+  mocks.redirectUri.mockReset().mockResolvedValue({ uri: 'https://account.newsclaw.cn/oauth/mobile/callback' });
   mocks.open.mockReset().mockResolvedValue(undefined);
   vi.stubGlobal('fetch', mocks.fetch);
 });
@@ -40,13 +40,13 @@ describe('opening Marketplace from the app', () => {
     const pending = acceptMobileInstall(await link())!;
     saveInstall({ ...pending, jobId: 'job' });
     mocks.open.mockClear(); mocks.fetch.mockClear();
-    const resume = vi.fn(); window.addEventListener('openakita-marketplace-resume', resume);
+    const resume = vi.fn(); window.addEventListener('newsclaw-marketplace-resume', resume);
     try {
       await openMarketplace('0.0.0');
       expect(resume).toHaveBeenCalledOnce();
       expect(mocks.open).not.toHaveBeenCalled();
       expect(mocks.fetch).not.toHaveBeenCalled();
-    } finally { window.removeEventListener('openakita-marketplace-resume', resume); }
+    } finally { window.removeEventListener('newsclaw-marketplace-resume', resume); }
   });
   it('allows a retry after a temporary backend failure without saving an unusable context', async () => {
     mocks.fetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
@@ -80,7 +80,7 @@ describe('opening Marketplace from the app', () => {
     expect(localStorage.getItem('newsclaw.marketplace.mobile.v1')).toBeNull();
   });
   it('cleans up failed browser launches and supports the debug APK return mode', async () => {
-    mocks.redirectUri.mockResolvedValue({ uri: 'com.openakita.mobile:/oauth/callback' });
+    mocks.redirectUri.mockResolvedValue({ uri: 'com.newsclaw.mobile:/oauth/callback' });
     mocks.open.mockRejectedValueOnce(new Error('Unable to display URL'));
     await expect(openMarketplace('0.0.0')).rejects.toThrow('marketplace_browser_unavailable');
     expect(JSON.parse(localStorage.getItem('newsclaw.marketplace.mobile.v1')!).targets).toEqual([]);
@@ -110,7 +110,7 @@ describe('mobile installation target binding', () => {
     expect(() => acceptMobileInstall(raw.replace(/state=[^&]+/, 'state=unknown'))).toThrow('marketplace_context_expired');
     expect(() => acceptMobileInstall(raw + '&token=' + 'b'.repeat(64))).toThrow('marketplace_instruction_invalid');
     expect(() => acceptMobileInstall(raw.replace(encodeURIComponent(origin), encodeURIComponent('https://evil.example')))).toThrow('marketplace_instruction_invalid');
-    expect(acceptMobileInstall('https://evil.example/openakita/install#token=x')).toBeNull();
+    expect(acceptMobileInstall('https://evil.example/newsclaw/install#token=x')).toBeNull();
   });
   it('never sends a request to the old target with a new server credential', async () => {
     const pending = acceptMobileInstall(await link())!;
@@ -135,6 +135,6 @@ describe('mobile installation target binding', () => {
   });
   it('supports the explicit browser fallback without using the OAuth receiver', async () => {
     const raw = await link();
-    expect(acceptMobileInstall(raw.replace(origin + '/openakita/install', 'com.openakita.marketplace://marketplace/install'))?.target.id).toBe('one');
+    expect(acceptMobileInstall(raw.replace(origin + '/newsclaw/install', 'com.newsclaw.marketplace://marketplace/install'))?.target.id).toBe('one');
   });
 });

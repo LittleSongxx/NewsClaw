@@ -29,7 +29,7 @@
  * **Dev-sentinel short-circuit** (smoke-banner fix):
  * ``vite.config.ts`` falls back to ``dev-<timestamp>`` when
  * ``VITE_BUILD_ID`` is not set (i.e. local ``npm run dev``).
- * The backend's ``/api/build-info`` returns the ``openakita``
+ * The backend's ``/api/build-info`` returns the ``newsclaw``
  * package version in that mode, so the comparison would
  * permanently mismatch and the banner would lock on. We detect
  * the ``dev-`` prefix on the embedded bundle id and skip

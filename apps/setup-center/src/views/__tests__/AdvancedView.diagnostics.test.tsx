@@ -50,7 +50,7 @@ it("downloads in web mode without a desktop workspace and blocks repeat clicks",
     return new Response("{}");
   });
   const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
-    expect(this.download).toMatch(/^openakita-diagnostic-\d+\.zip$/);
+    expect(this.download).toMatch(/^newsclaw-diagnostic-\d+\.zip$/);
     expect(this.href).toBe("blob:diagnostic");
   });
   render(<AdvancedView {...props} />, { wrapper: TooltipProvider });

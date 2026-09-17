@@ -35,9 +35,9 @@ WEB_SEARCH_TOOLS = [
         "detail": """通过当前激活的搜索源进行网页搜索。
 
 **搜索源（Provider）**：
-- 用户在「配置 → 工具与技能 → 搜索源」面板配置激活源（博查/Tavily/SearXNG/Jina/DuckDuckGo）
-- 留空时按优先级自动检测可用源（bocha → tavily → searxng → jina → duckduckgo）
-- DuckDuckGo 在国内常无法访问，请用户配置博查/Tavily 等替代源
+- 用户在「配置 → 工具与技能 → 搜索源」面板配置激活源（默认 Tavily；也可选博查/Serper/SearXNG/Jina/DuckDuckGo）
+- 留空时按优先级自动检测可用源（tavily → bocha → serper → searxng → jina → duckduckgo）
+- DuckDuckGo 在国内常无法访问，请优先使用已配置的 Tavily 号池
 
 **适用场景**：
 - 查找最新信息
@@ -77,7 +77,7 @@ WEB_SEARCH_TOOLS = [
                 },
                 "provider": {
                     "type": "string",
-                    "description": "可选：显式指定搜索源 ID（bocha/tavily/searxng/jina/duckduckgo）；不传则按配置/auto-detect",
+                    "description": "可选：显式指定搜索源 ID（tavily/bocha/serper/searxng/jina/duckduckgo）；不传则按配置/auto-detect",
                 },
                 "timeout_seconds": {
                     "type": "number",

@@ -30,7 +30,7 @@ def env(tmp_path, monkeypatch):
         "digest_sha256": "a" * 64,
         "signature": "signature",
         "size_bytes": 10,
-        "download_url": "https://marketplace.openakita.cn/package.zip",
+        "download_url": "https://marketplace.newsclaw.cn/package.zip",
         "verification": {"algorithm": "Ed25519", "digest_algorithm": "SHA-256"},
     }
     manager._authorize = AsyncMock(side_effect=lambda *a, **kw: dict(payload))
@@ -59,7 +59,7 @@ def put_skill(version="1.0.0", *, resource_id="resource-resume", root=None):
 
 
 async def prepare(manager):
-    return await manager.prepare("a" * 64, "https://marketplace.openakita.cn", account=object())
+    return await manager.prepare("a" * 64, "https://marketplace.newsclaw.cn", account=object())
 
 
 @pytest.mark.parametrize(
@@ -189,7 +189,7 @@ async def test_parallel_install_of_same_resource_is_rejected(env):
     first = await prepare(manager)
     manager._jobs[first["id"]]["status"] = "downloading"
     payload["id"] = "second-instruction"
-    second = await manager.prepare("b" * 64, "https://marketplace.openakita.cn", account=object())
+    second = await manager.prepare("b" * 64, "https://marketplace.newsclaw.cn", account=object())
     with pytest.raises(MarketplaceInstallError, match="marketplace_install_busy"):
         await manager.confirm(second["id"], None, account=object())
 

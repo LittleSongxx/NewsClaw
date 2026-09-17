@@ -56,7 +56,7 @@ async def test_orphan_credential_recovers_verified_owner_before_any_use(
     if entry == "snapshot":
         assert (await subject.snapshot())["account_user_id"] == "current"
     elif entry == "handoff":
-        assert await subject.marketplace_handoff("https://marketplace.openakita.cn") == "t" * 64
+        assert await subject.marketplace_handoff("https://marketplace.newsclaw.cn") == "t" * 64
     else:
         assert await subject.marketplace_install_proof("instruction", "device") == "p" * 64
     assert calls[:2] == ["/oauth/token", "/oauth/userinfo"]
@@ -84,7 +84,7 @@ async def test_unavailable_identity_preserves_credential_but_never_hands_it_off(
     subject = AccountOIDCManager(store=AccountStatusStore(tmp_path), token_store=tokens)
     assert (await subject.snapshot())["status"] == "unavailable"
     with pytest.raises(AccountOIDCError):
-        await subject.marketplace_handoff("https://marketplace.openakita.cn")
+        await subject.marketplace_handoff("https://marketplace.newsclaw.cn")
     with pytest.raises(AccountOIDCError):
         await subject.marketplace_install_proof("instruction", "device")
     assert tokens.value == "legacy-refresh"
@@ -99,7 +99,7 @@ async def test_invalid_legacy_credential_becomes_signed_out(tmp_path, monkeypatc
     tokens = MemoryTokenStore("legacy-refresh")
     subject = AccountOIDCManager(store=AccountStatusStore(tmp_path), token_store=tokens)
     assert await subject.snapshot() == {"status": "signed_out"}
-    assert await subject.marketplace_handoff("https://marketplace.openakita.cn") is None
+    assert await subject.marketplace_handoff("https://marketplace.newsclaw.cn") is None
 
 
 @pytest.mark.asyncio
@@ -116,7 +116,7 @@ async def test_rotation_keeps_identity_bound_and_other_manager_logout_invalidate
     second = AccountOIDCManager(store=store, token_store=tokens)
     await second.logout()
     assert await first.snapshot() == {"status": "signed_out"}
-    assert await first.marketplace_handoff("https://marketplace.openakita.cn") is None
+    assert await first.marketplace_handoff("https://marketplace.newsclaw.cn") is None
     with pytest.raises(AccountOIDCError, match="not signed in"):
         await first._valid_access_token()
 
@@ -150,11 +150,15 @@ async def test_two_native_managers_serialize_shared_vault_recovery(tmp_path, mon
 
 def test_identity_scope_follows_os_user_and_provider_not_working_directory(tmp_path, monkeypatch):
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-    config = AccountFeatureConfig.from_env({"NEWSCLAW_ACCOUNT_MODE": "newsclaw"})
+    official = {
+        "NEWSCLAW_ACCOUNT_MODE": "newsclaw",
+        "NEWSCLAW_ACCOUNT_BASE_URL": "https://accounts.example.com",
+    }
+    config = AccountFeatureConfig.from_env(official)
     expected = config.identity_data_dir()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("NEWSCLAW_ROOT", str(tmp_path / "different-workspace"))
-    same_provider = AccountFeatureConfig.from_env({"NEWSCLAW_ACCOUNT_MODE": "newsclaw"})
+    same_provider = AccountFeatureConfig.from_env(official)
     assert same_provider.identity_data_dir() == expected
     other = AccountFeatureConfig.from_env(
         {"NEWSCLAW_ACCOUNT_MODE": "newsclaw", "NEWSCLAW_ACCOUNT_BASE_URL": "https://other.example"}

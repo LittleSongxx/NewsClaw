@@ -11,7 +11,7 @@
  *
  * Routes the v2 org create + template flow against the **mint
  * runtime** endpoints in
- * ``src/openakita/api/routes/orgs_v2_runtime_orgs.py`` (B1-B12 of the
+ * ``src/newsclaw/api/routes/orgs_v2_runtime_orgs.py`` (B1-B12 of the
  * P9.7 inventory) -- backed by ``runtime/orgs.OrgManager``, the same
  * store the sidebar ``GET /api/v2/orgs`` reads from. The older
  * Group A spec sub-app (``orgs-spec``) at the parallel namespace (a separate

@@ -1,14 +1,7 @@
-"""Ralph Wiggum 循环引擎。
+"""NOT WIRED — do not mention as shipped.
 
-参考来源:
-- https://github.com/anthropics/claude-code/tree/main/plugins/ralph-wiggum
-- https://claytonfarr.github.io/ralph-playbook/
-
-核心理念:
-- 任务未完成，绝不终止
-- 通过文件持久化状态
-- 每次迭代 fresh context
-- 通过 backpressure（测试验证）强制自我修正
+本模块保留 Task / TaskResult 供 execute_task 与测试使用。
+RalphLoop 没有生产调用方，不要当成已交付的主循环。
 """
 
 import logging
@@ -135,8 +128,7 @@ class StopHook:
 
 
 class RalphLoop:
-    """
-    Ralph Wiggum 循环引擎
+    """未接线的循环草稿。不要当成已交付主循环。
 
     核心循环逻辑:
     while not task.is_complete and iteration < max_iterations:

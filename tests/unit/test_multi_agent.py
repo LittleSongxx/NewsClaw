@@ -1082,14 +1082,17 @@ class TestAgentOrchestrator:
             captured.append((event_name, payload))
 
         async def fake_stream(**kwargs):
-            assert kwargs["session_id"] == "sess-stream"
+            assert kwargs["session_id"].startswith("sess-stream:sub:")
+            assert kwargs["session_messages"] == []
+            blob = str(kwargs.get("session_messages"))
+            assert "PARENT_SECRET" not in blob
             yield {"type": "iteration_start", "iteration": 1}
             yield {"type": "chain_text", "content": "正在分析子任务"}
             yield {
                 "type": "tool_call_start",
                 "tool_name": "search_docs",
                 "call_id": "call-1",
-                "args": {"query": "openakita"},
+                "args": {"query": "newsclaw"},
             }
             yield {
                 "type": "security_confirm",
@@ -1175,9 +1178,18 @@ class TestAgentOrchestrator:
     async def test_delegation_depth_limit(self, orchestrator):
         session = _make_session()
         result = await orchestrator._dispatch(
-            session, "task", "default", depth=MAX_DELEGATION_DEPTH
+            session, "task", "default", depth=MAX_DELEGATION_DEPTH + 1
         )
         assert "委派深度超限" in result
+
+    @pytest.mark.asyncio
+    async def test_single_hop_depth_is_allowed(self, orchestrator):
+        session = _make_session()
+        result = await orchestrator._dispatch(
+            session, "task", "helper", depth=MAX_DELEGATION_DEPTH, from_agent="default"
+        )
+        assert "委派深度超限" not in result
+        assert "Agent response" in result
 
     @pytest.mark.asyncio
     async def test_delegation_records_chain(self, orchestrator):
@@ -1472,12 +1484,13 @@ class TestAgentToolHandler:
     @pytest.mark.asyncio
     async def test_create_missing_name(self, handler):
         result = await handler.handle("create_agent", {"description": "desc"})
-        assert "name is required" in result
+        assert "已禁用" in result
+        assert "spawn_agent" in result
 
     @pytest.mark.asyncio
     async def test_create_missing_description(self, handler):
         result = await handler.handle("create_agent", {"name": "My Agent"})
-        assert "description is required" in result
+        assert "已禁用" in result
 
     @pytest.mark.asyncio
     async def test_create_agent_max_limit(self, handler):
@@ -1491,7 +1504,7 @@ class TestAgentToolHandler:
                 "description": "One too many",
             },
         )
-        assert "Maximum dynamic agents" in result
+        assert "已禁用" in result
 
     @pytest.mark.asyncio
     async def test_unknown_tool(self, handler):
@@ -1516,8 +1529,9 @@ class TestAgentToolHandler:
                     "force": True,
                 },
             )
-            assert "Agent created" in result
-            assert "ephemeral" in result.lower()
+            assert "已禁用" in result
+            assert "spawn_agent" in result
+            assert mock_store.list_all(include_ephemeral=True) == []
 
     @pytest.mark.asyncio
     async def test_create_agent_persistent(self, handler, tmp_path):
@@ -1538,8 +1552,8 @@ class TestAgentToolHandler:
                     "force": True,
                 },
             )
-            assert "persistent" in result.lower()
-            assert "will be saved" in result
+            assert "已禁用" in result
+            assert mock_store.list_all(include_ephemeral=True) == []
 
     @pytest.mark.asyncio
     async def test_spawn_base_not_found(self, handler, tmp_path):
@@ -2053,10 +2067,8 @@ class TestEdgeCasesAndBugs:
                 },
             )
 
-        assert "Agent created" in result
-        [profile] = store.list_all(include_ephemeral=True)
-        assert profile.memory_mode == "isolated"
-        assert profile.memory_inherit_global is False
+        assert "已禁用" in result
+        assert store.list_all(include_ephemeral=True) == []
 
     @pytest.mark.asyncio
     async def test_spawn_agent_inherits_isolated_memory(self, tmp_path):

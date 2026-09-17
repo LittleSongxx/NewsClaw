@@ -1,4 +1,4 @@
-"""Tests for :class:`openakita.runtime.llm.circuit_breaker.CompilerCircuitBreaker`.
+"""Tests for :class:`newsclaw.runtime.llm.circuit_breaker.CompilerCircuitBreaker`.
 
 The breaker is pure-state: a fake monotonic clock (``_FakeClock``)
 drives deterministic cooldown expiry, no real sleep. Coverage hits

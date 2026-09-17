@@ -214,7 +214,7 @@ function wireBootButtons() {
 }
 
 wireBootButtons();
-window.addEventListener("openakita_app_ready", () => hideBoot(true));
+window.addEventListener("newsclaw_app_ready", () => hideBoot(true));
 // Failsafe: if something went wrong, don't leave it forever.
 setTimeout(() => hideBoot(true), 8000);
 

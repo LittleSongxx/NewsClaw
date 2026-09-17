@@ -1,7 +1,7 @@
 """
-NewsClaw - 全能自进化AI Agent
+NewsClaw - 本地优先的多 Agent AI 助手
 
-基于 Ralph Wiggum 模式，永不放弃。
+主循环是 ReAct（推理 → 工具 → 观察），不是 Ralph / 图调度。
 """
 
 

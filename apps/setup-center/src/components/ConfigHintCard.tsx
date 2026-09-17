@@ -1,6 +1,6 @@
 // ConfigHintCard — actionable card rendered inside ToolCallDetail when the
 // backend emits a `config_hint` SSE event (see chatTypes.StreamEvent and
-// src/openakita/core/reasoning_engine.py:_build_tool_end_events).
+// src/newsclaw/core/reasoning_engine.py:_build_tool_end_events).
 //
 // Why a dedicated component (instead of inline rendering in ThinkingChain)?
 //   - The hint payload is structured (error_code-driven severity, action

@@ -180,7 +180,7 @@ pub(crate) fn newsclaw_check_pid_alive(workspace_id: String) -> Result<bool, Str
             remove_heartbeat_file(&workspace_id);
             return Ok(false);
         }
-        // PID 存活，但需验证是否真的是 OpenAkita 进程
+        // PID 存活，但需验证是否真的是 NewsClaw 进程
         if !is_newsclaw_process(data.pid) {
             // PID 被其他进程复用了，清理 stale PID 文件和心跳文件
             let _ = fs::remove_file(service_pid_file(&workspace_id));
@@ -258,7 +258,7 @@ pub(crate) fn strip_harmful_toolchain_env(cmd: &mut Command) {
     cmd.env_remove("DYLD_FALLBACK_LIBRARY_PATH");
 
     // Node/npm/corepack writes must not fall into a user global prefix/cache
-    // when OpenAkita is creating or repairing its own toolchain.
+    // when NewsClaw is creating or repairing its own toolchain.
     cmd.env_remove("NODE_PATH");
     cmd.env_remove("NPM_CONFIG_PREFIX");
     cmd.env_remove("NPM_CONFIG_CACHE");
@@ -529,7 +529,7 @@ pub(crate) fn newsclaw_service_start_impl(
 
     let log_dir = ws_dir.join("logs");
     fs::create_dir_all(&log_dir).map_err(|e| format!("create logs dir failed: {e}"))?;
-    let log_path = log_dir.join("openakita-serve.log");
+    let log_path = log_dir.join("newsclaw-serve.log");
     let log_file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -566,11 +566,8 @@ pub(crate) fn newsclaw_service_start_impl(
         "LLM_ENDPOINTS_CONFIG",
         ws_dir.join("data").join("llm_endpoints.json"),
     );
-    // 两个名字都注入：Python 侧优先读 NEWSCLAW_ROOT，OPENAKITA_ROOT 供旧版
-    // 后端与外部脚本继续识别。值一定相同，避免两侧解析出不同根目录。
     let data_root = newsclaw_root_dir().to_string_lossy().to_string();
     cmd.env("NEWSCLAW_ROOT", &data_root);
-    cmd.env("OPENAKITA_ROOT", &data_root);
 
     // 设置可选模块路径（已安装的可选模块 site-packages）
     // 重要：不能使用 PYTHONPATH！Python 启动时 PYTHONPATH 会被插入到 sys.path
@@ -603,7 +600,7 @@ pub(crate) fn newsclaw_service_start_impl(
 
     let spawn_started = Instant::now();
     let child = cmd.spawn().map_err(|e| {
-        let msg = format!("spawn openakita serve failed: {e}");
+        let msg = format!("spawn newsclaw serve failed: {e}");
         log_to_file(&format!("[service_start] {}", msg));
         msg
     })?;
@@ -665,7 +662,7 @@ pub(crate) fn newsclaw_service_start_impl(
             })
             .unwrap_or_default();
         return Err(format!(
-            "openakita serve 似乎启动后立即退出（PID={pid}）。\n请查看服务日志：{}\n\n--- log tail ---\n{}",
+            "newsclaw serve 似乎启动后立即退出（PID={pid}）。\n请查看服务日志：{}\n\n--- log tail ---\n{}",
             log_path.to_string_lossy(),
             tail
         ));
@@ -767,7 +764,7 @@ pub(crate) fn newsclaw_service_log(
     tail_bytes: Option<u64>,
 ) -> Result<ServiceLogChunk, String> {
     let ws_dir = workspace_dir(&workspace_id);
-    let log_path = ws_dir.join("logs").join("openakita-serve.log");
+    let log_path = ws_dir.join("logs").join("newsclaw-serve.log");
     let path_str = log_path.to_string_lossy().to_string();
     let tail = tail_bytes.unwrap_or(40_000).min(400_000);
 
@@ -1019,10 +1016,10 @@ pub(crate) fn set_tray_backend_status(
     im_summary: Option<String>,
 ) -> Result<(), String> {
     let base = match status.as_str() {
-        "alive" => "OpenAkita - Running",
-        "degraded" => "OpenAkita - Backend Unresponsive",
-        "dead" => "OpenAkita - Backend Stopped",
-        _ => "OpenAkita",
+        "alive" => "NewsClaw - Running",
+        "degraded" => "NewsClaw - Backend Unresponsive",
+        "dead" => "NewsClaw - Backend Stopped",
+        _ => "NewsClaw",
     };
     let tooltip = if let Some(ref im) = im_summary {
         if !im.is_empty() {
@@ -1056,7 +1053,7 @@ pub(crate) fn set_tray_backend_status(
                     [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; \
                     $xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02); \
                     $t = $xml.GetElementsByTagName('text'); \
-                    $t[0].AppendChild($xml.CreateTextNode('OpenAkita')) | Out-Null; \
+                    $t[0].AppendChild($xml.CreateTextNode('NewsClaw')) | Out-Null; \
                     $t[1].AppendChild($xml.CreateTextNode('Backend service has stopped')) | Out-Null; \
                     $n = [Windows.UI.Notifications.ToastNotification]::new($xml); \
                     [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($aumid).Show($n) \
@@ -1071,7 +1068,7 @@ pub(crate) fn set_tray_backend_status(
             let _ = Command::new("osascript")
                 .args([
                     "-e",
-                    "display notification \"Backend service has stopped\" with title \"OpenAkita\"",
+                    "display notification \"Backend service has stopped\" with title \"NewsClaw\"",
                 ])
                 .spawn();
         }
@@ -1232,7 +1229,7 @@ pub(crate) fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error:
 
     TrayIconBuilder::with_id("main_tray")
         .icon(app.default_window_icon().unwrap().clone())
-        .tooltip("OpenAkita")
+        .tooltip("NewsClaw")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(
@@ -1275,7 +1272,7 @@ pub(crate) fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error:
                     SHUTDOWN.store(true, Ordering::SeqCst);
                     let app_handle = app.clone();
                     if let Err(error) = thread::Builder::new()
-                        .name("openakita-tray-quit".into())
+                        .name("newsclaw-tray-quit".into())
                         .spawn(move || run_tray_quit_cleanup(app_handle))
                     {
                         SHUTDOWN.store(false, Ordering::SeqCst);
@@ -1361,18 +1358,18 @@ mod tests {
     #[test]
     fn playwright_browser_env_is_applied_only_for_an_installed_browser() {
         let modules_root = std::env::temp_dir().join(format!(
-            "openakita-playwright-env-test-{}-{}",
+            "newsclaw-playwright-env-test-{}-{}",
             std::process::id(),
             now_ms()
         ));
         let browsers_dir = modules_root.join("browser").join("browsers");
 
-        let mut missing = Command::new("openakita-test");
+        let mut missing = Command::new("newsclaw-test");
         apply_playwright_browser_env(&mut missing, &modules_root);
         assert_eq!(command_env(&missing, "PLAYWRIGHT_BROWSERS_PATH"), None);
 
         fs::create_dir_all(&browsers_dir).unwrap();
-        let mut installed = Command::new("openakita-test");
+        let mut installed = Command::new("newsclaw-test");
         apply_playwright_browser_env(&mut installed, &modules_root);
         assert_eq!(
             command_env(&installed, "PLAYWRIGHT_BROWSERS_PATH"),

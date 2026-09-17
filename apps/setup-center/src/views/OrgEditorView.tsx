@@ -964,12 +964,12 @@ export function OrgEditorView({
     } catch { /* skills endpoint may not be available */ }
   }, [apiBaseUrl]);
 
-  // 实时刷新：监听 App.tsx 桥接的 'openakita:skills-changed' 事件，
+  // 实时刷新：监听 App.tsx 桥接的 'newsclaw:skills-changed' 事件，
   // 与 SkillManager.tsx 共享同一事件源，避免后端技能变更后该面板看到旧列表
   useEffect(() => {
     const onChange = () => { fetchAvailableSkills().catch(() => {}); };
-    window.addEventListener("openakita:skills-changed", onChange);
-    return () => window.removeEventListener("openakita:skills-changed", onChange);
+    window.addEventListener("newsclaw:skills-changed", onChange);
+    return () => window.removeEventListener("newsclaw:skills-changed", onChange);
   }, [fetchAvailableSkills]);
 
 
@@ -1128,7 +1128,7 @@ export function OrgEditorView({
       if (!d || d.org_id !== orgId) return;
 
       // NOTE: the v2 OrgRuntime emits exactly these org:* WS events
-      // (see src/openakita/orgs/runtime.py + command_service.py):
+      // (see src/newsclaw/orgs/runtime.py + command_service.py):
       //   org:node_status, org:task_delegated, org:task_delivered,
       //   org:task_complete, org:blackboard_update, org:command_done,
       //   org:command_cancelled.

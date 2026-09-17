@@ -58,7 +58,7 @@ export function IMConfigView(props: IMConfigViewProps) {
               variant="outline" size="sm" className="h-7 shrink-0 gap-1 text-xs"
               onClick={async () => {
                 const ok = await copyToClipboard(
-                  "https://github.com/anthropic-lab/openakita/blob/main/docs/im-channels.md",
+                  "https://github.com/anthropic-lab/newsclaw/blob/main/docs/im-channels.md",
                 );
                 if (ok) toast.success(t("config.imGuideDocCopied"));
               }}

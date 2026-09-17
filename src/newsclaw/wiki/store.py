@@ -18,23 +18,43 @@ Obsidian vault（纯 .md + YAML frontmatter + ``[[wikilink]]``），因此：
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import yaml
+
 logger = logging.getLogger(__name__)
 
+
+class WikiDisabledError(RuntimeError):
+    """``obsidian_vault`` 为空时拒绝写入，避免悄悄落到 ``data/wiki``。"""
+
+
 MOC_FILENAME = "MOC.md"
-_DEFAULT_WIKI_DIRNAME = "wiki"
 _MAX_PAGE_NAME = 60
 _DATE_SECTION_RE = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*$", re.M)
 _WIKILINK_RE = re.compile(r"\[\[([^\[\]|]+)(?:\|[^\[\]]*)?\]\]")
 _ILLEGAL_NAME_CHARS = set('/\\:*?"<>|')
 _RESERVED_NAMES = {"moc", "index", "readme"}
 
-#: 主题页白名单（与 sources.yaml 的 topics 对齐；用于 MOC 分组与前端筛选）
+#: 主题页默认名单（sources.yaml 缺 topics 时的回退；用于 MOC 分组与前端筛选）
 TOPIC_PAGES = ("大模型", "公司动态", "开源项目", "研究与论文", "政策与监管")
+
+
+def topic_pages() -> tuple[str, ...]:
+    """当前主题列表：优先读 sources.yaml，读不到再用默认常量。"""
+    try:
+        from newsclaw.newsroom.sources import load_sources
+
+        topics = [str(item).strip() for item in load_sources().topics if str(item).strip()]
+        if topics:
+            return tuple(topics)
+    except Exception:
+        logger.debug("[wiki] falling back to default topic pages", exc_info=True)
+    return TOPIC_PAGES
 
 
 @dataclass
@@ -61,11 +81,21 @@ class PageInfo:
 # ── 根目录解析 ──────────────────────────────────────────────────────
 
 
-def wiki_root() -> Path:
+def wiki_enabled() -> bool:
+    """与 newsroom 配置同一扇门：空 vault = 整条 Wiki（prompt + API + 工具）关闭。"""
+    try:
+        from ..newsroom.config import load_config
+
+        return load_config().wiki_enabled()
+    except Exception:
+        return False
+
+
+def wiki_root() -> Path | None:
     """Wiki 根目录。
 
-    优先用 newsroom 配置里的 ``obsidian_vault``（用户已有的 Obsidian 库），
-    否则用项目内置的 ``data/wiki``——两者都是"一堆 md 文件"，行为一致。
+    只认 newsroom 配置里的 ``obsidian_vault``。为空则返回 ``None``，
+    读写一律跳过——不再回落到 ``data/wiki`` 假装库还开着。
     """
     try:
         from ..newsroom.config import load_config
@@ -73,14 +103,24 @@ def wiki_root() -> Path:
         vault = (load_config().obsidian_vault or "").strip()
         if vault:
             return Path(vault).expanduser()
-    except Exception as exc:  # 配置不可用不应阻断读取
-        logger.debug("[wiki] 读取 obsidian_vault 失败，回落到内置目录: %s", exc)
-    try:
-        from ..config import settings
+    except Exception as exc:
+        logger.debug("[wiki] 读取 obsidian_vault 失败，视为未启用: %s", exc)
+    return None
 
-        return Path(settings.data_dir) / _DEFAULT_WIKI_DIRNAME
-    except Exception:  # pragma: no cover - settings 不可用时退回 CWD 布局
-        return Path.cwd() / "data" / _DEFAULT_WIKI_DIRNAME
+
+def _require_wiki_root() -> Path:
+    root = wiki_root()
+    if root is None:
+        raise WikiDisabledError("obsidian_vault 未配置，已跳过 Wiki 写入")
+    return root
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """tmp + os.replace，避免写到一半崩溃留下半份 Markdown。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def sanitize_page_name(raw: str) -> str:
@@ -108,34 +148,40 @@ def page_kind_dir(kind: str) -> str:
 def page_path(name: str, kind: str = "topic") -> Path:
     """页面文件路径（按 type 分子目录，便于在 Obsidian 里浏览）。"""
     safe = sanitize_page_name(name)
+    root = _require_wiki_root()
     if safe == "MOC":
-        return wiki_root() / MOC_FILENAME
-    return wiki_root() / page_kind_dir(kind) / f"{safe}.md"
+        return root / MOC_FILENAME
+    return root / page_kind_dir(kind) / f"{safe}.md"
 
 
 # ── frontmatter / 渲染 ─────────────────────────────────────────────
 
 
 def _split_frontmatter(text: str) -> tuple[dict[str, str], str]:
-    """极简 frontmatter 解析（只处理 ``key: value`` 单行，够用且无依赖）。"""
+    """解析 YAML frontmatter。``title: foo: bar`` 必须整段保留，不能按冒号切开。"""
     if not text.startswith("---\n"):
         return {}, text
     end = text.find("\n---\n", 3)
     if end < 0:
         return {}, text
-    meta: dict[str, str] = {}
-    for line in text[4:end].splitlines():
-        if ":" in line:
-            key, value = line.split(":", 1)
-            meta[key.strip()] = value.strip()
+    try:
+        loaded = yaml.safe_load(text[4:end]) or {}
+    except yaml.YAMLError:
+        loaded = {}
+    if not isinstance(loaded, dict):
+        return {}, text[end + 5 :]
+    meta = {str(k): "" if v is None else str(v) for k, v in loaded.items()}
     return meta, text[end + 5 :]
 
 
 def _render_frontmatter(meta: dict[str, str]) -> str:
-    lines = ["---"]
-    lines += [f"{k}: {v}" for k, v in meta.items()]
-    lines.append("---")
-    return "\n".join(lines) + "\n"
+    dumped = yaml.safe_dump(
+        dict(meta),
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+    )
+    return f"---\n{dumped}---\n"
 
 
 def _render_entries(entries: list[WikiEntry], links: list[str]) -> str:
@@ -154,9 +200,7 @@ def _render_entries(entries: list[WikiEntry], links: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _render_section(
-    day: str, summary: str, entries: list[WikiEntry], links: list[str]
-) -> str:
+def _render_section(day: str, summary: str, entries: list[WikiEntry], links: list[str]) -> str:
     body = _render_entries(entries, links)
     head = f"## {day}"
     if summary.strip():
@@ -210,8 +254,14 @@ def upsert_daily_section(
     """
     entries = entries or []
     links = links or []
+    try:
+        from datetime import date as _date
+
+        _date.fromisoformat(day)
+    except ValueError as exc:
+        raise ValueError(f"day 必须是 YYYY-MM-DD：{day!r}") from exc
     safe = sanitize_page_name(name)
-    root = wiki_root()
+    root = _require_wiki_root()
     path = page_path(safe, kind)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -219,9 +269,10 @@ def upsert_daily_section(
     if existed:
         raw = path.read_text(encoding="utf-8")
     else:
-        raw = _render_frontmatter(
-            {"title": safe, "type": kind, "created": day, "last_updated": day}
-        ) + f"\n# {safe}\n"
+        raw = (
+            _render_frontmatter({"title": safe, "type": kind, "created": day, "last_updated": day})
+            + f"\n# {safe}\n"
+        )
 
     meta, body = _split_frontmatter(raw)
     section = _render_section(day, summary, entries, links)
@@ -236,7 +287,7 @@ def upsert_daily_section(
     meta["type"] = kind
     meta.setdefault("created", day)
     meta["last_updated"] = day
-    path.write_text(_render_frontmatter(meta) + body, encoding="utf-8")
+    _atomic_write_text(path, _render_frontmatter(meta) + body)
     logger.info(
         "[wiki] %s %s (%s%s)",
         "替换" if replaced else "写入",
@@ -249,7 +300,7 @@ def upsert_daily_section(
 
 def rebuild_moc() -> Path:
     """重建索引页：按 主题 / 公司 分组列出所有页面（含期数）。"""
-    root = wiki_root()
+    root = _require_wiki_root()
     pages = [p for p in list_pages() if p.kind != "index"]
     groups: dict[str, list[PageInfo]] = {"topic": [], "company": []}
     for page in pages:
@@ -275,8 +326,7 @@ def rebuild_moc() -> Path:
         lines += ["", f"## {title}", ""]
         lines += [f"- [[{p.name}]] —— {len(p.dates)} 期" for p in items]
     moc = root / MOC_FILENAME
-    moc.parent.mkdir(parents=True, exist_ok=True)
-    moc.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _atomic_write_text(moc, "\n".join(lines) + "\n")
     return moc
 
 
@@ -286,7 +336,7 @@ def rebuild_moc() -> Path:
 def list_pages() -> list[PageInfo]:
     """列出所有页面（含 frontmatter 元信息、日期章节、出链、摘要）。"""
     root = wiki_root()
-    if not root.is_dir():
+    if root is None or not root.is_dir():
         return []
     pages: list[PageInfo] = []
     for path in sorted(root.rglob("*.md")):
@@ -323,6 +373,8 @@ def list_pages() -> list[PageInfo]:
 def read_page(name_or_path: str) -> str | None:
     """按页面名或相对路径读取正文（含 frontmatter）。"""
     root = wiki_root()
+    if root is None:
+        return None
     candidate = root / name_or_path
     if candidate.is_file() and candidate.suffix == ".md":
         try:
@@ -347,9 +399,7 @@ def backlinks(name: str) -> list[str]:
     """
     target = sanitize_page_name(name)
     return [
-        p.name
-        for p in list_pages()
-        if p.kind != "index" and target in p.links and p.name != target
+        p.name for p in list_pages() if p.kind != "index" and target in p.links and p.name != target
     ]
 
 
@@ -372,6 +422,8 @@ def graph_data(*, days: int | None = None, today: str | None = None) -> dict:
 
     pages = [p for p in list_pages() if p.kind != "index"]
     root = wiki_root()
+    if root is None:
+        return {"nodes": [], "links": []}
 
     # 每页的逐期出链：(日期, [目标页名...])
     per_page: dict[str, list[tuple[str, list[str]]]] = {}
@@ -439,6 +491,8 @@ def search(keyword: str, limit: int = 30) -> list[dict]:
         return []
     hits: list[dict] = []
     root = wiki_root()
+    if root is None:
+        return []
     for page in list_pages():
         try:
             raw = (root / page.path).read_text(encoding="utf-8")

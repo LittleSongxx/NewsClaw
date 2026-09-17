@@ -33,7 +33,9 @@ async def test_startup_hook_schedules_llm_health_check_without_waiting() -> None
     app.state.org_runtime = None
 
     startup_hook = next(
-        hook for hook in app.router.on_startup if hook.__name__ == "_startup_org_runtime"
+        hook
+        for hook in app.state.lifespan_startup_hooks
+        if hook.__name__ == "_startup_org_runtime"
     )
 
     await startup_hook()

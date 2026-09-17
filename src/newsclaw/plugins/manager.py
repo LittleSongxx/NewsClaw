@@ -345,7 +345,7 @@ class PluginManager:
     # --- Version checking ---
 
     @staticmethod
-    def _check_openakita_version(manifest: PluginManifest) -> bool:
+    def _check_newsclaw_version(manifest: PluginManifest) -> bool:
         """Check plugin compatibility (system version, API version, Python, SDK)."""
         result = check_compatibility(manifest)
         for w in result.warnings:
@@ -478,7 +478,7 @@ class PluginManager:
         _now_mono = time.monotonic()
 
         for plugin_dir, manifest in sorted_plugins:
-            if not self._check_openakita_version(manifest):
+            if not self._check_newsclaw_version(manifest):
                 continue
 
             _last_failed = self._failed_at.get(manifest.id)
@@ -698,7 +698,7 @@ class PluginManager:
                     logger.warning(
                         "Plugin '%s' declares pip deps %s but %s is empty. "
                         "Run reinstall to trigger install_pip_deps, or place "
-                        "the wheels under ~/.openakita/modules/%s/site-packages/.",
+                        "the wheels under ~/.newsclaw/modules/%s/site-packages/.",
                         manifest.id,
                         pip_specs,
                         plugin_dir / "deps",
@@ -831,7 +831,7 @@ class PluginManager:
         plugin-private third-party packages become importable, while
         PyInstaller's bundled stdlib / pydantic on the front of the path
         keeps winning over any plugin-local copy — the same precaution
-        ``runtime_env.inject_module_paths`` takes for ``~/.openakita/modules``.
+        ``runtime_env.inject_module_paths`` takes for ``~/.newsclaw/modules``.
 
         ``workbench_manifest`` is the parsed v2 workbench manifest extracted
         from a top-level ``WORKBENCH`` dict in the plugin module (per

@@ -1,4 +1,4 @@
-"""Tests for ``openakita.agent.errors``.
+"""Tests for ``newsclaw.agent.errors``.
 
 The class itself is one constructor and three attributes; these tests pin
 its public construction contract and canonical module.

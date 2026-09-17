@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.checkpoint` and the in-memory backend.
+"""Tests for :mod:`newsclaw.runtime.checkpoint` and the in-memory backend.
 
 Phase 1 commit 6. Asserts:
 

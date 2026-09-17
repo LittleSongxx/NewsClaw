@@ -28,8 +28,10 @@ def test_executor_inherits_configured_confirmation_mode() -> None:
     assert _resolve_policy_confirmation_mode() == configured
 
 
-def test_workspace_write_allowed_unattended_under_configured_mode(tmp_path: Path) -> None:
-    """配置模式（trust）下，工作区内的 write_file 在无人值守时也直接放行。"""
+def test_workspace_write_not_silently_allowed_unattended_under_factory_mode(
+    tmp_path: Path,
+) -> None:
+    """出厂 protect/default 下，无人值守写盘不得静默 ALLOW。"""
     mode = _resolve_policy_confirmation_mode()
     root = str(tmp_path)
     ctx = PolicyContext(
@@ -47,8 +49,8 @@ def test_workspace_write_allowed_unattended_under_configured_mode(tmp_path: Path
         params={"path": f"{root}/data/newsroom/issues/2026-09-17/daily-brief.md", "content": "x"},
     )
     decision = get_engine_v2().evaluate_tool_call(event, ctx)
-    assert decision.action.value == "allow", (
-        f"配置模式 {mode} 下工作区写入应放行，实际 {decision.action} / {decision.reason}"
+    assert decision.action.value != "allow", (
+        f"出厂模式 {mode} 下无人值守写盘不得 ALLOW，实际 {decision.action} / {decision.reason}"
     )
 
 

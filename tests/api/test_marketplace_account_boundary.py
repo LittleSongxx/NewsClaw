@@ -12,6 +12,7 @@ def client(monkeypatch, mode="newsclaw"):
     """Default to the enabled distribution ("newsclaw"); "custom" is the
     disabled path asserted separately."""
     monkeypatch.setenv("NEWSCLAW_DESKTOP_SESSION_TOKEN", "desktop-secret")
+    monkeypatch.setenv("NEWSCLAW_MARKETPLACE_URL", "https://marketplace.newsclaw.cn")
     app = FastAPI()
     app.include_router(router)
     app.include_router(marketplace_router)
@@ -26,7 +27,7 @@ def client(monkeypatch, mode="newsclaw"):
 def test_handoff_requires_native_process_secret(monkeypatch):
     web, account = client(monkeypatch)
     response = web.post(
-        "/api/account/marketplace/handoff", json={"origin": "https://marketplace.openakita.cn"}
+        "/api/account/marketplace/handoff", json={"origin": "https://marketplace.newsclaw.cn"}
     )
     assert response.status_code == 403
     account.marketplace_handoff.assert_not_awaited()
@@ -36,7 +37,7 @@ def test_handoff_rejects_forwarded_remote_request_even_with_secret(monkeypatch):
     web, account = client(monkeypatch)
     response = web.post(
         "/api/account/marketplace/handoff",
-        json={"origin": "https://marketplace.openakita.cn"},
+        json={"origin": "https://marketplace.newsclaw.cn"},
         headers={
             "X-NewsClaw-Desktop-Token": "desktop-secret",
             "X-Forwarded-For": "203.0.113.1",
@@ -51,7 +52,7 @@ def test_handoff_rejects_unconfigured_target(monkeypatch):
     for origin in [
         "https://evil.example",
         "http://localhost:9999",
-        "https://marketplace.openakita.cn@evil.example",
+        "https://marketplace.newsclaw.cn@evil.example",
     ]:
         response = web.post(
             "/api/account/marketplace/handoff",
@@ -66,7 +67,7 @@ def test_custom_account_never_exports_identity_to_official_market(monkeypatch):
     web, account = client(monkeypatch, "custom")
     response = web.post(
         "/api/account/marketplace/handoff",
-        json={"origin": "https://marketplace.openakita.cn"},
+        json={"origin": "https://marketplace.newsclaw.cn"},
         headers={"X-NewsClaw-Desktop-Token": "desktop-secret"},
     )
     assert response.json() == {"ticket": None}
@@ -77,7 +78,7 @@ def test_signed_out_native_opens_public_marketplace(monkeypatch):
     web, account = client(monkeypatch)
     response = web.post(
         "/api/account/marketplace/handoff",
-        json={"origin": "https://marketplace.openakita.cn"},
+        json={"origin": "https://marketplace.newsclaw.cn"},
         headers={"X-NewsClaw-Desktop-Token": "desktop-secret"},
     )
     assert response.json() == {"ticket": None, "account": {"status": "signed_out"}}
@@ -92,7 +93,7 @@ def test_install_job_routes_require_native_process_secret(monkeypatch):
     assert web.post("/api/marketplace/installs/job/confirm").status_code == 403
     assert web.post(
         "/api/marketplace/installs/prepare",
-        json={"token": "a" * 64, "endpoint": "https://marketplace.openakita.cn"},
+        json={"token": "a" * 64, "endpoint": "https://marketplace.newsclaw.cn"},
     ).status_code == 403
 
 
@@ -125,12 +126,12 @@ def test_mobile_install_requires_valid_explicit_instance_token(monkeypatch):
     headers = {"Authorization": "Bearer instance-access", "X-Forwarded-For": "192.0.2.1"}
     assert web.get("/api/marketplace/installs/job", headers=headers).json()["data"]["stage"] == "dependency_installing"
     result = web.post("/api/marketplace/installs/prepare", headers=headers,
-                      json={"token": "a" * 64, "endpoint": "https://marketplace.openakita.cn"})
+                      json={"token": "a" * 64, "endpoint": "https://marketplace.newsclaw.cn"})
     assert result.status_code == 200
-    installs.prepare.assert_awaited_once_with("a" * 64, "https://marketplace.openakita.cn", account=account)
+    installs.prepare.assert_awaited_once_with("a" * 64, "https://marketplace.newsclaw.cn", account=account)
     # The mobile token permits instance installation, never desktop browser SSO.
     assert web.post("/api/account/marketplace/handoff", headers=headers,
-                    json={"origin": "https://marketplace.openakita.cn"}).status_code == 403
+                    json={"origin": "https://marketplace.newsclaw.cn"}).status_code == 403
 
 
 def test_standalone_backend_accepts_same_user_native_credential(monkeypatch):
@@ -139,7 +140,7 @@ def test_standalone_backend_accepts_same_user_native_credential(monkeypatch):
     monkeypatch.setattr("newsclaw.account.desktop.load_native_account_token", lambda: "native-token")
     response = web.post(
         "/api/account/marketplace/handoff",
-        json={"origin": "https://marketplace.openakita.cn"},
+        json={"origin": "https://marketplace.newsclaw.cn"},
         headers={"X-NewsClaw-Desktop-Token": "native-token"},
     )
     assert response.status_code == 200
@@ -151,7 +152,7 @@ def test_reused_backend_accepts_new_desktop_without_matching_launch_token(monkey
     monkeypatch.setattr("newsclaw.account.desktop.load_native_account_token", lambda: "native-token")
     response = web.post(
         "/api/account/marketplace/handoff",
-        json={"origin": "https://marketplace.openakita.cn"},
+        json={"origin": "https://marketplace.newsclaw.cn"},
         headers={"X-NewsClaw-Desktop-Token": "native-token"},
     )
     assert response.status_code == 200
@@ -163,7 +164,7 @@ def test_native_credential_does_not_authorize_forwarded_web_access(monkeypatch):
     monkeypatch.setattr("newsclaw.account.desktop.load_native_account_token", lambda: "native-token")
     response = web.post(
         "/api/account/marketplace/handoff",
-        json={"origin": "https://marketplace.openakita.cn"},
+        json={"origin": "https://marketplace.newsclaw.cn"},
         headers={"X-NewsClaw-Desktop-Token": "native-token", "Forwarded": "for=203.0.113.1"},
     )
     assert response.status_code == 403

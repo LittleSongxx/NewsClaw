@@ -3,10 +3,10 @@
 v22 P0 fix (exploratory v10 report §19 "SSE org not found"): the
 ``/api/v2/orgs-spec/{id}/stream`` legacy route and the Sprint-9
 ``/api/v2/orgs/{id}/events/stream`` alias both routed org-existence
-validation through the legacy :class:`~openakita.orgs.store.JsonOrgStore`
+validation through the legacy :class:`~newsclaw.orgs.store.JsonOrgStore`
 (``data/orgs_v2.json``). After Sprint-9 the mint
 ``POST /api/v2/orgs/from-template`` writes only to
-:class:`~openakita.orgs.manager.OrgManager`
+:class:`~newsclaw.orgs.manager.OrgManager`
 (``data/orgs/<id>/org.json``) and never writes to ``orgs_v2.json``,
 so every freshly minted org's SSE stream 404'd. This module pins
 the new contract: validation goes through ``request.app.state.org_manager``

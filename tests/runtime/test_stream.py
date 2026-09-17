@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.stream`.
+"""Tests for :mod:`newsclaw.runtime.stream`.
 
 Phase 1 commit 4. Asserts ADR-0006 promises:
 

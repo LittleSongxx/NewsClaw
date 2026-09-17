@@ -74,7 +74,9 @@ _VALID_TRANSITIONS: dict[SubAgentStatus, frozenset[SubAgentStatus]] = {
     ),
 }
 
-MAX_DELEGATION_DEPTH = 5
+# 单跳：父 Agent 只能派一层子 Agent。depth=0 是父，depth=1 是唯一允许的子层。
+# 比较用 ``>`` 而不是 ``>=``，否则 MAX=1 会把第一跳也拦掉。
+MAX_DELEGATION_DEPTH = 1
 CHECK_INTERVAL = 3.0  # how often to poll progress (matches frontend polling)
 
 _SUB_STREAM_EVENT_TYPES = frozenset(
@@ -114,7 +116,8 @@ class _SubAgentStreamingUnavailable(TypeError):
 
 
 # Defaults — overridden at runtime by settings when available.
-# 默认全部 0 = 不做"agent 自检自杀"，对齐 Claude Code 哲学；卡死由用户主动停止。
+# 默认全部 0 = 当前不启用无进展/硬超时自检。卡死需用户主动停止。
+# 不要把「预算为 0」讲成已对齐某产品的护栏策略。
 _DEFAULT_IDLE_TIMEOUT = 0  # 0 = 禁用无进展超时检测
 _DEFAULT_HARD_TIMEOUT = 0  # 0 = disabled
 
@@ -205,6 +208,76 @@ async def _broadcast_sub_stream_event(meta: dict[str, Any], event: dict[str, Any
         logger.debug("[Orchestrator] failed to broadcast sub-agent stream event", exc_info=True)
 
 
+def build_isolated_sub_session(
+    parent: Any,
+    *,
+    run_id: str,
+    agent_profile_id: str,
+) -> Any:
+    """为子 Agent 新建空上下文会话，不与父 Session 共用 messages 列表。
+
+    子会话 id 形如 ``{parent_id}:sub:{run_id}``。chat_id / 通道 / 工作目录 /
+    无人值守标记从父会话复制，方便前端对账和策略继承；对话历史从空开始。
+    """
+    from newsclaw.sessions.session import Session, SessionConfig, SessionContext
+
+    parent_id = str(getattr(parent, "id", "") or "parent")
+    safe_run = re.sub(r"[^A-Za-z0-9_-]", "", str(run_id) or uuid.uuid4().hex[:8])[:32]
+    if not safe_run:
+        safe_run = uuid.uuid4().hex[:8]
+    isolated_id = f"{parent_id}:sub:{safe_run}"
+
+    ctx = SessionContext()
+    ctx.agent_profile_id = agent_profile_id or "default"
+
+    parent_config = getattr(parent, "config", None)
+    if isinstance(parent_config, SessionConfig):
+        config = SessionConfig(
+            max_history=parent_config.max_history,
+            language=parent_config.language,
+            model=parent_config.model,
+            custom_prompt=parent_config.custom_prompt,
+            auto_summarize=parent_config.auto_summarize,
+        )
+    else:
+        config = SessionConfig()
+
+    isolated = Session(
+        id=isolated_id,
+        channel=getattr(parent, "channel", "cli") or "cli",
+        chat_id=getattr(parent, "chat_id", parent_id) or parent_id,
+        user_id=getattr(parent, "user_id", "") or "",
+        bot_instance_id=getattr(parent, "bot_instance_id", "") or "",
+        thread_id=getattr(parent, "thread_id", None),
+        chat_type=getattr(parent, "chat_type", "private") or "private",
+        display_name=getattr(parent, "display_name", "") or "",
+        chat_name=getattr(parent, "chat_name", "") or "",
+        working_directory=getattr(parent, "working_directory", "") or "",
+        context=ctx,
+        config=config,
+        session_role=getattr(parent, "session_role", "agent") or "agent",
+        confirmation_mode_override=getattr(parent, "confirmation_mode_override", None),
+        is_unattended=bool(getattr(parent, "is_unattended", False)),
+        unattended_strategy=getattr(parent, "unattended_strategy", "") or "",
+    )
+    # 只复制鉴权/通道元数据，不复制对话历史。
+    parent_meta = getattr(parent, "metadata", None)
+    if isinstance(parent_meta, dict):
+        isolated.metadata = {
+            key: value
+            for key, value in parent_meta.items()
+            if key in {"_current_message", "auth_user_id", "channel"}
+        }
+    isolated.set_metadata("_parent_session_id", parent_id)
+    isolated.set_metadata("_sub_agent_run_id", safe_run)
+    return isolated
+
+
+def _sub_agent_session_messages() -> list[dict]:
+    """子 Agent 默认空上下文：只靠 message 任务包，不灌父历史。"""
+    return []
+
+
 async def _call_agent_streaming(
     agent: Any,
     session: Any,
@@ -214,6 +287,8 @@ async def _call_agent_streaming(
     mode: str,
     stream_meta: dict[str, Any] | None,
     forward_gateway_events: bool = False,
+    session_messages: list[dict] | None = None,
+    gateway_session: Any = None,
 ) -> str:
     """Consume an agent stream, forwarding selected events while preserving final text."""
     stream_method = getattr(agent, "chat_with_session_stream", None)
@@ -223,10 +298,11 @@ async def _call_agent_streaming(
         )
 
     reply_text = ""
-    session_messages = session.context.get_messages()
+    history = [] if session_messages is None else list(session_messages)
+    confirm_session = gateway_session if gateway_session is not None else session
     async for event in stream_method(
         message=message,
-        session_messages=session_messages,
+        session_messages=history,
         session_id=session.id,
         session=session,
         gateway=gateway,
@@ -246,7 +322,7 @@ async def _call_agent_streaming(
         if forward_gateway_events and event_type == "security_confirm":
             handler = getattr(gateway, "handle_agent_security_confirm", None)
             if handler is not None:
-                await handler(session, event)
+                await handler(confirm_session, event)
         if stream_meta is not None:
             await _broadcast_sub_stream_event(stream_meta, event)
     return reply_text
@@ -602,7 +678,7 @@ class AgentOrchestrator:
         pre_state_key: str | None = None,
     ) -> str:
         """Dispatch a message to a specific agent with progress-aware timeout."""
-        if depth >= MAX_DELEGATION_DEPTH:
+        if depth > MAX_DELEGATION_DEPTH:
             return f"⚠️ 委派深度超限 (max={MAX_DELEGATION_DEPTH})"
 
         if depth == 0:
@@ -779,7 +855,7 @@ class AgentOrchestrator:
         """
         from newsclaw.config import settings
 
-        # 默认 0 = 不做"无进展超时"自检自杀（Claude Code 风格）。
+        # 默认 0 = 当前不启用无进展超时自检。
         # 仅在用户在【设置中心 → 高级设置】把 PROGRESS_TIMEOUT_SECONDS 设为非零时才生效。
         idle_timeout = float(getattr(settings, "progress_timeout_seconds", 0) or 0)
         hard_timeout = float(getattr(settings, "hard_timeout_seconds", 0) or _DEFAULT_HARD_TIMEOUT)
@@ -801,7 +877,17 @@ class AgentOrchestrator:
                 f"for {agent_profile_id}"
             )
 
-        agent = await self._pool.get_or_create(session.id, profile)
+        parent_session = session
+        work_session = session
+        if depth > 0:
+            run_token = (pre_state_key or uuid.uuid4().hex).rsplit(":", 1)[-1]
+            work_session = build_isolated_sub_session(
+                parent_session,
+                run_id=run_token,
+                agent_profile_id=agent_profile_id,
+            )
+
+        agent = await self._pool.get_or_create(work_session.id, profile)
 
         # Per-profile max_turns override → propagated to reasoning engine
         _max_turns_override: int | None = getattr(profile, "max_turns", None)
@@ -860,18 +946,20 @@ class AgentOrchestrator:
 
         gw = self._gateway if pass_gateway else None
         forward_gateway_events = bool(
-            gw is not None and session.get_metadata("_current_message") is not None
+            gw is not None and parent_session.get_metadata("_current_message") is not None
         )
 
         task = asyncio.create_task(
             self._call_agent(
                 agent,
-                session,
+                work_session,
                 message,
                 gateway=gw,
                 is_sub_agent=(depth > 0),
                 stream_meta=stream_meta if depth > 0 else None,
                 forward_gateway_events=forward_gateway_events,
+                persist_session=parent_session if depth > 0 else None,
+                gateway_session=parent_session if depth > 0 else None,
             )
         )
 
@@ -898,7 +986,7 @@ class AgentOrchestrator:
                     self._update_sub_state(state_key, "timeout", elapsed)
                     raise TimeoutError()
 
-                fp = self._get_progress_fingerprint(agent, session.id, session)
+                fp = self._get_progress_fingerprint(agent, work_session.id, work_session)
                 if fp != last_fingerprint:
                     last_fingerprint = fp
                     last_progress_time = time.monotonic()
@@ -920,7 +1008,7 @@ class AgentOrchestrator:
                     )
 
                 # Update live sub-agent state for frontend polling
-                tools_list = self._get_tools_executed(agent, session.id, session)
+                tools_list = self._get_tools_executed(agent, work_session.id, work_session)
                 idle_s = time.monotonic() - last_progress_time
 
                 _current_tool = tools_list[-1] if tools_list else ""
@@ -1182,6 +1270,8 @@ class AgentOrchestrator:
         is_sub_agent: bool = True,
         stream_meta: dict[str, Any] | None = None,
         forward_gateway_events: bool = False,
+        persist_session: Any = None,
+        gateway_session: Any = None,
     ) -> str:
         """Thin wrapper around agent.chat_with_session for use as a task target.
 
@@ -1191,6 +1281,9 @@ class AgentOrchestrator:
 
         Top-level agents (depth == 0) keep _is_sub_agent_call = False so they
         CAN use delegation tools (delegate_to_agent, spawn_agent, etc.).
+
+        子 Agent 使用独立 session（``:sub:<run_id>``）和空消息列表，只把
+        ``message`` 任务包交给模型；工作记录仍写回父会话。
         """
         if not hasattr(agent, "_execution_lock"):
             agent._execution_lock = asyncio.Lock()
@@ -1229,6 +1322,11 @@ class AgentOrchestrator:
 
             _start = time.time()
             exit_reason = "completed"
+            record_session = persist_session if persist_session is not None else session
+            if is_sub_agent:
+                session_messages = _sub_agent_session_messages()
+            else:
+                session_messages = session.context.get_messages()
             try:
                 if (is_sub_agent and stream_meta) or forward_gateway_events:
                     try:
@@ -1240,9 +1338,10 @@ class AgentOrchestrator:
                             mode=_mode,
                             stream_meta=stream_meta if is_sub_agent else None,
                             forward_gateway_events=forward_gateway_events,
+                            session_messages=session_messages,
+                            gateway_session=gateway_session,
                         )
                     except _SubAgentStreamingUnavailable:
-                        session_messages = session.context.get_messages()
                         result = await agent.chat_with_session(
                             message=message,
                             session_messages=session_messages,
@@ -1252,7 +1351,6 @@ class AgentOrchestrator:
                             mode=_mode,
                         )
                 else:
-                    session_messages = session.context.get_messages()
                     result = await agent.chat_with_session(
                         message=message,
                         session_messages=session_messages,
@@ -1261,9 +1359,9 @@ class AgentOrchestrator:
                         gateway=gateway,
                         mode=_mode,
                     )
-                # Persist sub-agent work record into parent session
+                # 工作记录写回父会话，避免落到空的子会话 buffer
                 try:
-                    _persist_sub_agent_record(agent, session, message, result, _start)
+                    _persist_sub_agent_record(agent, record_session, message, result, _start)
                 except Exception as e:
                     logger.warning(f"[Orchestrator] Failed to persist sub-agent record: {e}")
 
@@ -1448,7 +1546,7 @@ class AgentOrchestrator:
                     session,
                     message,
                     effective_id,
-                    depth + 1,
+                    depth,
                     from_agent=agent_profile_id,
                 )
         return default

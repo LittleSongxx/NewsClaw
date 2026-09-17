@@ -51,7 +51,7 @@ class TestConfigHint:
         text = e.to_llm_text()
         assert text == "[搜索源未配置] 请前往设置配置 Key。"
         # No HTML/JSON-style markers that LLMs could learn to mimic.
-        for marker in ("<", ">", "{", "}", "config_hint", "<openakita-"):
+        for marker in ("<", ">", "{", "}", "config_hint", "<newsclaw-"):
             assert marker not in text, f"marker {marker!r} leaked into LLM text"
 
     def test_hint_actions_preserved(self) -> None:

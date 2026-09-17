@@ -501,3 +501,39 @@ def test_terminal_sessions_are_namespaced_by_conversation(tmp_path):
     assert first.namespace == "conversation-a"
     assert second.namespace == "conversation-b"
     assert first.output_file != second.output_file
+
+
+def test_config_workspace_uses_user_workspace_not_source_tree(tmp_path, monkeypatch):
+    home = tmp_path / "newsclaw-home"
+    source = tmp_path / "repo"
+    source.mkdir()
+    expected = (home / "workspaces" / "default").resolve()
+
+    class _Settings:
+        project_root = source
+        newsclaw_home = home
+
+        @property
+        def user_workspace_path(self) -> Path:
+            return self.newsclaw_home / "workspaces" / "default"
+
+    monkeypatch.setattr("newsclaw.config.settings", _Settings())
+
+    assert config_workspace() == expected
+    assert expected.is_dir()
+    assert config_workspace() != source.resolve()
+
+
+def test_config_workspace_keeps_desktop_workspace_when_project_lives_there(tmp_path, monkeypatch):
+    home = tmp_path / "newsclaw-home"
+    workspace = home / "workspaces" / "desktop"
+    workspace.mkdir(parents=True)
+
+    class _Settings:
+        project_root = workspace
+        newsclaw_home = home
+        user_workspace_path = workspace.resolve()
+
+    monkeypatch.setattr("newsclaw.config.settings", _Settings())
+
+    assert config_workspace() == workspace.resolve()

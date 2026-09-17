@@ -34,7 +34,7 @@ describe("uploadLocalFile", () => {
       body: JSON.stringify({
         url: "/api/uploads/staged.pdf",
         upload_id: "staged.pdf",
-        local_path: "C:/openakita/uploads/staged.pdf",
+        local_path: "C:/newsclaw/uploads/staged.pdf",
         size: 42,
         mime_type: "application/pdf",
       }),
@@ -50,7 +50,7 @@ describe("uploadLocalFile", () => {
     expect(uploaded).toEqual({
       url: "/api/uploads/staged.pdf",
       uploadId: "staged.pdf",
-      localPath: "C:/openakita/uploads/staged.pdf",
+      localPath: "C:/newsclaw/uploads/staged.pdf",
       size: 42,
       mimeType: "application/pdf",
     });

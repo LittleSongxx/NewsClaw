@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.retry_policy`.
+"""Tests for :mod:`newsclaw.runtime.retry_policy`.
 
 Phase 1 commit 3. Asserts ADR-0004's promise:
 

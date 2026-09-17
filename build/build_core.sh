@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# OpenAkita desktop package build script (Linux/macOS)
+# NewsClaw desktop package build script (Linux/macOS)
 
 set -euo pipefail
 

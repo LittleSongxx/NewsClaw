@@ -1,4 +1,4 @@
-# OpenAkita desktop package with optional modules (Windows PowerShell)
+# NewsClaw desktop package with optional modules (Windows PowerShell)
 
 param([switch]$Fast)
 

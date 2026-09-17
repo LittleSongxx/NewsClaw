@@ -1,7 +1,7 @@
 """P7.6a — SkillParser global parse cache regression tests.
 
 Ensures that the process-wide cache in
-``openakita.skills.parser`` reuses ParsedSkill objects across
+``newsclaw.skills.parser`` reuses ParsedSkill objects across
 SkillParser instances (so per-Agent skill loading does not re-read
 the same SKILL.md from disk repeatedly), and that
 ``notify_skills_changed`` flushes the cache so install / uninstall

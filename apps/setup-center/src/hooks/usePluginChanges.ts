@@ -26,13 +26,13 @@ export function usePluginChanges(visible: boolean, refresh: () => Promise<void>)
     const foreground = () => void update();
     void update();
     const timer = window.setInterval(foreground, 3000);
-    window.addEventListener("openakita:plugin-apps-changed", changed);
+    window.addEventListener("newsclaw:plugin-apps-changed", changed);
     window.addEventListener("focus", foreground);
     document.addEventListener("visibilitychange", foreground);
     return () => {
       stopped = true;
       window.clearInterval(timer);
-      window.removeEventListener("openakita:plugin-apps-changed", changed);
+      window.removeEventListener("newsclaw:plugin-apps-changed", changed);
       window.removeEventListener("focus", foreground);
       document.removeEventListener("visibilitychange", foreground);
     };

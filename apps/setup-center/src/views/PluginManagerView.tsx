@@ -48,7 +48,7 @@ interface PluginOperationBody extends RuntimeOperationResult, PluginOperationDat
   };
 }
 
-// Mirrors PluginErrorTracker.health_snapshot() in src/openakita/plugins/sandbox.py.
+// Mirrors PluginErrorTracker.health_snapshot() in src/newsclaw/plugins/sandbox.py.
 // Optional on PluginInfo because /api/plugins responses pre-dating commit
 // "feat(plugins): weighted error tracking..." won't include it.
 export interface HealthSnapshot {
@@ -312,7 +312,7 @@ export default function PluginManagerView({ visible, httpApiBase, desktopVersion
       const signature = JSON.stringify(data);
       if (signature !== listSignature.current) {
         listSignature.current = signature;
-        window.dispatchEvent(new CustomEvent("openakita:plugin-apps-changed", {
+        window.dispatchEvent(new CustomEvent("newsclaw:plugin-apps-changed", {
           detail: { source: "plugin-list" },
         }));
       }
@@ -429,7 +429,7 @@ export default function PluginManagerView({ visible, httpApiBase, desktopVersion
   // may have changed, so they can refetch /api/plugins/ui-apps without a restart.
   const notifyAppsChanged = () => {
     try {
-      window.dispatchEvent(new CustomEvent("openakita:plugin-apps-changed"));
+      window.dispatchEvent(new CustomEvent("newsclaw:plugin-apps-changed"));
     } catch { /* ignore */ }
   };
 
@@ -491,7 +491,7 @@ export default function PluginManagerView({ visible, httpApiBase, desktopVersion
         // so without this event the UI tab keeps showing the stale build.
         try {
           window.dispatchEvent(
-            new CustomEvent("openakita:plugin-reloaded", { detail: { pluginId: id } }),
+            new CustomEvent("newsclaw:plugin-reloaded", { detail: { pluginId: id } }),
           );
         } catch { /* ignore */ }
 

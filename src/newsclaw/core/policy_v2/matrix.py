@@ -3,12 +3,15 @@
 参考 plan §3.4 + §3.6（R2-8 / R2-13）。
 
 设计要点（安全不变量）：
-1. UNKNOWN 在任何模式下均不静默 ALLOW（除 DONT_ASK 仍是 CONFIRM，永不 ALLOW）
-2. DESTRUCTIVE 在 trust 模式仍是 CONFIRM；STRICT 直接 DENY
-3. plan / ask 模式下任何 mutation/exec/destructive 一律 DENY（read-only 安全壳）
-4. INTERACTIVE 一律 ALLOW（ask_user 类工具）；IM 渠道下 desktop_*/browser_* 的屏蔽由
+1. UNKNOWN / DESTRUCTIVE 在任何模式下均不静默 ALLOW；DONT_ASK 对这两类是 DENY
+   （行业语义：未预批则拒绝，不再把 dont_ask 当 YOLO）
+2. DONT_ASK 对齐 Claude ``dontAsk``：DEFAULT 里本来 CONFIRM 的改 DENY；
+   已经 ALLOW 的保持（只读、EXEC_LOW_RISK、NETWORK_OUT、INTERACTIVE）
+3. DESTRUCTIVE 在 trust 模式仍是 CONFIRM；STRICT / DONT_ASK 直接 DENY
+4. plan / ask 模式下任何 mutation/exec/destructive 一律 DENY（read-only 安全壳）
+5. INTERACTIVE 一律 ALLOW（ask_user 类工具）；IM 渠道下 desktop_*/browser_* 的屏蔽由
    engine 层 channel-class compatibility 检查负责，不在矩阵层
-5. 任何未配置组合默认 DENY（safety-by-default）
+6. 任何未配置组合默认 DENY（safety-by-default）
 
 C1 提供基础矩阵；C3 PolicyEngineV2 在 step 5 调 lookup() 取得初始 action，再叠加
 safety_immune / owner_only / replay / trusted_path / death_switch 等 step 修正。
@@ -82,21 +85,21 @@ _AGENT_MATRIX: dict[ApprovalClass, dict[ConfirmationMode, DecisionAction]] = {
         ConfirmationMode.ACCEPT_EDITS: A,
         ConfirmationMode.TRUST: A,
         ConfirmationMode.STRICT: C,
-        ConfirmationMode.DONT_ASK: A,
+        ConfirmationMode.DONT_ASK: D,
     },
     ApprovalClass.MUTATING_GLOBAL: {
         ConfirmationMode.DEFAULT: C,
         ConfirmationMode.ACCEPT_EDITS: C,
         ConfirmationMode.TRUST: A,
         ConfirmationMode.STRICT: C,
-        ConfirmationMode.DONT_ASK: A,
+        ConfirmationMode.DONT_ASK: D,
     },
     ApprovalClass.DESTRUCTIVE: {
         ConfirmationMode.DEFAULT: C,
         ConfirmationMode.ACCEPT_EDITS: C,
         ConfirmationMode.TRUST: C,
         ConfirmationMode.STRICT: D,
-        ConfirmationMode.DONT_ASK: C,
+        ConfirmationMode.DONT_ASK: D,
     },
     ApprovalClass.EXEC_LOW_RISK: {
         ConfirmationMode.DEFAULT: A,
@@ -110,14 +113,14 @@ _AGENT_MATRIX: dict[ApprovalClass, dict[ConfirmationMode, DecisionAction]] = {
         ConfirmationMode.ACCEPT_EDITS: C,
         ConfirmationMode.TRUST: A,
         ConfirmationMode.STRICT: C,
-        ConfirmationMode.DONT_ASK: A,
+        ConfirmationMode.DONT_ASK: D,
     },
     ApprovalClass.CONTROL_PLANE: {
         ConfirmationMode.DEFAULT: C,
         ConfirmationMode.ACCEPT_EDITS: C,
         ConfirmationMode.TRUST: A,
         ConfirmationMode.STRICT: C,
-        ConfirmationMode.DONT_ASK: A,
+        ConfirmationMode.DONT_ASK: D,
     },
     ApprovalClass.INTERACTIVE: {
         ConfirmationMode.DEFAULT: A,
@@ -138,7 +141,7 @@ _AGENT_MATRIX: dict[ApprovalClass, dict[ConfirmationMode, DecisionAction]] = {
         ConfirmationMode.ACCEPT_EDITS: C,
         ConfirmationMode.TRUST: C,
         ConfirmationMode.STRICT: D,
-        ConfirmationMode.DONT_ASK: C,
+        ConfirmationMode.DONT_ASK: D,
     },
 }
 

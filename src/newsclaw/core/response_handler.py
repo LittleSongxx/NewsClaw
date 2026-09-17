@@ -352,7 +352,7 @@ _SYSTEM_REQUEST_PREFIXES_TUPLE: tuple[str, ...] = (
     # 其中只有 "[收到任务]" 是「子节点真正接到工作派单」，必须保留 verify；
     # 其余 12 种均为被动收到的通知/反馈，root 或上游收到时只需文字汇总
     # 即可，不应被强制要求附件交付，否则会被 _request_expects_artifact 误
-    # 判命中正文里出现的「文件 / 链接 / 写一份 / openakita-promotion-plan.md」
+    # 判命中正文里出现的「文件 / 链接 / 写一份 / newsclaw-promotion-plan.md」
     # 等关键字 → INCOMPLETE → root emit task_failed → 用户看到「任务验证未通过」
     # 噪音卡片（详见 2026-04-28 13:42:53 _134209 失败链）。
     "[收到任务结果]",

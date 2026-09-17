@@ -137,8 +137,8 @@ _HEURISTIC_EXACT_MATCH: dict[str, ApprovalClass] = {
     "org_request_meeting": ApprovalClass.EXEC_LOW_RISK,
     "org_create_schedule": ApprovalClass.EXEC_LOW_RISK,
     # CONTROL_PLANE —— 改变组织结构、岗位、权限、制度的操作；
-    # 由 owner 决策（step 11 unattended_strategy "ask_owner" 在
-    # autonomous 节点里会写 PendingApproval 等批准）。
+    # 由 owner 决策。无人值守默认 deny；只有显式 ask_owner / defer_to_*
+    # 才会在 autonomous 节点里写 PendingApproval 等批准。
     "org_freeze_node": ApprovalClass.CONTROL_PLANE,
     "org_unfreeze_node": ApprovalClass.CONTROL_PLANE,
     "org_request_clone": ApprovalClass.CONTROL_PLANE,

@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.messenger`.
+"""Tests for :mod:`newsclaw.runtime.messenger`.
 
 Phase 3 commit 4. Asserts the messenger contract:
 

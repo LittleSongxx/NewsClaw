@@ -184,14 +184,14 @@ def test_classify_entry_evolution_unattended():
     cls = classify_entry("evolution", force_unattended=True)
     assert cls.is_unattended is True
     assert cls.confirm_capability == "none"
-    assert cls.default_strategy in ("ask_owner", "")
+    assert cls.default_strategy == "deny"
     assert "evolution" in cls.reason or "force" in cls.reason
 
 
 def test_classify_entry_evolution_self_fix_alias():
     cls = classify_entry("evolution-self-fix")
     assert cls.is_unattended is True
-    assert cls.default_strategy == "ask_owner"
+    assert cls.default_strategy == "deny"
 
 
 # ---------------------------------------------------------------------------

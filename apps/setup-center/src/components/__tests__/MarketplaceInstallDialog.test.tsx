@@ -11,7 +11,7 @@ vi.mock("../../platform", () => ({
   IS_TAURI: true,
   IS_CAPACITOR: false,
   getCurrentDeepLinks: vi.fn(async () => [
-    `openakita://marketplace/install?token=${"a".repeat(64)}&endpoint=https://marketplace.openakita.cn`,
+    `newsclaw://marketplace/install?token=${"a".repeat(64)}&endpoint=https://marketplace.newsclaw.cn`,
   ]),
   onDeepLinkOpen: vi.fn(async () => () => {}),
 }));
@@ -75,7 +75,7 @@ it("refreshes the mounted skill category from 9 to 10 after polling succeeds wit
 it("notifies only once for an already completed skill job", async () => {
   vi.mocked(safeFetchResponse).mockImplementation(async () => new Response(JSON.stringify({ data: job })));
   const listener = vi.fn();
-  window.addEventListener("openakita:skills-changed", listener);
+  window.addEventListener("newsclaw:skills-changed", listener);
   try {
     const view = render(<MarketplaceInstallDialog apiBaseUrl="http://localhost:18900" desktopVersion="1.27.40" />);
     await waitFor(() => expect(listener).toHaveBeenCalledTimes(1));
@@ -84,7 +84,7 @@ it("notifies only once for an already completed skill job", async () => {
     await screen.findByText(/请在技能管理中确认启用状态/);
     expect(listener).toHaveBeenCalledTimes(1);
   } finally {
-    window.removeEventListener("openakita:skills-changed", listener);
+    window.removeEventListener("newsclaw:skills-changed", listener);
   }
 });
 
@@ -104,7 +104,7 @@ it("refreshes an already mounted MCP page immediately after marketplace installa
     return new Response(JSON.stringify({ data: { ...job, resource_type: "mcp", status } }));
   });
   const listener = vi.fn();
-  window.addEventListener("openakita:mcp-changed", listener);
+  window.addEventListener("newsclaw:mcp-changed", listener);
   try {
     render(<>
       <MCPView serviceRunning envDraft={{}} onEnvChange={vi.fn()} onSaveEnvKeys={vi.fn()} />
@@ -115,7 +115,7 @@ it("refreshes an already mounted MCP page immediately after marketplace installa
     expect(listener).toHaveBeenCalledTimes(1);
     expect(safeFetch).toHaveBeenCalledTimes(2);
   } finally {
-    window.removeEventListener("openakita:mcp-changed", listener);
+    window.removeEventListener("newsclaw:mcp-changed", listener);
   }
 });
 
@@ -127,13 +127,13 @@ it.each([
     data: { ...job, status, resource_type },
   })));
   const listener = vi.fn();
-  window.addEventListener("openakita:skills-changed", listener);
+  window.addEventListener("newsclaw:skills-changed", listener);
   try {
     render(<MarketplaceInstallDialog apiBaseUrl="http://localhost:18900" desktopVersion="1.27.40" />);
     await screen.findByText("Demo · v1.0.0");
     expect(listener).not.toHaveBeenCalled();
   } finally {
-    window.removeEventListener("openakita:skills-changed", listener);
+    window.removeEventListener("newsclaw:skills-changed", listener);
   }
 });
 

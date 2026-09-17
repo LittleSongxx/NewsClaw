@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.guardrail`.
+"""Tests for :mod:`newsclaw.runtime.guardrail`.
 
 Phase 3 commit 5. Asserts:
 

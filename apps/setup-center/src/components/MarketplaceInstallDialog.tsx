@@ -31,7 +31,7 @@ function parseInstallLink(value: string): ParsedLink | null {
     const url = new URL(value);
     const token = (url.searchParams.get("token") || "").toLowerCase();
     const endpoint = url.searchParams.get("endpoint") || "";
-    if (url.protocol !== "openakita:" || url.hostname !== "marketplace" || url.pathname !== "/install") return null;
+    if (url.protocol !== "newsclaw:" || url.hostname !== "marketplace" || url.pathname !== "/install") return null;
     if (!/^[a-f0-9]{64}$/.test(token) || !endpoint) return null;
     const source = new URL(endpoint);
     const local = source.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(source.hostname);
@@ -150,7 +150,7 @@ export function MarketplaceInstallDialog({
     void restoreWeb();
     const stopRelay = webInstallRelay()?.listen(() => apiBaseUrl.replace(/\/+$/, ''), enqueueWebInstall);
     const arrived = () => { void restoreWeb(); };
-    const resume = () => { if (location.hash.startsWith('#openakita-install=')) void restoreWeb(); };
+    const resume = () => { if (location.hash.startsWith('#newsclaw-install=')) void restoreWeb(); };
     window.addEventListener('hashchange', resume);
     window.addEventListener('pageshow', resume);
     window.addEventListener(WEB_INSTALL_ARRIVED, arrived);
@@ -210,8 +210,8 @@ export function MarketplaceInstallDialog({
       const tracked = initial.jobId && getInstallTasks().find(task => task.key === taskKey(initial.target.base, initial.jobId!));
       void restoreMobile(initial, (!initial.jobId && !tracked) || (!!tracked && !tracked.background && !tracked.hidden && !['complete', 'cancelled'].includes(taskPhase(tracked))), true);
     }
-    window.addEventListener('openakita-marketplace-resume', resume);
-    return () => { mounted.current = false; window.removeEventListener('openakita-marketplace-resume', resume); };
+    window.addEventListener('newsclaw-marketplace-resume', resume);
+    return () => { mounted.current = false; window.removeEventListener('newsclaw-marketplace-resume', resume); };
   }, [restoreMobile]);
 
   const friendlyError = useCallback((code: string) => t(`marketplaceInstall.errors.${code}`, {
@@ -363,7 +363,7 @@ export function MarketplaceInstallDialog({
         const key = `${task.key}/resource-refresh`;
         if (!notifiedInstalls.current.has(key)) {
           notifiedInstalls.current.add(key);
-          window.dispatchEvent(new CustomEvent({ skill: 'openakita:skills-changed', plugin: 'openakita:plugin-apps-changed', mcp: 'openakita:mcp-changed' }[task.job.resource_type], { detail: { action: 'install' } }));
+          window.dispatchEvent(new CustomEvent({ skill: 'newsclaw:skills-changed', plugin: 'newsclaw:plugin-apps-changed', mcp: 'newsclaw:mcp-changed' }[task.job.resource_type], { detail: { action: 'install' } }));
         }
       }
       const phase = taskPhase(task);

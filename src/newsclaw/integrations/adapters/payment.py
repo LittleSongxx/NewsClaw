@@ -3,6 +3,8 @@
 支持支付宝和微信支付
 """
 
+import json
+from datetime import datetime
 from typing import Any
 
 import aiohttp
@@ -40,8 +42,8 @@ class AlipayAdapter(BaseAPIAdapter):
             "biz_content": json.dumps(biz_content),
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "version": "1.0",
-            "return_url": config.get("return_url"),
-            "notify_url": config.get("notify_url"),
+            "return_url": self.config.get("return_url"),
+            "notify_url": self.config.get("notify_url"),
         }
         params["sign"] = self._sign(params)
         async with aiohttp.ClientSession() as session:
@@ -81,7 +83,7 @@ class AlipayAdapter(BaseAPIAdapter):
         try:
             PKCS1_v1_5.new(key).verify(h, base64.b64decode(signature))
             return True
-        except:
+        except (ValueError, TypeError):
             return False
 
 
@@ -112,7 +114,7 @@ class WeChatPayAdapter(BaseAPIAdapter):
             "mchid": self.mch_id,
             "description": description,
             "out_trade_no": out_trade_no,
-            "notify_url": config.get("notify_url"),
+            "notify_url": self.config.get("notify_url"),
             "amount": {"total": total_amount, "currency": "CNY"},
         }
         async with aiohttp.ClientSession() as session:

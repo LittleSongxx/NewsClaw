@@ -61,7 +61,7 @@ async def test_loopback_denial_does_not_exchange_tokens():
 
 
 def test_loopback_contract_constants() -> None:
-    assert CLIENT_ID == "openakita-desktop"
+    assert CLIENT_ID == "newsclaw-desktop"
     parsed = urlsplit(CALLBACK_URI)
     assert parsed.hostname == "127.0.0.1"
     assert parsed.port == 1455
@@ -154,14 +154,14 @@ async def test_callback_returns_localized_secure_html() -> None:
     assert writer.closed is True
 
 
-def test_account_base_url_defaults_to_hosted_service(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_account_base_url_has_no_bundled_official_host(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NEWSCLAW_ACCOUNT_BASE_URL", raising=False)
     manager = AccountOIDCManager(
         store=_SnapshotStore(),  # type: ignore[arg-type]
         token_store=MemoryTokenStore(None),
     )
 
-    assert manager._base_url == DEFAULT_ACCOUNT_BASE_URL == "https://account.openakita.cn"
+    assert manager._base_url == DEFAULT_ACCOUNT_BASE_URL == ""
 
 
 @pytest.mark.asyncio
@@ -187,14 +187,14 @@ async def test_disabled_mode_clears_known_credential_slots(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "newsclaw.account.oidc.disabled_credential_usernames",
-        lambda: {"openakita-desktop-refresh-token", "vendor-desktop-refresh-token"},
+        lambda: {"newsclaw-desktop-refresh-token", "vendor-desktop-refresh-token"},
     )
     monkeypatch.setattr(KeyringTokenStore, "clear", fake_clear)
 
     await clear_disabled_account_credentials()
 
     assert sorted(cleared) == [
-        "openakita-desktop-refresh-token",
+        "newsclaw-desktop-refresh-token",
         "vendor-desktop-refresh-token",
     ]
 

@@ -112,7 +112,7 @@ SKILLS_TOOLS = [
 如果脚本因缺少配置（API Key/凭据/路径等）而失败，应主动帮用户完成配置（引导获取、写入配置文件），而不是告诉用户"缺少XX无法使用"。
 
 **Python 环境**：
-声明了 `metadata.openakita.python.dependencies` 的技能会在执行前准备独立 skill venv；未声明依赖的 Python 脚本优先使用当前 Agent 环境。""",
+声明了 `metadata.newsclaw.python.dependencies`（旧技能也可能写 `metadata.openakita`）的技能会在执行前准备独立 skill venv；未声明依赖的 Python 脚本优先使用当前 Agent 环境。""",
         "input_schema": {
             "type": "object",
             "properties": {

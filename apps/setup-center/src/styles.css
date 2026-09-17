@@ -5717,6 +5717,11 @@ button.btnPrimary:hover {
   border: 1px solid var(--line);
 }
 
+/* 网页端只保留「会话」时铺满整条标签栏，避免留下原来「文件」那一列的空位 */
+.convSidebarTabsSingle {
+  grid-template-columns: 1fr;
+}
+
 .convSidebarTab {
   min-width: 0;
   padding: 0;
@@ -7480,7 +7485,7 @@ body > div[id*="sm-" i] {
    the panel briefly pulses to draw the user's eye to where they landed.
    Set via JS: el.setAttribute("data-expand-flash", "true") for ~1.4s.
    ───────────────────────────────────────────────────────────────────── */
-@keyframes openakitaExpandFlash {
+@keyframes newsclawExpandFlash {
   0% {
     box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45);
     background: rgba(37, 99, 235, 0.08);
@@ -7495,7 +7500,7 @@ body > div[id*="sm-" i] {
 }
 
 [data-expand-flash] {
-  animation: openakitaExpandFlash 1.4s ease-out;
+  animation: newsclawExpandFlash 1.4s ease-out;
   border-radius: var(--radius, 12px);
 }
 

@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.stall_detector`.
+"""Tests for :mod:`newsclaw.runtime.stall_detector`.
 
 Phase 3 commit 2. Asserts the regen-stall pattern that ADR-0004
 adopts from AutoGen's Magentic-One orchestrator:

@@ -1,6 +1,4 @@
-"""
-网络搜索测试用例 (40个)
-"""
+"""网络搜索 demo cases（7 条）。字符串包含判定，不是质量门。"""
 
 from newsclaw.testing.runner import TestCase
 
@@ -98,7 +96,7 @@ WEB_SEARCH_TESTS = [
         input={
             "action": "download",
             "url": "https://httpbin.org/bytes/100",
-            "path": "/tmp/openakita_download_test.bin",
+            "path": "/tmp/newsclaw_download_test.bin",
         },
         expected=True,
         tags=["download", "file"],

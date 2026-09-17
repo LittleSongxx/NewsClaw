@@ -127,7 +127,7 @@ fn load_or_create(path: &Path) -> Result<String, String> {
 pub(crate) fn newsclaw_account_session_token() -> Result<String, String> {
     // 必须与 Python 端 account/native_credential.py 用同一条规则：账号凭据绑定
     // OS 用户身份，不跟随 custom_root / NEWSCLAW_ROOT 覆盖，否则换工作区就会
-    // 重新生成 token。规则：~/.newsclaw（已存在）→ ~/.openakita（旧安装）→ 新默认。
+    // 重新生成 token。规则：~/.newsclaw（已存在）→ ~/.newsclaw（旧安装）→ 新默认。
     load_or_create(&crate::config::default_home_root_dir().join(".desktop-account-token"))
 }
 
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn persistent_native_token_survives_restart_and_concurrent_initialization() {
         let directory = std::env::temp_dir().join(format!(
-            "openakita-account-native-test-{}",
+            "newsclaw-account-native-test-{}",
             std::process::id()
         ));
         fs::create_dir_all(&directory).unwrap();

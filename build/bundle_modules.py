@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenAkita optional modules pre-bundling script (for full package)
+NewsClaw optional modules pre-bundling script (for full package)
 
 Downloads wheels and model files for optional modules to build/modules/ directory,
 for the full package installer to bundle directly.
@@ -157,7 +157,7 @@ def bundle_module(module_id: str, mirror: str | None = None):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="OpenAkita optional modules pre-bundling script")
+    parser = argparse.ArgumentParser(description="NewsClaw optional modules pre-bundling script")
     parser.add_argument(
         "--module",
         choices=list(MODULE_DEFS.keys()),
@@ -184,7 +184,7 @@ def main():
         args.mirror = None
 
     print(f"\n{'=' * 60}")
-    print("  OpenAkita Optional Modules Pre-bundling")
+    print("  NewsClaw Optional Modules Pre-bundling")
     print(f"{'=' * 60}")
     print(f"  Output directory: {MODULES_DIR}")
     print(f"  Mirror: {args.mirror or '(official PyPI)'}")

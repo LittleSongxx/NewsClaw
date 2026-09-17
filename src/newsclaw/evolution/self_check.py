@@ -1239,7 +1239,7 @@ ID: {result.test_id}
 
         message = (
             "Self-check system prompt is unavailable; checked workspace path "
-            f"{override_path} and bundled resource openakita/prompts/selfcheck/system.md"
+            f"{override_path} and bundled resource newsclaw/prompts/selfcheck/system.md"
         )
         logger.error(message)
         raise SelfCheckPromptUnavailableError(message)

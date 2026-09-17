@@ -25,7 +25,7 @@ async function onboardStart(venvDir: string, domain: string, apiBaseUrl?: string
     return res.json();
   }
   if (IS_TAURI) {
-    const raw = await invoke<string>("openakita_feishu_onboard_start", { venvDir, domain });
+    const raw = await invoke<string>("newsclaw_feishu_onboard_start", { venvDir, domain });
     return JSON.parse(raw);
   }
   const res = await safeFetch(`/api/feishu/onboard/start`, {
@@ -46,7 +46,7 @@ async function onboardPoll(venvDir: string, domain: string, deviceCode: string, 
     return res.json();
   }
   if (IS_TAURI) {
-    const raw = await invoke<string>("openakita_feishu_onboard_poll", { venvDir, domain, deviceCode });
+    const raw = await invoke<string>("newsclaw_feishu_onboard_poll", { venvDir, domain, deviceCode });
     return JSON.parse(raw);
   }
   const res = await safeFetch(`/api/feishu/onboard/poll`, {

@@ -1,14 +1,14 @@
 """C6 起 permission.check_permission Step 2 切到 PolicyEngineV2 adapter。
 
 历史背景：
-- C6 之前 mock 点是 ``openakita.core.policy.get_policy_engine``，决策走 v1 PolicyEngine。
-- C6 之后 mock 点切换到 ``openakita.core.policy_v2.global_engine.get_engine_v2``
+- C6 之前 mock 点是 ``newsclaw.core.policy.get_policy_engine``，决策走 v1 PolicyEngine。
+- C6 之后 mock 点切换到 ``newsclaw.core.policy_v2.global_engine.get_engine_v2``
   返回的 PolicyEngineV2 实例，或者 patch ``policy_v2.adapter._get_engine``
   以注入测试 stub。
 
 本套件覆盖：
 - 风险工具引擎不可用 → DENY (fail-closed)
-- 安全工具引擎不可用 → ALLOW (fail-open)
+- 安全工具引擎不可用 → DENY (fail-closed，含只读)
 - plan/ask 模式规则在 policy 调用前就 deny
 - 引擎只调用一次（防止 dual-check 回潮）
 """
@@ -115,12 +115,12 @@ def test_permission_fail_closed_for_risky_tools(monkeypatch: pytest.MonkeyPatch)
     assert any("policy_engine_v2" in step.get("layer", "") for step in result.decision_chain)
 
 
-def test_permission_still_allows_safe_reads_when_policy_unavailable(
+def test_permission_denies_safe_reads_when_policy_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ):
     _patch_engine_to_raise(monkeypatch, RuntimeError("policy unavailable"))
     result = check_permission("read_file", {"path": "README.md"})
-    assert result.behavior == "allow"
+    assert result.behavior == "deny"
 
 
 def test_permission_fail_closed_propagates_v2_exception_string(

@@ -33,7 +33,7 @@ class NewsroomConfig:
         daily_cron / review_cron: 两条任务的 cron 表达式（5 段，本地时区）。
         obsidian_vault: Obsidian 库根目录绝对路径；为空表示暂不做 Wiki 沉淀，
             管线 prompt 中的 Wiki 步骤会据此自动跳过。
-        issue_history_days: 采集阶段允许回看的往期天数（去重窗口）。
+        issue_history_days: 采集阶段回看的往期天数（去重窗口，默认 7，对齐周复盘）。
         task_timeout_seconds: 单次管线执行的 task 级超时（透传给调度器 metadata）。
     """
 
@@ -41,11 +41,20 @@ class NewsroomConfig:
     daily_cron: str = DEFAULT_DAILY_CRON
     review_cron: str = DEFAULT_REVIEW_CRON
     obsidian_vault: str = ""
-    issue_history_days: int = 3
+    issue_history_days: int = 7
     task_timeout_seconds: int = 3600
     extra: dict = field(default_factory=dict)
 
+    def wiki_enabled(self) -> bool:
+        """``obsidian_vault`` 非空才做 Wiki 沉淀；空字符串 = 整条 Wiki 管线关闭。"""
+        return bool((self.obsidian_vault or "").strip())
+
+    @property
+    def load_error(self) -> str:
+        return str(self.extra.get("_load_error") or "")
+
     def to_dict(self) -> dict:
+        extra = {k: v for k, v in self.extra.items() if not str(k).startswith("_")}
         return {
             "enabled": self.enabled,
             "daily_cron": self.daily_cron,
@@ -53,8 +62,43 @@ class NewsroomConfig:
             "obsidian_vault": self.obsidian_vault,
             "issue_history_days": self.issue_history_days,
             "task_timeout_seconds": self.task_timeout_seconds,
-            **self.extra,
+            **extra,
         }
+
+    @classmethod
+    def from_mapping(cls, data: dict) -> NewsroomConfig:
+        """从映射构造；未知键进 extra，``_`` 前缀键不落盘。"""
+        if not isinstance(data, dict):
+            return cls(enabled=False, extra={"_load_error": "config is not a mapping"})
+        known_keys = {
+            "enabled",
+            "daily_cron",
+            "review_cron",
+            "obsidian_vault",
+            "issue_history_days",
+            "task_timeout_seconds",
+        }
+        extra = {
+            k: v for k, v in data.items() if k not in known_keys and not str(k).startswith("_")
+        }
+        try:
+            history = max(1, int(data.get("issue_history_days", 7)))
+        except (TypeError, ValueError):
+            history = 7
+        try:
+            timeout = max(300, int(data.get("task_timeout_seconds", 3600)))
+        except (TypeError, ValueError):
+            timeout = 3600
+        enabled = data.get("enabled", True)
+        return cls(
+            enabled=bool(enabled),
+            daily_cron=str(data.get("daily_cron", DEFAULT_DAILY_CRON)),
+            review_cron=str(data.get("review_cron", DEFAULT_REVIEW_CRON)),
+            obsidian_vault=str(data.get("obsidian_vault", "")),
+            issue_history_days=history,
+            task_timeout_seconds=timeout,
+            extra=extra,
+        )
 
 
 _DEFAULT_CONFIG = NewsroomConfig()
@@ -72,29 +116,12 @@ def load_config() -> NewsroomConfig:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except (yaml.YAMLError, OSError) as e:
-        logger.warning("[Newsroom] config.yaml unreadable (%s); using defaults", e)
-        return NewsroomConfig()
+        logger.warning("[Newsroom] config.yaml unreadable (%s); disabling until fixed", e)
+        return NewsroomConfig(enabled=False, extra={"_load_error": str(e)})
     if not isinstance(data, dict):
-        logger.warning("[Newsroom] config.yaml is not a mapping; using defaults")
-        return NewsroomConfig()
-    known_keys = {
-        "enabled",
-        "daily_cron",
-        "review_cron",
-        "obsidian_vault",
-        "issue_history_days",
-        "task_timeout_seconds",
-    }
-    extra = {k: v for k, v in data.items() if k not in known_keys}
-    return NewsroomConfig(
-        enabled=bool(data.get("enabled", True)),
-        daily_cron=str(data.get("daily_cron", DEFAULT_DAILY_CRON)),
-        review_cron=str(data.get("review_cron", DEFAULT_REVIEW_CRON)),
-        obsidian_vault=str(data.get("obsidian_vault", "")),
-        issue_history_days=max(1, int(data.get("issue_history_days", 3))),
-        task_timeout_seconds=max(300, int(data.get("task_timeout_seconds", 3600))),
-        extra=extra,
-    )
+        logger.warning("[Newsroom] config.yaml is not a mapping; disabling until fixed")
+        return NewsroomConfig(enabled=False, extra={"_load_error": "config.yaml is not a mapping"})
+    return NewsroomConfig.from_mapping(data)
 
 
 def save_config(config: NewsroomConfig) -> Path:

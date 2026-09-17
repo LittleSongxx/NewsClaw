@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-# isort: off  -- workaround for pre-existing import cycle in openakita.plugins
+# isort: off  -- workaround for pre-existing import cycle in newsclaw.plugins
 #                (``core.capabilities`` <-> ``agent`` <-> ``skills.registry``).
-# Importing ``openakita.agent`` first forces ``core.capabilities`` to finish
+# Importing ``newsclaw.agent`` first forces ``core.capabilities`` to finish
 # its module body before ``plugins.api`` re-enters it.  Without this, running
 # this test file in isolation fails at collection time; the full-suite
 # ``pytest`` invocation happens to load things in the right order already.

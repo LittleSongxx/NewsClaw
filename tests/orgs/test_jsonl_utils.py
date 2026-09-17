@@ -2,7 +2,7 @@
 
 The v1 ``orgs/event_store.py`` + ``orgs/blackboard.py`` file readers were
 replaced by the orgs_v2 backends, which now route their append-only JSONL
-reads through :mod:`openakita.orgs.jsonl_utils`. Upstream #691 hardened those
+reads through :mod:`newsclaw.orgs.jsonl_utils`. Upstream #691 hardened those
 readers against torn / NUL-corrupted tail writes (a crash mid-append can leave
 the last line partially written or NUL-filled). This test pins that behaviour
 on the shared util that both orgs_v2 readers depend on, since the original

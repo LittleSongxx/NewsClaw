@@ -26,7 +26,7 @@ class _InstallProcess:
         self.killed = True
 
 
-def test_managed_browsers_dir_respects_openakita_root(tmp_path: Path, monkeypatch) -> None:
+def test_managed_browsers_dir_respects_newsclaw_root(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
     monkeypatch.setenv("NEWSCLAW_ROOT", str(tmp_path))
 

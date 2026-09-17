@@ -90,7 +90,7 @@ def _format_local_permission_error(error: str, lower: str) -> str | None:
     if not any(marker in lower for marker in permission_markers):
         return None
 
-    if ".openakita" in lower and ("site-packages" in lower or "\\modules\\" in lower):
+    if ".newsclaw" in lower and ("site-packages" in lower or "\\modules\\" in lower):
         return "⚠️ 插件依赖缓存目录权限异常，已跳过不可访问目录；如仍失败，请清理插件缓存后重试。"
     if _WINDOWS_PATH_RE.search(error) or "/" in error or "\\" in error:
         return "⚠️ 本地文件权限异常，已记录到日志；请检查相关文件权限后重试。"

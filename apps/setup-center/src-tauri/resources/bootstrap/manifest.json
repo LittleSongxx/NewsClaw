@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "app_name": "openakita",
+  "app_name": "newsclaw",
   "app_version": "1.27.40",
   "python_version": "3.11",
   "python_abi": "cp311",
   "wheel_tag": "py3-none-any",
   "wheel": {
-    "name": "wheels/openakita-1.27.40-py3-none-any.whl",
+    "name": "wheels/newsclaw-1.27.40-py3-none-any.whl",
     "sha256": "702f4c931ff72d6b7ca3e40f83fb789142b6eb738c6663401a2daf4e1069f3f9"
   },
   "uv": {

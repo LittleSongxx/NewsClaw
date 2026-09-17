@@ -1,13 +1,13 @@
 """Sprint 14 / v31 Phase A + Sprint 15 / v32 Phase B regression:
-``openakita stop`` CLI subcommand must POST ``/api/shutdown`` reliably
+``newsclaw stop`` CLI subcommand must POST ``/api/shutdown`` reliably
 so operators don't have to hand-craft PowerShell / curl every
 regression.
 
 Forensic background — see ``_v32_biz/_phase_b_cli_trust_env.md``
 and ``_v31_biz_e2e/v31_regression_report.md`` §6 CLI-1:
 
-* v29 graceful-restart audit attempted ``python -m openakita.api.cli stop``
-  and got ``No module named openakita.api.cli`` (Phase B = fail). The CLI
+* v29 graceful-restart audit attempted ``python -m newsclaw.api.cli stop``
+  and got ``No module named newsclaw.api.cli`` (Phase B = fail). The CLI
   surface had no programmatic shutdown entrypoint at all.
 * v31 Sprint 14 added the ``stop`` subcommand but used the
   module-level ``httpx.post(...)`` shortcut whose Client defaults to

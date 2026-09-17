@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import enum
 import json
 import logging
 import os
@@ -24,12 +25,22 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from newsclaw.newsroom.items import NewsItem, normalize_url, parse_items
+
 logger = logging.getLogger(__name__)
 
 MANIFEST_FILENAME = "manifest.json"
 ARTIFACT_DAILY_BRIEF = "daily-brief.md"
 ARTIFACT_XIAOHONGSHU = "xiaohongshu.md"
 ARTIFACT_WECHAT = "wechat.md"
+
+#: ready 产物去空白后的最低字符数，挡住「写了几个字就算完成」。
+ARTIFACT_MIN_CHARS = 80
+#: 允许代替外链的「无结果」整词标记（子串命中即可，须写进正文）。
+NO_RESULT_MARKERS: tuple[str, ...] = ("无结果", "[NO_RESULT]", "NO_RESULT")
+#: 人工反馈低于此分数（或 rating < 0）时禁止 ready。
+FEEDBACK_READY_MIN_SCORE = 3
+VALID_STATUSES: tuple[str, ...] = ("ready", "partial", "rejected")
 
 #: 自评维度（顺序即 manifest 中的呈现顺序）。维度集合是契约的一部分，
 #: 复盘任务按维度名聚合趋势——新增维度是兼容变更，改名是破坏性变更。
@@ -41,6 +52,88 @@ SCORE_DIMENSIONS: tuple[str, ...] = (
 )
 
 _REQUIRED_ARTIFACTS = (ARTIFACT_DAILY_BRIEF, ARTIFACT_XIAOHONGSHU, ARTIFACT_WECHAT)
+
+
+class IssueFailureReason(enum.StrEnum):
+    """管线失败分类：不要把策略拒绝、预算耗尽、契约未过都叫「失败」。"""
+
+    POLICY_DENIED = "policy_denied"
+    BUDGET_EXCEEDED = "budget_exceeded"
+    ARTIFACTS_INCOMPLETE = "artifacts_incomplete"
+    VALIDATE_FAILED = "validate_failed"
+
+
+def classify_issue_failure(
+    *,
+    exit_reason: str = "",
+    validate_errors: list[str] | None = None,
+) -> IssueFailureReason:
+    """把调度/引擎退出原因与契约错误映射成稳定枚举。"""
+    reason = (exit_reason or "").strip().lower()
+    if reason in {"budget_exceeded", "budget_paused"}:
+        return IssueFailureReason.BUDGET_EXCEEDED
+    if reason in {"policy_denied", "denied", "security_denied"}:
+        return IssueFailureReason.POLICY_DENIED
+    errors = list(validate_errors or [])
+    if any("missing artifact" in e or "too short" in e or "http" in e for e in errors):
+        return IssueFailureReason.ARTIFACTS_INCOMPLETE
+    if errors:
+        return IssueFailureReason.VALIDATE_FAILED
+    if reason in {"max_turns", "max_iterations", "error", "timeout"}:
+        return IssueFailureReason.VALIDATE_FAILED
+    return IssueFailureReason.VALIDATE_FAILED
+
+
+def _allowed_source_names() -> set[str]:
+    """当期 sources.yaml 的 name 集合；复用 sources.load_sources，不复制解析。"""
+    from newsclaw.newsroom.sources import load_sources
+
+    book = load_sources()
+    return {source.name for source in book.sources if source.name.strip()}
+
+
+def _feedback_blocks_ready(feedback: dict[str, Any]) -> bool:
+    """点踩 / 低分 / reject 标记存在时，禁止把期次标成 ready。"""
+    if not feedback:
+        return False
+    rating = feedback.get("rating")
+    if rating is not None:
+        try:
+            if int(rating) < 0:
+                return True
+        except (TypeError, ValueError):
+            pass
+    score = feedback.get("score")
+    if score is not None:
+        try:
+            if float(score) < FEEDBACK_READY_MIN_SCORE:
+                return True
+        except (TypeError, ValueError):
+            pass
+    mark = str(feedback.get("verdict") or feedback.get("status") or "").lower()
+    return mark in {"reject", "rejected", "low"}
+
+
+def _artifact_structure_errors(name: str, path: Path) -> list[str]:
+    """最低结构：够长，且有 http 链接或明确的无结果标记。"""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"status=ready cannot read artifact {name}: {exc}"]
+    stripped = "".join(text.split())
+    if len(stripped) < ARTIFACT_MIN_CHARS:
+        return [
+            f"status=ready artifact too short: {name} "
+            f"(need {ARTIFACT_MIN_CHARS} non-whitespace chars)"
+        ]
+    has_http = "http://" in text or "https://" in text
+    has_no_result = any(marker in text for marker in NO_RESULT_MARKERS)
+    if not has_http and not has_no_result:
+        return [
+            f"status=ready artifact {name} needs an http link or a no-result marker "
+            f"({', '.join(NO_RESULT_MARKERS)})"
+        ]
+    return []
 
 
 @dataclass
@@ -61,8 +154,9 @@ class ScoreEntry:
 class IssueManifest:
     """一期早报的元数据。
 
-    ``status`` 取值：``ready``（产物齐备，可展示）/ ``partial``（部分产物，
-    管线中断后的兜底状态）。前端按 status 决定是否允许反馈。
+    ``status`` 取值：``ready``（契约机验通过）/ ``partial``（部分产物）/
+    ``rejected``（人工负反馈，禁止当 ready）。前端按 status 决定是否允许反馈。
+    ``scores`` 可以写，但**不是** ready 条件。
     """
 
     issue_date: str  # YYYY-MM-DD，同时是目录名
@@ -80,18 +174,106 @@ class IssueManifest:
     scores: dict[str, ScoreEntry] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     generator: str = "ai-news-editor"
+    #: 入选素材账本。写 ready 且稿件含外链时必填；读旧期次可不强制。
+    items: list[NewsItem] = field(default_factory=list)
 
-    def validate(self) -> list[str]:
-        """校验契约，返回错误列表（空列表 = 合法）。"""
+    def validate(
+        self,
+        *,
+        artifact_dir: Path | None = None,
+        require_item_ledger: bool = True,
+    ) -> list[str]:
+        """校验契约，返回错误列表（空列表 = 合法）。
+
+        ``status=ready`` 必须同时满足：信源集合合法、三份产物存在且过最低结构。
+        写盘时（``require_item_ledger=True``）还要求：有外链的期次必须带
+        ``items``，条目 URL 互不重复，且不与窗口内其它 ready 期次撞链。
+        ``scores`` 只做字段合法性检查，不参与 ready 判定。
+        """
         errors: list[str] = []
         try:
             date.fromisoformat(self.issue_date)
         except ValueError:
             errors.append(f"issue_date not ISO format YYYY-MM-DD: {self.issue_date!r}")
-        if self.status not in ("ready", "partial"):
+        if self.status not in VALID_STATUSES:
             errors.append(f"unknown status: {self.status!r}")
+        if self.status == "ready":
+            if not self.sources_used:
+                errors.append("status=ready requires non-empty sources_used")
+            else:
+                allowed = _allowed_source_names()
+                for name in self.sources_used:
+                    if name not in allowed:
+                        errors.append(f"status=ready sources_used unknown: {name!r}")
+            if _feedback_blocks_ready(self.feedback):
+                errors.append("status=ready forbidden: human feedback is reject/low")
+            day_dir = artifact_dir if artifact_dir is not None else issue_dir(self.issue_date)
+            artifact_texts: dict[str, str] = {}
+            for name in _REQUIRED_ARTIFACTS:
+                path = day_dir / name
+                if not path.is_file():
+                    errors.append(f"status=ready but missing artifact: {name}")
+                    continue
+                errors.extend(_artifact_structure_errors(name, path))
+                try:
+                    artifact_texts[name] = path.read_text(encoding="utf-8")
+                except OSError:
+                    artifact_texts[name] = ""
+            if require_item_ledger:
+                errors.extend(self._item_ledger_errors(artifact_texts))
+        for index, item in enumerate(self.items):
+            errors.extend(f"items[{index}]: {msg}" for msg in item.validate())
         for dim, entry in self.scores.items():
             errors.extend(f"scores[{dim}]: {msg}" for msg in entry.validate())
+        return errors
+
+    def _item_ledger_errors(self, artifact_texts: dict[str, str]) -> list[str]:
+        """写 ready 时的素材账本门。无结果日允许 items 为空。"""
+        errors: list[str] = []
+        has_http = any(
+            "http://" in text or "https://" in text for text in artifact_texts.values()
+        )
+        all_no_result = bool(artifact_texts) and all(
+            any(marker in text for marker in NO_RESULT_MARKERS)
+            for text in artifact_texts.values()
+        )
+        if has_http:
+            if not self.items:
+                errors.append("status=ready with outbound links requires non-empty items")
+            keys: list[str] = []
+            allowed = _allowed_source_names()
+            for index, item in enumerate(self.items):
+                key = normalize_url(item.url)
+                if key in keys:
+                    errors.append(f"status=ready duplicate item url: {item.url}")
+                elif key:
+                    keys.append(key)
+                if item.source_name and item.source_name not in allowed:
+                    errors.append(
+                        f"status=ready items[{index}] source_name unknown: "
+                        f"{item.source_name!r}"
+                    )
+            for name, text in artifact_texts.items():
+                if any(marker in text for marker in NO_RESULT_MARKERS):
+                    continue
+                if not any(item.url and item.url in text for item in self.items):
+                    errors.append(
+                        f"status=ready artifact {name} must cite at least one items[].url"
+                    )
+            if keys:
+                from newsclaw.newsroom.config import load_config
+                from newsclaw.newsroom.items import collect_seen_urls
+
+                window = load_config().issue_history_days
+                seen = collect_seen_urls(before_date=self.issue_date, days=window)
+                for item in self.items:
+                    prev = seen.get(normalize_url(item.url))
+                    if prev:
+                        errors.append(
+                            f"status=ready item url already used on {prev}: {item.url}"
+                        )
+        elif all_no_result and self.items:
+            errors.append("status=ready no-result day should not list leftover items")
         return errors
 
     # ── 序列化 ────────────────────────────────────────────────────
@@ -118,10 +300,12 @@ class IssueManifest:
             scores=scores,
             created_at=str(data.get("created_at", "")),
             generator=str(data.get("generator", "ai-news-editor")),
+            items=parse_items(data.get("items")),
         )
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
+        data["items"] = [item.to_dict() if hasattr(item, "to_dict") else item for item in self.items]
         return data
 
 
@@ -151,11 +335,51 @@ def issue_dir(issue_date: str | date) -> Path:
 # ── manifest 读写 ───────────────────────────────────────────────────
 
 
+def describe_issue_artifacts(issue_date: str | None = None) -> dict[str, Any]:
+    """预算耗尽时的部分结果：已落盘文件、缺什么、当前 status。"""
+    day = issue_date or date.today().isoformat()
+    day_dir = issue_dir(day)
+    present: list[str] = []
+    missing: list[str] = []
+    for name in _REQUIRED_ARTIFACTS:
+        if _artifact_present(day_dir, name):
+            present.append(name)
+        else:
+            missing.append(name)
+    manifest_path = day_dir / MANIFEST_FILENAME
+    status = ""
+    if manifest_path.is_file():
+        manifest, _error = load_manifest(day)
+        if manifest is not None:
+            status = manifest.status
+    return {
+        "issue_date": day,
+        "present": present,
+        "missing": missing,
+        "manifest_status": status,
+        "has_manifest": manifest_path.is_file(),
+    }
+
+
+def demote_ready_on_budget_exceeded(issue_date: str | None = None) -> bool:
+    """预算耗尽后禁止期次保持 ready；已是 ready 则降为 partial。"""
+    day = issue_date or date.today().isoformat()
+    manifest, _error = load_manifest(day)
+    if manifest is None or manifest.status != "ready":
+        return False
+    manifest.status = "partial"
+    write_manifest(manifest)
+    return True
+
+
 def write_manifest(manifest: IssueManifest) -> Path:
     """原子写入 manifest（tmp + rename），并保证目录存在。"""
-    errors = manifest.validate()
+    errors = manifest.validate(artifact_dir=issue_dir(manifest.issue_date))
     if errors:
-        raise ValueError(f"invalid manifest for {manifest.issue_date}: {'; '.join(errors)}")
+        reason = classify_issue_failure(validate_errors=errors)
+        raise ValueError(
+            f"invalid manifest for {manifest.issue_date} [{reason}]: {'; '.join(errors)}"
+        )
     target = issue_dir(manifest.issue_date) / MANIFEST_FILENAME
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".json.tmp")
@@ -168,16 +392,56 @@ def write_manifest(manifest: IssueManifest) -> Path:
 
 
 def read_manifest(issue_date: str) -> IssueManifest | None:
-    """读取某期 manifest；目录或文件不存在返回 None，损坏时记录日志并返回 None。"""
+    """读取某期 manifest；目录或文件不存在 / 损坏时返回 None。"""
+    manifest, _error = load_manifest(issue_date)
+    return manifest
+
+
+def load_manifest(
+    issue_date: str,
+    *,
+    require_item_ledger: bool = False,
+) -> tuple[IssueManifest | None, str | None]:
+    """读取并区分「没有文件」与「坏 manifest」。
+
+    默认不强制素材账本，以免旧期次（没有 items）在列表里变成 invalid。
+    写盘仍走 ``write_manifest`` → ``require_item_ledger=True``。
+
+    Returns:
+        ``(manifest, error)``：文件不存在 → ``(None, None)``；
+        损坏或校验失败 → ``(None 或半成品, 错误说明)``，调用方必须把错误
+        暴露给列表/API，不能假装这一期不存在。
+    """
     path = issue_dir(issue_date) / MANIFEST_FILENAME
     if not path.is_file():
-        return None
+        return None, None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return IssueManifest.from_dict(data)
-    except (json.JSONDecodeError, ValueError, OSError) as e:
+    except (json.JSONDecodeError, OSError) as e:
         logger.warning("[Newsroom] corrupt manifest %s: %s", path, e)
-        return None
+        return None, f"corrupt manifest: {e}"
+    if not isinstance(data, dict):
+        return None, "corrupt manifest: root is not an object"
+    try:
+        manifest = IssueManifest.from_dict(data)
+    except (TypeError, ValueError) as e:
+        logger.warning("[Newsroom] unreadable manifest %s: %s", path, e)
+        return None, f"unreadable manifest: {e}"
+    errors = manifest.validate(
+        artifact_dir=issue_dir(issue_date),
+        require_item_ledger=require_item_ledger,
+    )
+    if errors:
+        return manifest, "; ".join(errors)
+    return manifest, None
+
+
+def _artifact_present(day_dir: Path, filename: str) -> bool:
+    """只检查产物是否存在，不把整份 Markdown 读进内存。"""
+    try:
+        return (day_dir / filename).is_file()
+    except OSError:
+        return False
 
 
 def _read_artifact(day_dir: Path, filename: str) -> str | None:
@@ -194,8 +458,9 @@ def _read_artifact(day_dir: Path, filename: str) -> str | None:
 def list_issues(limit: int = 60) -> list[dict[str, Any]]:
     """按日期倒序列出期次摘要（manifest + 产物就位情况），供 API 直接返回。
 
-    跳过没有 manifest 的目录（如管线写到一半的现场），但把它们记入调试日志，
-    避免半成品污染列表视图。
+    跳过没有 manifest 的目录（如管线写到一半的现场），但把它们记入调试日志。
+    坏 manifest / ``issue_date`` 与目录名不一致会以 ``status=invalid`` 出现在
+    列表里（带 ``manifest_error``），不再静默当没有。
     """
     root = issues_root()
     if not root.is_dir():
@@ -204,28 +469,61 @@ def list_issues(limit: int = 60) -> list[dict[str, Any]]:
     for day_dir in sorted(root.iterdir(), reverse=True):
         if not day_dir.is_dir():
             continue
-        manifest = read_manifest(day_dir.name)
-        if manifest is None:
-            logger.debug("[Newsroom] skipping issue dir without manifest: %s", day_dir.name)
-            continue
         artifacts = {
-            name.removesuffix(".md"): _read_artifact(day_dir, name) is not None
+            name.removesuffix(".md"): _artifact_present(day_dir, name)
             for name in _REQUIRED_ARTIFACTS
         }
-        results.append(
-            {
-                "issue_date": manifest.issue_date,
-                "title": manifest.title,
-                "status": manifest.status,
-                "sources_used": manifest.sources_used,
-                "wiki_entries": manifest.wiki_entries,
-                "feishu_doc_url": manifest.feishu_doc_url,
-                "scores": {dim: asdict(entry) for dim, entry in manifest.scores.items()},
-                "feedback": manifest.feedback,
-                "artifacts": artifacts,
-                "created_at": manifest.created_at,
-            }
-        )
+        manifest, error = load_manifest(day_dir.name)
+        if manifest is None and error is None:
+            logger.debug("[Newsroom] skipping issue dir without manifest: %s", day_dir.name)
+            continue
+        if manifest is None:
+            results.append(
+                {
+                    "issue_date": day_dir.name,
+                    "title": "",
+                    "status": "invalid",
+                    "manifest_error": error,
+                    "failure_reason": classify_issue_failure(
+                        validate_errors=[error or "corrupt manifest"]
+                    ).value,
+                    "sources_used": [],
+                    "wiki_entries": [],
+                    "feishu_doc_url": "",
+                    "scores": {},
+                    "feedback": {},
+                    "artifacts": artifacts,
+                    "created_at": "",
+                }
+            )
+        else:
+            row_error = error
+            if manifest.issue_date != day_dir.name:
+                mismatch = (
+                    f"issue_date {manifest.issue_date!r} != directory {day_dir.name!r}"
+                )
+                row_error = f"{row_error}; {mismatch}" if row_error else mismatch
+            results.append(
+                {
+                    "issue_date": day_dir.name,
+                    "title": manifest.title,
+                    "status": "invalid" if row_error else manifest.status,
+                    "manifest_error": row_error,
+                    "failure_reason": (
+                        classify_issue_failure(validate_errors=[row_error]).value
+                        if row_error
+                        else None
+                    ),
+                    "sources_used": manifest.sources_used,
+                    "items": [item.to_dict() for item in manifest.items],
+                    "wiki_entries": manifest.wiki_entries,
+                    "feishu_doc_url": manifest.feishu_doc_url,
+                    "scores": {dim: asdict(entry) for dim, entry in manifest.scores.items()},
+                    "feedback": manifest.feedback,
+                    "artifacts": artifacts,
+                    "created_at": manifest.created_at,
+                }
+            )
         if len(results) >= limit:
             break
     return results

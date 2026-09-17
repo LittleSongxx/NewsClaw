@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.io.truncate` + ``overflow``.
+"""Tests for :mod:`newsclaw.runtime.io.truncate` + ``overflow``.
 
 Both helpers are pure-function / I/O-bounded; tests use ``tmp_path``
 to isolate filesystem effects and a fake settings shim to make

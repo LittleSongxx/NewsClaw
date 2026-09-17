@@ -2632,6 +2632,9 @@ async def chat(request: Request, body: ChatRequest):
     Uses the full Agent pipeline (shared with IM/CLI channels)
     via Agent.chat_with_session_stream().
 
+    ``org_mode`` + ``org_id`` 走实验性组织编排（第二运行时），不是 ReAct 主聊天。
+    面试主故事不讲。
+
     Each conversation gets its own Agent instance via AgentInstancePool
     to support concurrent streaming without shared-state corruption.
 
@@ -2774,7 +2777,7 @@ async def chat(request: Request, body: ChatRequest):
     # double_texting_allow_interrupt is enabled).
     from .double_texting import DoubleTextingPolicy, resolve_policy
 
-    _dt_header = request.headers.get("x-openakita-doubletexting")
+    _dt_header = request.headers.get("x-newsclaw-doubletexting")
     _dt_policy = resolve_policy(channel="desktop", header_value=_dt_header)
 
     # STEER hands the new message to the running ReAct loop via

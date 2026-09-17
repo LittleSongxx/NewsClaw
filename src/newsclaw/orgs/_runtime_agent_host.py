@@ -208,15 +208,15 @@ class NodeToolHost:
                         "description": defn.get("description", ""),
                         "input_schema": defn.get("input_schema", {"type": "object"}),
                     }
-                    execution = defn.get("x-openakita-execution")
+                    execution = defn.get("x-newsclaw-execution")
                     if isinstance(execution, dict):
-                        resolved["x-openakita-execution"] = dict(execution)
-                    idempotency_param = defn.get("x-openakita-idempotency-param")
+                        resolved["x-newsclaw-execution"] = dict(execution)
+                    idempotency_param = defn.get("x-newsclaw-idempotency-param")
                     if isinstance(idempotency_param, str) and idempotency_param.strip():
-                        resolved["x-openakita-idempotency-param"] = idempotency_param.strip()
-                    media_contract = defn.get("x-openakita-media-contract")
+                        resolved["x-newsclaw-idempotency-param"] = idempotency_param.strip()
+                    media_contract = defn.get("x-newsclaw-media-contract")
                     if isinstance(media_contract, dict):
-                        resolved["x-openakita-media-contract"] = dict(media_contract)
+                        resolved["x-newsclaw-media-contract"] = dict(media_contract)
                     return resolved
         # Fallback: static catalog (system tools only).
         try:

@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_MARKETPLACE_HOSTS = {"github.com/openakita", "newsclaw.com", "skill.openakita.com"}
+_MARKETPLACE_HOSTS = {"github.com/newsclaw", "newsclaw.com", "skill.newsclaw.com"}
 
 _RESTRICTED_TOOLS_FOR_UNTRUSTED = frozenset(
     {

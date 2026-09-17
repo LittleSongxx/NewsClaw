@@ -26,14 +26,25 @@ router = APIRouter(prefix="/api/wiki", tags=["本地 Wiki"])
 @router.get("/root")
 async def wiki_info():
     root = store.wiki_root()
+    if root is None:
+        return {
+            "root": "",
+            "enabled": False,
+            "exists": False,
+            "page_count": 0,
+            "topic_count": 0,
+            "company_count": 0,
+            "topics": list(store.topic_pages()),
+        }
     pages = store.list_pages()
     return {
         "root": str(root),
+        "enabled": True,
         "exists": root.is_dir(),
         "page_count": len([p for p in pages if p.kind != "index"]),
         "topic_count": len([p for p in pages if p.kind == "topic"]),
         "company_count": len([p for p in pages if p.kind == "company"]),
-        "topics": list(store.TOPIC_PAGES),
+        "topics": list(store.topic_pages()),
     }
 
 

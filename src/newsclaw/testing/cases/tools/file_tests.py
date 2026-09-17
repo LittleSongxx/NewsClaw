@@ -1,6 +1,4 @@
-"""
-文件工具测试用例 (30个)
-"""
+"""文件工具 demo cases（10 条）。字符串包含判定，不是质量门。"""
 
 from newsclaw.testing.runner import TestCase
 
@@ -13,7 +11,7 @@ FILE_TESTS = [
         description="写入并读取文件",
         input={
             "action": "write_read",
-            "path": "/tmp/openakita_test_001.txt",
+            "path": "/tmp/newsclaw_test_001.txt",
             "content": "Hello, NewsClaw!",
         },
         expected="Hello, NewsClaw!",
@@ -26,7 +24,7 @@ FILE_TESTS = [
         description="追加内容",
         input={
             "action": "append_read",
-            "path": "/tmp/openakita_test_002.txt",
+            "path": "/tmp/newsclaw_test_002.txt",
             "initial": "Line 1\n",
             "append": "Line 2\n",
         },
@@ -40,7 +38,7 @@ FILE_TESTS = [
         description="检查文件存在",
         input={
             "action": "exists",
-            "path": "/tmp/openakita_test_001.txt",
+            "path": "/tmp/newsclaw_test_001.txt",
         },
         expected=True,
         tags=["file", "exists"],
@@ -64,7 +62,7 @@ FILE_TESTS = [
         description="创建目录",
         input={
             "action": "mkdir",
-            "path": "/tmp/openakita_test_dir",
+            "path": "/tmp/newsclaw_test_dir",
         },
         expected=True,
         tags=["file", "mkdir"],
@@ -76,8 +74,8 @@ FILE_TESTS = [
         description="复制文件",
         input={
             "action": "copy",
-            "src": "/tmp/openakita_test_001.txt",
-            "dst": "/tmp/openakita_test_001_copy.txt",
+            "src": "/tmp/newsclaw_test_001.txt",
+            "dst": "/tmp/newsclaw_test_001_copy.txt",
         },
         expected=True,
         tags=["file", "copy"],
@@ -102,7 +100,7 @@ FILE_TESTS = [
         description="读取大文件部分内容",
         input={
             "action": "read_lines",
-            "path": "/tmp/openakita_test_001.txt",
+            "path": "/tmp/newsclaw_test_001.txt",
             "start": 0,
             "end": 10,
         },
@@ -116,7 +114,7 @@ FILE_TESTS = [
         description="获取文件信息",
         input={
             "action": "stat",
-            "path": "/tmp/openakita_test_001.txt",
+            "path": "/tmp/newsclaw_test_001.txt",
         },
         expected="contains:size",
         tags=["file", "stat"],
@@ -128,7 +126,7 @@ FILE_TESTS = [
         description="删除文件",
         input={
             "action": "delete",
-            "path": "/tmp/openakita_test_delete.txt",
+            "path": "/tmp/newsclaw_test_delete.txt",
         },
         expected=True,
         tags=["file", "delete"],

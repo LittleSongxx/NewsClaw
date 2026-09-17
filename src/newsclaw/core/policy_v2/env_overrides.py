@@ -46,8 +46,9 @@ the YAML in the container image":
    ``safety_immune`` paths are NOT bypassed (enforced in classifier,
    not here).
 4. ``NEWSCLAW_UNATTENDED_STRATEGY`` — override
-   ``unattended.default_strategy`` (e.g. CI sets ``deny_all`` to fail
-   loud, prod long-runs use ``ask_owner``).
+   ``unattended.default_strategy``。合法值是 ``deny`` / ``auto_approve`` /
+   ``defer_to_owner`` / ``defer_to_inbox`` / ``ask_owner``（没有
+   ``deny_all``）。配置默认已是 ``deny``。
 5. ``NEWSCLAW_AUDIT_LOG_PATH`` — relocate ``audit.log_path`` to a
    shared volume / persistent disk without rewriting POLICIES.yaml.
 
@@ -160,7 +161,7 @@ _REGISTRY: tuple[OverrideSpec, ...] = (
         env_name="NEWSCLAW_UNATTENDED_STRATEGY",
         cfg_path="unattended.default_strategy",
         coerce=_coerce_unattended_strategy,
-        doc="Override unattended.default_strategy (deny_all / ask_owner / etc.).",
+        doc="Override unattended.default_strategy (deny / ask_owner / defer_to_* / auto_approve).",
     ),
     OverrideSpec(
         env_name="NEWSCLAW_AUDIT_LOG_PATH",

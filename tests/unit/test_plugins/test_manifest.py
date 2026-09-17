@@ -1,4 +1,4 @@
-"""Tests for openakita.plugins.manifest — plugin.json parsing and validation."""
+"""Tests for newsclaw.plugins.manifest — plugin.json parsing and validation."""
 
 from __future__ import annotations
 

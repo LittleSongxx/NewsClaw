@@ -236,7 +236,7 @@ export function AdvancedView(props: AdvancedViewProps) {
     let _b: string | number | undefined;
     try {
       const ts = Math.floor(Date.now() / 1000);
-      const filename = `openakita-diagnostic-${ts}.zip`;
+      const filename = `newsclaw-diagnostic-${ts}.zip`;
       if (!IS_TAURI) {
         _b = notifyLoading(t("adv.opsLogExporting"));
         const res = await safeFetch(`${httpApiBase()}/api/diagnostics/export`, {
@@ -714,7 +714,7 @@ export function AdvancedView(props: AdvancedViewProps) {
               size="sm"
               disabled={!!busy}
               onClick={async () => {
-                const val = hubApiUrl.trim() || "https://openakita.ai/api";
+                const val = hubApiUrl.trim();
                 if (shouldUseHttpApi()) {
                   try {
                     await safeFetch(`${httpApiBase()}/api/config/env`, {
@@ -737,7 +737,11 @@ export function AdvancedView(props: AdvancedViewProps) {
               size="sm"
               disabled={!!busy}
               onClick={async () => {
-                const url = (hubApiUrl.trim() || "https://openakita.ai/api").replace(/\/$/, "");
+                const url = hubApiUrl.trim().replace(/\/$/, "");
+                if (!url) {
+                  notifyError(t("adv.hubTestFail"));
+                  return;
+                }
                 try {
                   const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(6000) });
                   if (res.ok) notifySuccess(t("adv.hubTestOk"));

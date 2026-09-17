@@ -386,8 +386,8 @@ class TestEvaluateMessageIntentViaV2:
         )
         assert decision.action == DecisionAction.ALLOW
 
-    def test_trust_mode_bypass(self, monkeypatch):
-        """trust 模式下 → ALLOW，即使有 write 信号。"""
+    def test_trust_mode_does_not_bypass_write_signal(self, monkeypatch):
+        """trust 模式对写信号不得无条件 ALLOW。"""
         from newsclaw.core.policy_v2.global_engine import get_config_v2
 
         cfg = get_config_v2()
@@ -401,8 +401,8 @@ class TestEvaluateMessageIntentViaV2:
                 risk_intent=risk_intent,
                 extra_ctx=ctx,
             )
-            assert decision.action == DecisionAction.ALLOW
-            assert "trust" in decision.reason.lower()
+            assert decision.action != DecisionAction.ALLOW
+            assert "intent_trust_bypass" not in {s.name for s in decision.chain}
         finally:
             cfg.confirmation.mode = ConfirmationMode.DEFAULT
             reset_engine_v2()

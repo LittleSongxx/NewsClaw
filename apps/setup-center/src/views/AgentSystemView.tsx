@@ -13,7 +13,7 @@ import { Brain, Loader2, Upload, Download } from "lucide-react";
 import { Section } from "../components/Section";
 import { toast } from "sonner";
 import { safeFetch } from "../providers";
-import { IS_TAURI, saveFileDialog, showInFolder, writeTextFile } from "../platform";
+import { IS_TAURI, IS_WEB, saveFileDialog, showInFolder, writeTextFile } from "../platform";
 import type { EnvMap } from "../types";
 import { envGet, envSet } from "../utils";
 
@@ -269,69 +269,73 @@ export function AgentSystemView(props: AgentSystemViewProps) {
 
   return (
     <>
-      {/* ═══════ 灵魂 Soul ═══════ */}
+      {/* ═══════ 灵魂 Soul（仅桌面；云端从本卡片直接进入核心参数） ═══════ */}
       <div className="card">
-        <h3 className="text-base font-bold tracking-tight">{t("config.soulTitle")}</h3>
-        <p className="text-sm text-muted-foreground mt-1 mb-3">{t("config.soulSubtitle")}</p>
+        {!IS_WEB && (
+          <>
+            <h3 className="text-base font-bold tracking-tight">{t("config.soulTitle")}</h3>
+            <p className="text-sm text-muted-foreground mt-1 mb-3">{t("config.soulSubtitle")}</p>
 
-        {/* ── 角色选择 ── */}
-        <Section title={t("config.agentPersona")} subtitle={t("config.agentPersonaSub")}>
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            spacing={2}
-            value={curPersona}
-            onValueChange={(val) => {
-              if (val) setEnvDraft((m) => envSet(m, "PERSONA_NAME", val));
-            }}
-            className="flex-wrap"
-          >
-            {personas.map((p) => (
-              <ToggleGroupItem
-                key={p.id}
-                value={p.id}
-                className="text-sm min-w-[5.5rem] data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
+            {/* ── 角色选择 ── */}
+            <Section title={t("config.agentPersona")} subtitle={t("config.agentPersonaSub")}>
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                spacing={2}
+                value={curPersona}
+                onValueChange={(val) => {
+                  if (val) setEnvDraft((m) => envSet(m, "PERSONA_NAME", val));
+                }}
+                className="flex-wrap"
               >
-                {t(p.desc)}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          {(curPersona === "custom" || !personas.find((p) => p.id === curPersona)) && (
-            <Input
-              className="max-w-[300px]"
-              placeholder={t("config.agentCustomId")}
-              value={envGet(envDraft, "PERSONA_NAME", "custom")}
-              onChange={(e) => {
-                setEnvDraft((m) => envSet(m, "PERSONA_NAME", e.target.value || "custom"));
-              }}
-            />
-          )}
-          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/50">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleImportPersona}
-              disabled={importing || !serviceRunning}
-              className="text-xs"
-            >
-              {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {t("config.personaImport")}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleDownloadTemplate}
-              disabled={!serviceRunning}
-              className="text-xs text-muted-foreground"
-            >
-              <Download size={14} />
-              {t("config.personaTemplateDownload")}
-            </Button>
-          </div>
-        </Section>
+                {personas.map((p) => (
+                  <ToggleGroupItem
+                    key={p.id}
+                    value={p.id}
+                    className="text-sm min-w-[5.5rem] data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
+                  >
+                    {t(p.desc)}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+              {(curPersona === "custom" || !personas.find((p) => p.id === curPersona)) && (
+                <Input
+                  className="max-w-[300px]"
+                  placeholder={t("config.agentCustomId")}
+                  value={envGet(envDraft, "PERSONA_NAME", "custom")}
+                  onChange={(e) => {
+                    setEnvDraft((m) => envSet(m, "PERSONA_NAME", e.target.value || "custom"));
+                  }}
+                />
+              )}
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/50">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleImportPersona}
+                  disabled={importing || !serviceRunning}
+                  className="text-xs"
+                >
+                  {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                  {t("config.personaImport")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleDownloadTemplate}
+                  disabled={!serviceRunning}
+                  className="text-xs text-muted-foreground"
+                >
+                  <Download size={14} />
+                  {t("config.personaTemplateDownload")}
+                </Button>
+              </div>
+            </Section>
+          </>
+        )}
 
         {/* ── 核心参数 ── */}
-        <Section title={t("config.agentCore")} subtitle={t("config.agentCoreSub")} className="mt-2">
+        <Section title={t("config.agentCore")} subtitle={t("config.agentCoreSub")} className={IS_WEB ? undefined : "mt-2"}>
           <div className="grid3">
             {FT({ k: "MAX_ITERATIONS", label: t("config.agentMaxIter"), placeholder: "300", help: t("config.agentMaxIterHelp") })}
             {FS({ k: "THINKING_MODE", label: t("config.agentThinking"), options: [

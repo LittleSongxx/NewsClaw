@@ -776,7 +776,7 @@ def default_yaml_path(workspace: Path) -> Path:
 
 
 def default_lock_path(workspace: Path) -> Path:
-    return workspace / ".openakita" / "system_tasks.lock"
+    return workspace / ".newsclaw" / "system_tasks.lock"
 
 
 def default_audit_path(workspace: Path) -> Path:

@@ -224,7 +224,7 @@ class TestReasonStreamWiringContract:
 
     def test_impl_calls_drain_steer_before_finish(self) -> None:
         # Local keeps the canonical monolithic ``reason_stream`` (ADR-0003 split
-        # lives in ``openakita.agent``; upstream's extra ``_reason_stream_impl``
+        # lives in ``newsclaw.agent``; upstream's extra ``_reason_stream_impl``
         # extraction was not adopted), so the done-drain is wired into
         # ``reason_stream`` itself.
         src = inspect.getsource(ReasoningEngine.reason_stream)

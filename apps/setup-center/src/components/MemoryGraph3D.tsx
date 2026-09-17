@@ -72,6 +72,12 @@ const NODE_COLORS: Record<string, string> = {
   FACT: "#10b981",
   DECISION: "#f59e0b",
   GOAL: "#a855f7",
+  RULE: "#f59e0b",
+  PREFERENCE: "#8b5cf6",
+  ERROR: "#ef4444",
+  SKILL: "#06b6d4",
+  CONTEXT: "#64748b",
+  EXPERIENCE: "#14b8a6",
 };
 
 const DIMENSION_COLORS: Record<string, string> = {
@@ -87,7 +93,39 @@ const NODE_TYPE_LABEL_KEYS: Record<string, string> = {
   FACT: "memory.graphNodeTypeFact",
   DECISION: "memory.graphNodeTypeDecision",
   GOAL: "memory.graphNodeTypeGoal",
+  RULE: "memory.typeRule",
+  PREFERENCE: "memory.typePreference",
+  ERROR: "memory.typeError",
+  SKILL: "memory.typeSkill",
+  CONTEXT: "memory.typeContext",
+  EXPERIENCE: "memory.typeExperience",
 };
+
+function makeLabelSprite(text: string): THREE.Sprite {
+  const label = (text || "").replace(/\s+/g, " ").trim().slice(0, 16);
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = "24px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "rgba(2, 6, 23, 0.85)";
+    ctx.strokeText(label, 128, 32);
+    ctx.fillStyle = "#e2e8f0";
+    ctx.fillText(label, 128, 32);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(18, 4.5, 1);
+  sprite.position.set(0, 6, 0);
+  return sprite;
+}
 
 interface Props {
   apiBaseUrl?: string;
@@ -314,6 +352,11 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
       mesh.add(sprite);
     }
 
+    const label = makeLabelSprite(node.content);
+    const labelMat = label.material as THREE.SpriteMaterial;
+    if (labelMat) spriteMats.current.push(labelMat);
+    mesh.add(label);
+
     return mesh;
   }, [materials]);
 
@@ -459,7 +502,9 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
       {/* Legend + Quality selector */}
       <div className="absolute top-3 left-3 right-3 z-10 flex justify-between items-start pointer-events-none">
         <div className="flex flex-wrap gap-3 items-center bg-slate-950/80 backdrop-blur-md border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 pointer-events-auto shadow-sm max-w-[60%]">
-          {Object.entries(NODE_COLORS).map(([type, color]) => (
+          {Object.entries(NODE_COLORS)
+            .filter(([type]) => graphData.nodes.some((n) => n.node_type === type))
+            .map(([type, color]) => (
             <span key={type} className="flex items-center gap-1.5 shrink-0">
               <span className="w-2 h-2 rounded-full" style={{ background: color }} />
               {NODE_TYPE_LABEL_KEYS[type] ? t(NODE_TYPE_LABEL_KEYS[type]) : type}

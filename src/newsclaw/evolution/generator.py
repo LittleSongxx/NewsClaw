@@ -51,7 +51,7 @@ description: |
   {description}
 license: MIT
 metadata:
-  author: openakita-generator
+  author: newsclaw-generator
   version: "1.0.0"
 ---
 

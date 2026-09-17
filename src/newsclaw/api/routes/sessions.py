@@ -88,7 +88,11 @@ class SessionUiStateRequest(BaseModel):
 
     endpoint_id: str | None = Field(None, alias="endpointId", max_length=200)
     endpoint_policy: Literal["prefer", "require"] = Field("prefer", alias="endpointPolicy")
-    org_mode: bool = Field(False, alias="orgMode")
+    org_mode: bool = Field(
+        False,
+        alias="orgMode",
+        description="实验性第二运行时，面试主故事不讲。绑定会话到组织编排。",
+    )
     org_id: str | None = Field(None, alias="orgId", max_length=128)
     org_node_id: str | None = Field(None, alias="orgNodeId", max_length=128)
 
@@ -104,7 +108,11 @@ class SessionCreateRequest(BaseModel):
     agent_profile_id: str | None = Field(None, alias="agentProfileId", max_length=128)
     endpoint_id: str | None = Field(None, alias="endpointId", max_length=200)
     endpoint_policy: Literal["prefer", "require"] = Field("prefer", alias="endpointPolicy")
-    org_mode: bool = Field(False, alias="orgMode")
+    org_mode: bool = Field(
+        False,
+        alias="orgMode",
+        description="实验性第二运行时，面试主故事不讲。创建会话时绑定组织编排。",
+    )
     org_id: str | None = Field(None, alias="orgId", max_length=128)
     org_node_id: str | None = Field(None, alias="orgNodeId", max_length=128)
     working_directory: str | None = Field(None, alias="workingDirectory", max_length=4096)

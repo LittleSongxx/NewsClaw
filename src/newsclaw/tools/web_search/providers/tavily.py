@@ -1,4 +1,4 @@
-"""Tavily provider — 海外推荐，支持多 Key 号池。
+"""Tavily provider — 默认搜索源，支持多 Key 号池。
 
 API: ``POST https://api.tavily.com/search``
 Docs: https://docs.tavily.com/
@@ -6,20 +6,29 @@ Docs: https://docs.tavily.com/
 号池（NewsClaw）：``TAVILY_API_KEY`` 支持逗号/分号/换行分隔的多个 Key
 （单 Key 写法完全兼容）。请求按轮询顺序选 Key；被上游判定失效或超额
 （HTTP 401/403/429/432，或响应体含 ``exceeded``/``limit``）的 Key 进入
-冷却期，期间不再选用——几个号同时没额度时搜索仍然可用。全部冷却时乐观
-重试最早到期的一个，避免整池短暂停摆。
+冷却期，期间不再选用——几个号同时没额度时搜索仍然可用。网络错误会立刻
+换下一个 Key，但不做长冷却（同一出口 IP 上所有号都会受影响）。全部冷却
+时乐观重试最早到期的一个，避免整池短暂停摆。
 
-Auto-detect priority: 5（NewsClaw 首选搜索源）。
+冷却游标会落到数据根目录（``NEWSCLAW_ROOT`` / ``~/.newsclaw``）的
+``web_search/key_pool.json``，只写 Key 指纹，不写完整密钥。
+
+Auto-detect priority: 5（NewsClaw 默认搜索源）。
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
+import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 from ....config import settings
+from ....data_root import resolve_data_root
 from ..base import (
     AuthFailedError,
     MissingCredentialError,
@@ -41,17 +50,36 @@ _KEY_COOLDOWN_SECONDS = 1800.0
 _QUOTA_HINT_WORDS = ("exceeded", "limit", "quota", "insufficient")
 
 
+def _key_fingerprint(key: str) -> str:
+    """号池落盘只用指纹，避免完整 Key 进入数据目录。"""
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+
+
+def _pool_state_path() -> Path:
+    return resolve_data_root() / "web_search" / "key_pool.json"
+
+
 class KeyPool:
     """多 Key 轮询池：可用 Key 优先、冷却 Key 靠后，全冷却时乐观重试最早到期者。
 
     实例是进程级单例的一部分（provider 模块只 register 一次），状态只有
-    游标与冷却表，全部操作在事件循环单线程内完成，无需加锁。
+    游标与冷却表。传入 ``state_name`` 时，冷却会落到数据根目录，重启后仍
+    避开刚被 429/401 罚下的号。未命名的池（单测）保持纯内存。
     """
 
-    def __init__(self, cooldown_seconds: float = _KEY_COOLDOWN_SECONDS) -> None:
+    def __init__(
+        self,
+        cooldown_seconds: float = _KEY_COOLDOWN_SECONDS,
+        *,
+        state_name: str | None = None,
+    ) -> None:
         self._cooldown = cooldown_seconds
+        self._state_name = (state_name or "").strip() or None
         self._cursor = 0
         self._blocked_until: dict[str, float] = {}
+        self._fingerprint_until_wall: dict[str, float] = {}
+        if self._state_name:
+            self._load_state()
 
     @staticmethod
     def parse_keys(raw: str) -> list[str]:
@@ -65,9 +93,32 @@ class KeyPool:
                 ordered.append(key)
         return ordered
 
+    def _hydrate_keys(self, keys: list[str], *, now_mono: float) -> None:
+        """把落盘的墙钟冷却换算成当前进程的 monotonic 截止时间。"""
+        if not self._fingerprint_until_wall:
+            return
+        wall_now = time.time()
+        expired: list[str] = []
+        for key in keys:
+            fp = _key_fingerprint(key)
+            until_wall = self._fingerprint_until_wall.get(fp)
+            if until_wall is None:
+                continue
+            remaining = until_wall - wall_now
+            if remaining <= 0:
+                expired.append(fp)
+                self._blocked_until.pop(key, None)
+                continue
+            if key not in self._blocked_until:
+                self._blocked_until[key] = now_mono + remaining
+        for fp in expired:
+            self._fingerprint_until_wall.pop(fp, None)
+
     def order(self, keys: list[str], *, now: float | None = None) -> list[str]:
         """返回本次请求的尝试顺序：可用 Key 轮询在前，冷却 Key 在最后。"""
         moment = time.monotonic() if now is None else now
+        if self._state_name and now is None:
+            self._hydrate_keys(keys, now_mono=moment)
         live = [k for k in keys if self._blocked_until.get(k, 0.0) <= moment]
         cooling = sorted(
             (k for k in keys if self._blocked_until.get(k, 0.0) > moment),
@@ -84,6 +135,9 @@ class KeyPool:
     def penalize(self, key: str) -> None:
         """把某个 Key 打入冷却（失效/超额时调用）。"""
         self._blocked_until[key] = time.monotonic() + self._cooldown
+        if self._state_name:
+            self._fingerprint_until_wall[_key_fingerprint(key)] = time.time() + self._cooldown
+            self._save_state()
 
     def cooling_snapshot(self, keys: list[str]) -> dict[str, float]:
         """调试用：冷却中的 Key（仅尾 4 位）→ 剩余秒数。"""
@@ -93,6 +147,69 @@ class KeyPool:
             for k in keys
             if self._blocked_until.get(k, 0.0) > now
         }
+
+    def _load_state(self) -> None:
+        if not self._state_name:
+            return
+        path = _pool_state_path()
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return
+        except Exception as exc:
+            logger.debug("[key_pool] failed to load %s: %s", path, exc)
+            return
+        if not isinstance(raw, dict):
+            return
+        section = raw.get(self._state_name)
+        if not isinstance(section, dict):
+            return
+        cursor = section.get("cursor")
+        if isinstance(cursor, int) and cursor >= 0:
+            self._cursor = cursor
+        cooling = section.get("cooling")
+        if not isinstance(cooling, dict):
+            return
+        wall_now = time.time()
+        for fp, until in cooling.items():
+            if not isinstance(fp, str) or not isinstance(until, (int, float)):
+                continue
+            if until > wall_now:
+                self._fingerprint_until_wall[fp] = float(until)
+
+    def _save_state(self) -> None:
+        if not self._state_name:
+            return
+        path = _pool_state_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            data: dict[str, Any] = {}
+            if path.exists():
+                try:
+                    loaded = json.loads(path.read_text(encoding="utf-8"))
+                    if isinstance(loaded, dict):
+                        data = loaded
+                except Exception:
+                    data = {}
+            wall_now = time.time()
+            cooling = {
+                fp: until
+                for fp, until in self._fingerprint_until_wall.items()
+                if until > wall_now
+            }
+            data[self._state_name] = {"cursor": self._cursor, "cooling": cooling}
+            fd, tmp_name = tempfile.mkstemp(prefix="key_pool.", suffix=".json", dir=path.parent)
+            tmp_path = Path(tmp_name)
+            try:
+                with open(fd, "w", encoding="utf-8") as handle:
+                    json.dump(data, handle, ensure_ascii=False, indent=2)
+                    handle.write("\n")
+                tmp_path.replace(path)
+            except Exception:
+                tmp_path.unlink(missing_ok=True)
+                raise
+        except Exception as exc:
+            logger.debug("[key_pool] failed to persist %s: %s", path, exc)
 
 
 def _mask(key: str) -> str:
@@ -112,7 +229,7 @@ class TavilyProvider:
     _ENDPOINT = "https://api.tavily.com/search"
 
     def __init__(self) -> None:
-        self._pool = KeyPool()
+        self._pool = KeyPool(state_name="tavily")
 
     def _keys(self) -> list[str]:
         return KeyPool.parse_keys(settings.tavily_api_key or "")
@@ -225,6 +342,15 @@ class TavilyProvider:
                 self._pool.penalize(api_key)
                 logger.info(
                     "[tavily] key %s rejected (%s); switching to next key in pool",
+                    _mask(api_key),
+                    type(exc).__name__,
+                )
+                continue
+            except NetworkUnreachableError as exc:
+                # 网络故障立刻换号，但不做长冷却：同一出口上所有号都会受影响。
+                last_error = exc
+                logger.info(
+                    "[tavily] key %s network error (%s); switching to next key in pool",
                     _mask(api_key),
                     type(exc).__name__,
                 )

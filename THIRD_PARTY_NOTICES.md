@@ -70,7 +70,7 @@ The following skills are inspired by or adapted from the
 
 ---
 
-## OpenAkita Original Skills
+## NewsClaw Original Skills
 
 All skills under `skills/system/` and the following are original to this
 project, licensed under the same [AGPL-3.0-only](LICENSE) terms as the main project:
@@ -98,7 +98,7 @@ FastAPI is used as the HTTP API framework, served by Uvicorn as the ASGI server.
 ## Desktop Runtime Toolchain
 
 The desktop application may include or download runtime/toolchain components
-for creating isolated OpenAkita-managed environments. Exact paths, versions,
+for creating isolated NewsClaw-managed environments. Exact paths, versions,
 hashes, ABI tags, and source metadata are recorded in
 `resources/bootstrap/manifest.json` in packaged builds and in the exported
 `runtime-env-summary.json` diagnostic bundle.
@@ -128,5 +128,5 @@ with version, ABI, source, license, and SHA-256 hash.
 **License:** MIT License
 **Copyright:** © OpenJS Foundation and Node.js contributors
 
-Future managed Node.js seed runtimes used by OpenAkita tools must be recorded
+Future managed Node.js seed runtimes used by NewsClaw tools must be recorded
 in the bootstrap manifest with source, license, version, and SHA-256 hash.

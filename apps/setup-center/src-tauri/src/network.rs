@@ -36,7 +36,7 @@ pub(crate) async fn fetch_pypi_versions(
 
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
-            .user_agent("openakita-desktop/1.0")
+            .user_agent("newsclaw-desktop/1.0")
             .build()
             .map_err(|e| format!("HTTP client error: {e}"))?;
 
@@ -110,7 +110,7 @@ pub(crate) async fn http_get_json(url: String) -> Result<String, String> {
     spawn_blocking_result(move || {
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(15))
-            .user_agent("openakita-desktop/1.0")
+            .user_agent("newsclaw-desktop/1.0")
             .build()
             .map_err(|e| format!("HTTP client error: {e}"))?;
 
@@ -147,7 +147,7 @@ pub(crate) async fn http_proxy_request(
         let timeout = timeout_secs.unwrap_or(30);
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(timeout))
-            .user_agent("openakita-desktop/1.0")
+            .user_agent("newsclaw-desktop/1.0")
             .build()
             .map_err(|e| format!("HTTP client error: {e}"))?;
 
@@ -883,7 +883,7 @@ pub(crate) fn export_env_backup(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        downloads_dir.join(format!("openakita-env-backup-{ts}.env"))
+        downloads_dir.join(format!("newsclaw-env-backup-{ts}.env"))
     };
 
     if let Some(parent) = dest.parent() {
@@ -902,11 +902,11 @@ mod tests {
     #[test]
     fn pypi_json_urls_keep_requested_source_then_known_fallbacks() {
         assert_eq!(
-            pypi_json_urls("openakita", Some("https://mirrors.aliyun.com/pypi/simple/")),
+            pypi_json_urls("newsclaw", Some("https://mirrors.aliyun.com/pypi/simple/")),
             vec![
-                "https://mirrors.aliyun.com/pypi/openakita/json",
-                "https://pypi.tuna.tsinghua.edu.cn/pypi/openakita/json",
-                "https://pypi.org/pypi/openakita/json",
+                "https://mirrors.aliyun.com/pypi/newsclaw/json",
+                "https://pypi.tuna.tsinghua.edu.cn/pypi/newsclaw/json",
+                "https://pypi.org/pypi/newsclaw/json",
             ]
         );
     }
@@ -914,10 +914,10 @@ mod tests {
     #[test]
     fn pypi_json_urls_do_not_duplicate_an_official_source() {
         assert_eq!(
-            pypi_json_urls("openakita", Some("https://pypi.org/simple/")),
+            pypi_json_urls("newsclaw", Some("https://pypi.org/simple/")),
             vec![
-                "https://pypi.org/pypi/openakita/json",
-                "https://pypi.tuna.tsinghua.edu.cn/pypi/openakita/json",
+                "https://pypi.org/pypi/newsclaw/json",
+                "https://pypi.tuna.tsinghua.edu.cn/pypi/newsclaw/json",
             ]
         );
     }

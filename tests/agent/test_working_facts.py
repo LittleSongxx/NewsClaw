@@ -1,6 +1,6 @@
-"""Tests for ``openakita.agent.working_facts``.
+"""Tests for ``newsclaw.agent.working_facts``.
 
-Anchors the move from ``openakita.agent.working_facts``. The legacy
+Anchors the move from ``newsclaw.agent.working_facts``. The legacy
 shim must produce the same callables as the new module so existing
 prompt-builder / session-manager / intent-gate code paths see no
 behaviour change. Behavioural correctness (regex matches, merge

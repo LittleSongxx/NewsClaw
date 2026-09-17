@@ -33,7 +33,7 @@ function harness() {
   return { create, receipts, claim };
 }
 const context: WebInstallContext = { state: 'b'.repeat(64), token: 'a'.repeat(64),
-  endpoint: 'https://marketplace.openakita.cn', base: 'http://192.168.1.30:18900',
+  endpoint: 'https://marketplace.newsclaw.cn', base: 'http://192.168.1.30:18900',
   returnUrl: 'http://192.168.1.30:18900/web/', expires: Date.now() + 600_000 };
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());

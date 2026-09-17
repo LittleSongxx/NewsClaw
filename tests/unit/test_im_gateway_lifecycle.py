@@ -71,9 +71,9 @@ class _FakeAgent:
 @pytest.mark.asyncio
 async def test_empty_gateway_starts_without_dependency_check_and_accepts_hot_bot(monkeypatch):
     import newsclaw.channels as channels
-    import newsclaw.logging as openakita_logging
+    import newsclaw.logging as newsclaw_logging
 
-    monkeypatch.setattr(openakita_logging, "setup_logging", lambda **_kwargs: None)
+    monkeypatch.setattr(newsclaw_logging, "setup_logging", lambda **_kwargs: None)
     import newsclaw.main as main
 
     for setting_name in (

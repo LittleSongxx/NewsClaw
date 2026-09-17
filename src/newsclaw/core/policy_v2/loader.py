@@ -131,12 +131,9 @@ def _build_config(
             ", ".join(report.conflicts),
         )
 
-    # v1.27.13 起 schema 默认 confirmation.mode = trust。v1 YAML 升级用户若从
-    # 未显式写过 confirmation.mode，会从 v1 时代等价的 "smart/default" 静默切
-    # 到 trust——这是 BC，但用户主观上没改任何配置。在这里发一条 INFO，让
-    # 升级期的 operator 通过日志就能定位"为什么 confirm 弹窗变少了"，并指出
-    # 如何显式锁回旧行为。注意：v1 schema 检测之外（v2 / mixed / empty）不
-    # 报，避免对从未关心过此项的新用户造成噪音。
+    # v1 YAML 未显式写 confirmation.mode 时，落到出厂 protect（mode=default）。
+    # 发一条 INFO 标明当前 factory，避免 operator 误以为还是旧的 trust 出厂。
+    # v2 / mixed / empty 不报，避免对新用户刷屏。
     if report.schema_detected == "v1":
         sec = v2_dict.get("security") or {}
         confirm_block = sec.get("confirmation") if isinstance(sec, dict) else None
@@ -145,10 +142,9 @@ def _build_config(
             factory_mode = factory_default_confirmation_mode().value
             logger.info(
                 "[PolicyV2] %s is v1 schema without explicit "
-                "security.confirmation.mode; v1.27.13+ uses factory default "
-                "%r (低打扰档，DESTRUCTIVE/UNKNOWN 仍 CONFIRM). To keep the "
-                "v1.27.x 'protect/default' behaviour add "
-                "`security.confirmation.mode: default` to your YAML.",
+                "security.confirmation.mode; factory default is %r "
+                "(protect 套餐，先问再做). To use trust instead add "
+                "`security.confirmation.mode: trust` to your YAML.",
                 source,
                 factory_mode,
             )

@@ -821,7 +821,7 @@ export function FeedbackModal({ open, onClose, apiBase, initialMode = "bug", pre
                     setDownloading(true);
                     const url = submitResult.downloadUrl;
                     const ts = Math.floor(Date.now() / 1000);
-                    const filename = `openakita-feedback-${ts}.zip`;
+                    const filename = `newsclaw-feedback-${ts}.zip`;
                     try {
                       const dest = await downloadFile(url, filename);
                       await showInFolder(dest);

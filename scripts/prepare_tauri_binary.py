@@ -23,7 +23,7 @@ def prepare_binary(target: str = "") -> Path:
     release_dir /= "release"
 
     destination = release_dir / f"{destination_name}{suffix}"
-    source = release_dir / f"openakita-setup-center{suffix}"
+    source = release_dir / f"newsclaw-setup-center{suffix}"
     if source.is_file():
         shutil.copy2(source, destination)
         print(f"Prepared Tauri binary: {source.name} -> {destination.name}")

@@ -1,17 +1,17 @@
 ---
 name: publish-agent
-description: Publish a local Agent to the OpenAkita Platform Agent Store. Package and prepare a local Agent for publishing to the community hub.
+description: Publish a local Agent to the NewsClaw Platform Agent Store. Package and prepare a local Agent for publishing to the community hub.
 system: true
 handler: agent_hub
 tool-name: publish_agent
 category: Agent Hub
 version: 1.0.0
-author: OpenAkita
+author: NewsClaw
 ---
 
 # publish-agent
 
-Publish a local Agent to the OpenAkita Platform Agent Store.
+Publish a local Agent to the NewsClaw Platform Agent Store.
 
 ## Tools
 
@@ -21,7 +21,7 @@ Publish a local Agent to the OpenAkita Platform Agent Store.
 
 Use this skill when the user wants to:
 - Share a local Agent to the community
-- Publish an Agent to the OpenAkita hub
+- Publish an Agent to the NewsClaw hub
 - Package an Agent for distribution
 
 ## Parameters

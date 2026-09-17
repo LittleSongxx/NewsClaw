@@ -3,7 +3,7 @@ name: newsclaw/skills@xiaohongshu-creator
 description: Create engaging Xiaohongshu (RED/小红书) content including titles, body text, hashtags, and image style recommendations. Supports multiple content types such as product reviews, tutorials, lifestyle sharing, and shopping guides with platform-specific optimization.
 license: MIT
 metadata:
-  author: openakita
+  author: newsclaw
   version: "1.0.0"
 ---
 

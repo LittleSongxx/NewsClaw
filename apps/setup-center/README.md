@@ -1,10 +1,10 @@
-## OpenAkita Setup Center
+## NewsClaw Setup Center
 
-这是 OpenAkita 的可视化安装与配置中心（跨平台：Windows / macOS / Linux）。
+这是 NewsClaw 的可视化安装与配置中心（跨平台：Windows / macOS / Linux）。
 
 ### 目标（分阶段）
 
-- **v0（已打通主链路）**：多工作区、创建/选择工作区、生成工作区文件（`.env`/`data/llm_endpoints.json`/`identity/SOUL.md`）、检测内置 Python、创建 venv、pip 安装 openakita、按 OpenAI/Anthropic 协议拉取模型列表、写入端点配置、写入 IM/代理等 env。
+- **v0（已打通主链路）**：多工作区、创建/选择工作区、生成工作区文件（`.env`/`data/llm_endpoints.json`/`identity/SOUL.md`）、检测内置 Python、创建 venv、pip 安装 newsclaw、按 OpenAI/Anthropic 协议拉取模型列表、写入端点配置、写入 IM/代理等 env。
 - **v1**：完善 bundled Python + venv 契约校验与修复流程，可选组件安装（Playwright/Whisper/浏览器等）。
 - **v2**：一键打包发布（Windows `.exe`、macOS `.app`，可选签名/公证）
 
@@ -22,7 +22,7 @@ npm install
 npm run tauri dev
 ```
 
-如果后端已通过 `openakita serve` 单独启动，优先使用外部后端开发模式：
+如果后端已通过 `newsclaw serve` 单独启动，优先使用外部后端开发模式：
 
 ```bash
 npm run tauri:dev:external-backend

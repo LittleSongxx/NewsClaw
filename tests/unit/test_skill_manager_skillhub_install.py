@@ -16,10 +16,10 @@ async def test_agent_skill_manager_installs_skillhub_detail_url_through_shared_i
     from newsclaw.config import settings
     from newsclaw.setup_center import bridge
 
-    openakita_root = tmp_path / "openakita-home"
-    workspace = openakita_root / "workspaces" / "default"
+    newsclaw_root = tmp_path / "newsclaw-home"
+    workspace = newsclaw_root / "workspaces" / "default"
     workspace.mkdir(parents=True)
-    monkeypatch.setenv("NEWSCLAW_ROOT", str(openakita_root))
+    monkeypatch.setenv("NEWSCLAW_ROOT", str(newsclaw_root))
     monkeypatch.setattr(settings, "project_root", workspace, raising=False)
 
     installed_sources: list[str] = []
@@ -71,10 +71,10 @@ async def test_agent_skill_manager_rejects_malformed_skillhub_url(
     from newsclaw.agent.skill_manager import SkillManager
     from newsclaw.config import settings
 
-    openakita_root = tmp_path / "openakita-home"
-    workspace = openakita_root / "workspaces" / "default"
+    newsclaw_root = tmp_path / "newsclaw-home"
+    workspace = newsclaw_root / "workspaces" / "default"
     workspace.mkdir(parents=True)
-    monkeypatch.setenv("NEWSCLAW_ROOT", str(openakita_root))
+    monkeypatch.setenv("NEWSCLAW_ROOT", str(newsclaw_root))
     monkeypatch.setattr(settings, "project_root", workspace, raising=False)
 
     manager = SkillManager(MagicMock(), MagicMock(), MagicMock(), MagicMock())

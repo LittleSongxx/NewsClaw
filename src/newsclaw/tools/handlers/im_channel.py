@@ -197,6 +197,13 @@ class IMChannelHandler:
         # deliver_artifacts 支持跨通道发送（target_channel 参数）
         if tool_name == "deliver_artifacts":
             params = self._normalize_delivery_params(params)
+            from newsclaw.newsroom.delivery import newsroom_delivery_block_reason
+
+            blocked = newsroom_delivery_block_reason(
+                [str(item.get("path") or "") for item in params.get("artifacts") or []]
+            )
+            if blocked:
+                return blocked
             target_channel = (params.get("target_channel") or "").strip()
             if target_channel:
                 prefer_chat_type = (params.get("prefer_chat_type") or "private").strip()

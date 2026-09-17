@@ -69,7 +69,7 @@ def test_exception_hierarchy() -> None:
 
 
 def test_unknown_never_silently_allows() -> None:
-    """UNKNOWN 在任何 mode 下都不应静默 ALLOW（DONT_ASK 也仅 CONFIRM）。"""
+    """UNKNOWN 在任何 mode 下都不应静默 ALLOW（DONT_ASK 为 DENY）。"""
     for mode in ConfirmationMode:
         for role in (SessionRole.AGENT, SessionRole.COORDINATOR):
             decision = lookup_matrix(role, mode, ApprovalClass.UNKNOWN)

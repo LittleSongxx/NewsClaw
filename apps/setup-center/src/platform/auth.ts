@@ -79,7 +79,7 @@ export function isTokenExpiringSoon(token: string, thresholdSeconds = 3600): boo
 let _refreshPromise: Promise<string | null> | null = null;
 
 /** Dispatched when refresh fails — App listens and redirects to login. */
-export const AUTH_EXPIRED_EVENT = "openakita-auth-expired";
+export const AUTH_EXPIRED_EVENT = "newsclaw-auth-expired";
 
 export async function refreshAccessToken(apiBase = ""): Promise<string | null> {
   if (_localAuthMode && !getAccessToken()) return null;
@@ -94,9 +94,14 @@ export async function refreshAccessToken(apiBase = ""): Promise<string | null> {
         credentials: "include",
         signal: AbortSignal.timeout(10_000),
       });
+      const hadToken = Boolean(getAccessToken());
       if (!res.ok) {
         clearAccessToken();
-        window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+        // 从未登录过（例如「跳过连接，预览界面」）时 refresh 失败不是掉线，
+        // 不能当 session 过期，否则会把刚进入的预览立刻踢回登录页。
+        if (hadToken) {
+          window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+        }
         return null;
       }
       const data = await res.json();
@@ -104,7 +109,9 @@ export async function refreshAccessToken(apiBase = ""): Promise<string | null> {
         setAccessToken(data.access_token);
         return data.access_token as string;
       }
-      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+      if (hadToken) {
+        window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+      }
       return null;
     } catch {
       return null;
@@ -312,7 +319,7 @@ export function installFetchInterceptor(): void {
 // Auth check
 // ---------------------------------------------------------------------------
 
-const LOCAL_AUTH_SESSION_KEY = "openakita_auth_local";
+const LOCAL_AUTH_SESSION_KEY = "newsclaw_auth_local";
 
 /** Restore local-auth mode from sessionStorage (survives page refresh). */
 export function tryRestoreLocalAuth(): boolean {

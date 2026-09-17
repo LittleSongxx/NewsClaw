@@ -179,12 +179,22 @@ class SecurityConfirmBatchRequest(BaseModel):
 
 
 def _normalize_permission_mode(mode: str) -> str:
-    """Normalize product/user-facing mode names to the existing backend modes."""
-    normalized = (mode or "yolo").strip().lower()
-    if normalized == "trust":
-        normalized = "yolo"
+    """Normalize product/user-facing mode names to the existing backend modes.
+
+    缺字段或未知值回到出厂 protect 对应的旧三档标签 ``smart``，不再写死 yolo。
+    ``dont_ask`` 映射到 ``cautious``（未预批则拒绝），禁止再当成 YOLO。
+    """
+    normalized = (mode or "").strip().lower()
+    aliases = {
+        "trust": "yolo",
+        "default": "smart",
+        "strict": "cautious",
+        "accept_edits": "smart",
+        "dont_ask": "cautious",
+    }
+    normalized = aliases.get(normalized, normalized)
     if normalized not in ("cautious", "smart", "yolo"):
-        normalized = "yolo"
+        normalized = "smart"
     return normalized
 
 
@@ -276,8 +286,8 @@ def _mark_security_profile_custom(sec: dict[str, Any]) -> None:
     leaving_off = prev == "off"
     if prev != "custom":
         # base 兜底走 ``defaults.FACTORY_DEFAULT_PROFILE``——用户从 custom 还
-        # 原时回到出厂方案（当前 = trust）。这条与 schema 默认 + 出厂体验保持
-        # 单一真源。
+        # 原时回到出厂方案（当前 = protect）。这条与 schema 默认 + 出厂体验保持
+        # 单一真源。已落盘 YAML 不以出厂值覆盖。
         from newsclaw.core.policy_v2.defaults import FACTORY_DEFAULT_PROFILE
 
         profile["base"] = prev or FACTORY_DEFAULT_PROFILE
@@ -289,20 +299,16 @@ def _mark_security_profile_custom(sec: dict[str, Any]) -> None:
 
 
 def _mode_from_security(sec: dict[str, Any] | None) -> str:
-    # 出厂默认 = yolo（= trust）：与 PolicyConfigV2 schema 默认 +
-    # ``policy_v2/defaults.py::FACTORY_DEFAULT_PROFILE`` 单一真源对齐。
-    # 即便 raw dict 里没有 confirmation 块，也按"信任模式"汇报，保持
-    # /security/options 与运行时引擎的一致性。两条真源之间的契约由
-    # ``tests/unit/test_security_permission_mode_api.py::
-    # test_schema_default_and_trust_bundle_agree_on_confirmation_mode``
-    # 钉死。
+    # 缺字段回到出厂 protect 对应的旧三档标签 smart（confirmation.mode=default）。
+    # 未知值同样不写死 yolo，避免 UI 显示信任而引擎按 protect 运行。
+    # ``auto_confirm: true`` 仍是显式信任信号，映射 yolo / trust。
     conf = (sec or {}).get("confirmation", {})
     mode = conf.get("mode")
     if mode:
         return _normalize_permission_mode(str(mode))
     if conf.get("auto_confirm") is True:
         return "yolo"
-    return "yolo"
+    return "smart"
 
 
 def _normalize_confirmation_mode(mode: Any) -> str:
@@ -2025,7 +2031,7 @@ async def read_permission_mode():
         return {"mode": mode, "label": _permission_label(mode)}
     except Exception as e:
         logger.debug(f"[Config API] permission-mode read fallback: {e}")
-        return {"mode": "yolo", "label": "trust"}
+        return {"mode": "smart", "label": "smart"}
 
 
 class _PermissionModeBody(BaseModel):
@@ -2346,7 +2352,7 @@ async def read_security_confirmation():
     data = _read_policies_yaml()
     if data is None:
         return {
-            "mode": "trust",
+            "mode": "default",
             "timeout_seconds": 60,
             "default_on_timeout": "deny",
             "confirm_ttl": 120,

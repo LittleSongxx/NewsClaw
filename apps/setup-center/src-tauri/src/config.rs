@@ -27,7 +27,7 @@ pub(crate) fn get_platform_info() -> PlatformInfo {
     // 用 newsclaw_root_dir() 而不是 default_newsclaw_root()，确保前端
     // 显示的 root（以及拼出的 runtime / venv / logs hint）与后端 Rust /
     // Python 真正使用的位置完全一致。否则在用户配置了 custom_root 或
-    // 设置了 NEWSCLAW_ROOT 环境变量时，面板会指向 ~/.openakita 而真实
+    // 设置了 NEWSCLAW_ROOT 环境变量时，面板会指向 ~/.newsclaw 而真实
     // runtime 落在另一个磁盘，让人误以为"runtime 没建出来"。
     PlatformInfo {
         os: std::env::consts::OS.to_string(),
@@ -96,41 +96,27 @@ pub(crate) struct WorkspaceMeta {
     pub(crate) name: String,
 }
 
-/// 数据根目录下"当前名称"与"rename 前名称"的子目录名。
+/// 默认数据根目录名，必须与 Python 侧 `newsclaw.data_root.DATA_ROOT_DIRNAME` 一致。
 pub(crate) const DATA_ROOT_DIRNAME: &str = ".newsclaw";
-pub(crate) const LEGACY_DATA_ROOT_DIRNAME: &str = ".openakita";
 
-/// 未配置 custom_root 时的默认数据目录。
+/// 未配置 custom_root 时的默认数据目录（``~/.newsclaw``）。
 ///
 /// 规则必须与 Python 侧 `newsclaw.data_root.resolve_data_root()` 完全一致，
-/// 否则 Rust 面板、NSIS 安装脚本与 Python 后端会各写各的目录：
-/// `NEWSCLAW_ROOT`/`NEWSCLAW_ROOT` 由 [`newsclaw_root_dir`] 提前处理，这里只
-/// 负责"两个候选目录都存在/都不存在"的兜底——既有 `~/.openakita` 安装原地沿用，
-/// 全新安装使用 `~/.newsclaw`。
+/// 否则 Rust 面板、NSIS 安装脚本与 Python 后端会各写各的目录。
 pub(crate) fn default_root_dir() -> PathBuf {
-    let home = home_dir().unwrap_or_else(|| PathBuf::from("."));
-    let legacy = home.join(LEGACY_DATA_ROOT_DIRNAME);
-    if legacy.exists() {
-        return legacy;
-    }
-    home.join(DATA_ROOT_DIRNAME)
+    home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(DATA_ROOT_DIRNAME)
 }
 
-/// OS 用户级数据主目录，**忽略** `NEWSCLAW_ROOT` / `NEWSCLAW_ROOT` 覆盖。
+/// OS 用户级数据主目录，**忽略** `NEWSCLAW_ROOT` 覆盖。
 ///
 /// 与 Python 侧 `newsclaw.data_root.resolve_home_root()` 一致：账号凭据这类文件
 /// 绑定 OS 用户身份，换工作区（自定义数据根目录）不应该把它们搬走。
 pub(crate) fn default_home_root_dir() -> PathBuf {
-    let home = home_dir().unwrap_or_else(|| PathBuf::from("."));
-    let new_root = home.join(DATA_ROOT_DIRNAME);
-    if new_root.exists() {
-        return new_root;
-    }
-    let legacy = home.join(LEGACY_DATA_ROOT_DIRNAME);
-    if legacy.exists() {
-        return legacy;
-    }
-    new_root
+    home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(DATA_ROOT_DIRNAME)
 }
 
 pub(crate) fn comparable_path(path: &Path) -> String {
@@ -183,7 +169,7 @@ pub(crate) fn ensure_safe_newsclaw_data_root(path: &Path) -> Result<(), String> 
     if is_safe_newsclaw_data_root(path) {
         Ok(())
     } else {
-        Err("数据目录不能设置为磁盘根目录、用户主目录或系统常用目录。请使用专用目录，例如 D:\\OpenAkitaData\\.openakita".into())
+        Err("数据目录不能设置为磁盘根目录、用户主目录或系统常用目录。请使用专用目录，例如 D:\\NewsClawData\\.newsclaw".into())
     }
 }
 
@@ -256,13 +242,10 @@ pub(crate) fn write_root_config(config: &RootConfig) -> Result<(), String> {
 }
 
 pub(crate) fn newsclaw_root_dir() -> PathBuf {
-    // NEWSCLAW_ROOT 优先，NEWSCLAW_ROOT 作为旧名称继续生效——两者语义相同，
-    // 都是"显式指定数据根目录"，与 Python 侧 resolve_data_root() 的顺序一致。
-    for env_name in ["NEWSCLAW_ROOT", "OPENAKITA_ROOT"] {
-        if let Ok(val) = std::env::var(env_name) {
-            if !val.is_empty() {
-                return PathBuf::from(val);
-            }
+    // 与 Python 侧 resolve_data_root() 一致：只认 NEWSCLAW_ROOT。
+    if let Ok(val) = std::env::var("NEWSCLAW_ROOT") {
+        if !val.is_empty() {
+            return PathBuf::from(val);
         }
     }
     let config = read_root_config();
@@ -293,12 +276,12 @@ pub(crate) fn run_dir() -> PathBuf {
     newsclaw_root_dir().join("run")
 }
 
-/// 安装配置日志目录：~/.openakita/logs/
+/// 安装配置日志目录：~/.newsclaw/logs/
 pub(crate) fn setup_logs_dir() -> PathBuf {
     newsclaw_root_dir().join("logs")
 }
 
-/// 进程内 minidump 落地目录：~/.openakita/crashdumps/
+/// 进程内 minidump 落地目录：~/.newsclaw/crashdumps/
 /// 由 crash_handler 在启动时 ensure dir 并安装 SEH filter；
 /// build_feedback_zip 会把 *.dmp 及对应的 *.events.txt 自动打包进反馈包。
 pub(crate) fn crashdumps_dir() -> PathBuf {
@@ -331,7 +314,7 @@ pub(crate) fn rotate_autostart_log_if_needed(path: &Path) {
     let _ = fs::rename(path, &rotated);
 }
 
-/// Append a diagnostic line to `~/.openakita/logs/autostart.log`.
+/// Append a diagnostic line to `~/.newsclaw/logs/autostart.log`.
 pub(crate) fn log_to_file(msg: &str) {
     let log_dir = setup_logs_dir();
     let _ = fs::create_dir_all(&log_dir);
@@ -435,7 +418,7 @@ pub(crate) fn start_onboarding_log(date_label: String) -> Result<String, String>
         .write(true)
         .open(&path)
         .map_err(|e| format!("open onboarding log failed: {e}"))?;
-    let header = format!("OpenAkita 安装配置日志 开始于 {}\n", date_label);
+    let header = format!("NewsClaw 安装配置日志 开始于 {}\n", date_label);
     f.write_all(header.as_bytes())
         .map_err(|e| format!("write onboarding log header failed: {e}"))?;
     f.flush().map_err(|e| format!("flush failed: {e}"))?;
@@ -520,7 +503,7 @@ pub(crate) fn maybe_rotate_frontend_log(path: &Path) {
     let _ = fs::write(path, &tail[offset..]);
 }
 
-/// 前端 JS 日志批量追加到 ~/.openakita/logs/frontend.log。
+/// 前端 JS 日志批量追加到 ~/.newsclaw/logs/frontend.log。
 #[tauri::command]
 pub(crate) fn append_frontend_log(lines: Vec<String>) -> Result<(), String> {
     if lines.is_empty() {
@@ -610,11 +593,11 @@ pub(crate) fn bundled_resource_dir(resource_name: &str) -> PathBuf {
             .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
 
         let static_names: &[&str] = &[
-            "OpenAkitaDesktop",       // tauri.conf.json productName used by deb resource dir
-            "OpenAkita Desktop",      // legacy productName with a space
-            "openakita-setup-center", // Cargo.toml package name (Tauri 2.x default)
-            "openakita-desktop",      // legacy / mainBinaryName override
-            "open-akita-desktop",
+            "NewsClawDesktop",       // tauri.conf.json productName used by deb resource dir
+            "NewsClaw Desktop",      // legacy productName with a space
+            "newsclaw-setup-center", // Cargo.toml package name (Tauri 2.x default)
+            "newsclaw-desktop",      // legacy / mainBinaryName override
+            "newsclaw-desktop",
         ];
 
         // deb 常见布局: /usr/lib/<app-name>/resources/<resource_name>/

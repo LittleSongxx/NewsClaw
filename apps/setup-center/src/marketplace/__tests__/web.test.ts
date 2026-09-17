@@ -1,12 +1,12 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { buildWebMarketplaceUrl, openWebMarketplace, captureWebInstallReturn, pendingWebInstall, saveWebInstallJob, dismissWebInstall, enqueueWebInstall } from '../web';
 
-const endpoint = 'https://marketplace.openakita.cn';
+const endpoint = 'https://marketplace.newsclaw.cn';
 const token = 'a'.repeat(64);
 beforeEach(() => { sessionStorage.clear(); history.replaceState(null, '', '/proxy/web?local=value#plugins'); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 function returnFromMarket(state: string, overrides: Record<string, string> = {}) {
-  history.replaceState(null, '', '/proxy/web/marketplace-return#' + new URLSearchParams({ 'openakita-install': token, state, endpoint, ...overrides }));
+  history.replaceState(null, '', '/proxy/web/marketplace-return#' + new URLSearchParams({ 'newsclaw-install': token, state, endpoint, ...overrides }));
   captureWebInstallReturn();
 }
 it('keeps credentials and the original route local, accepts the bound return and persists it across reads', () => {
@@ -26,7 +26,7 @@ it('keeps credentials and the original route local, accepts the bound return and
   dismissWebInstall();
   expect(pendingWebInstall(location.origin)).toBeNull();
 });
-it.each(['state', 'endpoint', 'openakita-install'])('rejects a modified %s without accepting a ticket', (field) => {
+it.each(['state', 'endpoint', 'newsclaw-install'])('rejects a modified %s without accepting a ticket', (field) => {
   const url = new URL(buildWebMarketplaceUrl('1.27.40', location.origin));
   returnFromMarket(url.searchParams.get('state')!, { [field]: 'untrusted' });
   expect(() => pendingWebInstall(location.origin)).toThrow('marketplace_instruction_invalid');

@@ -7,13 +7,13 @@ corruption around `data/memory/openakita.db`, for example:
 sqlite3.DatabaseError: malformed database schema
 ```
 
-Close OpenAkita before running any command below. Replace `$Workspace` with the
+Close NewsClaw before running any command below. Replace `$Workspace` with the
 affected workspace/data directory if it is different.
 
 ## 1. Locate The Database
 
 ```powershell
-$Workspace = "D:\openakitadata"
+$Workspace = "D:\newsclawdata"
 $MemoryDir = Join-Path $Workspace "data\memory"
 $Db = Join-Path $MemoryDir "openakita.db"
 
@@ -54,7 +54,7 @@ Remove-Item "$Db-wal", "$Db-shm" -Force -ErrorAction SilentlyContinue
 Write-Host "Restored $($Backup.Name). Original files were moved to $Quarantine"
 ```
 
-Start OpenAkita again. If it still cannot start, repeat with an older backup or
+Start NewsClaw again. If it still cannot start, repeat with an older backup or
 try Option B.
 
 ## 3. Option B: Rebuild With sqlite3 `.recover`
@@ -64,8 +64,8 @@ from a damaged file, but it cannot guarantee complete recovery.
 
 ```powershell
 $SqliteCandidates = @(
-  "$env:LOCALAPPDATA\Programs\OpenAkita\sqlite3.exe",
-  "$env:ProgramFiles\OpenAkita\sqlite3.exe",
+  "$env:LOCALAPPDATA\Programs\NewsClaw\sqlite3.exe",
+  "$env:ProgramFiles\NewsClaw\sqlite3.exe",
   "sqlite3.exe"
 )
 
@@ -78,8 +78,8 @@ if (-not $Sqlite) {
 }
 
 $Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$RecoveredSql = Join-Path $MemoryDir "openakita.recovered.$Stamp.sql"
-$RecoveredDb = Join-Path $MemoryDir "openakita.recovered.$Stamp.db"
+$RecoveredSql = Join-Path $MemoryDir "newsclaw.recovered.$Stamp.sql"
+$RecoveredDb = Join-Path $MemoryDir "newsclaw.recovered.$Stamp.db"
 $Quarantine = Join-Path $MemoryDir ".quarantine.$Stamp"
 
 & $Sqlite $Db ".recover" | Out-File -FilePath $RecoveredSql -Encoding utf8
@@ -117,14 +117,14 @@ foreach ($Suffix in "", "-wal", "-shm") {
 }
 
 Write-Host "The damaged database was moved to $Quarantine"
-Write-Host "Start OpenAkita again. It will create a fresh memory database."
+Write-Host "Start NewsClaw again. It will create a fresh memory database."
 ```
 
 ## 5. What To Send Support
 
 Attach these files when reporting the issue:
 
-- The last 200 lines of `openakita-serve.log`.
+- The last 200 lines of `newsclaw-serve.log`.
 - A directory listing of `data\memory`.
 - The `.quarantine.<timestamp>` directory if it is small enough to share.
 

@@ -116,7 +116,7 @@ pub(crate) async fn newsclaw_version(venv_dir: String) -> Result<String, String>
         ]);
         let out = c
             .output()
-            .map_err(|e| format!("get openakita version failed: {e}"))?;
+            .map_err(|e| format!("get newsclaw version failed: {e}"))?;
         if !out.status.success() {
             let stderr = String::from_utf8_lossy(&out.stderr).to_string();
             let stdout = String::from_utf8_lossy(&out.stdout).to_string();
@@ -179,7 +179,7 @@ pub(crate) async fn newsclaw_health_check_im(
 /// Ensure IM channel dependencies are installed via Python bridge.
 /// Returns JSON with status/installed/message.
 #[tauri::command]
-pub(crate) async fn openakita_ensure_channel_deps(
+pub(crate) async fn newsclaw_ensure_channel_deps(
     venv_dir: String,
     workspace_id: String,
 ) -> Result<String, String> {
@@ -293,7 +293,7 @@ pub(crate) async fn newsclaw_wecom_onboard_poll(
 /// Start Feishu Device Flow onboarding (QR scan).
 /// Returns JSON with device_code + verification_uri.
 #[tauri::command]
-pub(crate) async fn openakita_feishu_onboard_start(
+pub(crate) async fn newsclaw_feishu_onboard_start(
     venv_dir: String,
     domain: Option<String>,
 ) -> Result<String, String> {
@@ -308,7 +308,7 @@ pub(crate) async fn openakita_feishu_onboard_start(
 /// Poll Feishu Device Flow authorization status.
 /// Returns JSON with status / app_id / app_secret on success.
 #[tauri::command]
-pub(crate) async fn openakita_feishu_onboard_poll(
+pub(crate) async fn newsclaw_feishu_onboard_poll(
     venv_dir: String,
     domain: Option<String>,
     device_code: String,
@@ -330,7 +330,7 @@ pub(crate) async fn openakita_feishu_onboard_poll(
 /// Validate Feishu App ID / App Secret credentials.
 /// Returns JSON with {valid: bool, error?: string}.
 #[tauri::command]
-pub(crate) async fn openakita_feishu_validate(
+pub(crate) async fn newsclaw_feishu_validate(
     venv_dir: String,
     app_id: String,
     app_secret: String,

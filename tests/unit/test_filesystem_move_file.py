@@ -7,18 +7,24 @@ from newsclaw.tools.file import FileTool
 from newsclaw.tools.handlers.filesystem import FilesystemHandler
 
 
-def _handler(tmp_path):
-    agent = SimpleNamespace(file_tool=FileTool(str(tmp_path)))
+def _handler(tmp_path, monkeypatch):
+    cfg = SimpleNamespace(
+        enabled=True,
+        profile=SimpleNamespace(current="protect"),
+        workspace=SimpleNamespace(paths=[str(tmp_path)]),
+    )
+    monkeypatch.setattr("newsclaw.core.policy_v2.get_config_v2", lambda: cfg)
+    agent = SimpleNamespace(file_tool=FileTool(str(tmp_path)), default_cwd=str(tmp_path))
     return FilesystemHandler(agent)
 
 
 @pytest.mark.asyncio
-async def test_move_file_moves_and_verifies_destination(tmp_path):
+async def test_move_file_moves_and_verifies_destination(tmp_path, monkeypatch):
     source = tmp_path / "memory" / "周报.md"
     source.parent.mkdir()
     source.write_text("weekly report", encoding="utf-8")
 
-    handler = _handler(tmp_path)
+    handler = _handler(tmp_path, monkeypatch)
     result = await handler.handle(
         "move_file",
         {
@@ -35,11 +41,11 @@ async def test_move_file_moves_and_verifies_destination(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_move_file_rejects_null_character_path(tmp_path):
+async def test_move_file_rejects_null_character_path(tmp_path, monkeypatch):
     source = tmp_path / "a.md"
     source.write_text("content", encoding="utf-8")
 
-    handler = _handler(tmp_path)
+    handler = _handler(tmp_path, monkeypatch)
     result = await handler.handle(
         "move_file",
         {
@@ -53,13 +59,13 @@ async def test_move_file_rejects_null_character_path(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_move_file_into_existing_directory_keeps_source_name(tmp_path):
+async def test_move_file_into_existing_directory_keeps_source_name(tmp_path, monkeypatch):
     source = tmp_path / "a.md"
     source.write_text("content", encoding="utf-8")
     target_dir = tmp_path / "archive"
     target_dir.mkdir()
 
-    handler = _handler(tmp_path)
+    handler = _handler(tmp_path, monkeypatch)
     result = await handler.handle(
         "move_file",
         {

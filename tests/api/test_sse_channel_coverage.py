@@ -1,7 +1,7 @@
 """Contract tests for the v2 SSE channel-coverage invariant (I13a).
 
 After v25 RC-3 the SSE handler subscribes to every
-:data:`~openakita.runtime.stream.STANDARD_CHANNELS` channel except the
+:data:`~newsclaw.runtime.stream.STANDARD_CHANNELS` channel except the
 high-volume ``debug`` channel, and no longer fabricates a synthetic
 ``lifecycle/sse_connected`` first event. These tests pin that
 contract so the regression that v22 / v25 surfaced cannot return:

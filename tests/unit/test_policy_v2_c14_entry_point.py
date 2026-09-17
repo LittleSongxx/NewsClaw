@@ -14,6 +14,7 @@ Covers:
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -43,7 +44,7 @@ def test_cli_without_tty_is_unattended():
     c = classify_entry("cli", has_tty=False)
     assert c.is_unattended is True
     assert c.confirm_capability == "none"
-    assert c.default_strategy == "ask_owner"
+    assert c.default_strategy == "deny"
     assert "without tty" in c.reason
 
 
@@ -93,7 +94,7 @@ def test_im_webhook_channels_are_unattended(channel):
     c = classify_entry(channel)
     assert c.is_unattended is True
     assert c.confirm_capability == "none"
-    assert c.default_strategy == "ask_owner"
+    assert c.default_strategy == "deny"
     assert "im-webhook" in c.reason
 
 
@@ -115,7 +116,7 @@ def test_scheduler_channel_uses_config_default_strategy():
 def test_generic_webhook_channel():
     c = classify_entry("webhook")
     assert c.is_unattended is True
-    assert c.default_strategy == "ask_owner"
+    assert c.default_strategy == "deny"
 
 
 def test_unknown_channel_defaults_to_unattended():
@@ -127,11 +128,43 @@ def test_unknown_channel_defaults_to_unattended():
     assert "unknown channel" in c.reason
 
 
+def test_force_unattended_newsclaw_run_denies_confirm_tools():
+    """``newsclaw run`` 的 force_unattended 路径必须 DENY，不能 ask_owner 挂起。"""
+    from newsclaw.core.policy_v2 import (
+        ConfirmationMode,
+        DecisionAction,
+        PolicyConfigV2,
+        PolicyContext,
+        PolicyEngineV2,
+        ToolCallEvent,
+    )
+
+    cls = classify_entry("cli", has_tty=True, force_unattended=True)
+    assert cls.default_strategy == "deny"
+    engine = PolicyEngineV2(config=PolicyConfigV2())
+    ctx = PolicyContext(
+        session_id="run",
+        workspace=Path("/ws"),
+        channel="cli",
+        confirmation_mode=ConfirmationMode.DEFAULT,
+        is_unattended=True,
+        unattended_strategy=cls.default_strategy,
+        user_message="task",
+    )
+    decision = engine.evaluate_tool_call(
+        ToolCallEvent(tool="write_file", params={"path": "/ws/x"}),
+        ctx,
+    )
+    assert decision.action == DecisionAction.DENY
+    assert decision.is_unattended_path is True
+
+
 def test_force_unattended_overrides_cli_tty():
-    """``openakita run`` is non-interactive even when stdin is a TTY."""
+    """``newsclaw run`` is non-interactive even when stdin is a TTY."""
     c = classify_entry("cli", has_tty=True, force_unattended=True)
     assert c.is_unattended is True
     assert c.confirm_capability == "none"
+    assert c.default_strategy == "deny"
     assert "force_unattended" in c.reason
 
 
@@ -239,7 +272,7 @@ def test_classifier_integrates_with_real_session():
     )
     apply_classification_to_session(sess, classify_entry("telegram"))
     assert sess.is_unattended is True
-    assert sess.unattended_strategy == "ask_owner"
+    assert sess.unattended_strategy == "deny"
 
 
 def test_classifier_idempotent_on_real_session():
@@ -374,7 +407,7 @@ def test_apply_classification_swallows_setattr_failure():
 
 
 def test_build_policy_context_accepts_unattended_strategy():
-    """Caller (openakita run / mcp_server) feeds classifier.default_strategy
+    """Caller (newsclaw run / mcp_server) feeds classifier.default_strategy
     into build_policy_context so the strategy is on the ctx without needing
     a Session round-trip."""
     from newsclaw.core.policy_v2.adapter import build_policy_context
@@ -430,17 +463,17 @@ def test_build_policy_context_session_strategy_overrides_param():
     assert ctx.unattended_strategy == "defer_to_inbox"
 
 
-# --- D6: MCP server installs unattended PolicyContext for openakita_chat ---
+# --- D6: MCP server installs unattended PolicyContext for newsclaw_chat ---
 
 
 def test_mcp_server_classifier_for_stdio_tool():
-    """The MCP server runs over stdio (no TTY, no SSE); ``openakita_chat``
+    """The MCP server runs over stdio (no TTY, no SSE); ``newsclaw_chat``
     invocations must be classified unattended so CONFIRM-class tools
     don't hang."""
     cls = classify_entry("mcp", force_unattended=True)
     assert cls.is_unattended is True
     assert cls.confirm_capability == "none"
-    assert cls.default_strategy == "ask_owner"
+    assert cls.default_strategy == "deny"
 
 
 def test_mcp_server_imports_classifier():

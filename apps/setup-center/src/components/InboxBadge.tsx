@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { safeFetch } from "../providers";
 
-export const INBOX_UNREAD_CHANGED_EVENT = "openakita:inbox-unread-changed";
-export const INBOX_REFRESH_EVENT = "openakita:inbox-refresh";
+export const INBOX_UNREAD_CHANGED_EVENT = "newsclaw:inbox-unread-changed";
+export const INBOX_REFRESH_EVENT = "newsclaw:inbox-refresh";
 
 type InboxBadgeProps = {
   apiBaseUrl: string;

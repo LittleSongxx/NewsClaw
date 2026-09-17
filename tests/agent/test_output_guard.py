@@ -1,4 +1,4 @@
-"""Tests for ``openakita.agent.output_guard``.
+"""Tests for ``newsclaw.agent.output_guard``.
 
 Anchors three things:
 

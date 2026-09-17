@@ -1239,7 +1239,7 @@ def _download_skillhub_skill(source: str, dest_dir: Path) -> dict[str, str | Non
         raise ValueError("SkillHub 技能包超过 50 MiB 下载限制")
 
     tmp_extract = Path(tempfile.mkdtemp(prefix="newsclaw_skillhub_"))
-    staging_root = Path(tempfile.mkdtemp(prefix=".openakita-skillhub-", dir=str(dest_dir.parent)))
+    staging_root = Path(tempfile.mkdtemp(prefix=".newsclaw-skillhub-", dir=str(dest_dir.parent)))
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
             _validate_zip_members(zf)
@@ -1455,7 +1455,7 @@ def _remove_tree(d: Path, *, retries: int = 3) -> None:
 
 def _quarantine_broken_skill_dir(d: Path) -> Path:
     """Move an undeletable partial install aside so a clean install can continue."""
-    quarantine_root = d.parent / ".openakita-broken"
+    quarantine_root = d.parent / ".newsclaw-broken"
     quarantine_root.mkdir(parents=True, exist_ok=True)
     target = quarantine_root / f"{d.name}-{int(time.time())}"
     d.rename(target)
@@ -1933,7 +1933,7 @@ def main(argv: list[str] | None = None) -> None:
 
     ps = sub.add_parser("list-skills", help="列出技能（JSON）")
     ps.add_argument(
-        "--workspace-dir", required=True, help="工作区目录（用于扫描 skills/.cursor/skills 等）"
+        "--workspace-dir", required=True, help="工作区目录（用于扫描内置 / 工作区 / skills/）"
     )
 
     ph = sub.add_parser("health-check-endpoint", help="检测 LLM 端点健康度（JSON）")

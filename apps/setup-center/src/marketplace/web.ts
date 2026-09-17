@@ -85,7 +85,7 @@ export function openWebMarketplace(version: string, next: string, origin: string
 /** Capture before routing/login can replace the hash. Persist before removing
  * the fragment so reloads and instance-login screens cannot lose the ticket. */
 export function captureWebInstallReturn() {
-  if (!location.hash.startsWith('#openakita-install=')) return;
+  if (!location.hash.startsWith('#newsclaw-install=')) return;
   const params = new URLSearchParams(location.hash.slice(1));
   const direct = params.get('channel') === 'post-message';
   let context = read();
@@ -100,11 +100,11 @@ export function captureWebInstallReturn() {
     const callback = new URL(context.callbackUrl || context.returnUrl);
     if (page.origin !== location.origin || callback.origin !== location.origin || callback.pathname !== location.pathname || context.consumed ||
       params.getAll('state').length !== 1 || params.get('state') !== context.state ||
-      params.getAll('openakita-install').length !== 1 || !/^[a-f0-9]{64}$/.test(params.get('openakita-install') || '') ||
+      params.getAll('newsclaw-install').length !== 1 || !/^[a-f0-9]{64}$/.test(params.get('newsclaw-install') || '') ||
       params.getAll('endpoint').length !== 1 || params.get('endpoint') !== context.endpoint) {
       throw new Error('marketplace_instruction_invalid');
     }
-    const token = params.get('openakita-install')!;
+    const token = params.get('newsclaw-install')!;
     if (context.token && context.token !== token) throw new Error('marketplace_install_busy');
     write({ ...context, token, ...(direct ? { state: token, relay: true } : {}) });
     sessionStorage.removeItem(ERROR_KEY);

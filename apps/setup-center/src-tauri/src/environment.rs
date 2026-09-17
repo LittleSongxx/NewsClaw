@@ -93,7 +93,7 @@ pub(crate) fn set_custom_root_dir(
     if let Some(ref p) = clean_path {
         let target = PathBuf::from(p);
         if !target.is_absolute() {
-            return Err("请使用绝对路径（如 D:\\MyData\\.openakita 或 /data/openakita）".into());
+            return Err("请使用绝对路径（如 D:\\MyData\\.newsclaw 或 /data/newsclaw）".into());
         }
         ensure_safe_newsclaw_data_root(&target)?;
         if target.exists() && !target.is_dir() {
@@ -102,7 +102,7 @@ pub(crate) fn set_custom_root_dir(
         fs::create_dir_all(&target).map_err(|e| format!("无法创建目标目录: {e}"))?;
         write_root_marker(&target)?;
         // 验证目录可写
-        let test_file = target.join(".openakita_write_test");
+        let test_file = target.join(".newsclaw_write_test");
         fs::write(&test_file, "test").map_err(|e| format!("目标目录无写入权限: {e}"))?;
         let _ = fs::remove_file(&test_file);
     }
@@ -449,7 +449,7 @@ pub(crate) fn set_onboarding_completed(completed: bool) -> Result<(), String> {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct EnvironmentCheck {
     /// 实际检查的根目录路径，便于用户核对是否与已删除的目录一致（如以管理员运行可能为另一用户目录）
-    openakita_root: String,
+    newsclaw_root: String,
     has_old_venv: bool,
     has_old_runtime: bool,
     has_old_workspaces: bool,
@@ -506,7 +506,7 @@ pub(crate) fn check_environment() -> EnvironmentCheck {
     let old_version = state.last_installed_version.clone();
     let current_version = env!("CARGO_PKG_VERSION").to_string();
 
-    // Check running processes (extract workspace_id from filename: openakita-{ws_id}.pid)
+    // Check running processes (extract workspace_id from filename: newsclaw-{ws_id}.pid)
     let mut running = Vec::new();
     if let Ok(entries) = fs::read_dir(run_dir()) {
         for entry in entries.flatten() {
@@ -515,7 +515,7 @@ pub(crate) fn check_environment() -> EnvironmentCheck {
                 let ws_id = path
                     .file_stem()
                     .and_then(|s| s.to_str())
-                    .and_then(|s| s.strip_prefix("openakita-"))
+                    .and_then(|s| s.strip_prefix("newsclaw-"))
                     .unwrap_or("unknown");
                 if let Ok(content) = fs::read_to_string(&path) {
                     if let Ok(data) = serde_json::from_str::<PidFileData>(&content) {
@@ -537,13 +537,13 @@ pub(crate) fn check_environment() -> EnvironmentCheck {
     let mut conflicts = Vec::new();
     if !running.is_empty() {
         conflicts.push(format!(
-            "检测到 {} 个正在运行的 OpenAkita 进程",
+            "检测到 {} 个正在运行的 NewsClaw 进程",
             running.len()
         ));
     }
 
     EnvironmentCheck {
-        openakita_root: root.to_string_lossy().to_string(),
+        newsclaw_root: root.to_string_lossy().to_string(),
         has_old_venv,
         has_old_runtime,
         has_old_workspaces,
@@ -718,7 +718,7 @@ pub(crate) fn cleanup_old_environment(
     }
 }
 
-/// Reset the entire OpenAkita installation to factory state.
+/// Reset the entire NewsClaw installation to factory state.
 /// Stops all processes, then removes workspaces, runtime, venv, logs, etc.
 /// Preserves only `root_config.json` (custom root dir setting).
 #[tauri::command]
@@ -825,7 +825,7 @@ mod tests {
     #[test]
     fn test_check_backend_availability_rejects_empty_venv() {
         let temp =
-            std::env::temp_dir().join(format!("openakita-empty-venv-test-{}", std::process::id()));
+            std::env::temp_dir().join(format!("newsclaw-empty-venv-test-{}", std::process::id()));
         if temp.exists() {
             let _ = fs::remove_dir_all(&temp);
         }
@@ -854,13 +854,13 @@ mod tests {
     fn test_newsclaw_root_dir_is_valid() {
         let root = newsclaw_root_dir();
         assert!(!root.to_string_lossy().is_empty());
-        // 默认落在 .newsclaw（全新安装）或 .openakita（沿用旧安装）之一，
+        // 默认落在 .newsclaw（全新安装）或 .newsclaw（沿用旧安装）之一，
         // 显式指定 NEWSCLAW_ROOT / NEWSCLAW_ROOT 时不受此限制。
         let root_str = root.to_string_lossy();
         let env_overridden = std::env::var("NEWSCLAW_ROOT").is_ok()
-            || std::env::var("OPENAKITA_ROOT").is_ok();
+            || std::env::var("NEWSCLAW_ROOT").is_ok();
         assert!(
-            root_str.contains(".newsclaw") || root_str.contains(".openakita") || env_overridden,
+            root_str.contains(".newsclaw") || root_str.contains(".newsclaw") || env_overridden,
             "root dir should be a NewsClaw data dir or overridden by env: {}",
             root_str
         );
@@ -888,9 +888,9 @@ mod tests {
     #[test]
     fn test_data_root_allows_dedicated_directory() {
         let dedicated = if cfg!(windows) {
-            PathBuf::from(r"D:\OpenAkitaData\.openakita")
+            PathBuf::from(r"D:\NewsClawData\.newsclaw")
         } else {
-            PathBuf::from("/tmp/openakita-data/.openakita")
+            PathBuf::from("/tmp/newsclaw-data/.newsclaw")
         };
         assert!(is_safe_newsclaw_data_root(&dedicated));
         assert!(ensure_safe_newsclaw_data_root(&dedicated).is_ok());

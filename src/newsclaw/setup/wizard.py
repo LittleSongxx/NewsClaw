@@ -322,7 +322,7 @@ NewsClaw 按「现状」(AS IS) 提供，不附带任何形式的明示或暗示
         import locale
 
         try:
-            lang, _ = locale.getdefaultlocale()
+            lang, _ = locale.getlocale()
             if lang and lang.lower().startswith("zh"):
                 return "zh"
         except Exception:
@@ -2166,8 +2166,7 @@ NewsClaw 按「现状」(AS IS) 提供，不附带任何形式的明示或暗示
                 "",
                 "## Documentation",
                 "",
-                "- GitHub: https://github.com/openakita/openakita",
-                "- Docs: https://github.com/openakita/openakita/tree/main/docs",
+                "- Docs: 见仓库内 `docs/` 与 `README.md`",
                 "",
                 "Enjoy your loyal AI companion!",
             ]

@@ -310,7 +310,7 @@ async function exportLogs(): Promise<ExportResult> {
     serverUrl || apiBase,
   );
 
-  const filename = `openakita-logs-${dateLabel()}.log`;
+  const filename = `newsclaw-logs-${dateLabel()}.log`;
 
   // --- Tauri: save file + show in folder ---
   if (IS_TAURI) {

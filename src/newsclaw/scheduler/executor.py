@@ -46,6 +46,7 @@ def _resolve_policy_confirmation_mode():
     except ValueError:
         return ConfirmationMode.DEFAULT
 
+
 CHANNEL_UNAVAILABLE_MARKER = "[channel_unavailable]"
 CHANNEL_UNAVAILABLE_MESSAGE = "IM 通道不可投递：微信会话或 context_token 已失效，请在微信中发送一条新消息刷新会话，或重新扫码登录。"
 
@@ -441,6 +442,13 @@ class TaskExecutor:
 
         return await self._execute_complex_task_core(task, skip_end_notification=task.silent)
 
+    @staticmethod
+    def _skip_end_notification(skip_end_notification: bool, *, success: bool) -> bool:
+        """silent 只静音成功收尾；失败仍通知（桌面/已配置的 IM），避免早报静默挂掉。"""
+        if not success:
+            return False
+        return skip_end_notification
+
     async def _execute_complex_task_core(
         self, task: ScheduledTask, skip_end_notification: bool = False
     ) -> tuple[bool, str]:
@@ -459,7 +467,7 @@ class TaskExecutor:
             # 系统任务只负责产出结果，通知仍走统一路径，避免完成结果只写历史不发 IM。
             if task.action and task.action.startswith("system:"):
                 system_success, system_result = await self._execute_system_task(task)
-                if not skip_end_notification:
+                if not self._skip_end_notification(skip_end_notification, success=system_success):
                     delivered, unavailable_marker = await self._send_end_notification_or_marker(
                         task,
                         success=system_success,
@@ -605,6 +613,9 @@ class TaskExecutor:
                 if _k not in _ws_seen:
                     _ws_seen.add(_k)
                     _ws_list.append(_p)
+            _newsroom_meta: dict[str, Any] = {"scheduled_task_id": task.id}
+            if task.metadata and isinstance(task.metadata, dict) and task.metadata.get("newsroom"):
+                _newsroom_meta["newsroom"] = task.metadata.get("newsroom")
             _policy_ctx = PolicyContext(
                 # ScheduledTask has no first-class ``session_id`` field —
                 # fall back to a synthetic id derived from task.id.
@@ -625,6 +636,7 @@ class TaskExecutor:
                 # — so a recorded auth.original_message == prompt → ALLOW.
                 user_message=task.prompt or "",
                 replay_authorizations=_replay_auths,
+                metadata=_newsroom_meta,
             )
             _ctx_token = set_current_context(_policy_ctx)
             try:
@@ -637,7 +649,7 @@ class TaskExecutor:
                 )
                 error_msg = f"任务执行超时（超过 {timeout_display} 未完成）"
                 logger.error(f"TaskExecutor: task {task.id} timed out after {task_timeout}s")
-                if not skip_end_notification:
+                if not self._skip_end_notification(skip_end_notification, success=False):
                     with contextlib.suppress(ChannelDeliveryUnavailable):
                         await self._send_end_notification(task, success=False, message=error_msg)
                 return False, error_msg
@@ -670,7 +682,7 @@ class TaskExecutor:
 
             # 5. 发送结果通知（如果需要）
             if not agent_success:
-                if not skip_end_notification:
+                if not self._skip_end_notification(skip_end_notification, success=False):
                     with contextlib.suppress(ChannelDeliveryUnavailable):
                         await self._send_end_notification(task, success=False, message=result)
                 logger.warning(f"TaskExecutor: task {task.id} failed via agent result: {result}")
@@ -694,7 +706,7 @@ class TaskExecutor:
         except Exception as e:
             error_msg = str(e)
             logger.error(f"TaskExecutor: task {task.id} failed: {error_msg}", exc_info=True)
-            if not skip_end_notification:
+            if not self._skip_end_notification(skip_end_notification, success=False):
                 with contextlib.suppress(ChannelDeliveryUnavailable):
                     await self._send_end_notification(task, success=False, message=error_msg)
             return False, error_msg
@@ -967,12 +979,11 @@ class TaskExecutor:
 
     async def _run_agent(self, agent: Any, prompt: str) -> tuple[bool, str]:
         """
-        运行 Agent（使用 Ralph 模式）
+        运行 Agent（走 execute_task_from_message 的 ReAct 路径）
 
-        优先使用 execute_task_from_message（Ralph 循环模式），
-        这样可以支持多轮工具调用，直到任务完成。
+        优先使用 execute_task_from_message，以支持多轮工具调用。
         """
-        # 优先使用 Ralph 模式（execute_task_from_message）
+        # 优先使用 execute_task_from_message（ReAct，不是 Ralph）
         if hasattr(agent, "execute_task_from_message"):
             # Scheduler owns start/end delivery. Prevent Agent's generic
             # desktop completion toast from producing a second notification.
@@ -1740,6 +1751,18 @@ class TaskExecutor:
         """
         # 基础 prompt
         prompt = task.prompt
+        metadata = getattr(task, "metadata", None) or {}
+        if isinstance(metadata, dict) and metadata.get("newsroom") == "daily":
+            from newsclaw.newsroom.prompts import with_runtime_injection
+
+            try:
+                prompt = with_runtime_injection(prompt or "")
+            except Exception as exc:
+                logger.error(
+                    "TaskExecutor: newsroom daily injection failed; aborting stale run",
+                    exc_info=True,
+                )
+                raise RuntimeError(f"早报当期注入失败，已中止以免用过期信源/方针：{exc}") from exc
 
         # 添加上下文信息
         context_parts = [

@@ -1,7 +1,7 @@
 """Contract suite for v2 OrgCommandService (P-RC-9 P9.4d).
 
 The contract pins the public surface of
-``openakita.orgs.command_service.OrgCommandService``
+``newsclaw.orgs.command_service.OrgCommandService``
 against a single in-memory test-double backend
 (``OrgCommandService`` has no JSON/SQLite split -- the
 service is volatile orchestration on top of three injected

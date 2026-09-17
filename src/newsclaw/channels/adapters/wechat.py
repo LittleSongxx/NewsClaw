@@ -1282,7 +1282,7 @@ class WeChatAdapter(ChannelAdapter):
         raise self._delivery_unavailable(chat_id, exc.reason, retryable=exc.retryable) from exc
 
     async def _send_text(self, to: str, text: str, ctx_token: str = "") -> str:
-        client_id = f"openakita-wechat-{uuid.uuid4().hex[:12]}"
+        client_id = f"newsclaw-wechat-{uuid.uuid4().hex[:12]}"
         body = {
             "msg": {
                 "from_user_id": "",
@@ -1320,7 +1320,7 @@ class WeChatAdapter(ChannelAdapter):
                         f"retry {attempt}/{SEND_RATE_LIMIT_RETRIES} after {delay:.1f}s"
                     )
                     await asyncio.sleep(delay)
-                    body["msg"]["client_id"] = f"openakita-wechat-{uuid.uuid4().hex[:12]}"
+                    body["msg"]["client_id"] = f"newsclaw-wechat-{uuid.uuid4().hex[:12]}"
                 else:
                     if token_hint and token_hint not in str(exc):
                         raise RuntimeError(str(exc) + token_hint) from exc
@@ -1354,7 +1354,7 @@ class WeChatAdapter(ChannelAdapter):
             client_ids.append(cid)
 
         # 构造媒体 item
-        client_id = f"openakita-wechat-{uuid.uuid4().hex[:12]}"
+        client_id = f"newsclaw-wechat-{uuid.uuid4().hex[:12]}"
         aeskey_hex = uploaded["aeskey"]
         media_ref = {
             "encrypt_query_param": uploaded["download_param"],
@@ -1439,7 +1439,7 @@ class WeChatAdapter(ChannelAdapter):
                         f"retry {attempt}/{SEND_RATE_LIMIT_RETRIES} after {delay:.1f}s"
                     )
                     await asyncio.sleep(delay)
-                    body["msg"]["client_id"] = f"openakita-wechat-{uuid.uuid4().hex[:12]}"
+                    body["msg"]["client_id"] = f"newsclaw-wechat-{uuid.uuid4().hex[:12]}"
                 else:
                     raise
         self._send_count += 1

@@ -209,7 +209,10 @@ class ChatRequest(BaseModel):
     )
     org_mode: bool | None = Field(
         None,
-        description="Whether this conversation is currently bound to an organization.",
+        description=(
+            "实验性第二运行时，面试主故事不讲。"
+            "为 true 且带 org_id 时走组织编排，而不是 ReAct 主聊天。"
+        ),
     )
     org_id: str | None = Field(
         None,

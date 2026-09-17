@@ -15,7 +15,7 @@ from newsclaw.integrations.marketplace.installer import (
 )
 
 TOKEN = "a" * 64
-ENDPOINT = "https://marketplace.openakita.cn"
+ENDPOINT = "https://marketplace.newsclaw.cn"
 
 
 def transport(monkeypatch, handler):
@@ -53,14 +53,14 @@ async def test_installation_proof_never_exports_account_tokens(monkeypatch):
     account = AccountOIDCManager(
         store=AsyncMock(),
         token_store=SimpleNamespace(load_refresh_token=AsyncMock(return_value="private-refresh")),
-        account_base_url="https://account.openakita.cn",
+        account_base_url="https://account.newsclaw.cn",
     )
     account._identity_locked = AsyncMock(return_value={"status": "active"})
 
     def handle(req):
-        assert str(req.url) == "https://account.openakita.cn/oauth/desktop-install-proof"
+        assert str(req.url) == "https://account.newsclaw.cn/oauth/desktop-install-proof"
         assert json.loads(req.content) == {
-            "client_id": "openakita-desktop",
+            "client_id": "newsclaw-desktop",
             "target_client_id": "marketplace",
             "refresh_token": "private-refresh",
             "installation_token": TOKEN,

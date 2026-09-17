@@ -67,10 +67,11 @@
 **④ 复盘（自进化）** 每周日，复盘 Agent 读最近 7 期的自评分和你的逐期反馈，然后去改三样东西：`sources.yaml`（信源质量）、`editorial-policy.md`（选题口味 / 文风 / 结构模板）、记忆（经验与规则）。第二天的管线立刻用上新配置——这才是"自进化"真正落地的地方。
 
 ```yaml
-# data/newsroom/config.yaml
+# data/newsroom/config.yaml（字段名与代码一致）
 enabled: true
-daily_cron: "0 7 * * *"      # 每日管线
-weekly_cron: "0 10 * * 1"    # 每周复盘
+daily_cron: "0 8 * * *"      # 每日管线，本地时区
+review_cron: "0 20 * * 0"    # 每周日 20:00 复盘
+# obsidian_vault: ""         # 留空 = 不做 Wiki；填绝对路径才沉淀
 ```
 
 ---
@@ -160,7 +161,7 @@ pip install -e ".[dev]"
 
 newsclaw init                 # 配置向导：模型 Key、IM 通道
 newsclaw                      # 交互式终端会话
-newsclaw run "帮我整理今天的 AI 新闻"    # 单次任务（无人值守语义）
+newsclaw run "帮我整理今天的 AI 新闻"    # 单次任务；无人值守对 CONFIRM 默认拒绝（deny）
 newsclaw serve                # 服务模式：IM 通道 + HTTP API（127.0.0.1:18900）
 
 # 桌面端
@@ -182,9 +183,11 @@ python -m build --wheel                 # 打包（同时校验技能清单与�
 
 ## 许可
 
-**AGPL-3.0-only** — 见 [LICENSE](LICENSE)。
+**AGPL-3.0-only** — 见 [LICENSE](LICENSE)。不能改成 MIT，也不能删 LICENSE / NOTICE / TRADEMARK / 版权行。
 
-本项目基于 [OpenAkita](https://github.com/openakita/openakita) 二次开发（上游同为 AGPL-3.0-only）。产品定位、功能范围与代码由本人改造；**上游的版权、许可与归属声明按要求保留**：见 [NOTICE](NOTICE)、[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[identity/CREDITS.md](identity/CREDITS.md)、[TRADEMARK.md](TRADEMARK.md)。AGPL-3.0-only 是 OSI 认可的完全开源许可；作为衍生作品，本仓库整体继续以 AGPL-3.0-only 发布。
+本项目是 [OpenAkita](https://github.com/openakita/openakita) 的**二次开发、非官方分支**（上游同为 AGPL-3.0-only）。产品定位、功能范围与代码由本仓库改造；**上游的版权、许可与归属声明按要求保留**：见 [NOTICE](NOTICE)、[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[identity/CREDITS.md](identity/CREDITS.md)、[TRADEMARK.md](TRADEMARK.md)。
+
+本仓库**没有独立 NewsClaw 云**，也不提供官方账户 / 应用市场域名。`NEWSCLAW_ACCOUNT_MODE` 默认 `disabled`；账户或市场必须自己填显式 URL。插件开发用的 `openakita_plugin_sdk`（PyPI 名保留上游包名，便于既有插件 import）是**独立 MIT 许可**的从属 SDK：你写的插件可以按 MIT 分发调用代码，但嵌入本仓库运行时仍受主仓 AGPL-3.0-only 约束。
 
 ## 这个仓库里没有的东西
 

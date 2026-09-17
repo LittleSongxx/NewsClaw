@@ -18,9 +18,10 @@ from newsclaw.integrations.marketplace.installer import (
 )
 
 
-def test_endpoint_requires_https_except_loopback() -> None:
-    assert validate_marketplace_endpoint("https://marketplace.openakita.cn/") == (
-        "https://marketplace.openakita.cn"
+def test_endpoint_requires_https_except_loopback(monkeypatch) -> None:
+    monkeypatch.setenv("NEWSCLAW_MARKETPLACE_ALLOWED_HOSTS", "market.example.com")
+    assert validate_marketplace_endpoint("https://market.example.com/") == (
+        "https://market.example.com"
     )
     assert validate_marketplace_endpoint("http://localhost:3001") == "http://localhost:3001"
     with pytest.raises(MarketplaceInstallError) as error:

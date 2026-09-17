@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NativeAuth } from '@openakita/native-auth';
+import { NativeAuth } from '@newsclaw/native-auth';
 import { parseNativeAuthorizationResult, readNativeAccountStatus, recoverNativeAccountLogin, runNativeAccountLogin } from '../nativeAccountAuth';
 
 const connection = vi.hoisted(() => ({base:'https://instance.example',token:'original-server-token'}));
@@ -7,18 +7,18 @@ const safeFetch = vi.hoisted(() => vi.fn());
 vi.mock('../auth', () => ({ getAccessToken: () => connection.token }));
 vi.mock('../servers', () => ({ getActiveServer: () => ({url:connection.base}) }));
 
-vi.mock('@openakita/native-auth', () => ({ NativeAuth: {
+vi.mock('@newsclaw/native-auth', () => ({ NativeAuth: {
   getRedirectUri: vi.fn(), authorize: vi.fn(), cancel: vi.fn(),
   getPendingResult: vi.fn(), clearPendingResult: vi.fn(),
 } }));
 const base = 'https://instance.example';
-const redirect = 'https://account.openakita.cn/oauth/mobile/callback';
+const redirect = 'https://account.newsclaw.cn/oauth/mobile/callback';
 const state = 'random-state';
 const url = `${redirect}?state=${state}&code=one-time-code`;
 const result = { state, url };
 const response = (data: unknown) => new Response(JSON.stringify(data));
 const start = () => response({flow:'native',attempt_id:'attempt',expires_in:180,
-  authorization_url:`https://account.openakita.cn/oauth/authorize?redirect_uri=${encodeURIComponent(redirect)}&state=${state}&code_challenge=challenge&code_challenge_method=S256`});
+  authorization_url:`https://account.newsclaw.cn/oauth/authorize?redirect_uri=${encodeURIComponent(redirect)}&state=${state}&code_challenge=challenge&code_challenge_method=S256`});
 
 describe('native account authorization delivery', () => {
   beforeEach(() => {

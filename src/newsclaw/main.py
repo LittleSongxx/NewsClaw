@@ -112,7 +112,7 @@ _init_tracing()
 # Typer 应用
 app = typer.Typer(
     name="newsclaw",
-    help="NewsClaw - 全能自进化AI助手",
+    help="NewsClaw - 本地优先的多 Agent AI 助手",
     add_completion=False,
 )
 
@@ -945,15 +945,15 @@ async def stop_im_channels(*, graceful: bool = True, drain_timeout: float = 30.0
 def print_welcome():
     """打印欢迎信息"""
     welcome_text = """
-# NewsClaw - 全能自进化AI助手
+# NewsClaw
 
-基于 **Ralph Wiggum 模式**，永不放弃。
+本地优先的多 Agent AI 助手。主循环是 ReAct（推理 → 工具 → 观察）。
 
 ## 核心特性
-- 🔄 任务未完成绝不终止
-- 🧠 自动学习和进化
-- 🔧 动态安装新技能
-- 📝 持续记录经验
+- 🔧 工具调用前经过策略引擎裁决
+- 🧭 子任务单跳派工
+- 📦 技能从内置 / 工作区 / skills/ 加载
+- 📝 可记录经验到记忆
 
 ## 命令
 - 直接输入消息与 Agent 对话
@@ -1605,7 +1605,7 @@ def main(
     ),
 ):
     """
-    NewsClaw - 全能自进化AI助手
+    NewsClaw - 本地优先的多 Agent AI 助手
 
     直接运行进入交互模式
     """
@@ -1720,11 +1720,9 @@ def run(
         agent = get_agent()
         await agent.initialize()
 
-        # C14 / R4-8: ``newsclaw run`` 是一次性非交互入口 — 即使 stdin
-        # 是 TTY 也不应等待 ``security_confirm`` SSE/Prompt。把
-        # PolicyContext 显式标记为 unattended，让 PolicyEngineV2 step 11
-        # 按 ``unattended_strategy`` 路由（默认 ask_owner），CONFIRM-class
-        # 工具走 PendingApproval / DeferredApprovalRequired 路径而非挂死。
+        # ``newsclaw run`` 是一次性非交互入口 — 即使 stdin 是 TTY 也不应
+        # 等待 ``security_confirm`` SSE/Prompt。标记 unattended 后 step 11
+        # 默认策略是 ``deny``：CONFIRM 类工具直接拒绝，而不是挂起等审批。
         #
         # Re-audit (D1): classifier 是 SoT — 这里通过 ``classify_entry``
         # 拿到完整 (is_unattended, default_strategy) 后再喂给
@@ -2881,7 +2879,7 @@ class Plugin(PluginBase):
   <meta charset="UTF-8" />
   <title>{manifest["name"]}</title>
   <script type="module">
-    // Replace with: import {{ PluginBridge }} from "@openakita/plugin-ui-sdk";
+    // Replace with: import {{ PluginBridge }} from "@newsclaw/plugin-ui-sdk";
     const bridge = {{ init: () => window.parent.postMessage({{ __akita_bridge: true, version: 1, type: "bridge:ready" }}, "*") }};
     bridge.init();
   </script>

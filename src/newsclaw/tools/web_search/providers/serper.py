@@ -49,7 +49,7 @@ class SerperProvider:
     _NEWS_ENDPOINT = "https://google.serper.dev/news"
 
     def __init__(self) -> None:
-        self._pool = KeyPool()
+        self._pool = KeyPool(state_name="serper")
 
     def _keys(self) -> list[str]:
         return KeyPool.parse_keys(settings.serper_api_key or "")
@@ -162,6 +162,14 @@ class SerperProvider:
                     type(exc).__name__,
                 )
                 continue
+            except NetworkUnreachableError as exc:
+                last_error = exc
+                logger.info(
+                    "[serper] key %s network error (%s); switching to next key in pool",
+                    _mask(api_key),
+                    type(exc).__name__,
+                )
+                continue
 
         assert last_error is not None
         raise last_error
@@ -199,6 +207,14 @@ class SerperProvider:
                 self._pool.penalize(api_key)
                 logger.info(
                     "[serper] key %s rejected on news (%s); switching next",
+                    _mask(api_key),
+                    type(exc).__name__,
+                )
+                continue
+            except NetworkUnreachableError as exc:
+                last_error = exc
+                logger.info(
+                    "[serper] key %s network error on news (%s); switching next",
                     _mask(api_key),
                     type(exc).__name__,
                 )

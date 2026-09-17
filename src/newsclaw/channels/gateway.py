@@ -4604,9 +4604,8 @@ class MessageGateway:
 
             # 4.0.2 C14 / R4-7: IM/Webhook 通道没有同步 confirm UI 通道（无法
             # 在 IM 客户端弹模态框）。把 session 标记为 is_unattended → 让
-            # PolicyEngineV2 step 11 通过 unattended_strategy（默认 ask_owner）
-            # 把 CONFIRM-class 工具 defer 给 owner 的 setup-center / 收件箱，
-            # 而不是悬挂在等不到响应的 SSE confirm 上。
+            # PolicyEngineV2 step 11 通过 unattended_strategy（默认 deny）
+            # 拒绝 CONFIRM 类工具，而不是悬挂在等不到响应的 SSE confirm 上。
             #
             # 用 classifier 的 idempotent helper：已经 unattended 的 session
             # 不会被改回 False；明确设置过 unattended_strategy 的 session 也
@@ -6571,10 +6570,8 @@ class MessageGateway:
         risk = event.get("risk_level", "HIGH")
         confirm_id = (event.get("id") or "") or ""
         timeout = float(session.get_metadata("security_timeout") or 120)
-        # C8b-5: 之前用 v1 ``pe._is_trust_mode()`` 做 IM 渠道 trust-mode 自动
-        # 拒绝。v2 ``read_permission_mode_label() == "yolo"`` 是 SoT 等价读，
-        # v1 ``_is_trust_mode`` method 在 C8b-6 删除前仍存在但仅供内部 v1
-        # ``assert_tool_allowed`` 使用——外部 caller 全部切到 v2 helper。
+        # IM 信任模式只认旧三档 ``yolo``（= confirmation.mode trust）。
+        # DONT_ASK 不再映射 yolo，因此 dont_ask 不会走这条 IM YOLO 旁路。
         from ..core.policy_v2 import read_permission_mode_label
 
         is_trust_mode = read_permission_mode_label() == "yolo"

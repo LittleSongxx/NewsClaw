@@ -12,7 +12,7 @@ vi.mock("../../platform", () => ({
   IS_TAURI: true,
   IS_CAPACITOR: false,
   getCurrentDeepLinks: vi.fn(async () => [
-    `openakita://marketplace/install?token=${"b".repeat(64)}&endpoint=https://marketplace.openakita.cn`,
+    `newsclaw://marketplace/install?token=${"b".repeat(64)}&endpoint=https://marketplace.newsclaw.cn`,
   ]),
   onDeepLinkOpen: vi.fn(async () => () => {}),
 }));

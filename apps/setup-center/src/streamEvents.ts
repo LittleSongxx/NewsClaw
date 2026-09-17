@@ -1,7 +1,7 @@
 /**
  * Canonical SSE event type definitions.
  *
- * KEEP IN SYNC with src/openakita/events.py — StreamEventType enum.
+ * KEEP IN SYNC with src/newsclaw/events.py — StreamEventType enum.
  * This file is the frontend Single Source of Truth for event type strings.
  */
 

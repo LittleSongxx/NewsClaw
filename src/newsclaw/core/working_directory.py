@@ -1,8 +1,9 @@
 """Session-scoped working-directory helpers.
 
-The configuration workspace (``settings.project_root``) owns NewsClaw state.
-User file operations use the working directory carried by the current
-``PolicyContext`` so concurrent conversations never need process-wide chdir.
+NewsClaw 状态仍在 ``settings.project_root``（源码/安装目录）下。
+会话默认工作区走 ``settings.user_workspace_path``，避免把整棵源码树
+暴露给聊天文件树和 Agent 文件工具。用户文件操作使用当前
+``PolicyContext`` 携带的工作目录，并发会话不需要进程级 chdir。
 """
 
 from __future__ import annotations
@@ -28,13 +29,23 @@ def working_directory_feature_enabled() -> bool:
 
 
 def config_workspace() -> Path:
-    """Return the process-level configuration workspace."""
+    """返回用户可读写的工作区，而不是安装目录或仓库源码树。
+
+    桌面生产模式里 ``project_root`` 已经落在 ``newsclaw_home/workspaces/`` 下，
+    与工作区重合。云端/开发模式从源码目录启动时，若仍用 ``project_root``，
+    聊天侧栏文件树和 Agent 默认 cwd 会变成整棵源码树。
+    """
     try:
         from ..config import settings
 
-        return Path(settings.project_root).expanduser().resolve(strict=False)
+        path = Path(settings.user_workspace_path).expanduser().resolve(strict=False)
     except Exception:
-        return Path.cwd().resolve(strict=False)
+        path = Path.cwd().resolve(strict=False)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return path
 
 
 def normalize_working_directory(

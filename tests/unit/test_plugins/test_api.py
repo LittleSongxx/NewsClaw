@@ -1,4 +1,4 @@
-"""Tests for openakita.plugins.api — PluginAPI and permission enforcement."""
+"""Tests for newsclaw.plugins.api — PluginAPI and permission enforcement."""
 
 from __future__ import annotations
 

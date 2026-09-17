@@ -69,7 +69,7 @@ _MODE_TOKENS = {
     ConfirmationMode.DEFAULT.value: _token("default", "默认确认"),
     ConfirmationMode.ACCEPT_EDITS.value: _token("accept_edits", "接受编辑"),
     ConfirmationMode.STRICT.value: _token("strict", "严格确认"),
-    ConfirmationMode.DONT_ASK.value: _token("dont_ask", "不询问"),
+    ConfirmationMode.DONT_ASK.value: _token("dont_ask", "不询问（未预批则拒绝）"),
 }
 
 _STEP_LABELS = {
@@ -107,7 +107,7 @@ _REASON_LABELS = {
     "matrix says CONFIRM (no relax matched)": "策略矩阵要求确认（未命中重放授权、可信路径或用户白名单）",
     "matrix says ALLOW": "策略矩阵允许执行",
     "matrix says DENY": "策略矩阵拒绝执行",
-    "security profile is off": "安全方案已关闭，允许执行",
+    "security profile is off": "安全方案已关闭，锁定并拒绝全部工具",
     "death_switch active": "只读保护已触发，阻止继续执行",
     "tool call only previews candidates": "该工具调用只预览候选项，不会执行提交操作",
     "tool commit requires confirmed RiskGate tool authorization": "工具提交需要已确认的 RiskGate 授权",

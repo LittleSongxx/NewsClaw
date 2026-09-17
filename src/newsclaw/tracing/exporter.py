@@ -1,10 +1,11 @@
 """
-追踪导出器
+本地追踪导出器
 
-将 Trace 数据导出到不同的后端:
+将 Trace 数据导出到本地后端:
 - FileExporter: JSON 文件存储 (默认)
 - ConsoleExporter: 控制台输出 (开发调试)
-- OpenTelemetry: OTEL 兼容导出 (可选扩展)
+
+这不是 OpenTelemetry，也没有 OTel 兼容导出器。
 """
 
 import json

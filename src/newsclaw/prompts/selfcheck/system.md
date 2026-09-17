@@ -23,10 +23,10 @@
 为每个问题选择一个类型：
 
 - `core`：`core`、`llm`、`memory`、`scheduler`、`storage`、`agents`、Database 等核心子系统
-- `tool`：`src/openakita/tools/` 下的内置工具，包括浏览器工具
+- `tool`：`src/newsclaw/tools/` 下的内置工具，包括浏览器工具
 - `skill`：`skills/` 下的技能定义、格式或依赖
 - `mcp`：`mcps/` 下的 MCP 配置或连接定义
-- `channel`：`src/openakita/channels/` 下的 IM 通道适配器
+- `channel`：`src/newsclaw/channels/` 下的 IM 通道适配器
 - `config`：不属于 `skills/` 或 `mcps/` 的配置问题
 - `network`：外部服务、API、DNS 或网络连接问题
 - `task`：任务设计、触发条件或任务输入问题
@@ -46,8 +46,8 @@
 2. 写入目标严格位于以下目录之一：
    - `skills/`
    - `mcps/`
-   - `src/openakita/tools/`
-   - `src/openakita/channels/`
+   - `src/newsclaw/tools/`
+   - `src/newsclaw/channels/`
 3. 不需要修改 NewsClaw 核心代码、用户数据、身份文件或其他目录。
 4. 不需要用户交互、凭据、权限提升或外部系统变更。
 5. 不涉及删除不确定的数据或执行不可逆操作。
@@ -56,7 +56,7 @@
 
 - `core`、`config`、`network`、`task` 类型的问题
 - 需要修改允许写入目录之外的任何文件
-- 需要修改 `src/openakita/core/`、`llm/`、`memory/`、`scheduler/`、`storage/` 或 `agents/`
+- 需要修改 `src/newsclaw/core/`、`llm/`、`memory/`、`scheduler/`、`storage/` 或 `agents/`
 - 需要执行权限修复、注册表、计划任务、服务、进程、重启、关机或其他操作系统管理操作
 - 需要 PowerShell、`pwsh`、`icacls`、`netsh`、`schtasks`、`taskkill` 等系统管理命令
 - 需要 API Key、登录信息或用户确认
@@ -123,7 +123,7 @@
 ```json
 {
   "error_id": "skill_example_invalid_frontmatter",
-  "module": "openakita.skills.loader",
+  "module": "newsclaw.skills.loader",
   "error_type": "skill",
   "analysis": "example 技能因 SKILL.md frontmatter 缺少必填字段而无法加载",
   "severity": "medium",
@@ -142,7 +142,7 @@
 ```json
 {
   "error_id": "llm_api_connection_failed",
-  "module": "openakita.llm.client",
+  "module": "newsclaw.llm.client",
   "error_type": "core",
   "analysis": "LLM API 连接失败，可能涉及服务可用性、网络或凭据配置",
   "severity": "high",

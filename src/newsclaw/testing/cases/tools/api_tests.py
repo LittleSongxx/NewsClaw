@@ -1,6 +1,4 @@
-"""
-API 操作测试用例 (30个)
-"""
+"""API 操作 demo cases（10 条）。字符串包含判定，不是质量门。"""
 
 from newsclaw.testing.runner import TestCase
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2, RefreshCw, Settings2, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { safeFetch } from "../providers";
 import { encodePathSegment } from "../platform/apiUrl";
 import { MarkdownContent } from "./chat/components/MarkdownContent";
@@ -25,7 +26,8 @@ import { toast } from "sonner";
  *  - 期次列表 GET /issues，详情 GET /issues/{date}（三产物 + manifest）
  *  - 反馈 POST /feedback（点赞/点踩 + 短评）——每周复盘任务的输入信号
  *  - 设置 GET/PUT /config，信源 GET/PUT /sources（YAML 直编）
- *  - 手动触发 POST /generate（复用调度器后台执行，前端只拿 execution_id）
+ *  - 本周提案 GET /proposal，勾选后 POST /proposal/apply 或 reject
+ *  - 手动触发 POST /generate（复用调度器后台执行，前端轮询 execution）
  */
 
 type ScoreEntry = { score: number; rationale: string };
@@ -34,6 +36,7 @@ type IssueSummary = {
   issue_date: string;
   title: string;
   status: "ready" | "partial" | string;
+  manifest_error?: string | null;
   sources_used: string[];
   wiki_entries: string[];
   feishu_doc_url?: string;
@@ -46,6 +49,7 @@ type IssueSummary = {
 type IssueDetail = {
   manifest: IssueSummary | null;
   content: { "daily-brief": string | null; xiaohongshu: string | null; wechat: string | null };
+  manifest_error?: string | null;
 };
 
 type NewsroomConfigDto = {
@@ -55,6 +59,29 @@ type NewsroomConfigDto = {
   obsidian_vault: string;
   issue_history_days: number;
   task_timeout_seconds: number;
+  load_error?: string;
+};
+
+type ProposalEvidence = { issue_date?: string; dimension?: string; note?: string };
+
+type ProposalOp = {
+  id: string;
+  kind: "source" | "policy_bullet" | "memory_rule" | string;
+  action: string;
+  name?: string;
+  summary: string;
+  requires_explicit_select?: boolean;
+  evidence?: ProposalEvidence | null;
+};
+
+type ProposalDto = {
+  status: "none" | "invalid" | "pending" | "applied" | "rejected" | string;
+  parse_error: string | null;
+  fingerprint?: string;
+  applied_op_ids?: string[];
+  remaining_op_ids?: string[];
+  last_memory_error?: string | null;
+  ops: ProposalOp[];
 };
 
 const ARTIFACT_TABS = [
@@ -80,8 +107,12 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [config, setConfig] = useState<NewsroomConfigDto | null>(null);
   const [sourcesYaml, setSourcesYaml] = useState("");
+  const [policyText, setPolicyText] = useState("");
+  const [proposal, setProposal] = useState<ProposalDto | null>(null);
+  const [selectedOpIds, setSelectedOpIds] = useState<string[]>([]);
   const [savingConfig, setSavingConfig] = useState(false);
   const [savingSources, setSavingSources] = useState(false);
+  const [applyingProposal, setApplyingProposal] = useState(false);
 
   // 反馈表单状态跟随选中期（manifest.feedback 是既有值）
   const [fbRating, setFbRating] = useState<number | null>(null);
@@ -127,6 +158,40 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
     }
   }, [API_BASE]);
 
+  const fetchProposal = useCallback(async () => {
+    try {
+      const [propRes, policyRes] = await Promise.all([
+        safeFetch(`${API_BASE}/api/newsroom/proposal`),
+        safeFetch(`${API_BASE}/api/newsroom/editorial-policy`),
+      ]);
+      if (propRes.ok) {
+        const data = (await propRes.json()) as ProposalDto;
+        setProposal(data);
+        if (data.status === "pending") {
+          const applied = new Set(data.applied_op_ids || []);
+          setSelectedOpIds(
+            (data.ops || [])
+              .filter(
+                (op) =>
+                  applied.has(op.id) || (op.kind !== "source" && op.kind !== "memory_rule"),
+              )
+              .map((op) => op.id),
+          );
+        } else if (data.status === "applied") {
+          setSelectedOpIds(data.applied_op_ids || []);
+        } else {
+          setSelectedOpIds([]);
+        }
+      }
+      if (policyRes.ok) {
+        const data = await policyRes.json();
+        setPolicyText(typeof data.text === "string" ? data.text : "");
+      }
+    } catch {
+      /* 服务未就绪时保持空态 */
+    }
+  }, [API_BASE]);
+
   const fetchSettings = useCallback(async () => {
     try {
       const [cfgRes, srcRes] = await Promise.all([
@@ -139,10 +204,11 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
         // 信源以 YAML 文本直编（与磁盘 sources.yaml 同构，后端解析校验）
         setSourcesYaml(typeof data.yaml === "string" ? data.yaml : "");
       }
+      await fetchProposal();
     } catch {
       /* 服务未就绪时保持空态 */
     }
-  }, [API_BASE]);
+  }, [API_BASE, fetchProposal]);
 
   useEffect(() => {
     if (!serviceRunning) return;
@@ -158,18 +224,42 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
     setGenerating(true);
     try {
       const res = await safeFetch(`${API_BASE}/api/newsroom/generate`, { method: "POST" });
-      if (res.status === 202) {
-        toast.success(t("newsroom.generating"));
-      } else {
+      if (res.status !== 202) {
         const data = await res.json().catch(() => ({}));
         toast.error(data.error || t("newsroom.loadFailed"));
+        return;
       }
+      const accepted = await res.json().catch(() => ({}));
+      const executionId = typeof accepted.execution_id === "string" ? accepted.execution_id : "";
+      toast.success(t("newsroom.generating"));
+      const deadline = Date.now() + 2 * 60 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const exRes = await safeFetch(
+          `${API_BASE}/api/scheduler/tasks/newsroom_daily_pipeline/executions?limit=20`,
+        );
+        if (!exRes.ok) continue;
+        const exData = await exRes.json().catch(() => ({}));
+        const rows = Array.isArray(exData.executions) ? exData.executions : [];
+        const found = executionId
+          ? rows.find((row: { id?: string }) => row.id === executionId)
+          : rows[0];
+        if (!found || found.status === "running") continue;
+        if (found.status === "success") {
+          toast.success(t("newsroom.generateDone"));
+        } else {
+          toast.error(found.error || t("newsroom.generateFailed"));
+        }
+        await fetchIssues(true);
+        return;
+      }
+      toast.error(t("newsroom.generateTimeout"));
     } catch {
       toast.error(t("newsroom.loadFailed"));
     } finally {
       setGenerating(false);
     }
-  }, [API_BASE, t]);
+  }, [API_BASE, fetchIssues, t]);
 
   const submitFeedback = useCallback(async () => {
     if (!selectedDate || fbRating === null) return;
@@ -206,17 +296,85 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
           obsidian_vault: config.obsidian_vault,
         }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setConfig(await res.json());
+        setConfig(data);
         toast.success(t("newsroom.saved"));
       } else {
-        const data = await res.json().catch(() => ({}));
-        toast.error(data.error || t("newsroom.loadFailed"));
+        toast.error(data.reconcile_error || data.error || t("newsroom.loadFailed"));
       }
     } finally {
       setSavingConfig(false);
     }
   }, [API_BASE, config, t]);
+
+  const toggleOp = useCallback((opId: string, checked: boolean) => {
+    setSelectedOpIds((prev) => {
+      if (checked) return prev.includes(opId) ? prev : [...prev, opId];
+      return prev.filter((id) => id !== opId);
+    });
+  }, []);
+
+  const applySelectedProposal = useCallback(async () => {
+    if (!proposal || proposal.status !== "pending") return;
+    const already = new Set(proposal.applied_op_ids || []);
+    const freshIds = selectedOpIds.filter((id) => !already.has(id));
+    if (freshIds.length === 0) return;
+    setApplyingProposal(true);
+    try {
+      const applyMemory = freshIds.includes("memory_rule");
+      const res = await safeFetch(`${API_BASE}/api/newsroom/proposal/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          op_ids: freshIds,
+          apply_memory: applyMemory,
+          actor: "webui",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        if (data.memory_error) {
+          toast.error(data.memory_error);
+        } else if (Array.isArray(data.remaining_op_ids) && data.remaining_op_ids.length > 0) {
+          toast.success(t("newsroom.proposalPartialOk"));
+        } else {
+          toast.success(t("newsroom.proposalAppliedOk"));
+        }
+        await fetchProposal();
+        await fetchSettings();
+      } else {
+        toast.error(data.error || t("newsroom.loadFailed"));
+      }
+    } catch {
+      toast.error(t("newsroom.loadFailed"));
+    } finally {
+      setApplyingProposal(false);
+    }
+  }, [API_BASE, proposal, selectedOpIds, fetchProposal, fetchSettings, t]);
+
+  const rejectCurrentProposal = useCallback(async () => {
+    if (!proposal || proposal.status !== "pending") return;
+    setApplyingProposal(true);
+    try {
+      const res = await safeFetch(`${API_BASE}/api/newsroom/proposal/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actor: "webui" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success(t("newsroom.proposalRejectedOk"));
+        await fetchProposal();
+      } else {
+        toast.error(data.error || t("newsroom.loadFailed"));
+      }
+    } catch {
+      toast.error(t("newsroom.loadFailed"));
+    } finally {
+      setApplyingProposal(false);
+    }
+  }, [API_BASE, proposal, fetchProposal, t]);
 
   const saveSources = useCallback(async () => {
     setSavingSources(true);
@@ -293,6 +451,95 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
         </div>
       </div>
 
+      <Card className="border-border/50 shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-5">
+          <CardTitle className="text-sm font-semibold">{t("newsroom.proposalTitle")}</CardTitle>
+          {proposal && proposal.status !== "none" && (
+            <Badge variant={proposal.status === "pending" ? "default" : "secondary"} className="text-[10px]">
+              {proposal.status === "pending"
+                ? t("newsroom.proposalPending")
+                : proposal.status === "applied"
+                  ? t("newsroom.proposalApplied")
+                  : proposal.status === "rejected"
+                    ? t("newsroom.proposalRejected")
+                    : t("newsroom.proposalInvalid")}
+            </Badge>
+          )}
+        </CardHeader>
+        <CardContent className="px-5 pb-4 space-y-3">
+          {!proposal || proposal.status === "none" ? (
+            <p className="text-xs text-muted-foreground leading-relaxed">{t("newsroom.proposalEmpty")}</p>
+          ) : proposal.status === "invalid" ? (
+            <p className="text-xs text-destructive leading-relaxed">
+              {proposal.parse_error || t("newsroom.proposalInvalid")}
+            </p>
+          ) : (proposal.ops || []).length === 0 ? (
+            <p className="text-xs text-muted-foreground">{t("newsroom.proposalNoOps")}</p>
+          ) : (
+            <ul className="space-y-2">
+              {proposal.ops.map((op) => {
+                const pending = proposal.status === "pending";
+                const alreadyApplied = (proposal.applied_op_ids || []).includes(op.id);
+                const checked = selectedOpIds.includes(op.id) || alreadyApplied;
+                const evidenceBits = [
+                  op.evidence?.issue_date,
+                  op.evidence?.dimension,
+                  op.evidence?.note,
+                ].filter(Boolean);
+                return (
+                  <li key={op.id} className="flex items-start gap-2 text-sm">
+                    <Checkbox
+                      className="mt-0.5"
+                      checked={checked}
+                      disabled={!pending || applyingProposal || alreadyApplied}
+                      onCheckedChange={(value) => toggleOp(op.id, !!value)}
+                    />
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="leading-relaxed">
+                        <span className="text-[10px] uppercase text-muted-foreground mr-1.5">{op.kind}</span>
+                        {op.summary}
+                      </div>
+                      {evidenceBits.length > 0 && (
+                        <div className="text-[11px] text-muted-foreground">
+                          {t("newsroom.proposalEvidence")}: {evidenceBits.join(" · ")}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {proposal?.last_memory_error && proposal.status === "pending" && (
+            <p className="text-xs text-destructive leading-relaxed">{proposal.last_memory_error}</p>
+          )}
+          {proposal?.status === "pending" && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <p className="text-[11px] text-muted-foreground mr-auto">{t("newsroom.proposalSelectSources")}</p>
+              <Button
+                size="sm"
+                disabled={
+                  applyingProposal ||
+                  selectedOpIds.filter((id) => !(proposal.applied_op_ids || []).includes(id)).length === 0
+                }
+                onClick={() => void applySelectedProposal()}
+              >
+                {applyingProposal && <Loader2 size={13} className="mr-1 animate-spin" />}
+                {t("newsroom.proposalApply")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={applyingProposal}
+                onClick={() => void rejectCurrentProposal()}
+              >
+                {t("newsroom.proposalReject")}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 items-stretch">
         {/* ── 左列：期次列表 ── */}
         <Card className={`p-0 gap-0 border-border/50 shadow-sm flex flex-col ${paneHeight}`}>
@@ -322,7 +569,13 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
                       {issue.feedback.rating === 1 && <ThumbsUp size={11} className="text-green-600" />}
                       {issue.feedback.rating === -1 && <ThumbsDown size={11} className="text-red-500" />}
                       <Badge variant={issue.status === "ready" ? "default" : "secondary"} className="text-[10px] px-1.5">
-                        {issue.status === "ready" ? t("newsroom.statusReady") : t("newsroom.statusPartial")}
+                        {issue.status === "ready"
+                          ? t("newsroom.statusReady")
+                          : issue.status === "rejected"
+                            ? t("newsroom.statusRejected")
+                            : issue.status === "invalid"
+                              ? t("newsroom.statusInvalid")
+                              : t("newsroom.statusPartial")}
                       </Badge>
                     </span>
                   </div>
@@ -350,6 +603,11 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
           ) : (
             <>
               <CardHeader className="space-y-2 pb-3 pt-4 px-5 shrink-0">
+                {(detail?.manifest_error || selected.manifest_error) && (
+                  <p className="text-xs text-destructive leading-relaxed">
+                    {detail?.manifest_error || selected.manifest_error}
+                  </p>
+                )}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <CardTitle className="text-sm font-semibold truncate">
                     {detail?.manifest?.title || selected.title || selectedDate}
@@ -462,6 +720,11 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
             <section className="space-y-3">
               {config ? (
                 <>
+                  {config.load_error && (
+                    <p className="text-xs text-destructive leading-relaxed">
+                      {t("newsroom.configLoadError")}: {config.load_error}
+                    </p>
+                  )}
                   <div className="flex items-center justify-between">
                     <Label className="text-sm" htmlFor="newsroom-enabled">{t("newsroom.configEnabled")}</Label>
                     <Switch
@@ -510,6 +773,19 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
               ) : (
                 <p className="text-xs text-muted-foreground py-4 text-center">{t("newsroom.loadFailed")}</p>
               )}
+            </section>
+
+            <section className="space-y-2 pt-5 border-t border-border/60">
+              <div className="space-y-1">
+                <div className="text-sm font-semibold">{t("newsroom.editorialPolicy")}</div>
+                <p className="text-xs text-muted-foreground">{t("newsroom.editorialPolicyHint")}</p>
+              </div>
+              <Textarea
+                className="font-mono text-xs min-h-[160px] bg-muted/40"
+                value={policyText}
+                readOnly
+                spellCheck={false}
+              />
             </section>
 
             {/* 信源清单 */}

@@ -1,4 +1,4 @@
-"""Tests for ``openakita.agent.output_formatter``.
+"""Tests for ``newsclaw.agent.output_formatter``.
 
 The legacy module had no dedicated tests beyond a smoke run; this
 file makes the contract explicit so the v2 port survives any future

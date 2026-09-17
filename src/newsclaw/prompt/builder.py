@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 def _load_prompt_asset(relative_path: str) -> str:
-    """Load a required prompt bundled under ``openakita/prompts``."""
+    """Load a required prompt bundled under ``newsclaw/prompts``."""
     parts = PurePosixPath(relative_path).parts
     if not parts or any(part in {"", ".", ".."} for part in parts):
         raise ValueError(f"Invalid prompt asset path: {relative_path!r}")
@@ -1112,7 +1112,7 @@ def _build_runtime_section_uncached(working_directory: str | None = None) -> str
     # --- 系统环境 ---
     system_encoding = _sys.getdefaultencoding()
     try:
-        default_locale = _locale.getdefaultlocale()
+        default_locale = _locale.getlocale()
         locale_str = f"{default_locale[0]}, {default_locale[1]}" if default_locale[0] else "unknown"
     except Exception:
         locale_str = "unknown"

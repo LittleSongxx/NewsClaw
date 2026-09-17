@@ -24,19 +24,19 @@
 //!   Reporting\LocalDumps` because that requires Administrator. Instead we
 //!   own the lifecycle entirely in-process: `SetUnhandledExceptionFilter`
 //!   installs our callback and `MiniDumpWriteDump` writes a normal-sized
-//!   (~1-5 MB) dump into `~/.openakita/crashdumps/`.
+//!   (~1-5 MB) dump into `~/.newsclaw/crashdumps/`.
 //! * The callback must be signal-safe: no heap allocations, no locks, no
 //!   `String::from_utf8` etc. We pre-compute the dump directory at install
 //!   time and store a wide-char prefix in a `OnceLock`; the callback copies
 //!   that prefix into a fixed stack buffer, appends
-//!   `\openakita-{pid}-{ticks}.dmp`, opens the file via
+//!   `\newsclaw-{pid}-{ticks}.dmp`, opens the file via
 //!   `CreateFileW`, dumps, and chains to the prior filter.
 //! * Retention is best-effort and runs at install time (not inside the
 //!   crash callback): we list `crashdumps/`, sort by mtime descending, and
 //!   `remove_file` everything past index 5.
 //!
 //! No-op on non-Windows targets. The feedback bundle (`build_feedback_zip`)
-//! looks for `~/.openakita/crashdumps/*.dmp` regardless of platform, so
+//! looks for `~/.newsclaw/crashdumps/*.dmp` regardless of platform, so
 //! macOS / Linux users still get their existing `crash.log` shipped, just
 //! without binary dumps (which they wouldn't have anyway).
 //!
@@ -169,7 +169,7 @@ mod imp {
     /// `Win32_System_Kernel` feature.
     const EXCEPTION_CONTINUE_SEARCH: i32 = 0;
 
-    /// Pre-built wide-char prefix `<dump_dir>\openakita-`. We append the
+    /// Pre-built wide-char prefix `<dump_dir>\newsclaw-`. We append the
     /// PID + tick suffix in the (signal-safe) handler.
     static DUMP_PATH_PREFIX_W: OnceLock<Vec<u16>> = OnceLock::new();
     const MAX_DUMP_PATH_W: usize = 1024;
@@ -190,8 +190,8 @@ mod imp {
         }
 
         // Pre-build the wide-char prefix so the crash callback doesn't
-        // need to touch formatting APIs. Layout: "<dump_dir>\openakita-".
-        let prefix: Vec<u16> = OsStr::new(&format!("{}\\openakita-", dump_dir.display()))
+        // need to touch formatting APIs. Layout: "<dump_dir>\newsclaw-".
+        let prefix: Vec<u16> = OsStr::new(&format!("{}\\newsclaw-", dump_dir.display()))
             .encode_wide()
             .collect();
         // The handler uses a fixed stack buffer. If the prefix alone is
@@ -288,7 +288,7 @@ mod imp {
             None => return chain(info),
         };
 
-        // Build "<dir>\openakita-<pid>-<tick>.dmp\0" in a fixed stack
+        // Build "<dir>\newsclaw-<pid>-<tick>.dmp\0" in a fixed stack
         // buffer. Do not allocate here: 0xc0000374 means the process heap
         // is already corrupt, so even a small Vec clone can fail before
         // MiniDumpWriteDump gets a chance to run.

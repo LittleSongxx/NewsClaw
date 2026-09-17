@@ -63,7 +63,7 @@ def check_compatibility(manifest: PluginManifest) -> CompatResult:
     if not requires:
         return result
 
-    _check_openakita(
+    _check_newsclaw(
         manifest.id,
         requires.get("newsclaw", "") or requires.get("openakita", ""),
         result,
@@ -113,7 +113,7 @@ def _get_system_version() -> tuple[int, ...]:
     return (0, 0, 0)
 
 
-def _check_openakita(plugin_id: str, spec: str, result: CompatResult) -> None:
+def _check_newsclaw(plugin_id: str, spec: str, result: CompatResult) -> None:
     if not spec:
         return
     if not spec.startswith(">="):

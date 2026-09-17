@@ -31,7 +31,7 @@ security:
     default_zone: workspace
   confirmation:
     enabled: true
-    mode: trust
+    mode: default
     timeout_seconds: 60
     default_on_timeout: deny
     confirm_ttl: 120.0
@@ -66,7 +66,7 @@ security:
     death_switch_threshold: 3
     death_switch_total_multiplier: 3
   sandbox:
-    enabled: false
+    enabled: true
     backend: auto
     sandbox_risk_levels:
     - HIGH
@@ -78,7 +78,7 @@ security:
     commands: []
     tools: []
   profile:
-    current: trust
+    current: protect
     base: null
   shell_risk:
     enabled: true

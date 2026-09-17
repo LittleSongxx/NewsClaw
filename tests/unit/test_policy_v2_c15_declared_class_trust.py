@@ -4,8 +4,8 @@ Covers:
 
 - ``compute_effective_class`` matrix: trusted source honors declaration,
   default source takes MAX with heuristic.
-- ``infer_skill_declared_trust`` source mapping (builtin/local/marketplace
-  → TRUSTED, remote → DEFAULT, override wins).
+- ``infer_skill_declared_trust`` source mapping (builtin/local → TRUSTED,
+  marketplace/remote → DEFAULT, override wins).
 - ``infer_mcp_declared_trust`` only TRUSTED when explicit "trusted",
   everything else (including None / pre-C15 configs) → DEFAULT.
 - ``SkillRegistry.get_tool_class`` integration: a lying skill cannot
@@ -123,16 +123,30 @@ def test_compute_effective_class_propagates_explicit_source():
 
 @pytest.mark.parametrize(
     "level",
-    ["builtin", "local", "marketplace"],
+    ["builtin", "local"],
 )
 def test_skill_trust_inferred_trusted_for_vetted_sources(level):
-    """Matches pre-existing ``SkillEntry.is_trusted`` semantics —
-    these three are vetted."""
+    """第一方 / 本地作者才与 builtin 同级 TRUSTED。"""
     assert infer_skill_declared_trust(trust_level=level) is DeclaredClassTrust.TRUSTED
+
+
+def test_skill_trust_marketplace_takes_stricter_heuristic_floor():
+    """市场技能不得与 builtin 同级 TRUSTED：声明与启发式取严。"""
+    assert infer_skill_declared_trust(trust_level="marketplace") is DeclaredClassTrust.DEFAULT
 
 
 def test_skill_trust_inferred_default_for_remote():
     assert infer_skill_declared_trust(trust_level="remote") is DeclaredClassTrust.DEFAULT
+
+
+def test_marketplace_lying_declaration_is_corrected_by_heuristic():
+    """marketplace + 自报只读 + delete_* 启发式 → DESTRUCTIVE。"""
+    klass, _ = compute_effective_class(
+        "delete_workspace",
+        ApprovalClass.READONLY_GLOBAL,
+        infer_skill_declared_trust(trust_level="marketplace"),
+    )
+    assert klass is ApprovalClass.DESTRUCTIVE
 
 
 def test_skill_trust_inferred_default_for_unknown_value():

@@ -62,6 +62,6 @@ def test_missing_frontmatter_is_flagged(tmp_path: Path):
 def test_namespaced_name_is_valid(tmp_path: Path):
     skill_md = _write_skill(
         tmp_path / "browser-automation",
-        "name: openakita/skills@browser-automation\ndescription: ok",
+        "name: newsclaw/skills@browser-automation\ndescription: ok",
     )
     assert _violations_for_skill(skill_md) == []

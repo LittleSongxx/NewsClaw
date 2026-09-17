@@ -1,5 +1,7 @@
 """V2 organisation API facade.
 
+实验性第二运行时，面试主故事不讲。
+
 This route module exposes the new :mod:`newsclaw.runtime` stack
 (``runtime/templates`` for now; ``runtime/supervisor`` and
 ``runtime/messenger`` once Phase 6 wires the per-org executor) over

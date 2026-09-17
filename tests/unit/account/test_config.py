@@ -1,7 +1,6 @@
 import pytest
 
 from newsclaw.account.config import (
-    DEFAULT_ACCOUNT_BASE_URL,
     DEFAULT_ACCOUNT_CLIENT_ID,
     DEFAULT_CREDENTIAL_USERNAME,
     AccountFeatureConfig,
@@ -18,12 +17,22 @@ def test_account_feature_defaults_to_disabled_in_newsclaw_fork() -> None:
     assert config.capability()["enabled"] is False
 
 
-def test_account_feature_explicit_mode_resolves_official_provider() -> None:
-    config = AccountFeatureConfig.from_env({"NEWSCLAW_ACCOUNT_MODE": "newsclaw"})
+def test_account_feature_newsclaw_mode_requires_explicit_url() -> None:
+    with pytest.raises(ValueError, match="BASE_URL is required"):
+        AccountFeatureConfig.from_env({"NEWSCLAW_ACCOUNT_MODE": "newsclaw"})
+
+
+def test_account_feature_explicit_mode_resolves_when_url_set() -> None:
+    config = AccountFeatureConfig.from_env(
+        {
+            "NEWSCLAW_ACCOUNT_MODE": "newsclaw",
+            "NEWSCLAW_ACCOUNT_BASE_URL": "https://accounts.example.com",
+        }
+    )
 
     assert config.mode == "newsclaw"
     assert config.enabled is True
-    assert config.base_url == DEFAULT_ACCOUNT_BASE_URL == "https://account.openakita.cn"
+    assert config.base_url == "https://accounts.example.com"
     assert config.client_id == DEFAULT_ACCOUNT_CLIENT_ID
     assert config.credential_username == DEFAULT_CREDENTIAL_USERNAME
     assert config.capability()["provider"] == "newsclaw"

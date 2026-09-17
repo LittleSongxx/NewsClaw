@@ -258,7 +258,7 @@ export function Sidebar({
   }, [accountMenuOpen, refreshAccountSnapshot]);
 
   // Refetch the Apps sidebar list. Triggered initially, when backend
-  // availability changes, and on the global "openakita:plugin-apps-changed"
+  // availability changes, and on the global "newsclaw:plugin-apps-changed"
   // event dispatched by PluginManagerView after install/enable/disable/etc.
   //
   // Tauri can mark the backend process as "running" before FastAPI has mounted
@@ -305,11 +305,11 @@ export function Sidebar({
       clearTimers();
       void refetch();
     };
-    window.addEventListener("openakita:plugin-apps-changed", onChanged);
+    window.addEventListener("newsclaw:plugin-apps-changed", onChanged);
     return () => {
       cancelled = true;
       clearTimers();
-      window.removeEventListener("openakita:plugin-apps-changed", onChanged);
+      window.removeEventListener("newsclaw:plugin-apps-changed", onChanged);
     };
   }, [httpApiBase, serviceRunning]);
 

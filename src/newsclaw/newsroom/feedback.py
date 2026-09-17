@@ -135,6 +135,9 @@ def _sync_manifest_feedback(issue_date: str, rating: int, comment: str) -> None:
     if manifest is None:
         return
     manifest.feedback = {"rating": rating, "comment": comment}
+    if rating < 0 and manifest.status == "ready":
+        # 负反馈后不能继续冒充 ready；降为 rejected，契约才能回写。
+        manifest.status = "rejected"
     try:
         write_manifest(manifest)
     except (ValueError, OSError) as e:

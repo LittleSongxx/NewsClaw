@@ -79,8 +79,8 @@ export function marketplaceOpenErrorKey(error: unknown): string {
 export function acceptMobileInstall(raw: string): PendingInstall | null {
   let url: URL;
   try { url = new URL(raw); } catch { return null; }
-  const https = url.origin === marketplaceOrigin() && url.pathname === '/openakita/install';
-  const scheme = url.protocol === 'com.openakita.marketplace:' && url.hostname === 'marketplace' && url.pathname === '/install';
+  const https = url.origin === marketplaceOrigin() && url.pathname === '/newsclaw/install';
+  const scheme = url.protocol === 'com.newsclaw.marketplace:' && url.hostname === 'marketplace' && url.pathname === '/install';
   if (!https && !scheme) return null;
   if (url.search || url.username || url.password) throw new Error('marketplace_instruction_invalid');
   const query = new URLSearchParams(url.hash.slice(1));
@@ -109,7 +109,7 @@ export async function openMarketplace(version: string, next = '/') {
   }
   const saved = read();
   if (needsPendingRecovery(saved.pending)) {
-    window.dispatchEvent(new Event('openakita-marketplace-resume'));
+    window.dispatchEvent(new Event('newsclaw-marketplace-resume'));
     return;
   }
   const server = getActiveServer();
@@ -131,13 +131,13 @@ export async function openMarketplace(version: string, next = '/') {
   const url = new URL(buildMarketplaceContextUrl(health.version, next));
   let uri: string;
   try {
-    const { NativeAuth } = await import('@openakita/native-auth');
+    const { NativeAuth } = await import('@newsclaw/native-auth');
     ({ uri } = await NativeAuth.getRedirectUri());
   } catch { throw new Error('marketplace_native_unavailable'); }
   if (!targetIsCurrent(target)) throw new Error('marketplace_target_changed');
   const latest = read();
   if (needsPendingRecovery(latest.pending)) {
-    window.dispatchEvent(new Event('openakita-marketplace-resume'));
+    window.dispatchEvent(new Event('newsclaw-marketplace-resume'));
     return;
   }
   latest.targets = [...latest.targets.filter(t => t.expires > Date.now()).slice(-7), target];

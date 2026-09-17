@@ -112,7 +112,7 @@ type SecurityDecisionChainStep = {
   };
 };
 
-/** SSE stream event union — synced with Python openakita.events / src/streamEvents.ts */
+/** SSE stream event union — synced with Python newsclaw.events / src/streamEvents.ts */
 export type StreamEvent =
   | { type: "heartbeat"; ts?: number }
   | { type: "preparation_stage"; stage: "analyzing_intent" | "building_context" | "ready" }
@@ -147,12 +147,12 @@ export type StreamEvent =
   | { type: "tool_call_start"; tool: string; tool_name?: string; args: Record<string, unknown>; id?: string; call_id?: string; protocol_version?: number }
   // C23 P2-3: tool_executor 在执行任何工具前先批量发这个事件，
   // 让前端能在敏感操作真正开始前给用户一个非阻塞 toast 提示。
-  // 后端 schema 见 src/openakita/core/tool_executor.py:_emit_tool_intent_previews
+  // 后端 schema 见 src/newsclaw/core/tool_executor.py:_emit_tool_intent_previews
   | { type: "tool_intent_preview"; tool_use_id?: string; tool_name?: string; params?: Record<string, unknown>; approval_class?: string; session_id?: string | null; batch_size?: number; batch_idx?: number; ts?: number }
   | { type: "tool_call_end"; tool: string; tool_name?: string; result: string; id?: string; call_id?: string; is_error?: boolean; skipped?: boolean; protocol_version?: number }
   // Structured config hint side-channel — emitted alongside tool_call_end when
   // a ToolConfigError was raised by a handler (e.g. web_search needs a key).
-  // Backend shape: src/openakita/core/reasoning_engine.py:_build_tool_end_events.
+  // Backend shape: src/newsclaw/core/reasoning_engine.py:_build_tool_end_events.
   // Carries enough metadata for ConfigHintCard to render an actionable card
   // and (optionally) deep-link into the matching settings panel via
   // dispatchExpandPanel({ panelId: actions[i].panel_id }).

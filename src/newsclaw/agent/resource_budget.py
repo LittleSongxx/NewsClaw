@@ -33,11 +33,19 @@ from __future__ import annotations
 
 import logging
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# 无人值守（newsclaw run / scheduler）在 settings 仍为 0=不限时填入的有限默认。
+# 桌面对话保持 Field 默认 0，禁止和无人值守共用「全 0」当唯一路径。
+UNATTENDED_DEFAULT_ITERATIONS = 80
+UNATTENDED_DEFAULT_DURATION_SECONDS = 1200
+UNATTENDED_DEFAULT_TOOL_CALLS = 200
+UNATTENDED_DEFAULT_SAME_TOOL_LIMIT = 8
 
 
 class BudgetAction(Enum):
@@ -106,11 +114,9 @@ class ResourceBudget:
 
     每个任务开始时创建，随任务执行累加消耗。
     ReasoningEngine 每轮迭代调用 check() 检查预算。
+    duration 命中上限即 PAUSE，不再因「近 60s 有进展」续命。
     """
 
-    # 默认"近期进展"判定窗口：60 秒。任务在 duration 命中 100% 时，
-    # 若窗口内仍有 tool_call / token 产出，则视为正常推进，降级为 WARNING
-    # 而非 PAUSE，避免误杀长任务。可通过 had_recent_progress(window) 自定义。
     DEFAULT_PROGRESS_WINDOW_SECONDS: float = 60.0
 
     def __init__(
@@ -126,8 +132,7 @@ class ResourceBudget:
         self._iterations_used: int = 0
         self._tool_calls_used: int = 0
 
-        # 真实进展时间戳：用于 duration 维度的"有进展则不强杀"判定。
-        # iteration 不算进展（每轮固定调用一次，会让"有进展"永远为真）。
+        # 真实进展时间戳（诊断用）。duration 不再据此豁免 PAUSE。
         self._last_tool_call_at: float = 0.0
         self._last_token_record_at: float = 0.0
 
@@ -140,7 +145,7 @@ class ResourceBudget:
         # threshold_name ∈ {"warning", "downgrade", "pause"}。
         self._emitted_thresholds: set[tuple[str, str]] = set()
 
-        # 已被「有进展自动续期」豁免过的 PAUSE 次数（仅供运维统计）。
+        # 历史字段：duration 不再续期，恒为 0。
         self._duration_renewals: int = 0
 
     @property
@@ -382,25 +387,6 @@ class ResourceBudget:
         ratio = used / limit
 
         if ratio >= self._config.pause_threshold:
-            # duration 维度的"有进展则不强杀"豁免：当且仅当
-            #   1) 维度是 duration（其它维度——tokens/cost/iterations/
-            #      tool_calls——本身就是累计计数，命中 100% 是真的"用尽"），
-            #   2) 最近 60s 内有 tool_call 或 token 产出（说明任务在真正推进，
-            #      不是死循环），
-            # 时降级为 WARNING，让 ReAct 主循环继续，不强制 PAUSE。
-            # 这是为了对齐 LoopBudgetGuard 的"病态才打断、正常进展放行"哲学。
-            if dimension == "duration" and self.had_recent_progress():
-                self._duration_renewals += 1
-                return BudgetStatus(
-                    action=BudgetAction.WARNING,
-                    dimension=dimension,
-                    usage_ratio=ratio,
-                    message=(
-                        f"{dimension} over budget but task is making progress "
-                        f"({used:.1f}/{limit:.1f}, renewals={self._duration_renewals})"
-                    ),
-                    details={"renewed": True, "renewals": self._duration_renewals},
-                )
             return BudgetStatus(
                 action=BudgetAction.PAUSE,
                 dimension=dimension,
@@ -431,18 +417,118 @@ class ResourceBudget:
         )
 
 
-def create_budget_from_settings() -> ResourceBudget:
-    """从 settings 创建预算管理器"""
+# 当前 ReAct 任务的预算；子 Agent 通过它把消耗回写到父任务。
+_active_task_budget: ContextVar[ResourceBudget | None] = ContextVar(
+    "newsclaw_active_task_budget", default=None
+)
+
+
+@dataclass(frozen=True)
+class ResolvedTaskBudget:
+    """settings + 无人值守默认合并后的任务预算（桌面 0 保持不限）。"""
+
+    max_tokens: int
+    max_cost_usd: float
+    max_duration_seconds: int
+    max_iterations: int
+    max_tool_calls: int
+    same_tool_call_limit: int
+    unattended: bool
+
+
+def session_is_unattended(session: Any = None) -> bool:
+    """只认 session 上的无人值守标记，不把交互式 CLI 当成 run。"""
+    if session is None:
+        return False
+    if bool(getattr(session, "is_unattended", False)):
+        return True
+    get_metadata = getattr(session, "get_metadata", None)
+    if callable(get_metadata):
+        try:
+            if get_metadata("is_unattended"):
+                return True
+        except Exception:
+            pass
+    metadata = getattr(session, "metadata", None)
+    if isinstance(metadata, dict) and metadata.get("is_unattended"):
+        return True
+    return False
+
+
+def resolve_task_budget(*, unattended: bool = False) -> ResolvedTaskBudget:
+    """桌面保持 settings 的 0=不限；无人值守把 0 填成有限默认。
+
+    token/cost 不发明数字：有用户配置才设上限，有价表则在运行时 record_cost。
+    """
     try:
         from newsclaw.config import settings
 
-        config = BudgetConfig(
-            max_tokens=getattr(settings, "task_budget_tokens", 0),
-            max_cost_usd=getattr(settings, "task_budget_cost", 0.0),
-            max_duration_seconds=getattr(settings, "task_budget_duration", 0),
-            max_iterations=getattr(settings, "task_budget_iterations", 0),
-            max_tool_calls=getattr(settings, "task_budget_tool_calls", 0),
-        )
-        return ResourceBudget(config)
+        tokens = int(getattr(settings, "task_budget_tokens", 0) or 0)
+        cost = float(getattr(settings, "task_budget_cost", 0.0) or 0.0)
+        duration = int(getattr(settings, "task_budget_duration", 0) or 0)
+        iterations = int(getattr(settings, "task_budget_iterations", 0) or 0)
+        tool_calls = int(getattr(settings, "task_budget_tool_calls", 0) or 0)
+        same_tool = int(getattr(settings, "same_tool_call_limit", 0) or 0)
     except Exception:
-        return ResourceBudget()
+        tokens = 0
+        cost = 0.0
+        duration = 0
+        iterations = 0
+        tool_calls = 0
+        same_tool = 0
+
+    if unattended:
+        if duration <= 0:
+            duration = UNATTENDED_DEFAULT_DURATION_SECONDS
+        if iterations <= 0:
+            iterations = UNATTENDED_DEFAULT_ITERATIONS
+        if tool_calls <= 0:
+            tool_calls = UNATTENDED_DEFAULT_TOOL_CALLS
+        if same_tool <= 0:
+            same_tool = UNATTENDED_DEFAULT_SAME_TOOL_LIMIT
+
+    return ResolvedTaskBudget(
+        max_tokens=max(0, tokens),
+        max_cost_usd=max(0.0, cost),
+        max_duration_seconds=max(0, duration),
+        max_iterations=max(0, iterations),
+        max_tool_calls=max(0, tool_calls),
+        same_tool_call_limit=max(0, same_tool),
+        unattended=unattended,
+    )
+
+
+def bind_active_task_budget(budget: ResourceBudget):
+    """父循环登记预算，供同任务内的子 Agent 回写消耗。"""
+    return _active_task_budget.set(budget)
+
+
+def reset_active_task_budget(token: Any) -> None:
+    _active_task_budget.reset(token)
+
+
+def current_task_budget() -> ResourceBudget | None:
+    return _active_task_budget.get()
+
+
+def create_budget_from_settings(
+    *,
+    unattended: bool = False,
+    parent: ResourceBudget | None = None,
+) -> ResourceBudget:
+    """从 settings 创建预算管理器。
+
+    ``unattended=True`` 时把步数/时长/工具次数的 0 换成有限默认。
+    子 Agent 应优先 ``parent.allocate_sub_budget``，消耗计入父任务。
+    """
+    resolved = resolve_task_budget(unattended=unattended)
+    if parent is not None:
+        return parent.allocate_sub_budget(0.5)
+    config = BudgetConfig(
+        max_tokens=resolved.max_tokens,
+        max_cost_usd=resolved.max_cost_usd,
+        max_duration_seconds=resolved.max_duration_seconds,
+        max_iterations=resolved.max_iterations,
+        max_tool_calls=resolved.max_tool_calls,
+    )
+    return ResourceBudget(config)

@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.agent.state`.
+"""Tests for :mod:`newsclaw.agent.state`.
 
 Phase 2 commit 1. Asserts the v2 minimal-state design promised by
 ADR-0003:

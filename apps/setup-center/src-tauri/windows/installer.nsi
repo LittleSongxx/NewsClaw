@@ -341,7 +341,7 @@ Function PageLeaveReinstall
  reinst_uninstall:
   HideWindow
 
-  ; Kill all OpenAkita processes BEFORE running old uninstaller,
+  ; Kill all NewsClaw processes BEFORE running old uninstaller,
   ; because the old uninstaller may lack robust process-killing logic.
   ; Push/Pop $R6 preserved for safety — the consolidated kill script only
   ; clobbers $0, but $R6 holds the WiX registry key path when WixMode=1.
@@ -458,8 +458,8 @@ Function PageEnvCheck
   Abort
  ${EndIf}
 
- ; 检测 ~/.openakita 是否存在
- ExpandEnvStrings $R0 "%USERPROFILE%\.openakita"
+ ; 检测 ~/.newsclaw 是否存在
+ ExpandEnvStrings $R0 "%USERPROFILE%\.newsclaw"
  ${IfNot} ${FileExists} "$R0\*"
   Abort
  ${EndIf}
@@ -582,8 +582,8 @@ LangString envHeaderTitle ${LANG_SIMPCHINESE} "数据管理"
 LangString envHeaderTitle ${LANG_ENGLISH} "Data Management"
 LangString envHeaderSubtitle ${LANG_SIMPCHINESE} "选择是否清除已有数据"
 LangString envHeaderSubtitle ${LANG_ENGLISH} "Choose whether to clean existing data"
-LangString envDetectedLabel ${LANG_SIMPCHINESE} "检测到已有的 OpenAkita 数据，旧版环境组件将在安装过程中自动清理。"
-LangString envDetectedLabel ${LANG_ENGLISH} "Existing OpenAkita data detected. Legacy environment components will be cleaned up automatically during installation."
+LangString envDetectedLabel ${LANG_SIMPCHINESE} "检测到已有的 NewsClaw 数据，旧版环境组件将在安装过程中自动清理。"
+LangString envDetectedLabel ${LANG_ENGLISH} "Existing NewsClaw data detected. Legacy environment components will be cleaned up automatically during installation."
 LangString envCleanCheckbox ${LANG_SIMPCHINESE} "清除所有用户数据（聊天记录、工作区、个人设置等）"
 LangString envCleanCheckbox ${LANG_ENGLISH} "Remove all user data (chat history, workspaces, personal settings, etc.)"
 LangString envCleanWarning ${LANG_SIMPCHINESE} "⚠ 警告：清除用户数据将永久删除所有聊天记录、工作区配置$\n和个人设置，此操作不可撤销！"
@@ -600,10 +600,10 @@ LangString envConfirmFinal ${LANG_ENGLISH} "Final confirmation: Click OK to conf
 ; unlocked within its 20s budget. Installation continues regardless — NSIS's
 ; native File command has its own Retry/Cancel dialog and the residual oplocks
 ; (typically AV tail-scans) usually clear before the File loop reaches them.
-; The full locked-file list is written to %USERPROFILE%\.openakita\logs\
+; The full locked-file list is written to %USERPROFILE%\.newsclaw\logs\
 ; install_locked_<timestamp>.log for post-mortem inspection.
-LangString installAbortLocked ${LANG_SIMPCHINESE} "提示：检测到部分 OpenAkita 文件可能仍被占用（杀毒软件扫描或 Windows 索引常见），安装将继续。如最终失败，请查看 %USERPROFILE%\.openakita\logs\install_locked_*.log，关闭相关 openakita-* 进程后重试。"
-LangString installAbortLocked ${LANG_ENGLISH} "Notice: Some OpenAkita files may still be in use (commonly AV scans or Windows indexing). Installation will proceed. If it ultimately fails, see %USERPROFILE%\.openakita\logs\install_locked_*.log, close related openakita-* processes, and retry."
+LangString installAbortLocked ${LANG_SIMPCHINESE} "提示：检测到部分 NewsClaw 文件可能仍被占用（杀毒软件扫描或 Windows 索引常见），安装将继续。如最终失败，请查看 %USERPROFILE%\.newsclaw\logs\install_locked_*.log，关闭相关 newsclaw-* 进程后重试。"
+LangString installAbortLocked ${LANG_ENGLISH} "Notice: Some NewsClaw files may still be in use (commonly AV scans or Windows indexing). Installation will proceed. If it ultimately fails, see %USERPROFILE%\.newsclaw\logs\install_locked_*.log, close related newsclaw-* processes, and retry."
 
 Function .onInit
  ${GetOptions} $CMDLINE "/P" $PassiveMode
@@ -638,8 +638,8 @@ Function .onInit
 
  !insertmacro SetContext
 
- !ifmacrodef _OpenAkita_DetectLegacyInstall
-   !insertmacro _OpenAkita_DetectLegacyInstall
+ !ifmacrodef _NewsClaw_DetectLegacyInstall
+   !insertmacro _NewsClaw_DetectLegacyInstall
  !endif
 
  ${If} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
@@ -893,20 +893,20 @@ Section Install
  ${EndIf}
 
  ; ── 清理旧版 CLI 命令行工具注册 ──
- ; 命令行工具（oa / openakita 命令注册 + PATH 注入）已下线。覆盖安装时
+ ; 命令行工具（oa / newsclaw 命令注册 + PATH 注入）已下线。覆盖安装时
  ; 必须对 HKCU + HKLM 两个 hive 都做 sweep，否则换目录多次安装会在某一
  ; hive 里留下历史 bin 条目（v1.27.16 的 add 动作只扫除正在写入的那个 hive）。
- !insertmacro _OpenAkita_WritePathHelper
+ !insertmacro _NewsClaw_WritePathHelper
  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\_oa_pathhelper.ps1" -Action sweep -BinDir "" -RegPath "HKCU:\Environment"'
  Pop $R9
  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\_oa_pathhelper.ps1" -Action sweep -BinDir "" -RegPath "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"'
  Pop $R9
  SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
  ; 3) 删除 wrapper 脚本与 bin 目录、注册表项
- Delete "$INSTDIR\bin\openakita.cmd"
+ Delete "$INSTDIR\bin\newsclaw.cmd"
  Delete "$INSTDIR\bin\oa.cmd"
  RMDir "$INSTDIR\bin"
- DeleteRegKey HKCU "Software\OpenAkita\CLI"
+ DeleteRegKey HKCU "Software\NewsClaw\CLI"
 
  !ifmacrodef NSIS_HOOK_POSTINSTALL
  !insertmacro NSIS_HOOK_POSTINSTALL
@@ -991,9 +991,9 @@ Section Uninstall
 
  ; ── CLI 命令行工具清理 ──
  ; 从 PATH 中移除 bin 目录（通过 PowerShell 安全操作，逐条精确匹配避免误删）
- ReadRegStr $R8 HKCU "Software\OpenAkita\CLI" "binDir"
+ ReadRegStr $R8 HKCU "Software\NewsClaw\CLI" "binDir"
  ${If} $R8 != ""
-  !insertmacro _OpenAkita_WritePathHelper
+  !insertmacro _NewsClaw_WritePathHelper
   ; 从系统 PATH 移除
   nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\_oa_pathhelper.ps1" -Action remove -BinDir "$R8" -RegPath "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"'
   Pop $R9
@@ -1005,12 +1005,12 @@ Section Uninstall
  ${EndIf}
 
  ; 删除 CLI 相关文件
- Delete "$INSTDIR\bin\openakita.cmd"
+ Delete "$INSTDIR\bin\newsclaw.cmd"
  Delete "$INSTDIR\bin\oa.cmd"
  RMDir "$INSTDIR\bin"
 
  ; 清理 CLI 注册表键
- DeleteRegKey HKCU "Software\OpenAkita\CLI"
+ DeleteRegKey HKCU "Software\NewsClaw\CLI"
 
  ; Delete uninstaller
  Delete "$INSTDIR\uninstall.exe"

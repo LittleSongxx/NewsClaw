@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.ledger`.
+"""Tests for :mod:`newsclaw.runtime.ledger`.
 
 Phase 3 commit 1 (kicking off Phase 3 early because the dual ledger
 is the critical-path fix for the duplicate-delegate cascade described

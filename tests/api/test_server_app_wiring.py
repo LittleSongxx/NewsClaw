@@ -6,7 +6,7 @@ P-RC-9 P9.6 made ``OrgRuntime.__init__`` keyword-only with three required
 ``Protocol`` parameters (``lookup`` / ``persistence`` / ``lifecycle_emitter``).
 P-RC-9 P9.4 made ``OrgCommandService.__init__`` keyword-only after the
 leading ``runtime`` arg.  The composition root in ``api/server.py`` was
-left on the v1 positional call convention, which made ``openakita serve``
+left on the v1 positional call convention, which made ``newsclaw serve``
 fail with ``TypeError`` at app construction.
 
 This test asserts that:

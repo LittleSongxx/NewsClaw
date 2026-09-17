@@ -1,4 +1,4 @@
-"""Tests for openakita.plugins.state — PluginState persistence."""
+"""Tests for newsclaw.plugins.state — PluginState persistence."""
 
 from __future__ import annotations
 

@@ -55,7 +55,7 @@ def _patch_os_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     grace and forget to cancel could fire ``os._exit(0)`` mid-suite —
     we hit exactly that failure during initial v32 porting, with
     pytest exiting at 82% with code 0 and the summary block silently
-    truncated. Patching ``openakita.api.server.os._exit`` at fixture
+    truncated. Patching ``newsclaw.api.server.os._exit`` at fixture
     scope makes the misfire harmless.
     """
     monkeypatch.setattr("newsclaw.api.server.os._exit", lambda code=0: None)
@@ -92,7 +92,7 @@ def test_threading_watchdog_registers_named_daemon_timer(
         _arm_force_exit_watchdog_sync(app)
         timer = app.state._force_exit_task  # type: ignore[attr-defined]
         assert isinstance(timer, threading.Timer)
-        assert timer.name == "openakita-force-exit-watchdog"
+        assert timer.name == "newsclaw-force-exit-watchdog"
         assert timer.daemon is True
         assert timer.is_alive(), "watchdog timer should be running"
 
@@ -113,7 +113,7 @@ def test_threading_watchdog_fires_os_exit_after_grace(
     This is the regression test for the v31 0/4-fired symptom. We pick
     grace_s=1 (smallest legal value) so the test completes in ~1s. We
     patch ``os._exit`` so the test process does not die when the timer
-    fires; the patch target is ``openakita.api.server.os._exit`` because
+    fires; the patch target is ``newsclaw.api.server.os._exit`` because
     ``_do_force_exit`` resolves ``os`` through the module-level import.
     """
     monkeypatch.setattr(

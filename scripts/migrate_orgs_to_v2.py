@@ -1,5 +1,5 @@
 """Phase 7 migration — move legacy ``data/orgs.db`` to ``data/orgs.legacy.db``
-and populate the v2 :mod:`openakita.orgs` JSON store.
+and populate the v2 :mod:`newsclaw.orgs` JSON store.
 
 The plan calls for a re-entrant script (running twice is a no-op) so
 operators can include it in their boot sequence without worrying about

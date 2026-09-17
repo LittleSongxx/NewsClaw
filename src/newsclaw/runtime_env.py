@@ -1,7 +1,7 @@
 """
 运行时环境检测 - 兼容 PyInstaller 打包和常规 Python 环境
 
-PyInstaller 打包后 sys.executable 指向 openakita-server.exe 而非 Python 解释器，
+PyInstaller 打包后 sys.executable 指向 newsclaw-server.exe 而非 Python 解释器，
 本模块提供统一的运行时环境检测层，确保 pip install / 脚本执行等功能正常工作。
 """
 
@@ -208,7 +208,7 @@ def get_python_executable() -> str | None:
 
     PyInstaller 环境下查找优先级:
       1. 工作区 venv ({project_root}/data/venv/)
-      2. 全局 venv (~/.newsclaw/venv/，旧安装沿用 ~/.openakita/venv/)
+      2. 全局 venv (~/.newsclaw/venv/，旧安装沿用 ~/.newsclaw/venv/)
       3. 打包内置 Python (_internal/python.exe)
 
     常规开发环境下: 返回 sys.executable
@@ -232,7 +232,7 @@ def get_python_executable() -> str | None:
 
     root = _get_newsclaw_root()
 
-    # 2. 检查全局 venv（~/.newsclaw/venv/ 或旧安装的 ~/.openakita/venv/）
+    # 2. 检查全局 venv（~/.newsclaw/venv/ 或旧安装的 ~/.newsclaw/venv/）
     if sys.platform == "win32":
         venv_python = root / "venv" / "Scripts" / "python.exe"
     else:
@@ -251,7 +251,7 @@ def get_python_executable() -> str | None:
 
     logger.warning(
         "未找到项目自带的 Python 解释器。"
-        "已搜索: 工作区 venv → ~/.newsclaw/venv（旧安装为 ~/.openakita/venv） → "
+        "已搜索: 工作区 venv → ~/.newsclaw/venv（旧安装为 ~/.newsclaw/venv） → "
         "打包内置 Python。"
         "请重新安装 NewsClaw，确保安装包资源完整。"
     )
@@ -609,7 +609,7 @@ def resolve_pip_index() -> dict[str, str]:
     env_url = os.environ.get("NEWSCLAW_PIP_INDEX_URL", "").strip()
     if env_url:
         return {
-            "id": "env-openakita",
+            "id": "env-newsclaw",
             "url": env_url,
             "trusted_host": os.environ.get("NEWSCLAW_PIP_TRUSTED_HOST", "").strip()
             or _trusted_host_for_url(env_url),

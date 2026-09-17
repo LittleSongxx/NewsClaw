@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.session_bridge`.
+"""Tests for :mod:`newsclaw.runtime.session_bridge`.
 
 P-RC-1 commit 1. The bridge is a single dependency-injection seam:
 the v2 runtime asks ``get_org_id_for_session(session_key)``, the
@@ -106,7 +106,7 @@ def test_protocol_isinstance_check() -> None:
 
 
 class _FakeSession:
-    """Tiny stand-in for ``openakita.sessions.session.Session``.
+    """Tiny stand-in for ``newsclaw.sessions.session.Session``.
 
     The lookup only ever calls ``get_metadata(key)`` so we keep the
     surface minimal. Real :class:`Session` is heavy (touches disk

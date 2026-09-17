@@ -1,7 +1,7 @@
 """
 L1 Unit Tests: runtime_env Python interpreter discovery and venv path resolution.
 
-Tests the helper functions in openakita.runtime_env that locate Python executables
+Tests the helper functions in newsclaw.runtime_env that locate Python executables
 and virtual environments across different directory layouts (Linux bin/, Windows Scripts/).
 """
 

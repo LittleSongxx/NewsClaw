@@ -1,4 +1,4 @@
-"""Tests for :class:openakita.orgs.sqlite_store.SqliteOrgStore.
+"""Tests for :class:newsclaw.orgs.sqlite_store.SqliteOrgStore.
 
 P-RC-3 commit P3.4. Independent of the shared contract suite
 (`test_store_contract.py`); these cases focus on SQLite-specific

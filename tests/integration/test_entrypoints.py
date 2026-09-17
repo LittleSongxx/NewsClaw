@@ -14,12 +14,12 @@ import subprocess
 import sys
 
 
-def test_openakita_main_imports():
+def test_newsclaw_main_imports():
     """src/newsclaw/main.py must import without ImportError after shim deletion."""
     importlib.import_module("newsclaw.main")
 
 
-def test_openakita_mcp_server_imports():
+def test_newsclaw_mcp_server_imports():
     """src/newsclaw/mcp_server.py must import without ImportError after shim deletion."""
     importlib.import_module("newsclaw.mcp_server")
 
@@ -27,9 +27,9 @@ def test_openakita_mcp_server_imports():
 def test_newsclaw_cli_help_smoke():
     """`newsclaw --help` must exit 0 (catches missing console script entry).
 
-    Prefers ``python -m openakita`` (uses ``src/newsclaw/__main__.py``) so we
+    Prefers ``python -m newsclaw`` (uses ``src/newsclaw/__main__.py``) so we
     do not depend on the installed console script being on PATH. Falls back
-    to the installed ``openakita`` executable via ``shutil.which`` for
+    to the installed ``newsclaw`` executable via ``shutil.which`` for
     environments where ``__main__.py`` is missing.
     """
     cmd = [sys.executable, "-m", "newsclaw", "--help"]

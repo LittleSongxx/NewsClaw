@@ -35,7 +35,12 @@ from newsclaw.agent.loop_budget import READONLY_EXPLORATION_TOOLS, LoopBudgetGua
 from newsclaw.agent.resource_budget import (
     BudgetAction,
     ResourceBudget,
+    bind_active_task_budget,
     create_budget_from_settings,
+    current_task_budget,
+    reset_active_task_budget,
+    resolve_task_budget,
+    session_is_unattended,
 )
 
 from ..api.routes.websocket import broadcast_event
@@ -519,24 +524,59 @@ def _build_task_checkpoint_event(
     return {"type": "task_checkpoint", **(written or checkpoint.to_dict())}
 
 
-def _format_budget_pause_message(status: Any) -> str:
-    """统一的预算耗尽 PAUSE 文案。
-
-    旧文案 "请调整预算后继续" 误导用户去翻 .env，但实测打"继续"两个字
-    就能续上（系统会以新任务接力）；同时 duration 维度真正命中 PAUSE 时
-    意味着近 60s 没有工具调用 / token 产出（被 ResourceBudget._check_dimension
-    豁免逻辑过滤掉了"有进展"场景），可能已陷入循环——告知用户具体处理方式。
-    """
+def _format_budget_pause_message(
+    status: Any,
+    *,
+    task_id: str = "",
+    conversation_id: str = "",
+    artifacts: dict[str, Any] | None = None,
+) -> str:
+    """预算耗尽的结构化部分结果：维度、run id、已落盘与缺失产物。"""
     dim = getattr(status, "dimension", "") or "unknown"
     pct = getattr(status, "usage_ratio", 0.0) or 0.0
-    suffix = "（近 60s 无新工具调用或 token 产出，可能已陷入循环）" if dim == "duration" else ""
+    run_id = task_id or conversation_id or "unknown"
+    snapshot = artifacts or {}
+    present = snapshot.get("present") or []
+    missing = snapshot.get("missing") or []
+    issue_date = snapshot.get("issue_date") or ""
+    files_line = "、".join(present) if present else "无"
+    missing_line = "、".join(missing) if missing else "无"
+    issue_line = f"期次 {issue_date}：" if issue_date else ""
     return (
-        f"⚠️ 任务暂停（{dim}: {pct:.0%}{suffix}）\n\n"
-        f'▸ 直接回复"继续"即可让我接力完成（系统会以新任务接力，'
-        f"对话历史和已有进展都已保留）\n"
-        f"▸ 如果你预期任务时间确实较长，到【配置 → 高级配置 → 长任务与上下文保护 → 任务预算】"
-        f"把对应预算调高并保存（TASK_BUDGET_DURATION 设为 0 = 不限时长，"
-        f"系统会在没有工具调用进展时才暂停）"
+        f"⚠️ 任务因预算耗尽停止（reason=budget_exceeded，{dim}: {pct:.0%}）\n"
+        f"run id: {run_id}\n"
+        f"{issue_line}已落盘 {files_line}；缺失 {missing_line}\n"
+        f"本期不得写成 ready。\n\n"
+        f'▸ 回复"继续"会开新任务接力（历史保留，预算重新计数）\n'
+        f"▸ 长任务请到【配置 → 高级配置 → 任务预算】调高上限后重跑"
+    )
+
+
+def _handle_budget_exhausted(
+    engine: Any,
+    status: Any,
+    *,
+    conversation_id: str = "",
+    task_id: str = "",
+) -> str:
+    """引擎预算撞顶：统一 exit_reason，并禁止当天早报保持 ready。"""
+    engine._last_exit_reason = "budget_exceeded"
+    artifacts: dict[str, Any] = {}
+    try:
+        from newsclaw.newsroom.contract import (
+            demote_ready_on_budget_exceeded,
+            describe_issue_artifacts,
+        )
+
+        artifacts = describe_issue_artifacts()
+        demote_ready_on_budget_exceeded()
+    except Exception:
+        logger.debug("[Budget] newsroom demote/snapshot failed", exc_info=True)
+    return _format_budget_pause_message(
+        status,
+        task_id=task_id,
+        conversation_id=conversation_id,
+        artifacts=artifacts,
     )
 
 
@@ -1124,9 +1164,9 @@ class ReasoningEngine:
 
         * 有人值守 / 兜底 confirm：dict 带 ``_security_confirm`` metadata，
           body 是"⚠️ 需要用户确认 …"。
-        * 无人值守 unattended_strategy（``ask_owner`` / ``defer_to_inbox`` /
-          ``defer_to_owner``）：dict 带 ``_deferred_approval_id``，body 是
-          "⏸️ 工具调用 ... 需要 owner 批准 ..."。
+        * 无人值守且策略是 ``ask_owner`` / ``defer_to_*``：dict 带
+          ``_deferred_approval_id``，body 是"⏸️ 工具调用 ... 需要 owner
+          批准 ..."。默认 ``deny`` 不会走这条，而是直接策略拒绝。
 
         从 ReAct 的角度，这不是"工具失败"，而是"工具被推迟到用户/owner
         决策之后"，不应被记入 ``_tool_failure_counter`` 或触发
@@ -1609,8 +1649,16 @@ class ReasoningEngine:
         self._last_delivery_receipts = []
         self._supervisor.reset()
         self._readonly_tool_cache.clear()
-        self._budget = create_budget_from_settings()
-        self._budget.start()
+        _unattended = session_is_unattended(session)
+        _parent_budget = current_task_budget() if is_sub_agent else None
+        if _parent_budget is not None:
+            self._budget = _parent_budget.allocate_sub_budget(0.5)
+        else:
+            self._budget = create_budget_from_settings(unattended=_unattended)
+            self._budget.start()
+        _budget_token = None
+        if not is_sub_agent:
+            _budget_token = bind_active_task_budget(self._budget)
         react_trace: list[dict] = []
         _request_id = request_id or f"{conversation_id or 'unknown'}:stream"
         _turn_id = turn_id or f"{conversation_id or 'unknown'}:{int(time.time() * 1000)}"
@@ -1747,7 +1795,8 @@ class ReasoningEngine:
                 msg for msg in messages if self._is_human_user_message(msg)
             ]
             _configured_max_iterations = int(getattr(settings, "max_iterations", 100) or 100)
-            _task_budget_iterations = int(getattr(settings, "task_budget_iterations", 0) or 0)
+            _resolved_budget = resolve_task_budget(unattended=_unattended)
+            _task_budget_iterations = _resolved_budget.max_iterations
             if _task_budget_iterations > 0:
                 _configured_max_iterations = min(
                     _configured_max_iterations, _task_budget_iterations
@@ -1818,13 +1867,11 @@ class ReasoningEngine:
             _supervisor_intervened = False
             _tool_call_counter: dict[str, int] = {}
             _tool_name_counter: dict[str, int] = {}
-            # same_tool_call_limit=0（默认）= 不限同工具同参数重复，调用处需先判 > 0
-            _MAX_SAME_TOOL_PER_TASK = max(0, int(getattr(settings, "same_tool_call_limit", 0) or 0))
+            # 桌面 same_tool_call_limit=0 不限；无人值守默认 8
+            _MAX_SAME_TOOL_PER_TASK = _resolved_budget.same_tool_call_limit
             # 0=不限/禁用对应检测；LoopBudgetGuard 内部已处理 0 短路
             _loop_budget_guard = LoopBudgetGuard(
-                max_total_tool_calls=max(
-                    0, int(getattr(settings, "task_budget_tool_calls", 0) or 0)
-                ),
+                max_total_tool_calls=_resolved_budget.max_tool_calls,
                 readonly_stagnation_limit=max(
                     0, int(getattr(settings, "readonly_stagnation_limit", 0) or 0)
                 ),
@@ -1939,8 +1986,12 @@ class ReasoningEngine:
                 budget_status = self._budget.check()
                 if budget_status.action == BudgetAction.PAUSE:
                     logger.warning(f"[Budget-Stream] PAUSE: {budget_status.message}")
-                    # 让 DelegationResult.exit_reason 反映"预算暂停"而非误显示 completed
-                    self._last_exit_reason = "budget_paused"
+                    msg = _handle_budget_exhausted(
+                        self,
+                        budget_status,
+                        conversation_id=conversation_id or "",
+                        task_id=state.task_id,
+                    )
                     self._save_react_trace(
                         react_trace,
                         conversation_id,
@@ -1954,14 +2005,13 @@ class ReasoningEngine:
                         task_description=task_description,
                         task_id=state.task_id,
                     )
-                    msg = _format_budget_pause_message(budget_status)
                     yield _build_task_checkpoint_event(
                         session=session,
                         conversation_id=conversation_id,
                         task_id=state.task_id,
                         iteration=_iteration,
-                        exit_reason="budget_paused",
-                        summary=str(budget_status.message or "预算耗尽，任务暂停"),
+                        exit_reason="budget_exceeded",
+                        summary=str(budget_status.message or "预算耗尽，任务停止"),
                         next_step_hint='回复"继续"即可让系统接力完成；或在配置中调高任务预算',
                     )
                     yield {"type": "text_delta", "content": msg}
@@ -2549,7 +2599,7 @@ class ReasoningEngine:
 
                         _ep_info = self._brain.get_current_endpoint_info() or {}
                         _ep_name = _ep_info.get("name", "")
-                        _cost = 0.0
+                        _cost = None
                         _input_includes_cache = False
                         for _ep in self._brain._llm_client.endpoints:
                             if _ep.name == _ep_name:
@@ -2557,11 +2607,21 @@ class ReasoningEngine:
                                     "openai",
                                     "openai_responses",
                                 }
-                                _cost = _ep.calculate_cost(
-                                    input_tokens=_in_tokens,
-                                    output_tokens=_out_tokens,
-                                    cache_read_tokens=_cache_read,
-                                )
+                                _priced = getattr(_ep, "calculate_cost_or_none", None)
+                                if callable(_priced):
+                                    _cost = _priced(
+                                        input_tokens=_in_tokens,
+                                        output_tokens=_out_tokens,
+                                        cache_read_tokens=_cache_read,
+                                    )
+                                else:
+                                    _cost = _ep.calculate_cost(
+                                        input_tokens=_in_tokens,
+                                        output_tokens=_out_tokens,
+                                        cache_read_tokens=_cache_read,
+                                    )
+                                if _cost is not None and not _usage_estimated:
+                                    self._budget.record_cost(_cost)
                                 break
                         _tt = set_tracking_context(
                             TokenTrackingContext(
@@ -2584,7 +2644,7 @@ class ReasoningEngine:
                                 cache_creation_tokens=_cache_create,
                                 cache_read_tokens=_cache_read,
                                 input_tokens_include_cache=_input_includes_cache,
-                                estimated_cost=_cost,
+                                estimated_cost=0.0 if _cost is None else _cost,
                             )
                         finally:
                             reset_tracking_context(_tt)
@@ -4656,6 +4716,8 @@ class ReasoningEngine:
             yield {"type": "done"}
 
         finally:
+            if _budget_token is not None:
+                reset_active_task_budget(_budget_token)
             # 清理 per-conversation endpoint override
             if _endpoint_switched and conversation_id:
                 llm_client = getattr(self._brain, "_llm_client", None)

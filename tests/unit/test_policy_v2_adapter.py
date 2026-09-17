@@ -271,15 +271,15 @@ class TestFailClosed:
         assert decision.action == DecisionAction.DENY
         assert "adapter_fail_closed" in decision.chain[0].name
 
-    def test_safe_tool_engine_crash_returns_allow(self, monkeypatch):
+    def test_safe_tool_engine_crash_returns_deny(self, monkeypatch):
         def _boom():
             raise RuntimeError("singleton dead")
 
         monkeypatch.setattr("newsclaw.core.policy_v2.adapter._get_engine", _boom)
 
         decision = evaluate_via_v2("read_file", {"path": "x"})
-        assert decision.action == DecisionAction.ALLOW
-        assert "adapter_fail_open_safe" in decision.chain[0].name
+        assert decision.action == DecisionAction.DENY
+        assert "adapter_fail_closed" in decision.chain[0].name
 
     def test_run_shell_fail_closed(self, monkeypatch):
         monkeypatch.setattr(

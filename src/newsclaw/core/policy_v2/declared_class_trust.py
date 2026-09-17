@@ -40,9 +40,10 @@ Default trust inference
 When a caller does not pass an explicit :class:`DeclaredClassTrust`,
 we infer one from the source:
 
-- Skill: ``builtin`` / ``local`` / ``marketplace`` → TRUSTED
-  (consistent with the pre-existing :pyattr:`SkillEntry.is_trusted`
-  derivation — only ``remote`` git/URL skills downgrade by default).
+- Skill: ``builtin`` / ``local`` → TRUSTED（第一方 / 本地作者）。
+  ``marketplace`` 不得与 builtin 同级 TRUSTED：声明与启发式取严。
+  ``SkillEntry.is_trusted`` 仍把 marketplace 当可信*安装来源*，那是
+  装技能的门，不是本函数的风险分类门。
 - MCP: server config's ``trust_level`` field on
   :class:`MCPServerConfig`. Missing or ``"default"`` → DEFAULT;
   ``"trusted"`` → TRUSTED. New field defaults to ``"default"`` so
@@ -130,10 +131,12 @@ def infer_skill_declared_trust(
 
     The ``trust_level`` argument is the source-of-skill value already
     tracked by :pyattr:`SkillEntry.trust_level` (``"builtin"`` /
-    ``"local"`` / ``"marketplace"`` / ``"remote"``). The mapping
-    mirrors :pyattr:`SkillEntry.is_trusted` — only ``"remote"`` skills
-    drop to DEFAULT — so the C15 rule is opt-in: pre-existing
-    behaviours for locally-shipped skills are unchanged.
+    ``"local"`` / ``"marketplace"`` / ``"remote"``)。
+
+    ``builtin`` / ``local`` 采信声明；``marketplace`` 与启发式取严
+    （DEFAULT），避免市场技能自报只读却实际 ``rm -rf``。这与
+    :pyattr:`SkillEntry.is_trusted` 刻意分叉：后者仍把 marketplace
+    当可信安装来源。
 
     Args:
         trust_level: Existing skill source label.
@@ -143,13 +146,13 @@ def infer_skill_declared_trust(
             ``None`` to defer.
 
     Returns:
-        DEFAULT for ``"remote"`` (or unknown values) when no override
-        is supplied; TRUSTED for the three vetted sources.
+        TRUSTED 仅给 ``builtin`` / ``local``；``marketplace`` /
+        ``remote`` / 未知值在无 override 时为 DEFAULT。
     """
     if override is not None:
         return override
 
-    if trust_level in ("builtin", "local", "marketplace"):
+    if trust_level in ("builtin", "local"):
         return DeclaredClassTrust.TRUSTED
     return DeclaredClassTrust.DEFAULT
 

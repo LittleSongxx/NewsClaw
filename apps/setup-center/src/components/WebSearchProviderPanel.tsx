@@ -40,7 +40,7 @@ import type { EnvMap } from "../types";
 // envDraft boundary. Keep it impossible to collide with any real provider id.
 const AUTO_DETECT_SENTINEL = "__auto__";
 
-// ---- Types mirroring src/openakita/api/routes/web_search.py response shape ----
+// ---- Types mirroring src/newsclaw/api/routes/web_search.py response shape ----
 
 interface ProviderDescriptor {
   id: string;
@@ -74,7 +74,7 @@ interface TestSearchResponse {
 // Per-provider UI metadata: which env key holds the credential, recommended
 // flag (gold badge), and signup CTA label. Kept in component-local config so
 // adding a new provider is a single entry here + a new module under
-// ``src/openakita/tools/web_search/providers/``.
+// ``src/newsclaw/tools/web_search/providers/``.
 interface ProviderUIConfig {
   envKey: string;          // .env key bound to the credential
   envType?: "text" | "password";
@@ -100,7 +100,14 @@ const PROVIDER_UI: Record<string, ProviderUIConfig> = {
     envKey: "TAVILY_API_KEY",
     envType: "password",
     envPlaceholder: "tvly-...",
-    recommended: true, // 海外推荐
+    envHelp: "默认搜索源。多个 Key 用逗号或换行分隔，组成号池自动轮询。",
+    recommended: true, // 默认激活源
+  },
+  serper: {
+    envKey: "SERPER_API_KEY",
+    envType: "password",
+    envPlaceholder: "serper-...",
+    envHelp: "Google 搜索备用源。多个 Key 用逗号或换行分隔。",
   },
   searxng: {
     envKey: "SEARXNG_BASE_URL",
@@ -294,7 +301,7 @@ export default function WebSearchProviderPanel({
       <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
         {t(
           "toolsWebSearch.intro",
-          "DuckDuckGo 在国内常无法访问，建议配置博查（国内）或 Tavily（海外）等替代源。留空「激活源」走自动检测，按优先级（博查 → Tavily → SearXNG → Jina → DuckDuckGo）尝试已配置的可用源。",
+          "默认激活 Tavily。多个 Tavily Key 用逗号写入即可组成号池。DuckDuckGo 在国内常无法访问；博查 / Serper 可作为备用源。留空「激活源」走自动检测（Tavily → 博查 → Serper → SearXNG → Jina → DuckDuckGo）。",
         )}
       </div>
 

@@ -7,7 +7,7 @@ workspace and bundled external skills. A user's bindings in
 ## Inclusion policy
 
 An external skill belongs in the bundled wheel only when it has a distinct user task,
-accurate prerequisites, an OpenAkita-compatible execution path, and a maintainable
+accurate prerequisites, an NewsClaw-compatible execution path, and a maintainable
 upstream/license record. Keep optional or credentialed skills disabled by default.
 
 Do not bundle:

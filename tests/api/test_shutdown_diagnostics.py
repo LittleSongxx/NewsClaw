@@ -145,7 +145,7 @@ def test_f_stop_cleanly_joins_daemon(tmp_path: Path) -> None:
     # The named daemon must have exited (or at least be no longer
     # findable under its specific name).
     assert not any(
-        t.name == "openakita-shutdown-diagnostics" and t.is_alive()
+        t.name == "newsclaw-shutdown-diagnostics" and t.is_alive()
         for t in threading.enumerate()
     )
 

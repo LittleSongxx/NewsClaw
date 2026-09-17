@@ -78,33 +78,6 @@ import { safeFetch } from "./providers";
 import {
   joinPath,
 } from "./utils";
-import type { AppServiceStatus } from "./AppContext";
-
-type ServiceStatus = AppServiceStatus & {
-  port?: number;
-  heartbeatPhase?: string;
-  heartbeatHttpReady?: boolean;
-  heartbeatImReady?: boolean;
-  heartbeatReady?: boolean;
-  lastLinkDiagnostic?: LinkDiagnostic | null;
-};
-
-const externalRunningStatus = (pid: number | null = null): ServiceStatus => ({
-  running: true,
-  pid,
-  pidFile: "",
-  managedBy: "external",
-  isManagedChild: false,
-});
-
-const stoppedStatus = (): ServiceStatus => ({
-  running: false,
-  pid: null,
-  pidFile: "",
-  managedBy: "unknown",
-  isManagedChild: false,
-});
-
 // ═══════════════════════════════════════════════════════════════════════
 // 前后端交互路由原则（全局适用）：
 //   后端运行中 → 所有配置读写、模型列表、连接测试 **优先走后端 HTTP API**
@@ -138,23 +111,18 @@ import { ToolsView } from "./views/ToolsView";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { INBOX_REFRESH_EVENT, INBOX_UNREAD_CHANGED_EVENT } from "./components/InboxBadge";
 import { isHighPriorityInbox, type InboxUpdatePayload, type InboxWsMessagePayload } from "./inboxTypes";
-
-/** Health-check timeout for recurring monitoring (heartbeat + refreshStatus).
- *  Startup/one-shot probes keep their own shorter timeouts.
- *  5s accommodates slow devices where the event loop may be busy. */
-const HEALTH_POLL_TIMEOUT_MS = 5_000;
-const DEFAULT_LOCAL_API_BASE = "http://127.0.0.1:18900";
-// First-run startup can install channel/plugin dependencies before the API is
-// reachable on older builds or dirty user environments. Keep the UI waiting
-// with progress instead of declaring "HTTP unreachable" too early.
-const LOCAL_SERVICE_READY_TIMEOUT_MS = 120_000;
-const ONBOARDING_HTTP_READY_TIMEOUT_MS = 180_000;
-const HTTP_READY_POLL_INTERVAL_MS = 2_000;
-// Frontend-side startup hold. Rust boot-grace relies on a pid file, but there is
-// a short window after runtime setup and before pid/HTTP readiness where both
-// pid-based checks can be false. Keep the UI monotonic in "starting" there.
-const BACKEND_STARTUP_HOLD_MS = 180_000;
-const BACKEND_STARTUP_PROBE_HOLD_MS = 30_000;
+import {
+  BACKEND_STARTUP_HOLD_MS,
+  BACKEND_STARTUP_PROBE_HOLD_MS,
+  DEFAULT_LOCAL_API_BASE,
+  HEALTH_POLL_TIMEOUT_MS,
+  HTTP_READY_POLL_INTERVAL_MS,
+  LOCAL_SERVICE_READY_TIMEOUT_MS,
+  ONBOARDING_HTTP_READY_TIMEOUT_MS,
+} from "./app/constants";
+import { parseHashRoute as _parseHashRoute, viewToHash as _viewToHash } from "./app/routing";
+import { externalRunningStatus, stoppedStatus, type ServiceStatus } from "./app/serviceStatus";
+import { UserDocsFrame } from "./app/UserDocsFrame";
 
 interface EnvFieldCtx {
   envDraft: EnvMap;
@@ -167,113 +135,11 @@ interface EnvFieldCtx {
 
 const EnvFieldContext = createContext<EnvFieldCtx | null>(null);
 
-const _HASH_TO_VIEW: Record<string, ViewId> = {
-  "chat": "chat", "im": "im", "skills": "skills", "mcp": "mcp", "knowledge": "knowledge",
-  "scheduler": "scheduler", "memory": "memory", "status": "status",
-  "newsroom": "newsroom", "wiki": "wiki",
-  "token-stats": "token_stats", "skill-usage": "skill_usage", "identity": "identity",
-  "dashboard": "dashboard", "org-editor": "org_editor",
-  "pixel-office": "pixel_office",
-  "agent-manager": "agent_manager", "agent-store": "agent_store",
-  "skill-store": "skill_store", "wizard": "wizard", "docs": "docs",
-  "security": "security", "pending-approvals": "pending_approvals",
-  "plugins": "plugins", "my_feedback": "my_feedback",
-};
-
-const _VIEW_TO_HASH: Record<string, string> = Object.fromEntries(
-  Object.entries(_HASH_TO_VIEW).map(([k, v]) => [v, k]),
-);
-
-const _HASH_TO_STEP: Record<string, StepId> = {
-  "llm": "llm", "im": "im", "tools": "tools", "agent": "agent", "advanced": "advanced",
-};
-
-function _parseHashRoute(hash: string): { view: ViewId; stepId?: StepId } | null {
-  const path = hash.replace(/^#\/?/, "");
-  if (path.startsWith("skills?")) return { view: "skills" };
-  if (!path) return null;
-  if (_HASH_TO_VIEW[path]) return { view: _HASH_TO_VIEW[path] };
-  if (path.startsWith("config/")) {
-    const step = path.slice(7);
-    if (_HASH_TO_STEP[step]) return { view: "wizard", stepId: _HASH_TO_STEP[step] as StepId };
-  }
-  if (path.startsWith("app/")) {
-    const pluginId = path.slice(4);
-    if (pluginId) return { view: `plugin_app:${pluginId}` as ViewId };
-  }
-  return null;
-}
-
-function _viewToHash(view: string, stepId?: string): string {
-  if (view === "wizard" && stepId) {
-    return `#/config/${stepId}`;
-  }
-  if (view.startsWith("plugin_app:")) {
-    return `#/app/${view.slice("plugin_app:".length)}`;
-  }
-  return _VIEW_TO_HASH[view] ? `#/${_VIEW_TO_HASH[view]}` : "";
-}
-
 export function App() {
   if (window.location.pathname === '/pet') {
     return <Suspense fallback={null}><PetView /></Suspense>;
   }
   return <MainApp />;
-}
-
-function UserDocsFrame({
-  docsBase,
-  docsVersion,
-  title,
-}: {
-  docsBase: string;
-  docsVersion?: string | null;
-  title: string;
-}) {
-  const [available, setAvailable] = useState<"checking" | "yes" | "no">("checking");
-  const docsCacheKey = docsVersion || "current";
-  const docsUrl = docsVersion
-    ? `${docsBase}/user-docs/v${encodeURIComponent(docsVersion)}/?ov=${encodeURIComponent(docsCacheKey)}`
-    : `${docsBase}/user-docs/?ov=${encodeURIComponent(docsCacheKey)}`;
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(docsUrl, { method: "GET", cache: "no-store", signal: AbortSignal.timeout(5_000) })
-      .then((res) => {
-        if (!cancelled) setAvailable(res.ok ? "yes" : "no");
-      })
-      .catch(() => {
-        if (!cancelled) setAvailable("no");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [docsUrl]);
-
-  if (available === "yes") {
-    return (
-      <iframe
-        src={docsUrl}
-        style={{ flex: 1, border: "none", width: "100%", height: "100%", borderRadius: 8, background: "var(--bg, #fff)" }}
-        title={title}
-      />
-    );
-  }
-
-  return (
-    <div className="card" style={{ margin: 16, padding: 32, textAlign: "center" }}>
-      <h2 className="cardTitle">用户文档暂不可用</h2>
-      <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.7, margin: "8px auto 16px", maxWidth: 520 }}>
-        当前安装包未包含本地文档资源，后端没有挂载 <code>/user-docs/</code>。核心功能不受影响，可以先访问在线文档。
-      </p>
-      <button onClick={() => window.open("https://openakita.ai", "_blank", "noopener,noreferrer")}>
-        打开在线文档
-      </button>
-      {available === "checking" && (
-        <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted)" }}>正在检查本地文档...</div>
-      )}
-    </div>
-  );
 }
 
 function MainApp() {
@@ -289,6 +155,8 @@ function MainApp() {
   const [showPwBanner, setShowPwBanner] = useState(false);
   const [showServerManager, setShowServerManager] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
+  const previewModeRef = useRef(false);
+  previewModeRef.current = previewMode;
   const [needServerConfig, setNeedServerConfig] = useState(
     () => IS_CAPACITOR && !getActiveServer(),
   );
@@ -305,9 +173,9 @@ function MainApp() {
   // sessions can be redirected if the user explicitly invokes reset-password.
   useEffect(() => {
     const onSetupRequired = () => setSetupRequired(true);
-    window.addEventListener("openakita:setup-required", onSetupRequired);
+    window.addEventListener("newsclaw:setup-required", onSetupRequired);
     return () => {
-      window.removeEventListener("openakita:setup-required", onSetupRequired);
+      window.removeEventListener("newsclaw:setup-required", onSetupRequired);
     };
   }, []);
 
@@ -348,7 +216,10 @@ function MainApp() {
           setAuthChecking(false);
         });
       });
-    const onExpired = () => setWebAuthed(false);
+    const onExpired = () => {
+      if (previewModeRef.current) return;
+      setWebAuthed(false);
+    };
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => {
       cancelled = true;
@@ -469,7 +340,7 @@ function MainApp() {
   useEffect(() => {
     try {
       document.getElementById("boot")?.remove();
-      window.dispatchEvent(new Event("openakita_app_ready"));
+      window.dispatchEvent(new Event("newsclaw_app_ready"));
     } catch {
       // ignore
     }
@@ -500,7 +371,7 @@ function MainApp() {
       { id: "llm" as StepId, title: t("config.step.endpoints"), desc: t("config.step.endpointsDesc") },
       { id: "im" as StepId, title: t("config.imTitle"), desc: t("config.step.imDesc") },
       { id: "tools" as StepId, title: t("config.step.tools"), desc: t("config.step.toolsDesc") },
-      { id: "agent" as StepId, title: t("config.step.agent"), desc: t("config.step.agentDesc") },
+      { id: "agent" as StepId, title: t(IS_WEB ? "config.step.agentWeb" : "config.step.agent"), desc: t(IS_WEB ? "config.step.agentDescWeb" : "config.step.agentDesc") },
       { id: "advanced" as StepId, title: t("config.step.advanced"), desc: t("config.step.advancedDesc") },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -552,7 +423,7 @@ function MainApp() {
     };
     // Listen for postMessage from embedded docs iframe (cross-origin safe)
     const onMessage = (e: MessageEvent) => {
-      if (e.data?.type === "openakita-navigate" && typeof e.data.hash === "string") {
+      if (e.data?.type === "newsclaw-navigate" && typeof e.data.hash === "string") {
         window.location.hash = e.data.hash;
       }
     };
@@ -640,7 +511,7 @@ function MainApp() {
   const [, setObInstallLog] = useState<string[]>([]);
   const [obInstalling, setObInstalling] = useState(false);
   const [obEnvCheck, setObEnvCheck] = useState<{
-    openakitaRoot: string;
+    newsclawRoot: string;
     hasOldVenv: boolean; hasOldRuntime: boolean; hasOldWorkspaces: boolean;
     oldVersion: string | null; currentVersion: string; conflicts: string[];
     diskUsageMb: number; runningProcesses: string[];
@@ -793,7 +664,7 @@ function MainApp() {
   const [pipIndexPresetId] = useState<PipIndexPresetId>(DEFAULT_PIP_INDEX_PRESET_ID);
   const [customIndexUrl, setCustomIndexUrl] = useState<string>("");
   const [, setVenvReady] = useState(false);
-  const [openakitaInstalled, setOpenakitaInstalled] = useState(false);
+  const [newsclawInstalled, setNewsclawInstalled] = useState(false);
   const [, setSelectedPypiVersion] = useState<string>(""); // "" = 推荐同版本
   const [runtimeDiag, setRuntimeDiag] = useState<RuntimeDiagnostics | null>(null);
   const [runtimeDiagChecking, setRuntimeDiagChecking] = useState(false);
@@ -865,7 +736,7 @@ function MainApp() {
     lastPluginAppsReadyEventRef.current = now;
     try {
       window.dispatchEvent(
-        new CustomEvent("openakita:plugin-apps-changed", {
+        new CustomEvent("newsclaw:plugin-apps-changed", {
           detail: { source: "backend-ready" },
         }),
       );
@@ -877,7 +748,7 @@ function MainApp() {
   const serviceLogRef = useRef<HTMLPreElement>(null);
   const logAtBottomRef = useRef(true);
   const [, setAppVersion] = useState<string>("");
-  const [, setOpenakitaVersion] = useState<string>("");
+  const [, setNewsclawVersion] = useState<string>("");
 
   // Health check state
   const [endpointHealth, setEndpointHealth] = useState<Record<string, {
@@ -951,6 +822,8 @@ function MainApp() {
   const webInitDone = useRef(false);
   useEffect(() => {
     if ((!IS_WEB && !IS_CAPACITOR) || !webAuthed || webInitDone.current) return;
+    // 预览模式只展示界面壳，不要去拉需要登录的 API，否则会 refresh 失败并闪回登录页。
+    if (previewMode) return;
     webInitDone.current = true;
     let cancelled = false;
     (async () => {
@@ -973,7 +846,7 @@ function MainApp() {
       autoCheckEndpoints(capBase);
     })();
     return () => { cancelled = true; };
-  }, [webAuthed]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [webAuthed, previewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;
@@ -998,12 +871,12 @@ function MainApp() {
             const vd = joinPath(plat.newsclawRootDir, "venv");
             const v = await invoke<string>("newsclaw_version", { venvDir: vd });
             if (!cancelled && v) {
-              setOpenakitaInstalled(true);
-              setOpenakitaVersion(v);
+              setNewsclawInstalled(true);
+              setNewsclawVersion(v);
               setVenvStatus(`安装完成 (v${v})`);
               setVenvReady(true);
             }
-          } catch { /* venv not found or openakita not installed */ }
+          } catch { /* venv not found or newsclaw not installed */ }
 
           try {
             const raw = await readWorkspaceFile("data/llm_endpoints.json");
@@ -1572,7 +1445,7 @@ function MainApp() {
       // 无需让 App 知道具体组件存在。``action`` 透传给监听方按需做差异化处理。
       if (event === "skills:changed") {
         try {
-          window.dispatchEvent(new CustomEvent("openakita:skills-changed", {
+          window.dispatchEvent(new CustomEvent("newsclaw:skills-changed", {
             detail: { action: String(p.action || "") },
           }));
         } catch {
@@ -1601,7 +1474,7 @@ function MainApp() {
   useEffect(() => {
     if (!venvStatus) return;
     if (venvStatus.includes("venv 就绪")) setVenvReady(true);
-    if (venvStatus.includes("安装完成")) setOpenakitaInstalled(true);
+    if (venvStatus.includes("安装完成")) setNewsclawInstalled(true);
   }, [venvStatus]);
 
   /**
@@ -1867,9 +1740,9 @@ function MainApp() {
       if (!shouldUseHttpApi()) {
         try {
           const v = await invoke<string>("newsclaw_version", { venvDir });
-          setOpenakitaVersion(v || "");
+          setNewsclawVersion(v || "");
         } catch {
-          setOpenakitaVersion("");
+          setNewsclawVersion("");
         }
       }
     } catch (e) {
@@ -2208,7 +2081,7 @@ function MainApp() {
       // 自动安装已启用 IM 通道缺失的依赖（非阻塞，失败不影响重启）
       if (IS_TAURI && venvDir && currentWorkspaceId) {
         try {
-          await invoke("openakita_ensure_channel_deps", {
+          await invoke("newsclaw_ensure_channel_deps", {
             venvDir,
             workspaceId: currentWorkspaceId,
           });
@@ -2258,7 +2131,7 @@ function MainApp() {
       // do process-level stop/start. A stale PID file may still say
       // managedBy="tauri" from an older desktop session while the current
       // backend was started manually from a terminal; treat that as external
-      // and let openakita serve restart itself via /api/config/restart.
+      // and let newsclaw serve restart itself via /api/config/restart.
       // If the status command fails or cannot match a PID file, the HTTP health
       // check above has already proved a backend exists, so default to external.
       const tauriStatusMatchesHealthPid =
@@ -2388,7 +2261,7 @@ function MainApp() {
           "MEMORY_MODE",
           "EMBEDDING_MODEL", "EMBEDDING_DEVICE", "MODEL_DOWNLOAD_SOURCE",
           "MEMORY_HISTORY_DAYS", "MEMORY_MAX_HISTORY_FILES", "MEMORY_MAX_HISTORY_SIZE_MB",
-          "PERSONA_NAME",
+          ...(IS_WEB ? [] : ["PERSONA_NAME"]),
           "PROACTIVE_ENABLED", "PROACTIVE_MAX_DAILY_MESSAGES", "PROACTIVE_MIN_INTERVAL_MINUTES",
           "PROACTIVE_QUIET_HOURS_START", "PROACTIVE_QUIET_HOURS_END", "PROACTIVE_IDLE_THRESHOLD_HOURS",
           "STICKER_ENABLED", "STICKER_DATA_DIR",
@@ -2774,7 +2647,7 @@ function MainApp() {
         .filter((e: any) => e.name);
       setEndpointSummary(list);
 
-      // skills (requires openakita installed in venv)
+      // skills (requires newsclaw installed in venv)
       try {
         const skillsRaw = await invoke<string>("newsclaw_list_skills", { venvDir, workspaceId: currentWorkspaceId });
         const skillsParsed = JSON.parse(skillsRaw) as { count: number; skills: any[] };
@@ -2932,7 +2805,7 @@ function MainApp() {
         return {
           pid: data.pid || 0,
           version: data.version || "unknown",
-          service: data.service || "openakita",
+          service: data.service || "newsclaw",
         };
       }
     } catch { /* service not running */ }
@@ -3205,10 +3078,10 @@ function MainApp() {
     if (!currentWorkspaceId && dataMode !== "remote") return;
     if (!!busy) return;
     if (skillsDetail) return;
-    if (!openakitaInstalled && dataMode !== "remote") return;
+    if (!newsclawInstalled && dataMode !== "remote") return;
     void doRefreshSkills();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, stepId, currentWorkspaceId, openakitaInstalled, skillsDetail, dataMode]);
+  }, [view, stepId, currentWorkspaceId, newsclawInstalled, skillsDetail, dataMode]);
 
   async function doRefreshSkills() {
     if (!currentWorkspaceId && dataMode !== "remote") {
@@ -3618,7 +3491,7 @@ function MainApp() {
           venvChecked: string;
         }>("check_backend_availability", { venvDir: effectiveVenv });
         if (!backendInfo.bundled && !backendInfo.venvReady) {
-          log("未找到可用后端，尝试自动创建 venv 并安装 openakita...");
+          log("未找到可用后端，尝试自动创建 venv 并安装 newsclaw...");
           logTask("检查后端环境", "running", "创建 venv...");
           updateTask("backend-check", { detail: "创建 venv..." });
           const detectedPy = await invoke<Array<{ command: string[]; version: string }>>("detect_python");
@@ -4070,7 +3943,7 @@ function MainApp() {
                           {obEnvCheck.conflicts.map((c, i) => <li key={i}>{c}</li>)}
                         </ul>
                         <p className="text-xs text-muted-foreground">
-                          检查路径: {obEnvCheck.openakitaRoot ?? "(未知)"}
+                          检查路径: {obEnvCheck.newsclawRoot ?? "(未知)"}
                         </p>
                         <Button variant="secondary" size="sm" onClick={() => obLoadEnvCheck()}>
                           重新检测环境
@@ -4080,7 +3953,7 @@ function MainApp() {
                   )}
                   {obEnvCheck.conflicts.length === 0 && (
                     <p className="text-xs text-muted-foreground/75">
-                      检查路径: {obEnvCheck.openakitaRoot ?? "(未知)"}
+                      检查路径: {obEnvCheck.newsclawRoot ?? "(未知)"}
                     </p>
                   )}
                 </>
@@ -5218,14 +5091,14 @@ function MainApp() {
             <button className="btnSmall" style={{ whiteSpace: "nowrap", fontWeight: 500, fontSize: isMobile ? 11 : undefined, padding: isMobile ? "2px 8px" : undefined }} onClick={() => {
               navigateToView("wizard", "advanced");
               setShowPwBanner(false);
-              localStorage.setItem("openakita_pw_banner_dismissed", "1");
+              localStorage.setItem("newsclaw_pw_banner_dismissed", "1");
             }}>{t("web.passwordBannerAction", { defaultValue: "去设置" })}</button>
             <button style={{
               background: "none", border: "none", cursor: "pointer", padding: 2,
               color: "var(--warning-text, #92400e)", fontSize: 16, lineHeight: 1, opacity: 0.6,
             }} onClick={() => {
               setShowPwBanner(false);
-              localStorage.setItem("openakita_pw_banner_dismissed", "1");
+              localStorage.setItem("newsclaw_pw_banner_dismissed", "1");
             }} title={t("common.close", { defaultValue: "关闭" })}>×</button>
           </div>
         )}

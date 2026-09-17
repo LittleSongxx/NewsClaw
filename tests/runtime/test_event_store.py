@@ -1,4 +1,4 @@
-"""Tests for :mod:`openakita.runtime.event_store`.
+"""Tests for :mod:`newsclaw.runtime.event_store`.
 
 Phase 1 commit 5. Asserts:
 

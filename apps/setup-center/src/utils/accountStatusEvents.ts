@@ -1,4 +1,4 @@
-export const ACCOUNT_STATUS_CHANGED_EVENT = "openakita:account-status-changed";
+export const ACCOUNT_STATUS_CHANGED_EVENT = "newsclaw:account-status-changed";
 
 export type AccountStatusSummary = {
   status: string;

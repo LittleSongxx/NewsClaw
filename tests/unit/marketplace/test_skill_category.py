@@ -136,13 +136,13 @@ async def test_category_survives_preparation_and_job_reload(tmp_path, category):
         "digest_sha256": "a" * 64,
         "signature": "signature",
         "size_bytes": 1,
-        "download_url": "https://marketplace.openakita.cn/file",
+        "download_url": "https://marketplace.newsclaw.cn/file",
         "verification": {"algorithm": "Ed25519", "digest_algorithm": "SHA-256"},
     }
     if category is not None:
         payload["resource_category"] = category
     manager._authorize = AsyncMock(return_value=payload)
-    prepared = await manager.prepare("b" * 64, "https://marketplace.openakita.cn", account=object())
+    prepared = await manager.prepare("b" * 64, "https://marketplace.newsclaw.cn", account=object())
     assert prepared["resource_category"] == category
     assert (
         MarketplaceInstallManager(tmp_path)._jobs["category-job"]["resource_category"] == category

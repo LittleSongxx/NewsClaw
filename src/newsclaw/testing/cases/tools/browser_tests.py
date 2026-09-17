@@ -1,6 +1,4 @@
-"""
-浏览器工具测试用例 (预留，需要 Playwright 支持)
-"""
+"""浏览器工具 demo cases（5 条，预留 Playwright）。不是质量门。"""
 
 from newsclaw.testing.runner import TestCase
 

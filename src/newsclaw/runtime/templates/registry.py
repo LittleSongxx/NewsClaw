@@ -67,7 +67,7 @@ when the template is actually instantiated.
 """
 
 
-TEMPLATE_FACTORY_MARK = "__openakita_template_factory__"
+TEMPLATE_FACTORY_MARK = "__newsclaw_template_factory__"
 """Attribute name set on a function by :func:`template`.
 
 We need a *survivable* marker because some callers (FastAPI app

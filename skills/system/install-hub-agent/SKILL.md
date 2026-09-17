@@ -1,6 +1,6 @@
 ---
 name: install-hub-agent
-description: Download and install an Agent from the OpenAkita Platform Agent Store
+description: Download and install an Agent from the NewsClaw Platform Agent Store
 system: true
 handler: agent_hub
 tool-name: install_hub_agent
@@ -9,7 +9,7 @@ category: Platform
 
 # install-hub-agent
 
-Download and install an Agent from the OpenAkita Platform Agent Store to the local system.
+Download and install an Agent from the NewsClaw Platform Agent Store to the local system.
 
 ## When to Use
 

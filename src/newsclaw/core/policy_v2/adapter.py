@@ -25,9 +25,9 @@ C8b-6a 之后所有生产 caller（permission.py / reasoning_engine.py × 2）�
 
 2. **Adapter 层 fail-closed**：v2 ``PolicyEngineV2._evaluate_tool_call_impl``
    已有 top-level fail-safe（exception → DENY），但 ``get_engine_v2()`` /
-   ctx 构造仍可能抛。adapter 包一层 fail-closed：风险工具异常 → DENY；
-   安全工具（read 类前缀）异常 → ALLOW（与 v1 ``permission.check_permission``
-   同语义，避免 read_file 被引擎 bug 拖死）。
+   ctx 构造仍可能抛。adapter 包一层 fail-closed：**一律 DENY**（含只读），
+   与引擎 ``engine_crash`` 一致。安全子系统失败 = 拒绝，不再对
+   ``read_file`` 一类工具 fail-open。
 
 3. **mode 翻译**：plan/ask/coordinator 由 ``permission.check_mode_permission``
    先拦截，所以 adapter 通常只需处理 ``mode='agent'``。non-agent mode 仍传给
@@ -68,43 +68,6 @@ if TYPE_CHECKING:
     from .models import PolicyDecisionV2
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# v1 risk fail-closed prefixes（与 permission._FAIL_CLOSED_TOOL_PREFIXES 对齐）
-# 重复定义避免 adapter ↔ permission 形成 import 环；两边 drift 时由 C6.7 smoke
-# test 抓到。
-# ---------------------------------------------------------------------------
-
-_FAIL_CLOSED_TOOL_PREFIXES = (
-    "run_",
-    "delete_",
-    "edit_",
-    "write_",
-    "rename_",
-    "delegate_",
-    "spawn_",
-    "create_agent",
-    "call_mcp_",
-    "browser_",
-    "desktop_",
-)
-_EDIT_TOOLS = frozenset(
-    {
-        "write_file",
-        "edit_file",
-        "replace_in_file",
-        "create_file",
-        "delete_file",
-        "rename_file",
-    }
-)
-
-
-def _should_fail_closed(tool_name: str) -> bool:
-    if tool_name in _EDIT_TOOLS:
-        return True
-    return tool_name.startswith(_FAIL_CLOSED_TOOL_PREFIXES)
 
 
 # ---------------------------------------------------------------------------
@@ -667,35 +630,21 @@ def evaluate_via_v2(
 def _synthesize_fail_closed(tool_name: str, exc: Exception) -> PolicyDecisionV2:
     """构造一个 fail-closed 决策（adapter 层 fallback）。
 
-    与 v1 ``permission.check_permission`` 异常分支语义对齐：
-    - 风险工具（write/run/delete/...）→ DENY
-    - 安全工具 → ALLOW（避免拖垮 read_file 等高频低危场景）
+    与引擎 ``engine_crash`` 一致：策略子系统失败 = 一律 DENY（含只读工具）。
+    ``tool_name`` 仅写入审计 note，不再按前缀 fail-open。
     """
     from .enums import ApprovalClass
     from .models import DecisionStep, PolicyDecisionV2
 
-    if _should_fail_closed(tool_name):
-        return PolicyDecisionV2(
-            action=DecisionAction.DENY,
-            reason="安全策略暂时不可用，已阻止高风险操作，请稍后重试。",
-            approval_class=ApprovalClass.UNKNOWN,
-            chain=[
-                DecisionStep(
-                    name="adapter_fail_closed",
-                    action=DecisionAction.DENY,
-                    note=f"engine_unavailable: {exc!r}",
-                )
-            ],
-        )
     return PolicyDecisionV2(
-        action=DecisionAction.ALLOW,
-        reason="",
+        action=DecisionAction.DENY,
+        reason="安全策略暂时不可用，已阻止本次工具调用，请稍后重试。",
         approval_class=ApprovalClass.UNKNOWN,
         chain=[
             DecisionStep(
-                name="adapter_fail_open_safe",
-                action=DecisionAction.ALLOW,
-                note=f"engine_unavailable: {exc!r}",
+                name="adapter_fail_closed",
+                action=DecisionAction.DENY,
+                note=f"engine_unavailable tool={tool_name}: {exc!r}",
             )
         ],
     )

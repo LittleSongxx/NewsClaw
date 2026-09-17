@@ -28,7 +28,7 @@ pub fn run() {
     spawn_machine_info_collector();
 
     // Native crash handler: capture SEH exceptions (access violation /
-    // heap corruption / illegal instruction) to ~/.openakita/crashdumps/
+    // heap corruption / illegal instruction) to ~/.newsclaw/crashdumps/
     // *.dmp.  std::panic::set_hook only sees Rust panics, not C-level
     // crashes from WebView2 / DLLs / GPU drivers, which is where the
     // 0xc0000005 / 0xc0000374 / 0xc000001d reports actually originate.
@@ -102,8 +102,8 @@ pub fn run() {
             show_main_window(app, "single-instance", false);
             for arg in args {
                 // tauri.conf.json 注册的是 newsclaw://，但已经发出去的旧版
-                // 市场回跳链接仍是 openakita://，两种都要转发。
-                if arg.starts_with("newsclaw://") || arg.starts_with("openakita://") {
+                // 市场回跳链接仍是 newsclaw://，两种都要转发。
+                if arg.starts_with("newsclaw://") || arg.starts_with("newsclaw://") {
                     let _ = app.emit("newsclaw-deep-link", arg);
                 }
             }

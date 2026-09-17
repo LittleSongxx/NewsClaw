@@ -1465,7 +1465,7 @@ export function SkillManager({
     loadCategories();
   }, [loadCategories]);
 
-  // ── 实时刷新：监听 App.tsx 桥接的 'openakita:skills-changed' 事件 ──
+  // ── 实时刷新：监听 App.tsx 桥接的 'newsclaw:skills-changed' 事件 ──
   // enabledDirty=true 时仅 toast 提示用户（避免覆盖未保存草稿），
   // 否则静默 reload 技能与分类列表
   const enabledDirtyRef = useRef(enabledDirty);
@@ -1483,13 +1483,13 @@ export function SkillManager({
       loadSkills().catch(() => {});
       loadCategories().catch(() => {});
     };
-    window.addEventListener("openakita:skills-changed", onChange);
-    return () => window.removeEventListener("openakita:skills-changed", onChange);
+    window.addEventListener("newsclaw:skills-changed", onChange);
+    return () => window.removeEventListener("newsclaw:skills-changed", onChange);
   }, [loadSkills, loadCategories, t]);
 
   // ── 分类操作统一刷新入口 ──
   // 所有分类写操作成功后必须经过此函数刷新 UI。
-  // 后端 propagate_skill_change 也会通过 WebSocket 广播触发 openakita:skills-changed
+  // 后端 propagate_skill_change 也会通过 WebSocket 广播触发 newsclaw:skills-changed
   // 事件，但 WS 到达有延迟，这里显式刷新保证操作后立即看到结果。
   // WS 事件到达时 enabledDirtyRef 仍为 false（因为批量操作不走 draft），
   // 所以即使 WS 稍后再到一次也只是静默重复，不会冲突。
