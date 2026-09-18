@@ -1,6 +1,6 @@
 [project]
 name = "newsclaw"
-version = "1.27.42"
+version = "1.29.0"
 description = "本地优先的多 Agent AI 助手，主循环是 ReAct"
 readme = "README.md"
 license = { text = "AGPL-3.0-only" }

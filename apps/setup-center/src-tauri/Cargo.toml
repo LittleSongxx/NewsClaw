@@ -1,6 +1,6 @@
 [package]
 name = "newsclaw-setup-center"
-version = "1.27.42"
+version = "1.29.0"
 description = "NewsClaw Setup Center"
 authors = ["NewsClaw"]
 license = "AGPL-3.0-only"
