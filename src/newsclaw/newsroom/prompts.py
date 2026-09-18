@@ -10,8 +10,8 @@
     skills/newsroom-editor/SKILL.md     操作手册（流程：怎么跑管线，保持稳定）
 
 prompt 版本号 ``PROMPT_VERSION`` 递增时，seed 模块会在下次启动时把已存在
-任务的 prompt 刷新到新版（v18：明示 evidence 的合法维度与日期格式——
-复盘任务的提案解析会机验这两个字段，写错整份提案判 invalid）
+任务的 prompt 刷新到新版（v19：注入块印记本期 issue_date，跨午夜运行的
+目录名以注入为准，不要用 Agent 自己的「今天」）
 （用户在 GUI 里改排期不受影响，见 seed 模块说明）。
 """
 
@@ -25,7 +25,7 @@ from newsclaw.newsroom.editorial import load_editorial_policy
 from newsclaw.newsroom.items import format_seen_items_for_prompt
 from newsclaw.newsroom.sources import load_sources, sources_path
 
-PROMPT_VERSION = 18
+PROMPT_VERSION = 19
 
 #: 每日任务运行时注入块的起止标记。播种缓存的 prompt 可能含旧块，
 #: 调度触发时会剥掉再拼当期 sources / 方针。
@@ -43,7 +43,7 @@ _RUBRIC = """\
 
 _MANIFEST_SCHEMA = """\
 {
-  "issue_date": "YYYY-MM-DD（与目录名一致）",
+  "issue_date": "YYYY-MM-DD（取注入块的 issue_date，与目录名一致）",
   "title": "本期标题（如「AI 早报 #12｜xxx」）",
   "status": "ready（契约机验：信源⊆清单 + 三产物过结构 + items 账本与稿件 URL 对齐且不与近窗重复；否则 partial）",
   "sources_used": ["实际用到的信源 name 列表，与 sources.yaml 对账"],
@@ -94,6 +94,8 @@ def build_daily_injection_block() -> str:
     book = load_sources()
     lines = [
         INJECTION_BEGIN,
+        f"本期 issue_date：{date.today().isoformat()}（期次目录名与 manifest.issue_date "
+        "以此为准，不要用你自己的「今天」——跨午夜运行时两者可能不同）",
         "以下由 Python 在每次任务启动时读取磁盘现态注入，优先于你对 read_file",
         "的记忆。子 Agent 看不到本段；delegate_parallel 的每个任务包必须自带",
         "当期信源摘要（name / kind / query 或 url / weight）以及本段的已见 URL，",
@@ -208,8 +210,9 @@ def build_daily_prompt(config: NewsroomConfig | None = None) -> str:
   再按主题聚类、剔营销稿，得到**入选短名单**。写作只能用这份短名单，
   禁止把未入账的链接写进三产物。
 
-【第 2 步 · 整理产物】在 {root / "issues"} 下建今天（本地日期）的目录
-YYYY-MM-DD，依次写出（文件名固定，平台规范以 get_skill_info 加载对应技能为准）。
+【第 2 步 · 整理产物】在 {root / "issues"} 下建**注入块 issue_date** 的目录
+（不要用你自己的「今天」——跨午夜运行时两者可能不同），依次写出
+（文件名固定，平台规范以 get_skill_info 加载对应技能为准）。
 长文用 write_file 写开头，再用 append_file 续写，避免单次 content 被截断。
 禁止 write_file / edit_file / append_file 改 sources.yaml、editorial-policy.md、
 config.yaml——那些文件只能经 WebUI 勾选提案 apply 或设置页保存。

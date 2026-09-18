@@ -14,6 +14,7 @@ import inspect
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Any
 
 from ..channels.base import ChannelDeliveryUnavailable
@@ -24,12 +25,16 @@ from .task import ScheduledTask
 logger = logging.getLogger(__name__)
 
 
-def _newsroom_daily_readiness_warning() -> str:
-    """当日早报未达 ready 的告警文案；就绪或检查自身失败返回空串。"""
+def _newsroom_daily_readiness_warning(run_day: str) -> str:
+    """run_day 期早报未达 ready 的告警文案；就绪或检查自身失败返回空串。
+
+    ``run_day`` 用任务**开始时**的日期（注入块印记的 issue_date 与之一致），
+    不用在通知时刻重算「今天」——跨午夜运行时两者会分叉。
+    """
     try:
         from newsclaw.newsroom.contract import daily_readiness_warning
 
-        return daily_readiness_warning()
+        return daily_readiness_warning(run_day)
     except Exception:
         logger.exception("TaskExecutor: newsroom readiness gate failed")
         return ""
@@ -472,6 +477,9 @@ class TaskExecutor:
             task: 要执行的任务
             skip_end_notification: 是否跳过结束通知（用于从提醒升级的情况）
         """
+        # 早报就绪门用任务开始时的日期：注入块印记的 issue_date 与之一致，
+        # 跨午夜运行时不能在通知时刻重算「今天」。
+        run_day = datetime.now().date().isoformat()
         agent = None
         im_context_set = False
         try:
@@ -723,7 +731,7 @@ class TaskExecutor:
             # silent 不豁免（异常路径的失败已有通知，这里不重复）。
             metadata_map = task.metadata if isinstance(task.metadata, dict) else {}
             if metadata_map.get("newsroom") == "daily":
-                warning = _newsroom_daily_readiness_warning()
+                warning = _newsroom_daily_readiness_warning(run_day)
                 if warning:
                     with contextlib.suppress(ChannelDeliveryUnavailable):
                         await self._send_end_notification(task, success=False, message=warning)

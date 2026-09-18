@@ -402,22 +402,57 @@ def daily_readiness_warning(issue_date: str | None = None) -> str:
     day = issue_date or date.today().isoformat()
     manifest, error = load_manifest(day)
     if error:
-        return f"⚠️ 今日早报（{day}）manifest 校验未过：{error}"
+        return f"⚠️ 早报（{day}）manifest 校验未过：{error}"
     if manifest is None:
-        return f"⚠️ 今日早报（{day}）没有落账 manifest（管线未完成产出）。"
+        return f"⚠️ 早报（{day}）没有落账 manifest（管线未完成产出）。"
     if manifest.status != "ready":
-        return f"⚠️ 今日早报（{day}）status={manifest.status}，未达 ready。"
+        return f"⚠️ 早报（{day}）status={manifest.status}，未达 ready。"
     return ""
+
+
+def latest_issue_date_within(hours: float = 25.0) -> str | None:
+    """最近 ``hours`` 小时内 manifest 有落盘动作的期次日期（最新的一个）。
+
+    供预算降级/就绪门在跨午夜运行时兜底：当天的 manifest 可能其实写在
+    运行起始日的目录里（注入块印记的 issue_date），按 mtime 找回来。
+    """
+    root = issues_root()
+    if not root.is_dir():
+        return None
+    now = datetime.now().timestamp()
+    best_day: str | None = None
+    best_mtime = 0.0
+    for day_dir in root.iterdir():
+        if not day_dir.is_dir():
+            continue
+        manifest_path = day_dir / MANIFEST_FILENAME
+        try:
+            mtime = manifest_path.stat().st_mtime
+        except OSError:
+            continue
+        if now - mtime > max(1.0, hours) * 3600:
+            continue
+        if mtime > best_mtime:
+            best_mtime = mtime
+            best_day = day_dir.name
+    return best_day
 
 
 def demote_ready_on_budget_exceeded(issue_date: str | None = None) -> bool:
     """预算耗尽后禁止期次保持 ready；已是 ready 则降为 partial。
 
-    已投递（``delivered_at`` 非空）的期次跳过：内容出了门且过了机验，
-    事后降级只会制造「已推送但 partial」的不一致，撤不回来。
+    优先用传入/当天日期；当天无 manifest 时按 mtime 兜底找最近 25 小时内
+    落盘的期次（跨午夜运行写到起始日目录的场景）。已投递
+    （``delivered_at`` 非空）的期次跳过：内容出了门且过了机验，事后降级
+    只会制造「已推送但 partial」的不一致，撤不回来。
     """
     day = issue_date or date.today().isoformat()
     manifest, _error = load_manifest(day)
+    if manifest is None:
+        fallback = latest_issue_date_within()
+        if fallback is not None and fallback != day:
+            day = fallback
+            manifest, _error = load_manifest(day)
     if manifest is None or manifest.status != "ready":
         return False
     if manifest.delivered_at:
