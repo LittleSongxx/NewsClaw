@@ -39,6 +39,7 @@ from .retention import apply_retention
 from .retrieval import RetrievalEngine
 from .session_identity import DESKTOP_USER_ID
 from .telemetry import emit_memory_health_event
+from .type_policy import can_be_permanent
 from .types import (
     Attachment,
     AttachmentDirection,
@@ -1321,16 +1322,11 @@ class MemoryManager:
         # 因此只允许 *用户身份层* 的记忆走到这里。否则一次任务记录就被永久化，
         # USER.md 会被「[experience] 用户希望删除工作区 py 文件」这种一次性
         # 流水账填满（P1-7）。
-        _persona_types = {
-            MemoryType.PERSONA_TRAIT,
-            MemoryType.PREFERENCE,
-            MemoryType.RULE,
-        }
         # 内容含有任务/操作动词 → 几乎一定是任务流水账，不是身份层信息。
         _task_marker_re = self._task_marker_re_for_extraction()
         _looks_like_task = bool(_task_marker_re.search(content)) if content else False
 
-        if importance >= 0.9 and mem_type in _persona_types and not _looks_like_task:
+        if can_be_permanent(mem_type, importance) and not _looks_like_task:
             priority = MemoryPriority.PERMANENT
         elif importance >= 0.6:
             priority = MemoryPriority.LONG_TERM

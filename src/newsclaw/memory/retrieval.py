@@ -194,6 +194,7 @@ class RetrievalEngine:
         self._external_sources: list = []
         self._plugin_hooks = None
         self._scope_pairs: list[tuple[str, str, str, str]] = [("user", "", "default", "default")]
+        self._current_session_ids: set[str] = set()
         self._focus_terms: list[str] = []
 
     def set_focus_terms(self, terms: list[str] | None) -> None:
@@ -224,6 +225,7 @@ class RetrievalEngine:
             if pair not in pairs:
                 pairs.append(pair)
         self._scope_pairs = pairs or [("user", "", "default", "default")]
+        self._current_session_ids: set[str] = set()
 
     def retrieve(
         self,
@@ -240,6 +242,11 @@ class RetrievalEngine:
         Returns:
             格式化的记忆文本, 适合注入 system prompt
         """
+        self._current_session_ids = {
+            owner
+            for scope, owner, _user, _workspace in self._scope_pairs
+            if scope == "session" and owner
+        }
         prepared = MemoryQueryPreprocessor.prepare(query, recent_messages)
         if prepared.skip:
             logger.debug("[Retrieval] skipped (%s): %r", prepared.skip_reason, query)
@@ -427,7 +434,9 @@ class RetrievalEngine:
                         memory_type=mem.type.value,
                         source_type=f"semantic:{scope}",
                         relevance=relevance,
-                        recency_score=self._compute_recency(mem.updated_at),
+                        recency_score=self._compute_recency(
+                            self._last_active_at(mem.to_dict(), mem.updated_at)
+                        ),
                         importance_score=mem.importance_score,
                         access_frequency_score=self._compute_access_score(mem.access_count),
                         raw_data=mem.to_dict(),
@@ -498,7 +507,9 @@ class RetrievalEngine:
                     continue
                 if mem.expires_at and mem.expires_at < now:
                     continue
-                recency = self._compute_recency(mem.updated_at)
+                recency = self._compute_recency(
+                    self._last_active_at(mem.to_dict(), mem.updated_at)
+                )
                 if recency < 0.3:
                     continue
 
@@ -1017,6 +1028,10 @@ class RetrievalEngine:
                     c.score *= min(1.35, 1.0 + 0.08 * focus_hits)
             if c.memory_type == "fact" and any(w in c.content[:30] for w in self._ACTION_WORDS):
                 c.score *= 0.3
+            # 会话亲和：与当前会话同源的记忆加权（三层优先级共识的最低成本实现：
+            # 当前会话上下文 → 近期 → 长期检索，同会话条目优先于等分长期条目）
+            if self._current_session_ids and c.source_type.startswith("semantic:session"):
+                c.score *= 1.2
 
         ranked = sorted(candidates, key=lambda c: c.score, reverse=True)
         # 冷启动豁免：刚写入 1 小时内的记忆（recency_score >= 0.99 ≈ 1 小时），
@@ -1029,7 +1044,12 @@ class RetrievalEngine:
 
     @staticmethod
     def _compute_recency(dt: datetime) -> float:
-        """Compute recency score: 1.0 for now, decays over days."""
+        """Compute recency score: 1.0 for now, decays over days.
+
+        MemoryBank 式「回忆即强化」：调用方传入的应是**最后活跃时间**
+        （``max(updated_at, last_accessed_at)``）——被引用续命的长命事实
+        不会随写入时间单调衰减。
+        """
         if not dt:
             return 0.0
         try:
@@ -1038,6 +1058,25 @@ class RetrievalEngine:
             return math.exp(-0.1 * days)
         except Exception:
             return 0.0
+
+    @staticmethod
+    def _last_active_at(raw: dict, fallback: datetime | None) -> datetime | None:
+        """取记忆的最后活跃时间：max(updated_at, last_accessed_at)。"""
+        def _parse(value) -> datetime | None:
+            if isinstance(value, datetime):
+                return value
+            if isinstance(value, str) and value:
+                try:
+                    return datetime.fromisoformat(value)
+                except ValueError:
+                    return None
+            return None
+
+        updated = _parse(raw.get("updated_at")) or fallback
+        accessed = _parse(raw.get("last_accessed_at"))
+        if updated and accessed:
+            return max(updated, accessed)
+        return accessed or updated
 
     @staticmethod
     def _compute_access_score(access_count: int) -> float:
