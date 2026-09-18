@@ -44,8 +44,6 @@ ARTIFACT_WECHAT = "wechat.md"
 ARTIFACT_MIN_CHARS = 80
 #: 允许代替外链的「无结果」整词标记（子串命中即可，须写进正文）。
 NO_RESULT_MARKERS: tuple[str, ...] = ("无结果", "[NO_RESULT]", "NO_RESULT")
-#: 人工反馈低于此分数（或 rating < 0）时禁止 ready。
-FEEDBACK_READY_MIN_SCORE = 3
 VALID_STATUSES: tuple[str, ...] = ("ready", "partial", "rejected")
 
 #: 自评维度（顺序即 manifest 中的呈现顺序）。维度集合是契约的一部分，
@@ -99,25 +97,18 @@ def _allowed_source_names() -> set[str]:
 
 
 def _feedback_blocks_ready(feedback: dict[str, Any]) -> bool:
-    """点踩 / 低分 / reject 标记存在时，禁止把期次标成 ready。"""
+    """人工点踩（rating < 0）存在时，禁止把期次标成 ready。
+
+    反馈模型只有 -1/0/1 三档 rating（feedback.set_feedback 校验），没有
+    分数/verdict 字段；旧代码里那两个分支从未有写入方，已删除。
+    """
     if not feedback:
         return False
     rating = feedback.get("rating")
-    if rating is not None:
-        try:
-            if int(rating) < 0:
-                return True
-        except (TypeError, ValueError):
-            pass
-    score = feedback.get("score")
-    if score is not None:
-        try:
-            if float(score) < FEEDBACK_READY_MIN_SCORE:
-                return True
-        except (TypeError, ValueError):
-            pass
-    mark = str(feedback.get("verdict") or feedback.get("status") or "").lower()
-    return mark in {"reject", "rejected", "low"}
+    try:
+        return int(rating) < 0
+    except (TypeError, ValueError):
+        return False
 
 
 def _artifact_structure_errors(name: str, path: Path) -> list[str]:
