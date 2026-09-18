@@ -576,6 +576,34 @@ class TestFeedback:
         await feedback.set_feedback("2026-09-16", 1, "重写后可恢复")
         assert contract.read_manifest("2026-09-16").status == "partial"
 
+    async def test_item_feedback_exported_and_advisory(self, isolated_newsroom):
+        """条目级反馈进导出快照，但绝不触碰期次状态。"""
+        contract.write_manifest(
+            contract.IssueManifest(
+                issue_date="2026-09-16", title="t", items=_sample_items()
+            )
+        )
+        record = await feedback.set_item_feedback(
+            "2026-09-16", "https://example.com/news", -1, "这条水"
+        )
+        assert record["rating"] == -1
+
+        payload = json.loads(
+            (isolated_newsroom / "feedback-export.json").read_text(encoding="utf-8")
+        )
+        assert payload["summary"]["item_down"] == 1
+        issue = payload["issues"]["2026-09-16"]
+        assert issue["items"][0]["url"] == "https://example.com/news"
+        assert issue["items"][0]["rating"] == -1
+        # 咨询语义：期次状态不被条目反馈改变
+        assert contract.read_manifest("2026-09-16").status == "partial"
+
+    async def test_item_feedback_rating_validation(self, isolated_newsroom):
+        with pytest.raises(ValueError):
+            await feedback.set_item_feedback("2026-09-16", "https://a.b/c", 2)
+        with pytest.raises(ValueError):
+            await feedback.set_item_feedback("2026-09-16", "  ", -1)
+
 
 # ── seed ────────────────────────────────────────────────────────────
 

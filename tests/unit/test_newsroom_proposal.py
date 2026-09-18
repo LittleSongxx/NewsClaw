@@ -674,3 +674,59 @@ class TestProposalAPI:
         assert "text" in body
         assert body["max_bullets"] == MAX_POLICY_BULLETS
         assert "bullets" in body
+
+    def test_feedback_roundtrip_with_items(self, client, isolated_newsroom):
+        from newsclaw.newsroom import contract as newsroom_contract
+
+        load_sources()
+        newsroom_contract.write_manifest(
+            newsroom_contract.IssueManifest(
+                issue_date="2026-09-16",
+                title="t",
+                status="partial",
+                items=[
+                    newsroom_contract.NewsItem(
+                        title="标题", url="https://example.com/a", source_name=""
+                    )
+                ],
+            )
+        )
+        res = client.post(
+            "/api/newsroom/feedback",
+            json={
+                "issue_date": "2026-09-16",
+                "rating": 0,
+                "comment": "",
+                "items": [
+                    {"url": "https://example.com/a", "rating": -1, "comment": "这条水"}
+                ],
+            },
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["items"][0]["url"] == "https://example.com/a"
+
+        listed = client.get("/api/newsroom/feedback").json()
+        assert listed["summary"]["item_down"] == 1
+        assert listed["item_records"][0]["item_url"] == "https://example.com/a"
+        # 条目反馈不改变期次状态
+        manifest = newsroom_contract.read_manifest("2026-09-16")
+        assert manifest.status == "partial"
+
+    def test_feedback_rejects_unknown_item_url(self, client, isolated_newsroom):
+        from newsclaw.newsroom import contract as newsroom_contract
+
+        load_sources()
+        newsroom_contract.write_manifest(
+            newsroom_contract.IssueManifest(issue_date="2026-09-16", title="t")
+        )
+        res = client.post(
+            "/api/newsroom/feedback",
+            json={
+                "issue_date": "2026-09-16",
+                "rating": 1,
+                "items": [{"url": "https://not-in-ledger.example/x", "rating": -1}],
+            },
+        )
+        assert res.status_code == 422
+        assert "not in manifest.items" in res.json()["error"]
