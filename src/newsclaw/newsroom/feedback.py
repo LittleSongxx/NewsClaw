@@ -146,16 +146,41 @@ async def export_feedback() -> Path:
     return path
 
 
-def _sync_manifest_feedback(issue_date: str, rating: int, comment: str) -> None:
-    """把反馈摘要回写进当期 manifest（manifest 不存在则静默跳过）。"""
-    manifest = read_manifest(issue_date)
-    if manifest is None:
-        return
-    manifest.feedback = {"rating": rating, "comment": comment}
-    if rating < 0 and manifest.status == "ready":
-        # 负反馈后不能继续冒充 ready；降为 rejected，契约才能回写。
-        manifest.status = "rejected"
+def _try_write_manifest(manifest, issue_date: str) -> None:
     try:
         write_manifest(manifest)
     except (ValueError, OSError) as e:
         logger.warning("[Newsroom] manifest feedback sync failed for %s: %s", issue_date, e)
+
+
+def _sync_manifest_feedback(issue_date: str, rating: int, comment: str) -> None:
+    """把反馈摘要回写进当期 manifest（manifest 不存在则静默跳过）。
+
+    rating < 0：ready 降为 rejected（负反馈后不能继续冒充 ready）。
+    rating >= 0 且当前 rejected：解除人工否决——先按 ready 机验恢复，
+    过不了就退 partial；不再让 rejected 成为没有出路的一锤子状态。
+    """
+    manifest = read_manifest(issue_date)
+    if manifest is None:
+        return
+    manifest.feedback = {"rating": rating, "comment": comment}
+    if rating < 0:
+        if manifest.status == "ready":
+            manifest.status = "rejected"
+        _try_write_manifest(manifest, issue_date)
+        return
+    if manifest.status == "rejected":
+        for status in ("ready", "partial"):
+            manifest.status = status
+            try:
+                write_manifest(manifest)
+                return
+            except (ValueError, OSError) as e:
+                logger.info(
+                    "[Newsroom] feedback restore to %s failed for %s: %s",
+                    status,
+                    issue_date,
+                    e,
+                )
+        return
+    _try_write_manifest(manifest, issue_date)

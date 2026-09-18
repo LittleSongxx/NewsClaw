@@ -368,6 +368,40 @@ class TestFeedback:
         with pytest.raises(ValueError):
             await feedback.set_feedback("2026-09-16", 2)
 
+    async def test_thumbs_down_demotes_and_re_rating_restores(self, isolated_newsroom):
+        """点踩降 rejected；改评 +1 解除否决，机验通过即恢复 ready。"""
+        load_sources()
+        _write_required_artifacts("2026-09-16")
+        contract.write_manifest(
+            contract.IssueManifest(
+                issue_date="2026-09-16",
+                title="t",
+                status="ready",
+                sources_used=["AI 综合搜索"],
+                items=_sample_items(),
+            )
+        )
+        await feedback.set_feedback("2026-09-16", -1, "太水")
+        assert contract.read_manifest("2026-09-16").status == "rejected"
+
+        await feedback.set_feedback("2026-09-16", 1, "改好了")
+        manifest = contract.read_manifest("2026-09-16")
+        assert manifest.status == "ready"
+        assert manifest.feedback == {"rating": 1, "comment": "改好了"}
+
+    async def test_re_rating_without_artifacts_falls_back_to_partial(self, isolated_newsroom):
+        """产物已不完整时改评：ready 机验不过，退 partial 而非卡死 rejected。"""
+        contract.write_manifest(
+            contract.IssueManifest(
+                issue_date="2026-09-16",
+                title="t",
+                status="rejected",
+                feedback={"rating": -1, "comment": ""},
+            )
+        )
+        await feedback.set_feedback("2026-09-16", 1, "重写后可恢复")
+        assert contract.read_manifest("2026-09-16").status == "partial"
+
 
 # ── seed ────────────────────────────────────────────────────────────
 

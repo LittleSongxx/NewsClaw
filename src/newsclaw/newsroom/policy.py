@@ -294,7 +294,7 @@ def is_review_proposal_json_path(raw: str) -> bool:
 
 def write_manifest_from_agent(issue_date: str, content: str) -> str:
     """Agent 写 manifest 必须走契约函数，不能直接落盘自封 ready。"""
-    from newsclaw.newsroom.contract import IssueManifest, write_manifest
+    from newsclaw.newsroom.contract import IssueManifest, load_manifest, write_manifest
 
     try:
         data = json.loads(content)
@@ -307,6 +307,11 @@ def write_manifest_from_agent(issue_date: str, content: str) -> str:
         raise ValueError(
             f"manifest.issue_date={data.get('issue_date')!r} 与目录 {issue_date} 不一致"
         )
+    # feedback 是人写的字段：同日重跑时以旧 manifest 为准，忽略 Agent 带来的
+    # 任何值——否则点踩降下的 rejected 会被一次干净的重写洗回 ready。
+    previous, _error = load_manifest(issue_date)
+    if previous is not None:
+        data["feedback"] = previous.feedback
     manifest = IssueManifest.from_dict(data)
     path = write_manifest(manifest)
     return f"文件已写入: {path}（已过契约机验，status={manifest.status}）"

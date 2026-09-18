@@ -182,6 +182,56 @@ class TestManifestContractWrite:
                 '{"issue_date":"2026-09-18","title":"t","status":"ready"}',
             )
 
+    def test_agent_rewrite_cannot_launder_rejected_issue(self, isolated_newsroom):
+        """点踩降级后，同日重写 manifest 不许洗回 ready（feedback 以旧值为准）。"""
+        from newsclaw.newsroom import contract
+        from newsclaw.newsroom.sources import load_sources
+
+        load_sources()
+        day = contract.issue_dir("2026-09-18")
+        day.mkdir(parents=True, exist_ok=True)
+        for name in (
+            contract.ARTIFACT_DAILY_BRIEF,
+            contract.ARTIFACT_XIAOHONGSHU,
+            contract.ARTIFACT_WECHAT,
+        ):
+            (day / name).write_text(
+                "今日要点：示例标题｜说明｜https://example.com/news｜大模型\n"
+                "结构校验要求去空白后足够长，并至少有一条可点开的 http 链接。\n",
+                encoding="utf-8",
+            )
+        contract.write_manifest(
+            contract.IssueManifest(
+                issue_date="2026-09-18",
+                title="t",
+                status="rejected",
+                sources_used=["AI 综合搜索"],
+                items=[
+                    contract.NewsItem(
+                        title="示例标题",
+                        url="https://example.com/news",
+                        source_name="AI 综合搜索",
+                    )
+                ],
+                feedback={"rating": -1, "comment": "太水"},
+            )
+        )
+
+        # Agent 交上来的 manifest 不带 feedback（schema 里也没有这个字段）
+        with pytest.raises(ValueError, match="feedback"):
+            write_manifest_from_agent(
+                "2026-09-18",
+                '{"issue_date":"2026-09-18","title":"t","status":"ready",'
+                '"sources_used":["AI 综合搜索"],'
+                '"items":[{"title":"示例标题","url":"https://example.com/news",'
+                '"source_name":"AI 综合搜索","one_liner":"说明"}]}',
+            )
+
+        # 落盘的旧值没有被动过：仍是 rejected + 负反馈
+        manifest = contract.read_manifest("2026-09-18")
+        assert manifest.status == "rejected"
+        assert manifest.feedback["rating"] == -1
+
 
 class TestWikiDayGuard:
     def test_invalid_day_rejected(self, isolated_newsroom, tmp_path, monkeypatch):
