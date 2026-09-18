@@ -8,10 +8,24 @@ import pytest
 
 from newsclaw.agent.reasoning import Decision, DecisionType, ReasoningEngine
 from newsclaw.core._reasoning_runtime import (
+    _is_collect_only_task,
+    _looks_like_collector_output,
     _looks_like_generic_task_completion,
     _looks_like_waiting_for_user_response,
 )
 from newsclaw.core.agent_state import AgentState
+
+
+def test_collect_only_task_and_output_contract():
+    prompt = (
+        "【任务】AI 早报新闻采集（只采集与核验，不要写作、不要写任何文件）\n"
+        "输出契约：标题｜要点｜链接"
+    )
+    assert _is_collect_only_task(prompt)
+    assert _looks_like_collector_output("[]")
+    assert _looks_like_collector_output("无结果")
+    assert _looks_like_collector_output('[{"title":"x","url":"https://a"}]')
+    assert not _is_collect_only_task("写一篇公众号")
 
 
 def test_detects_user_handoff_blocker_text():

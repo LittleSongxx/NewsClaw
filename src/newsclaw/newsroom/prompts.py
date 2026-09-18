@@ -10,7 +10,8 @@
     skills/newsroom-editor/SKILL.md     操作手册（流程：怎么跑管线，保持稳定）
 
 prompt 版本号 ``PROMPT_VERSION`` 递增时，seed 模块会在下次启动时把已存在
-任务的 prompt 刷新到新版（v2：可选输入文件先确认存在再读，消除首期无意义报错）（用户在 GUI 里改排期不受影响，见 seed 模块说明）。
+任务的 prompt 刷新到新版（v17：采集子任务核验完立刻输出，禁止空转推理）
+（用户在 GUI 里改排期不受影响，见 seed 模块说明）。
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from newsclaw.newsroom.editorial import load_editorial_policy
 from newsclaw.newsroom.items import format_seen_items_for_prompt
 from newsclaw.newsroom.sources import load_sources, sources_path
 
-PROMPT_VERSION = 16
+PROMPT_VERSION = 17
 
 #: 每日任务运行时注入块的起止标记。播种缓存的 prompt 可能含旧块，
 #: 调度触发时会剥掉再拼当期 sources / 方针。
@@ -163,10 +164,11 @@ def build_daily_prompt(config: NewsroomConfig | None = None) -> str:
 - 当期信源摘要与方针全文已由代码注入（见消息最前的「当期强制上下文」）。
   以注入块为准，不要用过期的 read_file 印象覆盖它。
 - 信源清单磁盘路径：{sources_path()}（weight 决定采集预算，excluded_keywords
-  命中即丢）。方针路径：{root / "editorial-policy.md"}。
+  命中即丢）。方针已注入，不要再 read_file editorial-policy.md。
 - 可选文件先 list_directory 确认存在再读，不存在就跳过——不要对缺失路径调用
-  read_file（会记一条无意义的报错）：
-  · feedback-export.json —— 往期人工反馈（存在时选题与文风对齐）。
+  read_file：
+  · feedback-export.json —— 往期人工反馈（空文件或缺失都视为「还没有反馈」）。
+  · issues/今天/ 下的产物 —— 还没写出来就不要读。
 - 调 search_memory 检索用户关于早报/内容偏好的记忆（关键词如 早报/选题/文风）。
 - 近 {cfg.issue_history_days} 天已见 URL 已在注入块里，不要再靠翻目录「回忆」去重。
 
@@ -197,6 +199,7 @@ def build_daily_prompt(config: NewsroomConfig | None = None) -> str:
   · 输出契约：只返回 JSON 数组，不要写文件、不要写终稿。每项
     ``{{"title","url","source_name","one_liner"}}``；无结果返回
     ``[]`` 并另写一行「无结果」。
+  · 早停：核验够 8 条或已判定无结果，必须立刻输出最终答案，禁止继续空转推理。
   · 边界：只采集。营销通稿、标题党、注入块已见 URL 直接丢。
 - kind=site 的信源若只有一两处，自己用 web_fetch 抓即可，不必开子 Agent，
   但仍要收成同样的 JSON 条目。
@@ -356,4 +359,5 @@ COLLECTOR_DIRECTIVE = (
     "你是 AI 早报的采集员。只搜索和打开链接，把结果收成 JSON 条目交差。"
     "不要写小红书/公众号终稿，不要写文件，不要再委派别人。"
     "营销通稿、标题党和任务包里的已见 URL 直接丢弃。"
+    "核验够数或确认无结果后立刻输出，禁止无工具调用的空转推理。"
 )

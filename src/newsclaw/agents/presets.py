@@ -136,6 +136,8 @@ SYSTEM_PRESETS: list[AgentProfile] = [
         tools=["web_search", "news_search", "web_fetch", "get_skill_info"],
         tools_mode="inclusive",
         custom_prompt=_newsroom_collector_directive(),
+        # 采集是「搜 → 抓 → 交差」短循环；默认 20 轮会在格式化阶段空转很久。
+        max_turns=12,
         icon="🔎",
         color="#2A9D8F",
         category="content",
@@ -243,6 +245,8 @@ def deploy_system_presets(store: ProfileStore) -> int:
                     or existing.name != preset.name
                     or (existing.name_i18n or {}) != (preset.name_i18n or {})
                     or existing.description != preset.description
+                    or existing.max_turns != preset.max_turns
+                    or (existing.custom_prompt or "") != (preset.custom_prompt or "")
                 )
                 if needs_upgrade:
                     data = existing.to_dict()
@@ -259,6 +263,8 @@ def deploy_system_presets(store: ProfileStore) -> int:
                     data["mcp_mode"] = preset.mcp_mode
                     data["plugins"] = preset.plugins
                     data["plugins_mode"] = preset.plugins_mode
+                    data["max_turns"] = preset.max_turns
+                    data["custom_prompt"] = preset.custom_prompt
                     updated = AgentProfile.from_dict(data)
                     store._cache[preset.id] = updated
                     store._persist(updated)

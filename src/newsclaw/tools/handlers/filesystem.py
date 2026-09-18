@@ -868,7 +868,14 @@ class FilesystemHandler:
                 logger.warning(msg)
                 return msg
 
-        content = await self.agent.file_tool.read(path)
+        try:
+            content = await self.agent.file_tool.read(path)
+        except FileNotFoundError:
+            return (
+                f"❌ 文件不存在: {path}\n"
+                "这不是系统故障。可选上下文缺失就跳过；"
+                "若是你即将写出的产物，先 write_file 再读。"
+            )
 
         offset = params.get("offset", 1)  # 起始行号（1-based），默认第 1 行
         limit = params.get(

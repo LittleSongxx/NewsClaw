@@ -40,6 +40,23 @@ def export_path() -> Path:
     return newsroom_root() / _EXPORT_FILENAME
 
 
+def ensure_feedback_export() -> Path:
+    """首期写一份空的 feedback-export.json，避免管线把「还没反馈」当成读盘失败。"""
+    path = export_path()
+    if path.is_file():
+        return path
+    payload = {
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "summary": {"total": 0, "up": 0, "down": 0},
+        "issues": {},
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+    return path
+
+
 async def _get_conn() -> aiosqlite.Connection:
     """打开带加固的连接并确保表存在（每次调用独立连接，调用方负责关闭）。"""
     from newsclaw.storage.safe_sqlite import safe_open_async

@@ -21,6 +21,8 @@ import asyncio
 import logging
 
 from newsclaw.newsroom.config import config_path, load_config, save_config
+from newsclaw.newsroom.editorial import ensure_editorial_policy_file
+from newsclaw.newsroom.feedback import ensure_feedback_export
 from newsclaw.newsroom.prompts import PROMPT_VERSION, build_daily_prompt, build_review_prompt
 from newsclaw.newsroom.sources import load_sources
 
@@ -45,6 +47,9 @@ async def ensure_newsroom_tasks(scheduler) -> bool:
     if not config_path().is_file():
         save_config(cfg)  # 首次运行落盘默认配置，用户可发现并编辑
     load_sources()  # 首次调用生成默认信源清单
+    # 方针 / 反馈导出是管线会 read_file 的路径；首期不落盘会刷一条假错误。
+    ensure_editorial_policy_file()
+    ensure_feedback_export()
 
     from newsclaw.scheduler.task import (
         ScheduledTask,

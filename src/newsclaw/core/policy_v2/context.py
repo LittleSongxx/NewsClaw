@@ -589,5 +589,16 @@ def get_current_context() -> PolicyContext | None:
 
 
 def reset_current_context(token: Any) -> None:
-    """复位 ContextVar（与 set_current_context 配对）。"""
-    _current_policy_context.reset(token)
+    """复位 ContextVar（与 set_current_context 配对）。
+
+    ``asyncio.wait_for`` / ``create_task`` / ``copy_context`` 会把后续清理
+    放到另一个 Context。Token.reset 在那种情况下会抛
+    ``ValueError: ... was created in a different Context``，调度器若把它当成
+    任务失败，整条早报管线会被误判。跨 Context 时改为清空当前值。
+    """
+    if token is None:
+        return
+    try:
+        _current_policy_context.reset(token)
+    except ValueError:
+        _current_policy_context.set(None)

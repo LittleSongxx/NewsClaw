@@ -52,6 +52,15 @@
 4. 不需要用户交互、凭据、权限提升或外部系统变更。
 5. 不涉及删除不确定的数据或执行不可逆操作。
 
+以下日志不要当成「核心组件故障、需人工处理」：
+
+- 读取尚不存在的可选文件（`editorial-policy.md`、`feedback-export.json`、当期 `daily-brief.md` / `xiaohongshu.md`）
+- 飞书 WebSocket keepalive 超时或 `1011` 断开（通常会自动重连）
+- `Task was destroyed but it is pending`（SDK 关闭时的残留任务）
+- 采集子任务核验后的空转推理（任务设计问题，不是核心代码崩了）
+
+这类问题：`error_type=task` 或 `network`，`severity=low`，`can_fix=false`，`note_to_user` 用一句话说明「可忽略」。
+
 以下情况必须设置 `can_fix=false`：
 
 - `core`、`config`、`network`、`task` 类型的问题

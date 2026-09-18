@@ -88,6 +88,101 @@ class FixRecord:
     success: bool = False
 
 
+_NOISE_ERROR_IDS = frozenset(
+    {
+        "asyncio_task_destroyed_pending",
+        "lark_ws_keepalive_timeout",
+        "filesystem_read_missing_editorial_policy",
+        "filesystem_read_missing_feedback_export",
+        "filesystem_read_missing_daily_brief",
+        "newsroom_issue_file_not_found",
+        "newsroom_collect_task_idle_iterations",
+    }
+)
+_OPTIONAL_MISSING_FILES = (
+    "editorial-policy.md",
+    "feedback-export.json",
+    "daily-brief.md",
+    "xiaohongshu.md",
+    "wechat.md",
+)
+_ERROR_TITLES = {
+    "policy_context_contextvar_cross_context": "策略上下文跨协程重置，早报定时任务被误判失败",
+    "feishu_adapter_missing_lark_oapi": "飞书 SDK 未就绪",
+    "lark_ws_keepalive_timeout": "飞书长连接抖动",
+    "asyncio_task_destroyed_pending": "关闭连接时残留异步任务",
+    "filesystem_read_missing_editorial_policy": "编辑方针文件尚未生成",
+    "filesystem_read_missing_feedback_export": "反馈导出文件尚未生成",
+    "filesystem_read_missing_daily_brief": "当日简报还未写出",
+    "newsroom_issue_file_not_found": "当期稿件文件还不存在",
+    "newsroom_collect_task_idle_iterations": "采集任务核验后空转偏久",
+}
+
+
+def _one_line(text: str, limit: int = 80) -> str:
+    collapsed = " ".join((text or "").split())
+    if len(collapsed) <= limit:
+        return collapsed
+    return collapsed[: limit - 1] + "…"
+
+
+def classify_selfcheck_item(item: dict) -> str:
+    """把一条自检发现分成 action / watch / noise，决定是否推给用户。"""
+    pattern = str(item.get("pattern") or item.get("error_id") or "").lower()
+    message = str(item.get("message") or "").lower()
+    severity = str(item.get("severity") or "").lower()
+    blob = f"{pattern} {message}"
+    if pattern in _NOISE_ERROR_IDS:
+        return "noise"
+    if "task was destroyed but it is pending" in blob:
+        return "noise"
+    if "keepalive" in blob and ("1011" in blob or "timeout" in blob or "ping" in blob):
+        return "noise"
+    if any(name in blob for name in _OPTIONAL_MISSING_FILES) and (
+        "not found" in blob or "不存在" in blob or "filenotfound" in blob or "missing" in blob
+    ):
+        return "noise"
+    if "idle" in blob and ("iteration" in blob or "空转" in blob):
+        return "noise"
+    if severity == "low":
+        return "watch"
+    if pattern == "selfcheck_paused" or "background_token_budget" in pattern:
+        return "watch"
+    return "action"
+
+
+def humanize_error_title(item: dict) -> str:
+    pattern = str(item.get("pattern") or item.get("error_id") or "").strip()
+    if pattern in _ERROR_TITLES:
+        return _ERROR_TITLES[pattern]
+    if pattern:
+        return pattern.replace("_", " ")
+    return _one_line(str(item.get("message") or "未命名问题"), 40)
+
+
+def is_selfcheck_log_noise(pattern) -> bool:
+    """日志模式是否属于已知噪声（缺可选文件、连接抖动、SDK 关闭残留）。"""
+    samples = getattr(pattern, "samples", None) or []
+    key = str(getattr(pattern, "pattern", "") or "").lower()
+    for sample in samples:
+        msg = str(getattr(sample, "message", "") or "").lower()
+        if "system:daily_selfcheck" in msg and "timed out" in msg:
+            return True
+        if "task was destroyed but it is pending" in msg:
+            return True
+        if "keepalive" in msg and ("1011" in msg or "timeout" in msg or "ping" in msg):
+            return True
+        if any(name in msg for name in _OPTIONAL_MISSING_FILES) and (
+            "not found" in msg or "filenotfound" in msg or "no such file" in msg or "不存在" in msg
+        ):
+            return True
+    if "task was destroyed" in key or "keepalive" in key:
+        return True
+    if any(name in key for name in _OPTIONAL_MISSING_FILES):
+        return True
+    return False
+
+
 @dataclass
 class DailyReport:
     """每日系统报告"""
@@ -123,6 +218,7 @@ class DailyReport:
     reported: bool = False
     partial: bool = False
     status_note: str = ""
+    filtered_noise_count: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -134,6 +230,7 @@ class DailyReport:
             "fix_attempted": self.fix_attempted,
             "fix_success": self.fix_success,
             "fix_failed": self.fix_failed,
+            "filtered_noise_count": self.filtered_noise_count,
             "core_error_patterns": self.core_error_patterns,
             "tool_error_patterns": self.tool_error_patterns,
             "fix_records": [
@@ -156,146 +253,212 @@ class DailyReport:
             "status_note": self.status_note,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "DailyReport":
+        timestamp = data.get("timestamp") or datetime.now().isoformat()
+        if isinstance(timestamp, str):
+            try:
+                timestamp = datetime.fromisoformat(timestamp)
+            except ValueError:
+                timestamp = datetime.now()
+        return cls(
+            date=str(data.get("date") or datetime.now().strftime("%Y-%m-%d")),
+            timestamp=timestamp,
+            total_errors=int(data.get("total_errors") or 0),
+            core_errors=int(data.get("core_errors") or 0),
+            tool_errors=int(data.get("tool_errors") or 0),
+            fix_attempted=int(data.get("fix_attempted") or 0),
+            fix_success=int(data.get("fix_success") or 0),
+            fix_failed=int(data.get("fix_failed") or 0),
+            filtered_noise_count=int(data.get("filtered_noise_count") or 0),
+            core_error_patterns=list(data.get("core_error_patterns") or []),
+            tool_error_patterns=list(data.get("tool_error_patterns") or []),
+            memory_consolidation=data.get("memory_consolidation"),
+            retrospect_summary=data.get("retrospect_summary"),
+            memory_insights=data.get("memory_insights"),
+            reported=bool(data.get("reported")),
+            partial=bool(data.get("partial")),
+            status_note=str(data.get("status_note") or ""),
+        )
+
+    def _partition_findings(self) -> tuple[list[dict], list[dict], list[dict]]:
+        actions: list[dict] = []
+        watches: list[dict] = []
+        noises: list[dict] = []
+        for item in [*self.core_error_patterns, *self.tool_error_patterns]:
+            bucket = classify_selfcheck_item(item)
+            if bucket == "action":
+                actions.append(item)
+            elif bucket == "watch":
+                watches.append(item)
+            else:
+                noises.append(item)
+        return actions, watches, noises
+
+    def _status_label(self, actions: list[dict]) -> str:
+        if self.partial:
+            return "部分完成"
+        if actions:
+            return f"需要关注（{len(actions)} 项）"
+        if self.total_errors == 0 and not self.filtered_noise_count:
+            return "正常"
+        return "可继续运行"
+
+    def to_digest(self) -> str:
+        """给 IM 用的短报告：只说状态、要处理的事、已消化的噪声。"""
+        from ..core.task_monitor import summarize_task_description
+
+        actions, watches, noises = self._partition_findings()
+        lines = [
+            f"📋 每日自检 · {self.date}",
+            f"状态：{self._status_label(actions)}",
+            "",
+        ]
+        if self.partial:
+            lines.append(f"说明：{self.status_note or '本轮未全部完成，下次继续。'}")
+            lines.append("")
+
+        if actions:
+            lines.append("⚠️ 需要处理")
+            for index, item in enumerate(actions, 1):
+                lines.append(f"{index}. {humanize_error_title(item)}")
+                note = str(item.get("note_to_user") or "").strip()
+                detail = _one_line(note or str(item.get("message") or ""), 90)
+                if detail:
+                    lines.append(f"   → {detail}")
+            lines.append("")
+
+        if watches:
+            lines.append("👀 留意")
+            for item in watches[:4]:
+                lines.append(f"· {humanize_error_title(item)}")
+            lines.append("")
+
+        digested = self.filtered_noise_count + len(noises)
+        if digested:
+            lines.append("ℹ️ 已消化（不必处理）")
+            shown = 0
+            for item in noises[:5]:
+                lines.append(f"· {humanize_error_title(item)}")
+                shown += 1
+            leftover = digested - shown
+            if leftover > 0:
+                lines.append(f"· 另有 {leftover} 条同类噪声（缺文件/连接抖动等）")
+            lines.append("")
+
+        records = (self.retrospect_summary or {}).get("records") or []
+        if records:
+            lines.append("📊 任务复盘")
+            for record in records[:4]:
+                desc = summarize_task_description(str(record.get("description") or ""))
+                duration = int(record.get("duration_seconds") or 0)
+                minutes, seconds = divmod(duration, 60)
+                dur = f"{minutes}分{seconds}秒" if minutes else f"{seconds}秒"
+                analysis = _one_line(str(record.get("retrospect_result") or ""), 48)
+                extra = f" · {analysis}" if analysis else ""
+                lines.append(f"· {desc} · {dur}{extra}")
+            lines.append("")
+
+        suggestions = (self.memory_insights or {}).get("optimization_suggestions") or []
+        if suggestions:
+            lines.append("💡 优化建议")
+            for suggestion in suggestions[:3]:
+                lines.append(f"· {_one_line(str(suggestion), 80)}")
+            lines.append("")
+
+        if self.fix_attempted:
+            lines.append(
+                f"自动修复：尝试 {self.fix_attempted}，成功 {self.fix_success}，失败 {self.fix_failed}"
+            )
+            lines.append("")
+
+        lines.append("完整技术报告已保存在本地。需要细节时再说「看完整自检报告」。")
+        return "\n".join(lines).strip() + "\n"
+
     def to_markdown(self) -> str:
-        """生成 Markdown 格式报告"""
+        """本地归档用的稍详报告；IM 推送走 to_digest，避免整份任务包刷屏。"""
+        from ..core.task_monitor import summarize_task_description
+
+        actions, watches, noises = self._partition_findings()
         lines = [
             f"# 每日系统报告 - {self.date}",
             "",
-            "## 摘要",
+            f"状态：{self._status_label(actions)}",
             "",
             f"- 总错误数: {self.total_errors}",
-            f"- 核心组件错误: {self.core_errors} (需人工处理)",
-            f"- 工具错误: {self.tool_errors}",
-            f"- 尝试修复: {self.fix_attempted}",
-            f"- 修复成功: {self.fix_success}",
-            f"- 修复失败: {self.fix_failed}",
+            f"- 需处理: {len(actions)}",
+            f"- 已过滤噪声: {self.filtered_noise_count + len(noises)}",
+            f"- 尝试修复: {self.fix_attempted}（成功 {self.fix_success} / 失败 {self.fix_failed}）",
             "",
         ]
-
         if self.partial:
             lines.extend(
                 [
-                    "> 本轮自检已保存部分结果，后续问题会在下次自检继续处理。",
-                    f"> 原因: {self.status_note or '后台预算已用尽'}",
+                    f"> 本轮自检部分完成：{self.status_note or '后台预算已用尽'}",
                     "",
                 ]
             )
 
-        # 核心组件错误
-        if self.core_error_patterns:
-            lines.append("## 核心组件错误（需人工处理）")
+        if actions:
+            lines.append("## 需要处理")
             lines.append("")
-            for p in self.core_error_patterns:
-                lines.append(f"### [{p.get('count', 1)}次] {p.get('pattern', '')}")
-                lines.append(f"- 模块: `{p.get('logger', 'unknown')}`")
-                lines.append(f"- 时间: {p.get('last_seen', '')}")
-                if p.get("message"):
-                    lines.append(f"- 消息: `{p.get('message', '')}`")
-                lines.append("- **建议: 检查日志并考虑重启服务**")
+            for item in actions:
+                lines.append(f"### {humanize_error_title(item)}")
+                if item.get("logger"):
+                    lines.append(f"- 模块: `{item.get('logger')}`")
+                note = str(item.get("note_to_user") or "").strip()
+                message = _one_line(str(item.get("message") or ""), 160)
+                if note:
+                    lines.append(f"- 建议: {note}")
+                elif message:
+                    lines.append(f"- 说明: {message}")
+                elif item.get("requires_restart"):
+                    lines.append("- 建议: 修复代码后重启服务")
                 lines.append("")
 
-        # 工具修复记录
+        if watches or noises:
+            lines.append("## 已消化 / 可观察")
+            lines.append("")
+            for item in [*watches, *noises][:8]:
+                lines.append(f"- {humanize_error_title(item)}")
+            leftover = len(watches) + len(noises) - 8
+            if leftover > 0:
+                lines.append(f"- 另外 {leftover} 条同类项未展开")
+            lines.append("")
+
         if self.fix_records:
             lines.append("## 工具修复记录")
             lines.append("")
-            for r in self.fix_records:
-                status = "已修复" if r.success else "修复失败"
-                lines.append(f"### [{status}] {r.error_pattern}")
-                lines.append(f"- 组件: `{r.component}`")
-                lines.append(f"- 修复操作: {r.fix_action}")
-                lines.append(f"- 时间: {r.fix_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                lines.append(f"- 验证: {'通过' if r.verified else '未通过'}")
-                if r.verification_result:
-                    lines.append(f"- 验证结果: {r.verification_result}")
-                lines.append("")
-
-        # 记忆整理结果
-        if self.memory_consolidation:
-            lines.append("## 记忆整理结果")
-            lines.append("")
-            mc = self.memory_consolidation
-            lines.append(f"- 处理会话: {mc.get('sessions_processed', 0)}")
-            lines.append(f"- 提取记忆: {mc.get('memories_extracted', 0)}")
-            lines.append(f"- 新增记忆: {mc.get('memories_added', 0)}")
-            lines.append(f"- 去重: {mc.get('duplicates_removed', 0)}")
-            lines.append(f"- MEMORY.md: {'已刷新' if mc.get('memory_md_refreshed') else '未刷新'}")
+            for record in self.fix_records:
+                status = "已修复" if record.success else "修复失败"
+                lines.append(f"- [{status}] {record.error_pattern}（{record.component}）")
             lines.append("")
 
-        # 任务复盘统计
         if self.retrospect_summary:
-            lines.append("## 任务复盘统计")
-            lines.append("")
             rs = self.retrospect_summary
-            lines.append(f"- 复盘任务数: {rs.get('total_tasks', 0)}")
-            lines.append(f"- 总耗时: {rs.get('total_duration', 0):.0f}秒")
-            lines.append(f"- 平均耗时: {rs.get('avg_duration', 0):.1f}秒")
-            lines.append(f"- 模型切换次数: {rs.get('model_switches', 0)}")
-
-            # 常见问题
-            common_issues = rs.get("common_issues", [])
-            if common_issues:
-                lines.append("")
-                lines.append("### 常见问题")
-                for issue in common_issues:
-                    lines.append(f"- {issue.get('issue', '')}: {issue.get('count', 0)}次")
-
-            # 复盘详情
-            records = rs.get("records", [])
-            if records:
-                lines.append("")
-                lines.append("### 复盘详情")
-                for r in records:
-                    duration = r.get("duration_seconds", 0)
-                    desc = r.get("description", "")
-                    result = r.get("retrospect_result", "")
-                    lines.append(f"- **{desc}** ({duration:.0f}秒)")
-                    if result:
-                        lines.append(f"  - 分析: {result}")
-
+            lines.append("## 任务复盘")
             lines.append("")
-
-        # 记忆系统优化建议
-        if self.memory_insights:
-            lines.append("## 记忆系统优化建议")
-            lines.append("")
-            mi = self.memory_insights
-
-            # 错误教训
-            error_memories = mi.get("error_memories", [])
-            if error_memories:
-                lines.append("### 错误教训（需关注）")
-                for m in error_memories:
-                    source = m.get("source", "")
-                    source_label = f" [{source}]" if source else ""
-                    lines.append(f"- {m.get('content', '')}{source_label}")
-                lines.append("")
-
-            # 规则约束
-            rule_memories = mi.get("rule_memories", [])
-            if rule_memories:
-                lines.append("### 规则约束（需遵守）")
-                for m in rule_memories:
-                    lines.append(f"- {m.get('content', '')}")
-                lines.append("")
-
-            # 优化建议汇总
-            optimization_suggestions = mi.get("optimization_suggestions", [])
-            if optimization_suggestions:
-                lines.append("### 优化建议汇总")
-                for s in optimization_suggestions:
-                    lines.append(f"- {s}")
-                lines.append("")
-
-            # 统计
             lines.append(
-                f"*共提取 {mi.get('total_errors', 0)} 条错误教训, "
-                f"{mi.get('total_rules', 0)} 条规则约束*"
+                f"- {rs.get('total_tasks', 0)} 个任务，总耗时 {rs.get('total_duration', 0):.0f} 秒"
             )
+            for record in rs.get("records") or []:
+                desc = summarize_task_description(str(record.get("description") or ""))
+                duration = int(record.get("duration_seconds") or 0)
+                analysis = _one_line(str(record.get("retrospect_result") or ""), 120)
+                lines.append(f"- **{desc}**（{duration}秒）")
+                if analysis:
+                    lines.append(f"  - {analysis}")
             lines.append("")
 
-        lines.append("---")
-        lines.append(f"*报告生成时间: {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}*")
+        suggestions = (self.memory_insights or {}).get("optimization_suggestions") or []
+        if suggestions:
+            lines.append("## 优化建议")
+            lines.append("")
+            for suggestion in suggestions:
+                lines.append(f"- {suggestion}")
+            lines.append("")
 
+        lines.append(f"*报告生成时间: {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}*")
         return "\n".join(lines)
 
 
@@ -647,7 +810,8 @@ ID: {result.test_id}
 
         if errors:
             patterns = log_analyzer.classify_errors(errors)
-            patterns = self._filter_selfcheck_feedback_patterns(patterns)
+            patterns, dropped_noise = self._filter_selfcheck_feedback_patterns(patterns)
+            report.filtered_noise_count = dropped_noise
             report.total_errors = sum(p.count for p in patterns.values())
             error_summary = log_analyzer.generate_error_summary(patterns)
             logger.info(f"Extracted {report.total_errors} errors from logs")
@@ -749,6 +913,7 @@ ID: {result.test_id}
                             "last_seen": datetime.now().isoformat(),
                             "note_to_user": result.get("note_to_user", ""),
                             "requires_restart": result.get("requires_restart", False),
+                            "severity": result.get("severity", ""),
                         }
                     )
                 else:
@@ -1347,24 +1512,19 @@ ID: {result.test_id}
     def _filter_selfcheck_feedback_patterns(
         self,
         patterns: dict[str, ErrorPattern],
-    ) -> dict[str, ErrorPattern]:
-        """Drop selfcheck timeout noise so failed checks do not amplify themselves."""
+    ) -> tuple[dict[str, ErrorPattern], int]:
+        """丢掉自检回声和已知噪声，避免把缺文件/连接抖动当成核心故障。"""
         filtered: dict[str, ErrorPattern] = {}
         dropped = 0
         for key, pattern in patterns.items():
-            samples = pattern.samples or []
-            is_selfcheck_timeout = any(
-                "system:daily_selfcheck" in sample.message and "timed out" in sample.message
-                for sample in samples
-            )
-            if is_selfcheck_timeout:
+            if is_selfcheck_log_noise(pattern):
                 dropped += pattern.count
                 continue
             filtered[key] = pattern
 
         if dropped:
-            logger.info("Filtered %s selfcheck timeout feedback errors", dropped)
-        return filtered
+            logger.info("Filtered %s selfcheck noise / feedback errors", dropped)
+        return filtered, dropped
 
     def _analyze_errors_with_rules(self, patterns: dict) -> list[dict]:
         """
@@ -1999,7 +2159,6 @@ ID: {result.test_id}
         # 查找昨天的报告
         yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
         json_file = selfcheck_dir / f"{yesterday}_report.json"
-        md_file = selfcheck_dir / f"{yesterday}_report.md"
 
         if not json_file.exists():
             return None
@@ -2012,26 +2171,7 @@ ID: {result.test_id}
             if data.get("reported"):
                 return None
 
-            # 读取 Markdown 报告
-            if md_file.exists():
-                with open(md_file, encoding="utf-8") as f:
-                    return f.read()
-
-            # 如果没有 MD 文件，从 JSON 生成
-            report = DailyReport(
-                date=data["date"],
-                timestamp=datetime.fromisoformat(data["timestamp"]),
-                total_errors=data.get("total_errors", 0),
-                core_errors=data.get("core_errors", 0),
-                tool_errors=data.get("tool_errors", 0),
-                fix_attempted=data.get("fix_attempted", 0),
-                fix_success=data.get("fix_success", 0),
-                fix_failed=data.get("fix_failed", 0),
-                core_error_patterns=data.get("core_error_patterns", []),
-                tool_error_patterns=data.get("tool_error_patterns", []),
-                memory_consolidation=data.get("memory_consolidation"),
-            )
-            return report.to_markdown()
+            return DailyReport.from_dict(data).to_digest()
 
         except Exception as e:
             logger.error(f"Failed to get pending report: {e}")

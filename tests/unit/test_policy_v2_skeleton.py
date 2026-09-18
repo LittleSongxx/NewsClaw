@@ -267,6 +267,20 @@ def test_context_var_roundtrip() -> None:
     assert get_current_context() is None
 
 
+def test_reset_current_context_from_another_context_does_not_raise() -> None:
+    import contextvars
+
+    ctx = PolicyContext(session_id="cross-ctx", workspace=Path("."))
+    token_box: dict[str, object] = {}
+
+    def _set() -> None:
+        token_box["token"] = set_current_context(ctx)
+
+    contextvars.copy_context().run(_set)
+    reset_current_context(token_box["token"])
+    assert get_current_context() is None
+
+
 # ---- models ----
 
 
