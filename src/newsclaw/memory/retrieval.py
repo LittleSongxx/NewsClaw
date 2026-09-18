@@ -1015,9 +1015,6 @@ class RetrievalEngine:
                 focus_hits = sum(1 for term in focus_terms if term.lower() in content_lower)
                 if focus_hits:
                     c.score *= min(1.35, 1.0 + 0.08 * focus_hits)
-            if persona and persona in ("tech_expert", "jarvis"):
-                if c.memory_type in ("skill", "error"):
-                    c.score *= 1.2
             if c.memory_type == "fact" and any(w in c.content[:30] for w in self._ACTION_WORDS):
                 c.score *= 0.3
 

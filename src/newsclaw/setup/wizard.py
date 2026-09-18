@@ -1154,16 +1154,7 @@ NewsClaw 按「现状」(AS IS) 提供，不附带任何形式的明示或暗示
         # Persona
         persona = Prompt.ask(
             "Persona preset (role personality)",
-            choices=[
-                "default",
-                "business",
-                "tech_expert",
-                "butler",
-                "girlfriend",
-                "boyfriend",
-                "family",
-                "jarvis",
-            ],
+            choices=["default"],
             default="default",
         )
         if persona != "default":
