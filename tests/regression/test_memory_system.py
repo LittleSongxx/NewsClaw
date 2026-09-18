@@ -21,7 +21,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from newsclaw.memory.consolidator import MemoryConsolidator
-from newsclaw.memory.daily_consolidator import DailyConsolidator
 from newsclaw.memory.extractor import MemoryExtractor
 from newsclaw.memory.manager import MemoryManager
 from newsclaw.memory.types import ConversationTurn, Memory, MemoryPriority, MemoryType
@@ -716,93 +715,6 @@ class TestMemoryConsolidator:
         sessions = mc.get_unprocessed_sessions()
         # 新创建的会话应该是未处理的
         assert len(sessions) >= 1
-
-
-# ============================================================
-# DailyConsolidator 测试 (5 个)
-# ============================================================
-
-
-class TestDailyConsolidator:
-    """每日归纳器测试"""
-
-    def test_48_init_creates_summaries_dir(self, temp_data_dir, temp_memory_md):
-        """测试初始化创建摘要目录"""
-        dc = DailyConsolidator(
-            data_dir=temp_data_dir,
-            memory_md_path=temp_memory_md,
-        )
-        assert dc.summaries_dir.exists()
-
-    def test_49_generate_memory_md_content(self, temp_data_dir, temp_memory_md, sample_memories):
-        """测试生成 MEMORY.md 内容"""
-        mm = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
-        for m in sample_memories:
-            mm.add_memory(m)
-
-        dc = DailyConsolidator(
-            data_dir=temp_data_dir,
-            memory_md_path=temp_memory_md,
-            memory_manager=mm,
-        )
-
-        by_type = {
-            "preference": [m for m in sample_memories if m.type == MemoryType.PREFERENCE],
-            "rule": [m for m in sample_memories if m.type == MemoryType.RULE],
-            "fact": [m for m in sample_memories if m.type == MemoryType.FACT],
-            "skill": [m for m in sample_memories if m.type == MemoryType.SKILL],
-        }
-
-        content = dc._generate_memory_md(by_type)
-        assert "Core Memory" in content
-        assert "用户偏好" in content or "重要规则" in content
-
-    @pytest.mark.asyncio
-    async def test_50_refresh_memory_md(self, temp_data_dir, temp_memory_md, sample_memories):
-        """测试刷新 MEMORY.md"""
-        mm = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
-        for m in sample_memories:
-            mm.add_memory(m)
-
-        dc = DailyConsolidator(
-            data_dir=temp_data_dir,
-            memory_md_path=temp_memory_md,
-            memory_manager=mm,
-        )
-
-        result = await dc.refresh_memory_md()
-        assert result == True
-        assert temp_memory_md.exists()
-        content = temp_memory_md.read_text(encoding="utf-8")
-        assert "Core Memory" in content
-
-    def test_51_get_recent_summaries(self, temp_data_dir, temp_memory_md):
-        """测试获取最近摘要"""
-        dc = DailyConsolidator(
-            data_dir=temp_data_dir,
-            memory_md_path=temp_memory_md,
-        )
-
-        # 创建一个摘要
-        today = datetime.now().strftime("%Y-%m-%d")
-        summary_file = dc.summaries_dir / f"{today}.json"
-        summary_file.write_text(json.dumps({"date": today, "test": True}), encoding="utf-8")
-
-        summaries = dc.get_recent_summaries(days=7)
-        assert len(summaries) >= 1
-
-    def test_52_memory_md_max_chars(self, temp_data_dir, temp_memory_md):
-        """测试 MEMORY.md 最大字符限制"""
-        dc = DailyConsolidator(
-            data_dir=temp_data_dir,
-            memory_md_path=temp_memory_md,
-        )
-        assert dc.MEMORY_MD_MAX_CHARS == 1500
-
-
-# ============================================================
-# Session 任务管理测试 (5 个)
-# ============================================================
 
 
 class TestSessionTaskManagement:

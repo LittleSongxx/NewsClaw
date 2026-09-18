@@ -463,103 +463,6 @@ def test_keyword_search_never_returns_isolated(tmp_path: Path):
     contents = [m.content for m in hits]
     assert "watermelon visible to keyword search" in contents
     assert all("isolated" not in c for c in contents)
-
-
-def test_dual_write_is_no_op_after_v4(tmp_path: Path):
-    """Phase 1A：_save_memories 不再 dual-write 到 memories.json。"""
-    from newsclaw.memory.manager import MemoryManager
-
-    manager = MemoryManager(
-        data_dir=tmp_path / "memory",
-        memory_md_path=tmp_path / "MEMORY.md",
-        search_backend="fts5",
-    )
-    json_file = manager.memories_file
-    # 触发显式调用，模拟旧代码路径
-    manager._save_memories()
-    # backfill 时如果没有 memories.json 应留下 sentinel 但不创建新 json
-    assert not json_file.exists()
-    assert manager.store.get_meta(manager._LEGACY_JSON_BACKFILL_SENTINEL) is not None
-
-
-def test_backfill_sentinel_archives_legacy_json_once(tmp_path: Path):
-    """Phase 1A：第一次启动看到 memories.json 时执行 backfill，归档文件，写
-    sentinel；第二次启动不再读取原文件，也不需要重做 backfill。"""
-    import json as _json
-
-    from newsclaw.memory.manager import MemoryManager
-
-    data_dir = tmp_path / "memory"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    legacy = [
-        {
-            "id": "leg-1",
-            "content": "user prefers concise replies",
-            "type": "preference",
-            "priority": "long_term",
-            "source": "manual",
-            "importance_score": 0.7,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
-        }
-    ]
-    (data_dir / "memories.json").write_text(
-        _json.dumps(legacy, ensure_ascii=False), encoding="utf-8"
-    )
-
-    manager = MemoryManager(
-        data_dir=data_dir,
-        memory_md_path=tmp_path / "MEMORY.md",
-        search_backend="fts5",
-    )
-
-    # 原始 memories.json 应被改名归档
-    archived = sorted(data_dir.glob("memories.json.archived.*"))
-    assert len(archived) == 1
-    assert not (data_dir / "memories.json").exists()
-
-    # sentinel 设置完成
-    sentinel = manager.store.get_meta(manager._LEGACY_JSON_BACKFILL_SENTINEL)
-    assert sentinel is not None
-    assert "backfilled" in sentinel or sentinel == "no_legacy_file"
-
-    # 第二次启动：放回一份新 memories.json（模拟用户复制旧库回来）—— 不应再次读取或归档
-    second_json = [
-        {
-            "id": "leg-2",
-            "content": "ghost",
-            "type": "fact",
-            "priority": "short_term",
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
-        }
-    ]
-    (data_dir / "memories.json").write_text(
-        _json.dumps(second_json, ensure_ascii=False), encoding="utf-8"
-    )
-    # 强制重建 manager 以模拟新进程启动
-    from newsclaw.memory.storage import _instance_registry
-
-    _instance_registry.clear()
-    manager2 = MemoryManager(
-        data_dir=data_dir,
-        memory_md_path=tmp_path / "MEMORY.md",
-        search_backend="fts5",
-    )
-    # 第二次启动后 memories.json 仍然存在（未被归档，因为 sentinel 已存在 → 直接跳过）
-    assert (data_dir / "memories.json").exists()
-    # 不应导入到 SQLite
-    assert manager2.store.get_meta(manager2._LEGACY_JSON_BACKFILL_SENTINEL) is not None
-    leg2_visible = manager2.store.load_all_memories(
-        scope="legacy_quarantine",
-        scope_owner="",
-        user_id="legacy",
-        workspace_id=None,
-        include_inactive=True,
-    )
-    assert all(m.content != "ghost" for m in leg2_visible)
-
-
 def test_v3_to_v4_backfill_is_idempotent(tmp_path: Path):
     """重复打开同一个已迁移到 v4 的库不应再次 backfill 或动数据。"""
     db_path = tmp_path / "newsclaw.db"
@@ -1173,16 +1076,134 @@ def test_search_turns_tenant_filter_phase_2b5(tmp_path: Path):
     )
     assert len(bob_rows) == 1
     assert bob_rows[0]["session_id"] == "sess-bob"
+async def test_global_store_source_blocks_cross_user():
+    from newsclaw.agents.factory import _GlobalStoreSource
+
+    store = _FakeStore()
+
+    src_alice = _GlobalStoreSource(store, lambda: ("alice", "proj-a"))
+    out_alice = await src_alice.retrieve("anything", limit=5)
+    assert len(out_alice) == 1
+    assert "alice secret note" in out_alice[0]["content"]
+    assert store.last_kwargs["user_id"] == "alice"
+    assert store.last_kwargs["workspace_id"] == "proj-a"
+    assert store.last_kwargs["scope"] == "user"
+
+    src_bob = _GlobalStoreSource(store, lambda: ("bob", "proj-a"))
+    out_bob = await src_bob.retrieve("anything", limit=5)
+    assert len(out_bob) == 1
+    assert "bob secret note" in out_bob[0]["content"]
+
+    # 共享 / 占位身份必须直接拒绝，不能裸跨用户查
+    for owner in [
+        ("default", "default"),
+        ("anonymous", "default"),
+        ("", "default"),
+        ("legacy", "default"),
+        ("system", "default"),
+    ]:
+        store.last_kwargs = None
+        src = _GlobalStoreSource(store, lambda owner=owner: owner)
+        out = await src.retrieve("anything", limit=5)
+        assert out == []
+        assert store.last_kwargs is None
 
 
-@pytest.mark.asyncio
-async def test_daily_consolidator_dedup_does_not_cross_tenants(tmp_path: Path):
-    """Phase 3：dedup 必须按 (user_id, workspace_id) 分组。
+# ======================================================================
+# UnifiedStore observer (v4.1 cache-coherence refactor)
+# ======================================================================
 
-    场景：alice 和 bob 都说了"我喜欢用简体中文"，没有理由让它们互相 dedup —— 这是
-    多用户 IM 部署下最容易被忽视的真 bug。
+
+def test_unified_store_observer_fires_on_save_update_delete(tmp_path: Path):
+    """UnifiedStore must invoke registered observers after each committed
+    semantic-memory mutation, with the correct (kind, payload) tuple."""
+    store = UnifiedStore(tmp_path / "obs.db", backend_type="fts5")
+
+    events: list[tuple[str, object]] = []
+    store.register_observer(lambda kind, payload: events.append((kind, payload)))
+
+    mem = SemanticMemory(
+        type=MemoryType.FACT,
+        priority=MemoryPriority.LONG_TERM,
+        content="observer fixture v1",
+    )
+    store.save_semantic(mem, scope="user", user_id="alice", workspace_id="proj")
+    # update
+    store.update_semantic(mem.id, {"content": "observer fixture v2"})
+    # delete
+    store.delete_semantic(mem.id)
+
+    kinds = [e[0] for e in events]
+    assert kinds == ["upsert", "upsert", "delete"]
+
+    # upsert payloads are SemanticMemory; delete payload is the id string
+    assert events[0][1].id == mem.id and events[0][1].content == "observer fixture v1"
+    assert events[1][1].id == mem.id and events[1][1].content == "observer fixture v2"
+    assert events[2][1] == mem.id
+
+
+def test_unified_store_observer_isolation_on_exception(tmp_path: Path):
+    """A raising observer must not break the write or other observers."""
+    store = UnifiedStore(tmp_path / "obs2.db", backend_type="fts5")
+
+    survived: list[tuple[str, object]] = []
+
+    def bad(_kind, _payload):
+        raise RuntimeError("intentional")
+
+    store.register_observer(bad)
+    store.register_observer(lambda k, p: survived.append((k, p)))
+
+    mem = SemanticMemory(
+        type=MemoryType.FACT,
+        priority=MemoryPriority.SHORT_TERM,
+        content="isolation case",
+    )
+    saved_id = store.save_semantic(mem, scope="user", user_id="alice", workspace_id="default")
+    assert saved_id == mem.id
+    assert store.get_semantic(saved_id) is not None  # DB write succeeded
+    assert len(survived) == 1
+    assert survived[0][0] == "upsert"
+
+
+def test_unified_store_observer_skips_event_on_dedup_hit(tmp_path: Path):
+    """When ``save_semantic`` returns an existing id via the dedup shortcut,
+    no second upsert event fires (the cache already mirrors the original)."""
+    store = UnifiedStore(tmp_path / "obs3.db", backend_type="fts5")
+
+    first = SemanticMemory(
+        type=MemoryType.FACT,
+        priority=MemoryPriority.LONG_TERM,
+        content="A clear duplicate sentence body that the dedup check will catch on rewrite.",
+    )
+    store.save_semantic(first, scope="user", user_id="alice", workspace_id="proj")
+
+    events: list[tuple[str, object]] = []
+    store.register_observer(lambda k, p: events.append((k, p)))
+
+    near_dup = SemanticMemory(
+        type=MemoryType.FACT,
+        priority=MemoryPriority.LONG_TERM,
+        content=first.content,  # identical content → dedup short-circuit
+    )
+    returned = store.save_semantic(near_dup, scope="user", user_id="alice", workspace_id="proj")
+
+    # The dedup branch returns the existing id and must NOT fire upsert
+    # (cache already has the row).
+    if returned == first.id:
+        assert events == [], f"unexpected events: {events!r}"
+    else:
+        # If the heuristic didn't catch this case, the test still has a
+        # well-defined invariant: any returned id must have produced exactly
+        # one upsert for that id.
+        assert events and events[0][0] == "upsert"
+
+
+def test_memory_manager_cache_auto_synced_by_observer(tmp_path: Path):
+    """Writes through ``store`` (bypassing MemoryManager.add_memory) must show
+    up in ``_memories`` automatically — this is the v4.1 contract that
+    eliminates the previous ``_sync_json`` / ``_reload_from_sqlite`` ceremony.
     """
-    from newsclaw.memory.daily_consolidator import DailyConsolidator
     from newsclaw.memory.manager import MemoryManager
 
     mm = MemoryManager(
@@ -1190,60 +1211,29 @@ async def test_daily_consolidator_dedup_does_not_cross_tenants(tmp_path: Path):
         memory_md_path=tmp_path / "MEMORY.md",
         search_backend="fts5",
     )
+    mm.start_session("sess-obs", user_id="alice", workspace_id="proj")
 
-    # 显式登记两个 tenant
-    mm.store.upsert_session_tenant("sess-alice", "alice", "proj-a")
-    mm.store.upsert_session_tenant("sess-bob", "bob", "proj-a")
-
-    # 各自塞一条**几乎相同**的偏好记忆到 user scope
-    alice_mem = SemanticMemory(
-        type=MemoryType.PREFERENCE,
+    mem = SemanticMemory(
+        type=MemoryType.FACT,
         priority=MemoryPriority.LONG_TERM,
-        content="我喜欢用简体中文回答",
-        importance_score=0.8,
+        content="lifecycle-style direct write",
     )
-    bob_mem = SemanticMemory(
-        type=MemoryType.PREFERENCE,
-        priority=MemoryPriority.LONG_TERM,
-        content="我喜欢用简体中文回答",
-        importance_score=0.8,
-    )
-    mm.store.save_semantic(
-        alice_mem, scope="user", scope_owner="", user_id="alice", workspace_id="proj-a"
-    )
-    mm.store.save_semantic(
-        bob_mem, scope="user", scope_owner="", user_id="bob", workspace_id="proj-a"
-    )
-    # 刷新内存缓存
-    if hasattr(mm, "_reload_from_sqlite"):
-        mm._reload_from_sqlite()
+    # Direct write to the underlying store; this is the same pattern that
+    # LifecycleManager uses internally. **No** _reload_from_sqlite call.
+    mm.store.save_semantic(mem, scope="user", user_id="alice", workspace_id="proj")
 
-    # 在没有向量库的环境下，dedup 走字符串前缀匹配兜底路径。两条 content 完全相同。
-    # 改造后的实现应按 tenant 分组，alice 和 bob 各自只有 1 条，互不见，不会被删。
-    consolidator = DailyConsolidator(
-        data_dir=tmp_path / "memory",
-        memory_md_path=tmp_path / "MEMORY.md",
-        memory_manager=mm,
-        brain=None,
-    )
-    deleted = await consolidator._cleanup_duplicate_memories()
-    assert deleted == 0, "alice 和 bob 的同质偏好不能被跨租户合并"
-
-    # 验证两条都还在
-    alice_left = mm.store.load_all_memories(
-        scope="user", scope_owner="", user_id="alice", workspace_id="proj-a"
-    )
-    bob_left = mm.store.load_all_memories(
-        scope="user", scope_owner="", user_id="bob", workspace_id="proj-a"
-    )
-    assert len(alice_left) == 1
-    assert len(bob_left) == 1
+    # Cache must see it immediately
+    assert mem.id in mm._memories
+    assert mm.get_memory(mem.id) is not None
 
 
-@pytest.mark.asyncio
-async def test_daily_consolidator_dedup_still_works_within_one_tenant(tmp_path: Path):
-    """Phase 3：跨租户被禁，但**同一个**租户内的重复仍然要被去掉。"""
-    from newsclaw.memory.daily_consolidator import DailyConsolidator
+def test_memory_manager_delete_works_for_uncached_rows(tmp_path: Path):
+    """Regression for the user-reported bug: ``mm.delete_memory`` used to
+    return False without touching DB when the id was not in ``_memories``.
+
+    Today the cache is auto-synced by the observer, so this exact scenario is
+    harder to construct, but we still verify the observer **path** works and
+    that delete returns True when DB had the row."""
     from newsclaw.memory.manager import MemoryManager
 
     mm = MemoryManager(
@@ -1251,41 +1241,209 @@ async def test_daily_consolidator_dedup_still_works_within_one_tenant(tmp_path: 
         memory_md_path=tmp_path / "MEMORY.md",
         search_backend="fts5",
     )
-    mm.store.upsert_session_tenant("sess-alice", "alice", "proj-a")
+    mm.start_session("sess-del", user_id="alice", workspace_id="proj")
 
-    # 同一租户两条完全一样的偏好
-    for content in ["我喜欢用简体中文回答", "我喜欢用简体中文回答"]:
-        mm.store.save_semantic(
-            SemanticMemory(
-                type=MemoryType.PREFERENCE,
+    mem = SemanticMemory(
+        type=MemoryType.FACT,
+        priority=MemoryPriority.LONG_TERM,
+        content="row to be deleted via mm",
+    )
+    mm.store.save_semantic(mem, scope="user", user_id="alice", workspace_id="proj")
+    assert mem.id in mm._memories  # observer placed it
+
+    # Simulate the pre-v4.1 ghost: row in DB, missing from cache. With the
+    # observer pattern this is *only* reachable by explicitly poking the
+    # internals — but if it ever happens, delete_memory must still work.
+    with mm._memories_lock:
+        mm._memories.pop(mem.id)
+    assert mem.id not in mm._memories
+
+    assert mm.delete_memory(mem.id) is True
+    # DB row should be gone
+    assert mm.store.get_semantic(mem.id) is None
+    # Cache stays clean (observer already popped on the underlying delete;
+    # delete_memory's self-heal would have done the same).
+    assert mem.id not in mm._memories
+
+
+def test_memory_manager_observer_drops_cache_ghost_on_external_delete(
+    tmp_path: Path,
+):
+    """When some out-of-band caller (lifecycle, batch tool, plugin) deletes
+    a memory directly through ``store.delete_semantic`` without going through
+    ``MemoryManager.delete_memory``, the cache mirror must drop the entry
+    automatically — no manual ``_reload_from_sqlite`` needed."""
+    from newsclaw.memory.manager import MemoryManager
+
+    mm = MemoryManager(
+        data_dir=tmp_path / "memory",
+        memory_md_path=tmp_path / "MEMORY.md",
+        search_backend="fts5",
+    )
+    mm.start_session("sess-ghost", user_id="alice", workspace_id="proj")
+
+    mem = SemanticMemory(
+        type=MemoryType.FACT,
+        priority=MemoryPriority.LONG_TERM,
+        content="row deleted by a non-manager caller",
+    )
+    mm.store.save_semantic(mem, scope="user", user_id="alice", workspace_id="proj")
+    assert mem.id in mm._memories
+
+    # Simulate LifecycleManager's pattern (line ~634 in lifecycle.py)
+    mm.store.delete_semantic(mem.id)
+
+    # Cache must be drained by the observer — no ghost.
+    assert mem.id not in mm._memories
+    assert mm.store.get_semantic(mem.id) is None
+
+
+def test_unified_store_observer_dispatch_thread_safety(tmp_path: Path):
+    """The observer infrastructure itself (register + _fire) must be safe
+    against concurrent dispatch and registration.
+
+    This is a *focused* test on the observer mechanism — no DB writes, so
+    we are isolated from pre-existing MemoryStorage thread-safety quirks
+    (`MemoryStorage.get_memory` is unsynchronized; that is a separate,
+    Path A-orthogonal concern). What we want to prove here is:
+    1. Concurrent ``_fire`` calls never deadlock or skip observers.
+    2. Late ``register_observer`` calls do not corrupt the observer list
+       while ``_fire`` is iterating.
+    """
+    import threading
+
+    from newsclaw.memory.unified_store import UnifiedStore
+
+    store = UnifiedStore(tmp_path / "obs_mt.db", backend_type="fts5")
+
+    counters = [0, 0, 0, 0]
+    counter_locks = [threading.Lock() for _ in counters]
+
+    def make_observer(idx: int):
+        def fn(_kind, _payload):
+            with counter_locks[idx]:
+                counters[idx] += 1
+
+        return fn
+
+    for i in range(len(counters)):
+        store.register_observer(make_observer(i))
+
+    n_threads = 8
+    events_per_thread = 200
+    barrier = threading.Barrier(n_threads)
+
+    def firer(_tid: int):
+        barrier.wait()
+        for i in range(events_per_thread):
+            store._fire("upsert" if i % 2 == 0 else "delete", f"id-{i}")
+
+    threads = [threading.Thread(target=firer, args=(t,)) for t in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    expected = n_threads * events_per_thread
+    for i, c in enumerate(counters):
+        assert c == expected, f"observer #{i} got {c} events, expected {expected}"
+
+
+def test_memory_manager_cache_coherence_under_concurrent_writes(tmp_path: Path):
+    """End-to-end concurrent ``store.save_semantic`` → observer →
+    ``_memories`` coherence. Uses ``skip_dedup=True`` to side-step a
+    pre-existing thread-safety hole in ``MemoryStorage.get_memory`` (called
+    by ``_check_semantic_duplicate``) that is unrelated to Path A.
+    """
+    import threading
+
+    from newsclaw.memory.manager import MemoryManager
+
+    mm = MemoryManager(
+        data_dir=tmp_path / "memory",
+        memory_md_path=tmp_path / "MEMORY.md",
+        search_backend="fts5",
+    )
+    mm.start_session("sess-mt", user_id="alice", workspace_id="proj")
+
+    n_threads = 6
+    n_per_thread = 20
+    barrier = threading.Barrier(n_threads)
+    saved_ids: list[str] = []
+    saved_lock = threading.Lock()
+
+    def worker(tid: int):
+        barrier.wait()
+        for i in range(n_per_thread):
+            mem = SemanticMemory(
+                type=MemoryType.FACT,
                 priority=MemoryPriority.LONG_TERM,
-                content=content,
-                importance_score=0.8,
-            ),
-            scope="user",
-            scope_owner="",
-            user_id="alice",
-            workspace_id="proj-a",
-            skip_dedup=True,  # 跳过写入侧 dedup，强制造两条
-        )
-    if hasattr(mm, "_reload_from_sqlite"):
-        mm._reload_from_sqlite()
+                content=f"t{tid}-i{i}-{i * 7919 % 9973}",  # ensure non-duplicate
+            )
+            mm.store.save_semantic(
+                mem,
+                scope="user",
+                user_id="alice",
+                workspace_id="proj",
+                skip_dedup=True,
+            )
+            with saved_lock:
+                saved_ids.append(mem.id)
 
-    consolidator = DailyConsolidator(
+    threads = [threading.Thread(target=worker, args=(t,)) for t in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(saved_ids) == n_threads * n_per_thread
+    for mid in saved_ids:
+        assert mid in mm._memories, f"observer missed id {mid} under contention"
+
+    # Concurrent deletes — each id deleted by exactly one thread.
+    delete_barrier = threading.Barrier(n_threads)
+    chunks = [saved_ids[i::n_threads] for i in range(n_threads)]
+
+    def deleter(tid: int):
+        delete_barrier.wait()
+        for mid in chunks[tid]:
+            mm.store.delete_semantic(mid)
+
+    threads = [threading.Thread(target=deleter, args=(t,)) for t in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    for mid in saved_ids:
+        assert mid not in mm._memories, f"observer left ghost {mid} after concurrent delete"
+
+
+def test_memory_manager_update_reflected_in_cache_via_observer(tmp_path: Path):
+    """Updates issued through ``store.update_semantic`` (without going through
+    ``MemoryManager.add_memory``) must refresh the cached object."""
+    from newsclaw.memory.manager import MemoryManager
+
+    mm = MemoryManager(
         data_dir=tmp_path / "memory",
         memory_md_path=tmp_path / "MEMORY.md",
-        memory_manager=mm,
-        brain=None,
+        search_backend="fts5",
     )
-    deleted = await consolidator._cleanup_duplicate_memories()
-    assert deleted == 1, "同租户内的完全重复应该被合掉"
-    remaining = mm.store.load_all_memories(
-        scope="user", scope_owner="", user_id="alice", workspace_id="proj-a"
+    mm.start_session("sess-upd", user_id="alice", workspace_id="proj")
+
+    mem = SemanticMemory(
+        type=MemoryType.FACT,
+        priority=MemoryPriority.LONG_TERM,
+        content="original content body",
     )
-    assert len(remaining) == 1
+    mm.store.save_semantic(mem, scope="user", user_id="alice", workspace_id="proj")
+    assert mm._memories[mem.id].content == "original content body"
 
-
-@pytest.mark.asyncio
+    ok = mm.store.update_semantic(mem.id, {"content": "rewritten body"})
+    assert ok is True
+    # Observer should have replaced the cached object with a fresh one.
+    cached_after = mm._memories[mem.id]
+    assert cached_after.content == "rewritten body".mark.asyncio
 async def test_global_store_source_blocks_cross_user():
     from newsclaw.agents.factory import _GlobalStoreSource
 

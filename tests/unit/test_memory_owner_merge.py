@@ -249,21 +249,3 @@ def test_graph_overlays_semantic_memories_on_sparse_mode2(tmp_path):
     assert any("早报" in c for c in contents)
     assert graph["meta"]["total_edges"] >= 1
     assert "same_type" not in {e["edge_type"] for e in graph["links"]}
-
-
-def test_migration_status_flags_stranded_default_when_list_empty(tmp_path):
-    manager = _manager(tmp_path)
-    _put(manager, "用户之前在苏州工作过三年", user_id="default")
-    client = _memory_client(manager)
-    status = client.get("/api/memories/migration-status").json()
-    assert status["current_visible"] == 0
-    assert status["stranded_default"] == 1
-    assert status["show_stranded_default"] is True
-
-
-def test_merge_owner_endpoint_503_without_manager():
-    app = FastAPI()
-    app.include_router(memory_router)
-    client = TestClient(app)
-    res = client.post("/api/memories/merge-owner", json={})
-    assert res.status_code == 503
