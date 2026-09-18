@@ -280,6 +280,10 @@ class SemanticMemory:
 
     # v2: 更新链与溯源
     superseded_by: str | None = None
+    #: 事实在现实世界的发生时间（双时间线）；None=未知，按写入时间处理
+    occurred_at: datetime | None = None
+    #: 事实失效时间（软失效）；None=仍然有效
+    valid_until: datetime | None = None
     source_episode_id: str | None = None
 
     # v3: 记忆分层
@@ -317,6 +321,8 @@ class SemanticMemory:
             if self.last_accessed_at
             else None,
             "superseded_by": self.superseded_by,
+            "occurred_at": self.occurred_at.isoformat() if self.occurred_at else None,
+            "valid_until": self.valid_until.isoformat() if self.valid_until else None,
             "source_episode_id": self.source_episode_id,
             "scope": self.scope,
             "scope_owner": self.scope_owner,
@@ -329,6 +335,8 @@ class SemanticMemory:
 
     @classmethod
     def from_dict(cls, data: dict) -> SemanticMemory:
+        occurred = data.get("occurred_at")
+        valid_until = data.get("valid_until")
         last_accessed = data.get("last_accessed_at")
         return cls(
             id=data.get("id", _short_uuid()),
@@ -351,6 +359,8 @@ class SemanticMemory:
             decay_rate=data.get("decay_rate", 0.1),
             last_accessed_at=datetime.fromisoformat(last_accessed) if last_accessed else None,
             superseded_by=data.get("superseded_by"),
+            occurred_at=datetime.fromisoformat(occurred) if isinstance(occurred, str) and occurred else None,
+            valid_until=datetime.fromisoformat(valid_until) if isinstance(valid_until, str) and valid_until else None,
             source_episode_id=data.get("source_episode_id"),
             scope=data.get("scope", "global"),
             scope_owner=data.get("scope_owner", ""),

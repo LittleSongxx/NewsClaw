@@ -435,7 +435,7 @@ class RetrievalEngine:
                         source_type=f"semantic:{scope}",
                         relevance=relevance,
                         recency_score=self._compute_recency(
-                            self._last_active_at(mem.to_dict(), mem.updated_at)
+                            self._occurred_or_active(mem.to_dict(), mem.updated_at)
                         ),
                         importance_score=mem.importance_score,
                         access_frequency_score=self._compute_access_score(mem.access_count),
@@ -508,7 +508,7 @@ class RetrievalEngine:
                 if mem.expires_at and mem.expires_at < now:
                     continue
                 recency = self._compute_recency(
-                    self._last_active_at(mem.to_dict(), mem.updated_at)
+                    self._occurred_or_active(mem.to_dict(), mem.updated_at)
                 )
                 if recency < 0.3:
                     continue
@@ -1077,6 +1077,22 @@ class RetrievalEngine:
         if updated and accessed:
             return max(updated, accessed)
         return accessed or updated
+
+    @staticmethod
+    def _occurred_or_active(raw: dict, fallback: datetime | None) -> datetime | None:
+        """双时间线衰减基准：occurred_at（现实发生时间）优先，回退最后活跃。
+
+        事实「何时为真」决定它的 recency——两年前写入但上个月发生的事，
+        不该因为写入早而衰减；发生时间未知时退回最后活跃时间。
+        """
+        occurred = RetrievalEngine._last_active_at(raw, fallback)  # parse helper reuse
+        raw_occurred = raw.get("occurred_at")
+        if isinstance(raw_occurred, str) and raw_occurred:
+            try:
+                return datetime.fromisoformat(raw_occurred)
+            except ValueError:
+                pass
+        return occurred
 
     @staticmethod
     def _compute_access_score(access_count: int) -> float:
