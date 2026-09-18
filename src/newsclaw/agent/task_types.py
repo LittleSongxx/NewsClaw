@@ -38,7 +38,7 @@ class Task:
     completed_at: datetime | None = None
     error: str | None = None
     result: Any = None
-    subtasks: list["Task"] = field(default_factory=list)
+    subtasks: list[Task] = field(default_factory=list)
 
     def mark_in_progress(self) -> None:
         """标记为进行中"""
