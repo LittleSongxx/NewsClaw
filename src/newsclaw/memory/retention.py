@@ -2,23 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from .types import MemoryPriority, SemanticMemory
+from newsclaw.memory.type_policy import DURATION_TTL, PRIORITY_TTL  # noqa: F401 — 单一出处重导出
 
-PRIORITY_TTL: dict[MemoryPriority, timedelta | None] = {
-    MemoryPriority.TRANSIENT: timedelta(days=1),
-    MemoryPriority.SHORT_TERM: timedelta(days=3),
-    MemoryPriority.LONG_TERM: timedelta(days=30),
-    MemoryPriority.PERMANENT: None,
-}
-
-DURATION_TTL: dict[str, timedelta | None] = {
-    "permanent": None,
-    "7d": timedelta(days=7),
-    "24h": timedelta(hours=24),
-    "session": timedelta(hours=2),
-}
+from .types import SemanticMemory
 
 
 def apply_retention(memory: SemanticMemory, duration: str | None = None) -> None:

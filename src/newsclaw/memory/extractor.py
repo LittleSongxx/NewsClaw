@@ -26,6 +26,7 @@ from .json_utils import (
     extract_json_object,
     loads_llm_json,
 )
+from .type_policy import can_be_permanent
 from .types import (
     ActionNode,
     ConversationTurn,
@@ -1084,12 +1085,7 @@ duration 参考:
                 # 其它类型（FACT / SKILL / ERROR / CONTEXT / EXPERIENCE）
                 # 即便 importance=1.0 也只升到 LONG_TERM，避免任务记录污染
                 # USER.md / MEMORY.md（参见 memory.manager P1-7 修复）。
-                _persona_types = {
-                    MemoryType.PERSONA_TRAIT,
-                    MemoryType.PREFERENCE,
-                    MemoryType.RULE,
-                }
-                if importance >= 0.9 and mem_type in _persona_types:
+                if can_be_permanent(mem_type, importance):
                     priority = MemoryPriority.PERMANENT
                 elif importance >= 0.6:
                     priority = MemoryPriority.LONG_TERM

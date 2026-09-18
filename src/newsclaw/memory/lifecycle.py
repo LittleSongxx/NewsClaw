@@ -1564,5 +1564,5 @@ class LifecycleManager:
 
         if has_content:
             user_md = identity_dir / "USER.md"
-            user_md.write_text("\n".join(lines), encoding="utf-8")
+            _safe_write_with_backup(user_md, "\n".join(lines))
             logger.info("[Lifecycle] Refreshed USER.md from semantic memories")
