@@ -143,17 +143,6 @@ class FilesystemHandler:
             pass
         return "default"
 
-    def _get_fix_policy(self) -> dict | None:
-        """
-        获取自检自动修复策略（可选）
-
-        当 SelfChecker 创建的修复 Agent 注入 _selfcheck_fix_policy 时启用。
-        """
-        policy = getattr(self.agent, "_selfcheck_fix_policy", None)
-        if isinstance(policy, dict) and policy.get("enabled"):
-            return policy
-        return None
-
     @staticmethod
     def _looks_like_truncated_tool_preview(content: str) -> bool:
         """Detect tool preview/pagination markers that should not be written as file content."""
@@ -430,21 +419,6 @@ class FilesystemHandler:
         command = params.get("command", "")
         if not command:
             return self._format_run_shell_missing_command(params)
-
-        policy = self._get_fix_policy()
-        if policy:
-            deny_patterns = policy.get("deny_shell_patterns") or []
-            for pat in deny_patterns:
-                try:
-                    if re.search(pat, command, flags=re.IGNORECASE):
-                        msg = (
-                            "❌ 自检自动修复护栏：禁止执行可能涉及系统/Windows 层面的命令。"
-                            f"\n命令: {command}"
-                        )
-                        logger.warning(msg)
-                        return msg
-                except re.error:
-                    continue
 
         import platform
 
@@ -727,17 +701,6 @@ class FilesystemHandler:
                 "请先用 read_file 的 offset/limit 继续读取缺失页，或使用 edit_file "
                 "只修改目标片段；确认拿到完整内容后再写入。"
             )
-        policy = self._get_fix_policy()
-        if policy:
-            target = self._resolve_to_abs(path)
-            write_roots = policy.get("write_roots") or []
-            if not self._is_under_any_root(target, write_roots):
-                msg = (
-                    "❌ 自检自动修复护栏：禁止写入该路径（仅允许修复 tools/skills/mcps/channels 相关目录）。"
-                    f"\n目标: {target}"
-                )
-                logger.warning(msg)
-                return msg
         await self.agent.file_tool.write(path, content)
         try:
             file_path = self.agent.file_tool._resolve_path(path)
@@ -823,18 +786,6 @@ class FilesystemHandler:
                 "避免把不完整的预览内容写入真实文件。\n"
                 "请先用 read_file 的 offset/limit 取得完整内容后再追加。"
             )
-        policy = self._get_fix_policy()
-        if policy:
-            target = self._resolve_to_abs(path)
-            write_roots = policy.get("write_roots") or []
-            if not self._is_under_any_root(target, write_roots):
-                msg = (
-                    "❌ 自检自动修复护栏：禁止写入该路径（仅允许修复 "
-                    "tools/skills/mcps/channels 相关目录）。"
-                    f"\n目标: {target}"
-                )
-                logger.warning(msg)
-                return msg
         await self.agent.file_tool.append(path, content)
         try:
             file_path = self.agent.file_tool._resolve_path(path)
@@ -858,15 +809,6 @@ class FilesystemHandler:
         guard = self._guard_path_boundary(path, op="read")
         if guard:
             return guard
-
-        policy = self._get_fix_policy()
-        if policy:
-            target = self._resolve_to_abs(path)
-            read_roots = policy.get("read_roots") or []
-            if not self._is_under_any_root(target, read_roots):
-                msg = f"❌ 自检自动修复护栏：禁止读取该路径。\n目标: {target}"
-                logger.warning(msg)
-                return msg
 
         try:
             content = await self.agent.file_tool.read(path)
@@ -965,15 +907,6 @@ class FilesystemHandler:
         if guard:
             return guard
 
-        policy = self._get_fix_policy()
-        if policy:
-            target = self._resolve_to_abs(path)
-            write_roots = policy.get("write_roots") or []
-            if not self._is_under_any_root(target, write_roots):
-                msg = f"❌ 自检自动修复护栏：禁止编辑该路径。\n目标: {target}"
-                logger.warning(msg)
-                return msg
-
         replace_all = params.get("replace_all", False)
 
         try:
@@ -1015,15 +948,6 @@ class FilesystemHandler:
         guard = self._guard_path_boundary(path, op="list")
         if guard:
             return guard
-
-        policy = self._get_fix_policy()
-        if policy:
-            target = self._resolve_to_abs(path)
-            read_roots = policy.get("read_roots") or []
-            if not self._is_under_any_root(target, read_roots):
-                msg = f"❌ 自检自动修复护栏：禁止列出该目录。\n目标: {target}"
-                logger.warning(msg)
-                return msg
 
         pattern = params.get("pattern", "*")
         recursive = params.get("recursive", False)
@@ -1329,16 +1253,6 @@ class FilesystemHandler:
             if guard:
                 return guard
 
-        policy = self._get_fix_policy()
-        if policy:
-            write_roots = policy.get("write_roots") or []
-            for raw in (src, dst):
-                target = self._resolve_to_abs(raw)
-                if not self._is_under_any_root(target, write_roots):
-                    msg = f"❌ 自检自动修复护栏：禁止移动该路径。\n目标: {target}"
-                    logger.warning(msg)
-                    return msg
-
         src_path = self.agent.file_tool._resolve_path(src)
         dst_path = self.agent.file_tool._resolve_path(dst)
 
@@ -1378,15 +1292,6 @@ class FilesystemHandler:
         guard = self._guard_path_boundary(path, op="delete")
         if guard:
             return guard
-
-        policy = self._get_fix_policy()
-        if policy:
-            target = self._resolve_to_abs(path)
-            write_roots = policy.get("write_roots") or []
-            if not self._is_under_any_root(target, write_roots):
-                msg = f"❌ 自检自动修复护栏：禁止删除该路径。\n目标: {target}"
-                logger.warning(msg)
-                return msg
 
         file_path = self.agent.file_tool._resolve_path(path)
 

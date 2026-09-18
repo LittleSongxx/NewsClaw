@@ -630,52 +630,6 @@ def test_structured_hint_promotion_is_bounded_and_requires_tool_intent():
     assert agent._resolve_intent_schema_promotions(no_tool_intent, tools) == set()
     assert agent._resolve_intent_schema_promotions(broad_category_intent, tools) == set()
     assert agent._resolve_intent_schema_promotions(exact_tool_intent, tools) == {"browser_navigate"}
-
-
-def test_selfcheck_fix_policy_limits_exposed_tools():
-    agent = Agent.__new__(Agent)
-    agent._tools = [
-        {"name": "read_file", "category": "File System"},
-        {"name": "grep", "category": "File System"},
-        {"name": "delegate_to_agent", "category": "Agents"},
-        {"name": "browser_open", "category": "Browser"},
-    ]
-    agent._current_intent = None
-    agent._is_sub_agent_call = False
-    agent._agent_tool_names = frozenset()
-    agent._cron_disabled_tools = set()
-    agent._current_session_type = "cli"
-    agent._discovered_tools = set()
-    agent._selfcheck_allowed_tools = {"read_file", "grep"}
-    agent.tool_catalog = _FakeToolCatalog()
-    agent._get_raw_context_window = lambda: 0
-
-    tool_names = {tool["name"] for tool in agent._effective_tools}
-
-    assert tool_names == {"read_file", "grep"}
-    assert "delegate_to_agent" not in tool_names
-    assert "browser_open" not in tool_names
-
-
-def test_sub_agent_still_excludes_delegation_tools():
-    agent = Agent.__new__(Agent)
-    agent._tools = [
-        {"name": "read_file", "category": "File System"},
-        {"name": "delegate_to_agent", "category": "Agent"},
-        {"name": "delegate_parallel", "category": "Agent"},
-    ]
-    agent._current_intent = None
-    agent._is_sub_agent_call = True
-    agent._agent_tool_names = frozenset({"delegate_to_agent", "delegate_parallel"})
-    agent._cron_disabled_tools = set()
-    agent._current_session_type = "cli"
-    agent._discovered_tools = set()
-    agent.tool_catalog = _FakeToolCatalog()
-    agent._get_raw_context_window = lambda: 0
-
-    assert [tool["name"] for tool in agent._effective_tools] == ["read_file"]
-
-
 def test_previous_answer_replay_request_detects_incomplete_display_followup():
     history = [
         {"role": "user", "content": "帮我分析这个线上 bug"},

@@ -205,16 +205,6 @@ class Settings(BaseSettings):
     )
 
     # 自检配置
-    selfcheck_autofix: bool = Field(
-        default=True,
-        description="自检时是否执行自动修复（设为 false 则只分析不修复）",
-    )
-
-    # === 任务超时策略 ===
-    # 默认不做无进展/硬超时自检：卡死需用户主动按「停止」/Esc。
-    # 不要把「超时为 0」讲成已对齐某产品的护栏策略。仅在程序化场景需要兜底时打开。
-    # - progress_timeout_seconds: 若连续超过该时间没有任何进展（LLM返回/工具完成/迭代推进），视为卡死。0=禁用。
-    # - hard_timeout_seconds: 任务硬上限（仅在确定要限制总时长时启用）。0=禁用。
     progress_timeout_seconds: int = Field(
         default=0,
         description="无进展超时阈值（秒），0=禁用（默认）。建议值 1200（20 分钟）",
@@ -602,12 +592,6 @@ class Settings(BaseSettings):
         default=120000,
         description="单次后台系统任务的 token 预算，达到后在安全检查点暂停（0=不限制）",
     )
-    scheduler_selfcheck_fix_token_budget: int = Field(
-        default=60000,
-        description="单次自检自动修复的 token 预算，达到后跳过后续自动修复（0=不限制）",
-    )
-
-    # === 记忆整理配置 ===
     memory_consolidation_onboarding_days: int = Field(
         default=7,
         description="新用户适应期天数，期间记忆整理频率提高（默认 7 天）",

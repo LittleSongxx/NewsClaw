@@ -1109,10 +1109,6 @@ class Agent:
         if cron_disabled:
             tools = [t for t in tools if t.get("name") not in cron_disabled]
 
-        selfcheck_allowed = getattr(self, "_selfcheck_allowed_tools", None)
-        if selfcheck_allowed:
-            tools = [t for t in tools if t.get("name") in selfcheck_allowed]
-
         intent = getattr(self, "_current_intent", None)
         requires_tools = bool(getattr(intent, "requires_tools", False))
         force_tool = bool(getattr(intent, "force_tool", False))
@@ -1127,10 +1123,7 @@ class Agent:
                 self.tool_catalog.set_deferred_tools(set())
             return []
 
-        if selfcheck_allowed:
-            tools = [dict(tool, _promoted=True) for tool in tools]
-        else:
-            tools = self._stable_main_chat_tool_set(tools)
+        tools = self._stable_main_chat_tool_set(tools)
 
         if getattr(self, "_knowledge_priority_active", False):
             for tool in tools:
