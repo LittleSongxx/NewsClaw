@@ -79,6 +79,10 @@ async def ensure_newsroom_tasks(scheduler) -> bool:
         ),
     )
     for task_id, name, description, cron, prompt, kind in specs:
+        # 复盘任务的最终回复就是「待人审 apply」的提醒——闭环的人工闸门必须
+        # 送达 owner；每日任务保持静默（其推送由第 5 步 deliver_artifacts 完成，
+        # 未达 ready 由 executor 的就绪门兜底告警）。
+        want_silent = kind == "daily"
         existing = scheduler.get_task(task_id)
         if existing is None:
             task = ScheduledTask(
@@ -93,7 +97,7 @@ async def ensure_newsroom_tasks(scheduler) -> bool:
                 delivery_policy=TaskDeliveryPolicy.OWNER_ONLY,
                 agent_profile_id="ai-news-editor",
                 no_schedule_tools=True,
-                silent=True,
+                silent=want_silent,
                 deletable=False,
                 enabled=cfg.enabled,
                 metadata={
@@ -114,6 +118,8 @@ async def ensure_newsroom_tasks(scheduler) -> bool:
             updates["trigger_config"] = {"cron": cron}
         if existing.enabled != cfg.enabled:
             updates["enabled"] = cfg.enabled
+        if getattr(existing, "silent", None) != want_silent:
+            updates["silent"] = want_silent
         metadata = dict(existing.metadata or {})
         meta_changed = False
         if metadata.get("newsroom") != kind:

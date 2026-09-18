@@ -393,6 +393,23 @@ def describe_issue_artifacts(issue_date: str | None = None) -> dict[str, Any]:
     }
 
 
+def daily_readiness_warning(issue_date: str | None = None) -> str:
+    """当日早报未达 ready 时的告警文案；就绪返回空串。
+
+    供调度器在任务「正常结束」后兜底检查——预算耗尽降级、机验不过的
+    partial、压根没落账的期次，这些都不会走异常路径的失败通知。
+    """
+    day = issue_date or date.today().isoformat()
+    manifest, error = load_manifest(day)
+    if error:
+        return f"⚠️ 今日早报（{day}）manifest 校验未过：{error}"
+    if manifest is None:
+        return f"⚠️ 今日早报（{day}）没有落账 manifest（管线未完成产出）。"
+    if manifest.status != "ready":
+        return f"⚠️ 今日早报（{day}）status={manifest.status}，未达 ready。"
+    return ""
+
+
 def demote_ready_on_budget_exceeded(issue_date: str | None = None) -> bool:
     """预算耗尽后禁止期次保持 ready；已是 ready 则降为 partial。
 

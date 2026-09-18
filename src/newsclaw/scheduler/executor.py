@@ -24,6 +24,17 @@ from .task import ScheduledTask
 logger = logging.getLogger(__name__)
 
 
+def _newsroom_daily_readiness_warning() -> str:
+    """当日早报未达 ready 的告警文案；就绪或检查自身失败返回空串。"""
+    try:
+        from newsclaw.newsroom.contract import daily_readiness_warning
+
+        return daily_readiness_warning()
+    except Exception:
+        logger.exception("TaskExecutor: newsroom readiness gate failed")
+        return ""
+
+
 def _resolve_policy_confirmation_mode():
     """读取 POLICIES.yaml 的 ``confirmation.mode``（失败时退回引擎默认值）。
 
@@ -706,6 +717,16 @@ class TaskExecutor:
                     error_msg = "任务已完成，但结果通知发送失败，请检查 IM 通道连接状态。"
                     logger.warning(f"TaskExecutor: task {task.id} result delivery failed")
                     return False, error_msg
+
+            # 早报就绪门：预算耗尽降级 / partial 收尾以「正常结束」形态出现，
+            # 不走上面的失败通知——当天没到 ready 就必须让 owner 知道，
+            # silent 不豁免（异常路径的失败已有通知，这里不重复）。
+            metadata_map = task.metadata if isinstance(task.metadata, dict) else {}
+            if metadata_map.get("newsroom") == "daily":
+                warning = _newsroom_daily_readiness_warning()
+                if warning:
+                    with contextlib.suppress(ChannelDeliveryUnavailable):
+                        await self._send_end_notification(task, success=False, message=warning)
 
             logger.info(f"TaskExecutor: task {task.id} completed successfully")
             return True, result
