@@ -1652,6 +1652,46 @@ def selfcheck(
     asyncio.run(_selfcheck())
 
 
+@app.command(name="workspace-export")
+def workspace_export(
+    out: str = typer.Option(".", "--out", help="输出目录（默认当前目录）"),
+    no_userdata: bool = typer.Option(False, "--no-userdata", help="排除记忆/会话等用户数据"),
+):
+    """把当前工作区打包为可迁移的 zip（身份/记忆/信源/调度/技能）。
+
+    凭据刻意不进备份（账号安全）：新机器导入后需重新登录账号、
+    重填 IM 通道凭据。配合 `newsclaw workspace-import` 使用。
+    """
+    from pathlib import Path as _P
+
+    from newsclaw.workspace.backup import create_backup
+
+    from .config import settings
+
+    path = create_backup(
+        _P(settings.project_root), out, include_userdata=not no_userdata
+    )
+    typer.echo(f"已导出: {path}")
+
+
+@app.command(name="workspace-import")
+def workspace_import(
+    zip_path: str = typer.Argument(..., help="workspace-export 产出的 zip 路径"),
+    workspace: str = typer.Option("", "--workspace", help="目标工作区目录（默认当前目录）"),
+):
+    """把导出 zip 恢复到目标工作区（覆盖同名文件，详见 manifest）。"""
+    from pathlib import Path as _P
+
+    from newsclaw.workspace.backup import restore_backup
+
+    target = _P(workspace).resolve() if workspace else _P.cwd()
+    stats = restore_backup(zip_path, target)
+    typer.echo(
+        f"恢复完成: {stats.get('restored', 0)} 个文件, "
+        f"{stats.get('skipped', 0)} 个跳过。请重启服务并重新登录账号。"
+    )
+
+
 @app.command()
 def status():
     """显示 Agent 状态"""

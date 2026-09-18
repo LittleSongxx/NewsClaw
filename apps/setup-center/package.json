@@ -1,7 +1,7 @@
 {
   "name": "newsclaw-setup-center",
   "private": true,
-  "version": "1.29.0",
+  "version": "1.30.0",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {

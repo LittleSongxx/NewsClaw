@@ -505,6 +505,21 @@ async def list_memories(
     }
 
 
+@router.post("/self-test")
+async def memory_self_test(request: Request):
+    """记忆自测：抽样历史会话生成 QA，测检索召回率，报告落 data/reports/。"""
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    from newsclaw.memory.selftest import run_memory_selftest
+
+    sample_size = int(body.get("sample_size") or 10)
+    report = await run_memory_selftest(sample_size=sample_size)
+    return report
+
+
 @router.get("/stats")
 async def memory_stats(request: Request):
     store = _get_store(request)
