@@ -48,6 +48,10 @@ _PATH_KEYS = (
 )
 _MANIFEST_RE = re.compile(r"issues[/\\](\d{4}-\d{2}-\d{2})[/\\]manifest\.json$", re.I)
 _PROPOSAL_JSON_RE = re.compile(r"issues[/\\]review-proposal\.json$", re.I)
+#: Windows 盘符路径（C:/…）。POSIX 上它是"相对路径"，会被 root/raw 兜底
+#: 误判成早报目录（曾把 C:/Program Files/… 当成 newsroom-owned，导致
+#: 安全 immune 规则被跳过）；任何平台上它都不可能落在 POSIX 早报根下。
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
 _DAILY_WRITE_TOOLS = frozenset({"write_file", "edit_file", "append_file"})
 _DAILY_READ_TOOLS = frozenset({"read_file", "list_directory", "glob", "grep"})
@@ -110,21 +114,33 @@ def resolve_candidate(raw: str) -> Path | None:
 
 
 def is_protected_evolution_file(raw: str) -> bool:
-    """信源 / 方针 / 运行配置只能由 apply 或 WebUI 写，Agent 工具一律拒绝。"""
+    """信源 / 方针 / 运行配置只能由 apply 或 WebUI 写，Agent 工具一律拒绝。
+
+    只保护**真正的进化载体**（解析后确实落在 ``data/newsroom`` 根下的那几
+    个文件）；同名文件在别处（别的目录的 config.yaml、无法锚定的相对路径、
+    Windows 盘符路径）不拦——按基名全盘拦截会误伤任意目录的同名文件。
+    settings 都不可用时（root 为 None）保持保守拦截。
+    """
     name = Path(raw).name.lower()
     if name not in _PROTECTED_NAMES:
         return False
+    if _WINDOWS_DRIVE_RE.match((raw or "").strip()):
+        return False
     root = newsroom_root_or_none()
-    path = resolve_candidate(raw)
-    if root is None or path is None:
+    if root is None:
         return True
+    path = resolve_candidate(raw)
+    if path is None:
+        return False
     try:
         resolved = path.expanduser()
-        if not resolved.is_absolute():
-            return True
-        return _under(resolved, root)
     except (OSError, ValueError):
-        return True
+        return False
+    if not resolved.is_absolute():
+        # 未锚定到早报根的相对路径不是载体（root/raw 不存在时 resolve 不会
+        # 补全）；真实载体一律以绝对路径或 root 下相对路径出现
+        return False
+    return _under(resolved, root)
 
 
 def _under(path: Path, root: Path) -> bool:
@@ -143,10 +159,14 @@ def is_newsroom_owned_path(raw: str) -> bool:
 
     生产环境常把整个应用装在 ``/opt/newsclaw``。内置 safety_immune 的
     ``/opt/**`` 会把早报目录误判成系统软件目录；引擎用本函数把早报主线
-    从那条blanket规则里摘出来，更细的 identity / 凭据 / 审计规则不受影响。
+    从那条 blanket 规则里摘出来，更细的 identity / 凭据 / 审计规则不受影响。
+    Windows 盘符路径在 POSIX 上是"相对路径"，不能走 root/raw 兜底——
+    那会把 C:/Program Files/… 误判成早报目录、跳过软件安装目录的保护。
     """
     root = newsroom_root_or_none()
     if root is None:
+        return False
+    if _WINDOWS_DRIVE_RE.match((raw or "").strip()):
         return False
     path = resolve_candidate(raw)
     if path is None:

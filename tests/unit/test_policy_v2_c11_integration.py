@@ -95,6 +95,18 @@ def _reset_death_switch():
     get_death_switch_tracker().reset()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_newsroom_root(tmp_path, monkeypatch):
+    """把早报根指到空目录：case 16 写的相对 ``config.yaml`` 只是任意文件。
+
+    newsroom 的进化载体守卫按基名拦 ``config.yaml``——开发机上有真实
+    ``data/newsroom`` 时，相对路径会锚定到真载体而被拒，制造假红。
+    """
+    from newsclaw.config import settings
+
+    monkeypatch.setattr(settings, "project_root", tmp_path)
+
+
 def _make_engine(
     *,
     explicit_lookup=None,
