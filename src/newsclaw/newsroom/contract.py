@@ -25,7 +25,13 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from newsclaw.newsroom.items import NewsItem, normalize_url, parse_items
+from newsclaw.newsroom.items import (
+    NewsItem,
+    extract_urls_from_text,
+    is_asset_url,
+    normalize_url,
+    parse_items,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +265,21 @@ class IssueManifest:
                 if not any(item.url and item.url in text for item in self.items):
                     errors.append(
                         f"status=ready artifact {name} must cite at least one items[].url"
+                    )
+            # 反向：稿中出现的素材链接必须都已入账，否则它们永久游离在去重池外
+            #（prompt 承诺的 ⊆ 这里机验）。平台稿的配图建议资源外链豁免。
+            item_keys = {normalize_url(item.url) for item in self.items if item.url}
+            item_keys.discard("")
+            for name, text in artifact_texts.items():
+                for url in extract_urls_from_text(text):
+                    key = normalize_url(url)
+                    if key in item_keys:
+                        continue
+                    if name != ARTIFACT_DAILY_BRIEF and is_asset_url(url):
+                        continue
+                    errors.append(
+                        f"status=ready artifact {name} cites a URL outside items[]: {url} "
+                        "(add it to items or remove it from the artifact)"
                     )
             if keys:
                 from newsclaw.newsroom.config import load_config
