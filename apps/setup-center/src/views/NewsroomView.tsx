@@ -32,6 +32,8 @@ import { toast } from "sonner";
 
 type ScoreEntry = { score: number; rationale: string };
 
+type LedgerItem = { title: string; url: string; source_name?: string; one_liner?: string };
+
 type IssueSummary = {
   issue_date: string;
   title: string;
@@ -40,6 +42,8 @@ type IssueSummary = {
   sources_used: string[];
   wiki_entries: string[];
   feishu_doc_url?: string;
+  delivered_at?: string;
+  items?: LedgerItem[];
   scores: Record<string, ScoreEntry>;
   feedback: { rating?: number; comment?: string };
   artifacts: Record<string, boolean>;
@@ -50,6 +54,28 @@ type IssueDetail = {
   manifest: IssueSummary | null;
   content: { "daily-brief": string | null; xiaohongshu: string | null; wechat: string | null };
   manifest_error?: string | null;
+};
+
+type MainlineStatusTask = {
+  present: boolean;
+  enabled?: boolean;
+  cron?: string;
+  silent?: boolean;
+  prompt_drift?: boolean;
+  prompt_version?: number;
+  prompt_version_current?: boolean;
+};
+
+type MainlineStatus = {
+  config: { enabled: boolean; error?: string };
+  tasks: { daily?: MainlineStatusTask; review?: MainlineStatusTask };
+  last_issue?:
+    | null
+    | { error: string }
+    | { date: string; status: string; title?: string; delivered?: boolean; feishu_doc_url?: string };
+  proposal?: { status: string; remaining_ops?: number } | { error: string };
+  feedback?: { up?: number; down?: number; item_up?: number; item_down?: number } | { error: string };
+  dedup_pool?: { window_days?: number; seen_urls?: number } | { error: string };
 };
 
 type NewsroomConfigDto = {
@@ -113,10 +139,13 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
   const [savingConfig, setSavingConfig] = useState(false);
   const [savingSources, setSavingSources] = useState(false);
   const [applyingProposal, setApplyingProposal] = useState(false);
+  const [status, setStatus] = useState<MainlineStatus | null>(null);
 
   // 反馈表单状态跟随选中期（manifest.feedback 是既有值）
   const [fbRating, setFbRating] = useState<number | null>(null);
   const [fbComment, setFbComment] = useState("");
+  // 条目级反馈草稿：url → 1/‑1（0 表示未评，不随提交发送）
+  const [itemRatings, setItemRatings] = useState<Record<string, number>>({});
 
   const fetchIssues = useCallback(async (autoSelect = false) => {
     setLoading(true);
@@ -148,6 +177,7 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
       const fb = data.manifest?.feedback || {};
       setFbRating(typeof fb.rating === "number" ? fb.rating : null);
       setFbComment(fb.comment || "");
+      setItemRatings({});
       // 默认落在第一个可用产物 Tab
       const available = ARTIFACT_TABS.find((tab) => data.content?.[tab.key])?.key;
       if (available) setActiveTab(available);
@@ -155,6 +185,15 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
       setDetail(null);
     } finally {
       setDetailLoading(false);
+    }
+  }, [API_BASE]);
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const res = await safeFetch(`${API_BASE}/api/newsroom/status`);
+      if (res.ok) setStatus(await res.json());
+    } catch {
+      /* 服务未就绪时保持空态 */
     }
   }, [API_BASE]);
 
@@ -214,7 +253,8 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
     if (!serviceRunning) return;
     void fetchIssues(true);
     void fetchSettings();
-  }, [serviceRunning, fetchIssues, fetchSettings]);
+    void fetchStatus();
+  }, [serviceRunning, fetchIssues, fetchSettings, fetchStatus]);
 
   useEffect(() => {
     if (selectedDate) void fetchDetail(selectedDate);
@@ -263,16 +303,25 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
 
   const submitFeedback = useCallback(async () => {
     if (!selectedDate || fbRating === null) return;
+    const items = Object.entries(itemRatings)
+      .filter(([, rating]) => rating === 1 || rating === -1)
+      .map(([url, rating]) => ({ url, rating }));
     try {
       const res = await safeFetch(`${API_BASE}/api/newsroom/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ issue_date: selectedDate, rating: fbRating, comment: fbComment }),
+        body: JSON.stringify({
+          issue_date: selectedDate,
+          rating: fbRating,
+          comment: fbComment,
+          items,
+        }),
       });
       if (res.ok) {
         toast.success(t("newsroom.feedbackDone"));
         await fetchDetail(selectedDate);
         await fetchIssues();
+        await fetchStatus();
       } else {
         const data = await res.json().catch(() => ({}));
         toast.error(data.error || t("newsroom.loadFailed"));
@@ -280,7 +329,7 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
     } catch {
       toast.error(t("newsroom.loadFailed"));
     }
-  }, [API_BASE, selectedDate, fbRating, fbComment, fetchDetail, fetchIssues, t]);
+  }, [API_BASE, selectedDate, fbRating, fbComment, itemRatings, fetchDetail, fetchIssues, fetchStatus, t]);
 
   const saveConfig = useCallback(async () => {
     if (!config) return;
@@ -441,7 +490,7 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
           >
             <Settings2 size={14} className="mr-1" /> {t("newsroom.settings")}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => { void fetchIssues(); void fetchSettings(); }}>
+          <Button variant="outline" size="sm" onClick={() => { void fetchIssues(); void fetchSettings(); void fetchStatus(); }}>
             <RefreshCw size={14} className="mr-1" /> {t("common.refresh", "刷新")}
           </Button>
           <Button size="sm" disabled={generating} onClick={() => void generateNow()}>
@@ -450,6 +499,90 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
           </Button>
         </div>
       </div>
+
+      {/* ── 主线健康卡：/api/newsroom/status 的只读聚合 ── */}
+      {status && (
+        <Card className="border-border/50 shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-5">
+            <CardTitle className="text-sm font-semibold">{t("newsroom.statusTitle")}</CardTitle>
+            <div className="flex items-center gap-1.5">
+              <Badge variant={status.config.enabled ? "default" : "secondary"} className="text-[10px]">
+                {status.config.enabled ? t("newsroom.statusEnabled") : t("newsroom.statusDisabled")}
+              </Badge>
+              {status.tasks.daily?.prompt_drift && (
+                <Badge variant="destructive" className="text-[10px]">
+                  {t("newsroom.statusPromptDrift")}
+                </Badge>
+              )}
+              {status.tasks.daily?.present && !status.tasks.daily.prompt_version_current && (
+                <Badge variant="destructive" className="text-[10px]">
+                  {t("newsroom.statusPromptStale")}
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-[10px] uppercase text-muted-foreground">{t("newsroom.statusLastIssue")}</p>
+                {status.last_issue && !("error" in status.last_issue) && status.last_issue ? (
+                  <p className="text-xs font-medium truncate" title={status.last_issue.title || status.last_issue.date}>
+                    {status.last_issue.date} · {status.last_issue.status}
+                    {status.last_issue.status === "ready" && (
+                      <span className="ml-1 text-muted-foreground">
+                        {status.last_issue.delivered ? "✓" : t("newsroom.statusNotDelivered")}
+                      </span>
+                    )}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">∅</p>
+                )}
+              </div>
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-[10px] uppercase text-muted-foreground">{t("newsroom.statusProposal")}</p>
+                <p className="text-xs font-medium truncate">
+                  {status.proposal && !("error" in status.proposal)
+                    ? `${status.proposal.status}${status.proposal.remaining_ops ? ` · ${status.proposal.remaining_ops}` : ""}`
+                    : "—"}
+                </p>
+              </div>
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-[10px] uppercase text-muted-foreground">{t("newsroom.statusFeedback")}</p>
+                <p className="text-xs font-medium">
+                  {status.feedback && !("error" in status.feedback)
+                    ? `👍 ${status.feedback.up ?? 0} · 👎 ${status.feedback.down ?? 0}`
+                    : "—"}
+                </p>
+              </div>
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-[10px] uppercase text-muted-foreground">{t("newsroom.statusItemFeedback")}</p>
+                <p className="text-xs font-medium">
+                  {status.feedback && !("error" in status.feedback)
+                    ? `👍 ${status.feedback.item_up ?? 0} · 👎 ${status.feedback.item_down ?? 0}`
+                    : "—"}
+                </p>
+              </div>
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-[10px] uppercase text-muted-foreground">{t("newsroom.statusDedup")}</p>
+                <p className="text-xs font-medium">
+                  {status.dedup_pool && !("error" in status.dedup_pool)
+                    ? `${status.dedup_pool.seen_urls ?? 0} / ${status.dedup_pool.window_days ?? 0}d`
+                    : "—"}
+                </p>
+              </div>
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-[10px] uppercase text-muted-foreground">{t("newsroom.statusTasks")}</p>
+                <p
+                  className="text-xs font-medium truncate font-mono"
+                  title={`${status.tasks.daily?.cron || "—"} / ${status.tasks.review?.cron || "—"}`}
+                >
+                  {status.tasks.daily?.cron || "—"} · {status.tasks.review?.cron || "—"}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="border-border/50 shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-5">
@@ -677,6 +810,47 @@ export function NewsroomView({ serviceRunning, apiBaseUrl = "" }: { serviceRunni
                   <p className="text-sm text-muted-foreground py-8 text-center">∅</p>
                 )}
               </CardContent>
+              {/* 条目级反馈：点选后随下方「提交反馈」一起保存（仅供周复盘参考） */}
+              {selected.items && selected.items.length > 0 && (
+                <div className="shrink-0 px-5 py-2 border-t border-border/60 max-h-44 overflow-y-auto custom-scrollbar">
+                  <p className="text-[11px] text-muted-foreground mb-1.5">{t("newsroom.itemFeedback")}</p>
+                  <ul className="space-y-1">
+                    {selected.items.map((item) => (
+                      <li key={item.url} className="flex items-center gap-2 text-xs">
+                        <span className="min-w-0 truncate flex-1" title={item.url}>
+                          {item.title}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant={itemRatings[item.url] === 1 ? "default" : "ghost"}
+                          className="h-6 px-2"
+                          onClick={() =>
+                            setItemRatings((prev) => ({
+                              ...prev,
+                              [item.url]: prev[item.url] === 1 ? 0 : 1,
+                            }))
+                          }
+                        >
+                          <ThumbsUp size={12} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={itemRatings[item.url] === -1 ? "destructive" : "ghost"}
+                          className="h-6 px-2"
+                          onClick={() =>
+                            setItemRatings((prev) => ({
+                              ...prev,
+                              [item.url]: prev[item.url] === -1 ? 0 : -1,
+                            }))
+                          }
+                        >
+                          <ThumbsDown size={12} />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {/* 反馈条固定在详情卡底部 */}
               <div className="shrink-0 flex flex-wrap items-center gap-2 px-5 py-3 border-t border-border/60">
                 <Button
