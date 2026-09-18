@@ -278,6 +278,35 @@ def test_budget_demote_skips_delivered_issue(isolated_newsroom):
     assert contract.read_manifest("2026-09-14").status == "partial"
 
 
+def test_budget_demote_falls_back_to_recent_issue(isolated_newsroom):
+    """跨午夜运行：查询日无 manifest 时按 mtime 兜底到刚写盘的期次。"""
+    _ready_issue("2026-09-10")
+    assert contract.demote_ready_on_budget_exceeded("2099-01-01") is True
+    assert contract.read_manifest("2026-09-10").status == "partial"
+
+
+def test_latest_issue_date_within_respects_age(isolated_newsroom):
+    import os
+    from datetime import datetime, timedelta
+
+    _ready_issue("2026-09-10")
+    path = contract.issue_dir("2026-09-10") / contract.MANIFEST_FILENAME
+    stale = (datetime.now() - timedelta(hours=30)).timestamp()
+    os.utime(path, (stale, stale))
+    assert contract.latest_issue_date_within(25) is None
+    assert contract.demote_ready_on_budget_exceeded("2099-01-01") is False
+
+
+def test_injection_block_stamps_run_issue_date(isolated_newsroom):
+    """注入块必须印记本期 issue_date，跨午夜时目录名以此为准。"""
+    from datetime import date
+
+    load_sources()
+    block = build_daily_injection_block()
+    assert "本期 issue_date：" in block
+    assert date.today().isoformat() in block
+
+
 def test_rejected_issue_still_blocks_window_urls(isolated_newsroom):
     """点踩降级不该把整期链接放回去重池。"""
     from newsclaw.newsroom.items import collect_seen_urls
