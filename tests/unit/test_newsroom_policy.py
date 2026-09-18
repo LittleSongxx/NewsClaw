@@ -232,6 +232,37 @@ class TestManifestContractWrite:
         assert manifest.status == "rejected"
         assert manifest.feedback["rating"] == -1
 
+    def test_agent_rewrite_preserves_delivered_at(self, isolated_newsroom):
+        """已出门的投递记录是系统写的字段，Agent 重写不得清掉。"""
+        import json
+
+        from newsclaw.newsroom import contract
+        from newsclaw.newsroom.sources import load_sources
+
+        load_sources()
+        contract.write_manifest(
+            contract.IssueManifest(
+                issue_date="2026-09-18",
+                title="t",
+                status="partial",
+                sources_used=["AI 综合搜索"],
+                delivered_at="2026-09-18T08:30:00",
+            )
+        )
+        write_manifest_from_agent(
+            "2026-09-18",
+            json.dumps(
+                {
+                    "issue_date": "2026-09-18",
+                    "title": "t2",
+                    "status": "partial",
+                    "sources_used": ["AI 综合搜索"],
+                    "delivered_at": "",
+                }
+            ),
+        )
+        assert contract.read_manifest("2026-09-18").delivered_at == "2026-09-18T08:30:00"
+
 
 class TestWikiDayGuard:
     def test_invalid_day_rejected(self, isolated_newsroom, tmp_path, monkeypatch):
