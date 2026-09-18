@@ -997,6 +997,12 @@ async def trigger_review(request: Request):
         if not lifecycle:
             raise HTTPException(503, "Lifecycle manager not available")
 
+        # 与 GET /api/memories、/stats 同一口径：只审查当前面板可见的
+        # user 桶。不传 owner 时 load_all_memories() 会扫整库（其它账号、
+        # pending_consolidation / legacy_quarantine），进度条出现「列表 9
+        # 条 / 审查 18 条」，而且 LLM 可能删掉用户看不见的记忆。
+        user_id, workspace_id = _current_owner(request)
+
         _review_cancel = asyncio.Event()
         _review_progress = {
             "status": "running",
@@ -1017,6 +1023,10 @@ async def trigger_review(request: Request):
                 result = await lifecycle.review_memories_with_llm(
                     progress_callback=on_progress,
                     cancel_event=_review_cancel,
+                    user_id=user_id,
+                    workspace_id=workspace_id,
+                    scope="user",
+                    scope_owner="",
                 )
 
                 _review_progress["status"] = (
@@ -1092,6 +1102,7 @@ _GRAPH_TYPE_MAP = {
     "persona_trait": "PREFERENCE",
 }
 
+# 功能词 / 空主语：单独出现不能当作“相关”。
 _GRAPH_STOPWORDS = {
     "任务",
     "执行",
@@ -1111,9 +1122,47 @@ _GRAPH_STOPWORDS = {
     "因为",
     "所以",
     "如果",
+    "必须",
+    "不要",
+    "当前",
+    "每天",
+    "一条",
+    "每条",
+    "我们",
+    "他们",
+    "自己",
+    "已经",
+    "不是",
+    "只是",
+    "还是",
+    "然后",
+    "但是",
+    "而且",
+    "通过",
+    "根据",
+    "相关",
+    "内容",
+    "信息",
+    "系统",
+    "默认",
+    "设置",
+    "用户",
     "the",
     "and",
     "for",
+    "with",
+    "that",
+    "this",
+}
+
+# 中文虚字：组成的二字词（“是桌”“户是”）不算主题。
+_GRAPH_CJK_SKIP = set("的了是在和与或及对把被从到为以也都很就还要会能可没不又再已让给")
+
+# 边优先级：显式关联 > 同一主语 > 足够重叠的主题。同类型绝不连边。
+_GRAPH_EDGE_RANK = {
+    "linked": 3,
+    "same_subject": 2,
+    "topic": 1,
 }
 
 
@@ -1123,8 +1172,97 @@ def _graph_node_type(mem: Any) -> str:
 
 
 def _graph_tokens(text: str) -> set[str]:
-    words = re.findall(r"[\u4e00-\u9fff]{2,}|[A-Za-z][A-Za-z0-9_-]{2,}", text or "")
-    return {w.lower() for w in words if w.lower() not in _GRAPH_STOPWORDS}
+    """抽可比较的主题词：英文整词 + 中文二字/三字切片，丢掉虚词。
+
+    整段中文若当成一个超长 token，两条早报规则几乎永远对不上；
+    只按“共享 2 个任意字”连边，又会把整张图糊成一团。所以用切片，
+    真正连不连交给 `_topic_overlap_weight` 的重叠门槛。
+    """
+    tokens: set[str] = set()
+    raw = text or ""
+    for word in re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", raw):
+        low = word.lower()
+        if low not in _GRAPH_STOPWORDS:
+            tokens.add(low)
+    for run in re.findall(r"[\u4e00-\u9fff]+", raw):
+        if len(run) < 2:
+            continue
+        if len(run) == 2:
+            if run not in _GRAPH_STOPWORDS:
+                tokens.add(run)
+            continue
+        for i in range(len(run) - 1):
+            bigram = run[i : i + 2]
+            if bigram in _GRAPH_STOPWORDS:
+                continue
+            if bigram[0] in _GRAPH_CJK_SKIP or bigram[1] in _GRAPH_CJK_SKIP:
+                continue
+            tokens.add(bigram)
+        for i in range(len(run) - 2):
+            tokens.add(run[i : i + 3])
+    return tokens
+
+
+def _topic_overlap_weight(left: set[str], right: set[str]) -> float | None:
+    """两条记忆的主题重叠够不够当成一条边。不够就返回 None，宁缺毋滥。"""
+    if len(left) < 2 or len(right) < 2:
+        return None
+    shared = left & right
+    if not shared:
+        return None
+    distinctive = {tok for tok in shared if len(tok) >= 3}
+    jaccard = len(shared) / len(left | right)
+    # 至少两个三字（或英文）主题词重合，例如“原始链接”“时间窗口”。
+    if len(distinctive) >= 2:
+        return min(0.85, 0.42 + 0.08 * len(distinctive))
+    # 三个二字词重合，且整体不太散。
+    if len(shared) >= 3 and jaccard >= 0.12:
+        return min(0.78, 0.32 + 0.07 * len(shared))
+    # 两个词重合必须足够像同一件事，避免只靠“早报+必须”乱连。
+    if len(shared) >= 2 and jaccard >= 0.22:
+        return min(0.7, 0.28 + 0.1 * len(shared))
+    return None
+
+
+def _graph_pair_key(source: str, target: str) -> frozenset[str] | None:
+    if not source or not target or source == target:
+        return None
+    return frozenset((source, target))
+
+
+def _upsert_graph_link(index: dict[frozenset[str], int], links_out: list[dict], link: dict) -> None:
+    """同一对节点只留一条边；更具体的关系覆盖更弱的。"""
+    key = _graph_pair_key(str(link.get("source", "")), str(link.get("target", "")))
+    if key is None:
+        return
+    prev = index.get(key)
+    if prev is None:
+        index[key] = len(links_out)
+        links_out.append(link)
+        return
+    old = links_out[prev]
+    new_rank = _GRAPH_EDGE_RANK.get(str(link.get("edge_type", "")), 0)
+    old_rank = _GRAPH_EDGE_RANK.get(str(old.get("edge_type", "")), 0)
+    if new_rank > old_rank or (
+        new_rank == old_rank and float(link.get("weight", 0)) > float(old.get("weight", 0))
+    ):
+        links_out[prev] = link
+
+
+def _memory_linked_ids(mem: Any) -> list[str]:
+    import json as _json
+
+    linked_ids = getattr(mem, "linked_memory_ids", None)
+    if linked_ids:
+        return [str(item) for item in linked_ids] if isinstance(linked_ids, list) else []
+    meta = getattr(mem, "metadata", {}) or {}
+    if isinstance(meta, str):
+        try:
+            meta = _json.loads(meta)
+        except Exception:
+            meta = {}
+    raw = meta.get("linked_memory_ids", []) if isinstance(meta, dict) else []
+    return [str(item) for item in raw] if isinstance(raw, list) else []
 
 
 def _merge_semantic_memories_into_graph(
@@ -1136,8 +1274,12 @@ def _merge_semantic_memories_into_graph(
     links_out: list[dict],
     limit: int,
 ) -> None:
-    """把列表面板同一桶的语义记忆叠进图谱，避免 mode2 只剩两颗无连线复盘点。"""
-    import json as _json
+    """把列表面板同一桶的语义记忆叠进图谱。
+
+    只连有依据的边：显式 ``linked_memory_ids``、非空同一主语、
+    主题词重叠过门槛。同类型（都是 RULE）绝不自动连线——那是假簇。
+    没有关系的记忆保持孤立，这比随便拉一条线更诚实。
+    """
     from collections import defaultdict
 
     existing = {n["id"] for n in nodes_out}
@@ -1148,8 +1290,12 @@ def _merge_semantic_memories_into_graph(
         workspace_id=workspace_id,
     )[:limit]
     subject_map: dict[str, list[str]] = defaultdict(list)
-    type_map: dict[str, list[str]] = defaultdict(list)
     tokens_by_id: dict[str, set[str]] = {}
+    link_index: dict[frozenset[str], int] = {}
+    for i, link in enumerate(links_out):
+        key = _graph_pair_key(str(link.get("source", "")), str(link.get("target", "")))
+        if key is not None and key not in link_index:
+            link_index[key] = i
 
     for m in all_mems:
         mem_type = _graph_node_type(m)
@@ -1169,91 +1315,84 @@ def _merge_semantic_memories_into_graph(
                 }
             )
             existing.add(m.id)
-        if m.subject:
-            subject_map[m.subject].append(m.id)
-        type_map[mem_type].append(m.id)
+        subject = (m.subject or "").strip()
+        if subject and subject not in _GRAPH_STOPWORDS and len(subject) >= 2:
+            subject_map[subject].append(m.id)
         tokens_by_id[m.id] = _graph_tokens(m.content or "")
 
-        linked_ids = getattr(m, "linked_memory_ids", None)
-        if not linked_ids:
-            meta = getattr(m, "metadata", {}) or {}
-            if isinstance(meta, str):
-                try:
-                    meta = _json.loads(meta)
-                except Exception:
-                    meta = {}
-            linked_ids = meta.get("linked_memory_ids", []) if isinstance(meta, dict) else []
-        if isinstance(linked_ids, list):
-            for lid in linked_ids:
-                if lid in existing:
-                    links_out.append(
-                        {
-                            "source": m.id,
-                            "target": lid,
-                            "edge_type": "linked",
-                            "dimension": "context",
-                            "weight": 0.5,
-                        }
-                    )
-
-    for ids in subject_map.values():
-        if len(ids) < 2:
-            continue
-        for i, src in enumerate(ids):
-            for tgt in ids[i + 1 : i + 3]:
-                links_out.append(
+    # 第二轮再连显式关联：目标节点必须已经进图，否则新记忆会链到空处。
+    for m in all_mems:
+        for lid in _memory_linked_ids(m):
+            if lid in existing:
+                _upsert_graph_link(
+                    link_index,
+                    links_out,
                     {
-                        "source": src,
-                        "target": tgt,
-                        "edge_type": "same_subject",
-                        "dimension": "entity",
-                        "weight": 0.4,
-                    }
+                        "source": m.id,
+                        "target": lid,
+                        "edge_type": "linked",
+                        "dimension": "context",
+                        "weight": 0.72,
+                    },
                 )
 
-    # 同类型串成一簇，12 条「规则」不会各飞各的。
-    for ids in type_map.values():
-        if len(ids) < 2:
+    # 同一主语 = 在谈同一件事，全员互连；太多时改成星形，避免边数爆炸。
+    for ids in subject_map.values():
+        unique_ids = list(dict.fromkeys(ids))
+        if len(unique_ids) < 2:
             continue
-        hub = ids[0]
-        for tgt in ids[1:]:
-            links_out.append(
-                {
-                    "source": hub,
-                    "target": tgt,
-                    "edge_type": "same_type",
-                    "dimension": "context",
-                    "weight": 0.25,
-                }
-            )
-
-    # 关键词重叠：早报/采集/核验等会连在一起。
-    mem_ids = list(tokens_by_id)
-    overlap_added: set[tuple[str, str]] = set()
-    for i, src in enumerate(mem_ids):
-        scored: list[tuple[int, str]] = []
-        src_tok = tokens_by_id[src]
-        if len(src_tok) < 2:
-            continue
-        for tgt in mem_ids[i + 1 :]:
-            shared = len(src_tok & tokens_by_id[tgt])
-            if shared >= 2:
-                scored.append((shared, tgt))
-        scored.sort(reverse=True)
-        for shared, tgt in scored[:3]:
-            key = tuple(sorted((src, tgt)))
-            if key in overlap_added:
-                continue
-            overlap_added.add(key)
-            links_out.append(
+        pairs: list[tuple[str, str]]
+        if len(unique_ids) <= 8:
+            pairs = [
+                (unique_ids[i], unique_ids[j])
+                for i in range(len(unique_ids))
+                for j in range(i + 1, len(unique_ids))
+            ]
+        else:
+            hub = unique_ids[0]
+            pairs = [(hub, tgt) for tgt in unique_ids[1:]]
+        for src, tgt in pairs:
+            _upsert_graph_link(
+                link_index,
+                links_out,
                 {
                     "source": src,
                     "target": tgt,
-                    "edge_type": "topic",
+                    "edge_type": "same_subject",
                     "dimension": "entity",
-                    "weight": min(0.85, 0.3 + shared * 0.1),
-                }
+                    "weight": 0.55,
+                },
             )
+
+    # 主题重叠：只连过门槛的对，每个节点最多留 4 条最强主题边。
+    mem_ids = list(tokens_by_id)
+    per_src_added: dict[str, int] = defaultdict(int)
+    scored_pairs: list[tuple[float, str, str]] = []
+    for i, src in enumerate(mem_ids):
+        src_tok = tokens_by_id[src]
+        for tgt in mem_ids[i + 1 :]:
+            weight = _topic_overlap_weight(src_tok, tokens_by_id[tgt])
+            if weight is not None:
+                scored_pairs.append((weight, src, tgt))
+    scored_pairs.sort(reverse=True)
+    for weight, src, tgt in scored_pairs:
+        if per_src_added[src] >= 4 or per_src_added[tgt] >= 4:
+            continue
+        before = len(link_index)
+        _upsert_graph_link(
+            link_index,
+            links_out,
+            {
+                "source": src,
+                "target": tgt,
+                "edge_type": "topic",
+                "dimension": "entity",
+                "weight": weight,
+            },
+        )
+        if len(link_index) > before:
+            per_src_added[src] += 1
+            per_src_added[tgt] += 1
 
 
 @router.get("/graph")

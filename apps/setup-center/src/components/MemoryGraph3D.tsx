@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { THEME_CHANGE_EVENT } from "../theme";
 
 export type GraphQuality = "high" | "medium" | "low";
 
@@ -34,7 +35,29 @@ const QUALITY_ORDER: GraphQuality[] = ["high", "medium", "low"];
 function loadQuality(): GraphQuality {
   const v = localStorage.getItem("memoryGraph3dQuality");
   if (v === "high" || v === "medium" || v === "low") return v;
-  return "high";
+  // 高画质默认开 bloom，浅色工作台上会把节点糊成一团；未选过的用户走中画质。
+  return "medium";
+}
+
+function readIsDarkTheme(): boolean {
+  if (typeof document === "undefined") return false;
+  const theme = document.documentElement.getAttribute("data-theme") || "";
+  return theme.includes("dark");
+}
+
+function useIsDarkTheme(): boolean {
+  const [isDark, setIsDark] = useState(readIsDarkTheme);
+  useEffect(() => {
+    const sync = () => setIsDark(readIsDarkTheme());
+    const obs = new MutationObserver(sync);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    window.addEventListener(THEME_CHANGE_EVENT, sync);
+    return () => {
+      obs.disconnect();
+      window.removeEventListener(THEME_CHANGE_EVENT, sync);
+    };
+  }, []);
+  return isDark;
 }
 
 type GraphNode = {
@@ -76,7 +99,7 @@ const NODE_COLORS: Record<string, string> = {
   PREFERENCE: "#8b5cf6",
   ERROR: "#ef4444",
   SKILL: "#06b6d4",
-  CONTEXT: "#64748b",
+  CONTEXT: "#0284c7",
   EXPERIENCE: "#14b8a6",
 };
 
@@ -101,30 +124,49 @@ const NODE_TYPE_LABEL_KEYS: Record<string, string> = {
   EXPERIENCE: "memory.typeExperience",
 };
 
-function makeLabelSprite(text: string): THREE.Sprite {
-  const label = (text || "").replace(/\s+/g, " ").trim().slice(0, 16);
+function makeLabelSprite(text: string, isDark: boolean, yOffset: number): THREE.Sprite {
+  const label = (text || "").replace(/\s+/g, " ").trim().slice(0, 14);
   const canvas = document.createElement("canvas");
   canvas.width = 256;
-  canvas.height = 64;
+  canvas.height = 56;
   const ctx = canvas.getContext("2d");
   if (ctx) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.font = "24px sans-serif";
+    ctx.font = "600 20px ui-sans-serif, system-ui, sans-serif";
+    const width = Math.min(236, Math.max(56, ctx.measureText(label).width + 20));
+    const x = (canvas.width - width) / 2;
+    const y = 14;
+    const h = 28;
+    const r = 8;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + width, y, x + width, y + h, r);
+    ctx.arcTo(x + width, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + width, y, r);
+    ctx.closePath();
+    ctx.fillStyle = isDark ? "rgba(15, 23, 42, 0.88)" : "rgba(255, 255, 255, 0.94)";
+    ctx.fill();
+    ctx.strokeStyle = isDark ? "rgba(148, 163, 184, 0.35)" : "rgba(15, 23, 42, 0.12)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = "rgba(2, 6, 23, 0.85)";
-    ctx.strokeText(label, 128, 32);
-    ctx.fillStyle = "#e2e8f0";
-    ctx.fillText(label, 128, 32);
+    ctx.fillStyle = isDark ? "#e2e8f0" : "#0f172a";
+    ctx.fillText(label, canvas.width / 2, y + h / 2);
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
   const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
   const sprite = new THREE.Sprite(material);
-  sprite.scale.set(18, 4.5, 1);
-  sprite.position.set(0, 6, 0);
+  sprite.scale.set(13, 2.85, 1);
+  sprite.position.set(0, yOffset, 0);
   return sprite;
+}
+
+/** 丢掉“同类型硬串”这种假边，避免旧接口把一圈规则糊在一起。 */
+function keepRelevantLinks(links: GraphLink[]): GraphLink[] {
+  return links.filter((link) => link.edge_type !== "same_type");
 }
 
 interface Props {
@@ -137,6 +179,7 @@ interface Props {
 
 export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 0, quality: qualityProp, onQualityChange }: Props) {
   const { t } = useTranslation();
+  const isDark = useIsDarkTheme();
   // ForceGraph3D ref type doesn't export cleanly; use its expected shape
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(undefined);
@@ -152,6 +195,9 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
   const [internalQuality, setInternalQuality] = useState<GraphQuality>(loadQuality);
   const quality = qualityProp ?? internalQuality;
   const preset = QUALITY_PRESETS[quality];
+  const bloomEnabled = preset.bloom && isDark;
+  const canvasBg = isDark ? "#1a2332" : "#f1f4f8";
+  const fittedRef = useRef(false);
 
   const handleQualityChange = useCallback((q: GraphQuality) => {
     localStorage.setItem("memoryGraph3dQuality", q);
@@ -211,7 +257,14 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
       try {
         const res = await safeFetch(`${apiBaseUrl}/api/memories/graph?limit=500`);
         const data: GraphData = await res.json();
-        if (!cancelled) setGraphData(data);
+        const links = keepRelevantLinks(data.links || []);
+        if (!cancelled) {
+          setGraphData({
+            ...data,
+            links,
+            meta: { ...data.meta, total_edges: links.length },
+          });
+        }
       } catch {
         if (!cancelled) setGraphData({ nodes: [], links: [], meta: { total_nodes: 0, total_edges: 0, mode: "error" } });
       } finally {
@@ -221,9 +274,9 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
     return () => { cancelled = true; };
   }, [apiBaseUrl, refreshKey]);
 
-  // Bloom post-processing — only when quality = high
+  // Bloom 只在深色 + 高画质时开：浅色底上发光会把节点糊掉。
   useEffect(() => {
-    if (!preset.bloom) {
+    if (!bloomEnabled) {
       if (bloomRef.current) {
         bloomRef.current.enabled = false;
       }
@@ -254,7 +307,7 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
       } catch { /* bloom unavailable */ }
     }, 500);
     return () => clearTimeout(timer);
-  }, [graphData, preset.bloom]);
+  }, [graphData, bloomEnabled, dimensions.width, dimensions.height]);
 
   // Update bloom resolution on container resize
   useEffect(() => {
@@ -281,11 +334,23 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
 
   // Shared materials per node type
   const materials = useMemo(() => {
-    const m: Record<string, THREE.MeshBasicMaterial> = {};
+    const m: Record<string, THREE.MeshStandardMaterial> = {};
     for (const [type, color] of Object.entries(NODE_COLORS)) {
-      m[type] = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
+      m[type] = new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.4,
+        metalness: 0.06,
+        transparent: true,
+        opacity: 1,
+      });
     }
-    m["_default"] = new THREE.MeshBasicMaterial({ color: "#6b7280", transparent: true, opacity: 0.7 });
+    m["_default"] = new THREE.MeshStandardMaterial({
+      color: "#64748b",
+      roughness: 0.45,
+      metalness: 0.04,
+      transparent: true,
+      opacity: 1,
+    });
     return m;
   }, []);
 
@@ -299,7 +364,7 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
   // Clear stale node mesh refs and dispose cloned materials when graph data changes
   useEffect(() => {
     nodeMeshes.current.forEach((mesh) => {
-      const mat = mesh.material as THREE.MeshBasicMaterial;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
       if (mat && typeof mat.dispose === "function") {
         mat.dispose();
       }
@@ -326,11 +391,11 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
   }, []);
 
   const nodeThreeObject = useCallback((node: GraphNode) => {
-    const radius = 1.5 + node.importance * 4;
-    const bucketedRadius = Math.round(radius * 2) / 2;
+    const radius = 1.7 + node.importance * 2.1;
+    const bucketedRadius = Math.round(radius * 4) / 4;
     let geo = geoCache.current.get(bucketedRadius);
     if (!geo) {
-      geo = new THREE.SphereGeometry(bucketedRadius, 10, 10);
+      geo = new THREE.SphereGeometry(bucketedRadius, 14, 14);
       geoCache.current.set(bucketedRadius, geo);
     }
     const mat = materials[node.node_type] || materials["_default"];
@@ -339,31 +404,31 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
     mesh.userData = { nodeType: node.node_type };
     nodeMeshes.current.set(node.id, mesh);
 
-    if (node.importance >= 0.6) {
+    if (node.importance >= 0.6 && isDark) {
       const spriteMat = new THREE.SpriteMaterial({
         color: NODE_COLORS[node.node_type] || "#6b7280",
         transparent: true,
-        opacity: 0.25,
+        opacity: 0.22,
         blending: THREE.AdditiveBlending,
       });
       spriteMats.current.push(spriteMat);
       const sprite = new THREE.Sprite(spriteMat);
-      sprite.scale.set(bucketedRadius * 4, bucketedRadius * 4, 1);
+      sprite.scale.set(bucketedRadius * 2.2, bucketedRadius * 2.2, 1);
       mesh.add(sprite);
     }
 
-    const label = makeLabelSprite(node.content);
+    const label = makeLabelSprite(node.content, isDark, bucketedRadius + 3.1);
     const labelMat = label.material as THREE.SpriteMaterial;
     if (labelMat) spriteMats.current.push(labelMat);
     mesh.add(label);
 
     return mesh;
-  }, [materials]);
+  }, [materials, isDark]);
 
   const handleNodeClick = useCallback((node: GraphNode) => {
     setSelectedNode(node);
     if (fgRef.current) {
-      const dist = 80;
+      const dist = 26;
       const coords = {
         x: (node.x || 0) + dist,
         y: (node.y || 0) + dist * 0.3,
@@ -408,7 +473,7 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
     const firstId = matchedNodeIds.values().next().value;
     const target = graphData.nodes.find((n) => n.id === firstId);
     if (target && target.x != null) {
-      const dist = 120;
+      const dist = 34;
       fgRef.current.cameraPosition(
         { x: (target.x || 0) + dist, y: (target.y || 0) + dist * 0.3, z: (target.z || 0) + dist },
         { x: target.x, y: target.y, z: target.z },
@@ -420,48 +485,75 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
   // Apply hover-dimming and search highlighting on material opacity
   useEffect(() => {
     nodeMeshes.current.forEach((mesh, id) => {
-      const mat = mesh.material as THREE.MeshBasicMaterial;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
       if (hoveredNode) {
-        mat.opacity = neighborSet.has(id) ? 0.9 : 0.1;
+        mat.opacity = neighborSet.has(id) ? 1 : 0.18;
       } else if (matchedNodeIds) {
-        mat.opacity = matchedNodeIds.has(id) ? 1.0 : 0.08;
+        mat.opacity = matchedNodeIds.has(id) ? 1.0 : 0.16;
       } else {
-        mat.opacity = 0.9;
+        mat.opacity = 1;
       }
     });
   }, [hoveredNode, neighborSet, matchedNodeIds]);
 
-  // Adjust force engine parameters for better layout
+  // 少节点时收紧斥力，避免 8～10 个球散落在一片虚空里。
   useEffect(() => {
-    if (fgRef.current) {
-      const charge = fgRef.current.d3Force("charge");
-      if (charge) charge.strength(-150);
-      const link = fgRef.current.d3Force("link");
-      if (link) link.distance(60);
+    if (!fgRef.current || !graphData) return;
+    const n = graphData.nodes.length;
+    const charge = fgRef.current.d3Force("charge");
+    if (charge) charge.strength(n < 15 ? -28 : n < 40 ? -55 : -90);
+    const link = fgRef.current.d3Force("link");
+    if (link) link.distance(n < 15 ? 26 : 40);
+    const scene = fgRef.current.scene?.();
+    if (scene && !scene.getObjectByName("nc-graph-ambient")) {
+      const ambient = new THREE.AmbientLight(0xffffff, 1.05);
+      ambient.name = "nc-graph-ambient";
+      scene.add(ambient);
+      const key = new THREE.DirectionalLight(0xffffff, 0.85);
+      key.name = "nc-graph-key";
+      key.position.set(50, 90, 70);
+      scene.add(key);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.28);
+      fill.name = "nc-graph-fill";
+      fill.position.set(-40, 20, -50);
+      scene.add(fill);
     }
   }, [graphData]);
 
-  // After layout stabilizes, fit the graph into view so it doesn't stay biased left.
+  const fitGraph = useCallback(() => {
+    if (!fgRef.current || dimensions.width <= 0 || dimensions.height <= 0) return;
+    try {
+      fgRef.current.zoomToFit?.(450, 52);
+      fittedRef.current = true;
+    } catch {
+      /* ignore fit errors */
+    }
+  }, [dimensions.width, dimensions.height]);
+
   useEffect(() => {
-    if (!graphData || !fgRef.current || dimensions.width <= 0 || dimensions.height <= 0) return;
-    const timer = setTimeout(() => {
-      try {
-        fgRef.current?.zoomToFit?.(600, 80);
-      } catch {
-        /* ignore fit errors */
-      }
-    }, 900);
-    return () => clearTimeout(timer);
-  }, [graphData, dimensions.width, dimensions.height, quality]);
+    fittedRef.current = false;
+  }, [graphData, dimensions.width, dimensions.height, quality, isDark]);
+
+  useEffect(() => {
+    if (!graphData || dimensions.width <= 0) return;
+    const timer = window.setTimeout(() => {
+      if (!fittedRef.current) fitGraph();
+    }, 1100);
+    return () => window.clearTimeout(timer);
+  }, [graphData, dimensions.width, dimensions.height, quality, isDark, fitGraph]);
 
   const linkColor = useCallback((link: GraphLink) => {
-    return DIMENSION_COLORS[link.dimension] || "#444";
-  }, []);
+    return DIMENSION_COLORS[link.dimension] || (isDark ? "#64748b" : "#94a3b8");
+  }, [isDark]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 size={24} className="animate-spin text-indigo-500" />
+      <div
+        data-graph-theme={isDark ? "dark" : "light"}
+        className="memory-graph-surface flex h-full items-center justify-center"
+        style={{ background: isDark ? "#1a2332" : "#f1f4f8" }}
+      >
+        <Loader2 size={24} className="animate-spin text-primary" />
         <span className="ml-2 text-sm text-muted-foreground">{t("memory.graphLoading")}</span>
       </div>
     );
@@ -469,9 +561,13 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
 
   if (!graphData || graphData.nodes.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-        <div className="text-lg font-semibold mb-1">{t("memory.graphNoData")}</div>
-        <div className="text-xs opacity-60">
+      <div
+        data-graph-theme={isDark ? "dark" : "light"}
+        className="memory-graph-surface flex h-full flex-col items-center justify-center text-muted-foreground"
+        style={{ background: isDark ? "#1a2332" : "#f1f4f8" }}
+      >
+        <div className="text-lg font-semibold mb-1 text-foreground">{t("memory.graphNoData")}</div>
+        <div className="text-xs opacity-70">
           {t("memory.graphNoDataHint")}
         </div>
       </div>
@@ -479,8 +575,25 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
   }
 
   return (
-    <div ref={containerRef} className="memory-graph-surface relative w-full h-full bg-slate-950 overflow-hidden flex flex-col">
+    <div
+      ref={containerRef}
+      data-graph-theme={isDark ? "dark" : "light"}
+      className="memory-graph-surface relative w-full h-full overflow-hidden flex flex-col"
+    >
       <style>{`
+        .memory-graph-surface {
+          background:
+            radial-gradient(ellipse 78% 64% at 50% 42%, var(--graph-glow) 0%, transparent 58%),
+            var(--graph-bg);
+        }
+        .memory-graph-surface[data-graph-theme="light"] {
+          --graph-bg: #f1f4f8;
+          --graph-glow: #ffffff;
+        }
+        .memory-graph-surface[data-graph-theme="dark"] {
+          --graph-bg: #1a2332;
+          --graph-glow: #2a3648;
+        }
         .memory-graph-surface .graph-viewport {
           width: 100%;
           height: 100%;
@@ -501,7 +614,7 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
       `}</style>
       {/* Legend + Quality selector */}
       <div className="absolute top-3 left-3 right-3 z-10 flex justify-between items-start pointer-events-none">
-        <div className="flex flex-wrap gap-3 items-center bg-slate-950/80 backdrop-blur-md border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 pointer-events-auto shadow-sm max-w-[60%]">
+        <div className="flex flex-wrap gap-3 items-center bg-card/90 backdrop-blur-md border border-border rounded-lg px-3 py-2 text-xs text-foreground pointer-events-auto shadow-sm max-w-[60%]">
           {Object.entries(NODE_COLORS)
             .filter(([type]) => graphData.nodes.some((n) => n.node_type === type))
             .map(([type, color]) => (
@@ -510,16 +623,19 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
               {NODE_TYPE_LABEL_KEYS[type] ? t(NODE_TYPE_LABEL_KEYS[type]) : type}
             </span>
           ))}
-          <span className="border-l border-slate-700 pl-3 text-slate-400 shrink-0">
+          <span className="border-l border-border pl-3 text-muted-foreground shrink-0">
             {t("memory.graphNodeCount", { nodes: graphData.meta.total_nodes })} · {t("memory.graphEdgeCount", { edges: graphData.meta.total_edges })} · {graphData.meta.mode}
           </span>
+          <span className="border-l border-border pl-3 text-muted-foreground shrink-0">
+            {t("memory.graphRelevanceHint")}
+          </span>
           {matchedNodeIds && (
-            <span className="border-l border-slate-700 pl-3 font-semibold text-amber-500 shrink-0">
+            <span className="border-l border-border pl-3 font-semibold text-amber-600 shrink-0">
               {t("memory.graphSearchMatch", { count: matchedNodeIds.size })}
             </span>
           )}
         </div>
-        <div className="flex gap-1 bg-slate-950/80 backdrop-blur-md border border-slate-800 rounded-lg p-1 pointer-events-auto shadow-sm shrink-0">
+        <div className="flex gap-1 bg-card/90 backdrop-blur-md border border-border rounded-lg p-1 pointer-events-auto shadow-sm shrink-0">
           <TooltipProvider delayDuration={200}>
             {QUALITY_ORDER.map((q) => {
               const Icon = QUALITY_ICONS[q];
@@ -530,7 +646,7 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
                     <button
                       onClick={() => handleQualityChange(q)}
                       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs transition-colors ${
-                        active ? "bg-indigo-500/20 text-indigo-400 font-medium" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                        active ? "bg-primary/15 text-primary font-medium" : "text-muted-foreground hover:text-foreground hover:bg-muted"
                       }`}
                     >
                       <Icon size={12} />
@@ -550,21 +666,25 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
       <div className="graph-viewport flex-1 w-full h-full min-w-0 min-h-0 relative">
         {dimensions.width > 0 && dimensions.height > 0 ? (
           <ForceGraph3D
-            key={`${dimensions.width}x${dimensions.height}`}
+            key={`${isDark ? "dark" : "light"}-${dimensions.width}x${dimensions.height}`}
             ref={fgRef}
             graphData={graphData}
             width={dimensions.width}
             height={dimensions.height}
-            backgroundColor="#020617"
+            backgroundColor={canvasBg}
+            showNavInfo={false}
             nodeThreeObject={nodeThreeObject}
             nodeThreeObjectExtend={false}
             nodeLabel={(node: any) => `${node.content?.slice(0, 60) || node.id}`}
             onNodeClick={handleNodeClick as any}
             onNodeHover={handleNodeHover as any}
+            onEngineStop={() => {
+              if (!fittedRef.current) fitGraph();
+            }}
             linkColor={linkColor as any}
-            linkWidth={(link: any) => Math.max(0.3, (link.weight || 0.5) * 1.5)}
-            linkOpacity={0.4}
-            linkDirectionalParticles={preset.particles}
+            linkWidth={(link: any) => Math.max(0.65, (link.weight || 0.5) * 1.45)}
+            linkOpacity={isDark ? 0.4 : 0.5}
+            linkDirectionalParticles={isDark ? preset.particles : Math.min(preset.particles, 1)}
             linkDirectionalParticleWidth={preset.particleWidth}
             linkDirectionalParticleSpeed={0.005}
             d3AlphaDecay={preset.alphaDecay}
@@ -574,7 +694,7 @@ export function MemoryGraph3D({ apiBaseUrl = "", searchQuery = "", refreshKey = 
             enablePointerInteraction={true}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-slate-400">
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             <Loader2 size={20} className="animate-spin text-indigo-400" />
             <span className="ml-2">{t("memory.graphInitializing")}</span>
           </div>
@@ -626,51 +746,51 @@ function NodeDetailPanel({
   const color = NODE_COLORS[node.node_type] || "#6b7280";
 
   return (
-    <Card className="absolute top-0 right-0 bottom-0 w-80 rounded-none border-y-0 border-r-0 border-l border-slate-800 bg-slate-950/95 backdrop-blur-md overflow-y-auto z-20 shadow-2xl animate-in slide-in-from-right-full duration-200">
+    <Card className="absolute top-0 right-0 bottom-0 w-80 rounded-none border-y-0 border-r-0 border-l border-border bg-card/96 backdrop-blur-md overflow-y-auto z-20 shadow-2xl animate-in slide-in-from-right-full duration-200">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <Badge variant="outline" style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}>
           {NODE_TYPE_LABEL_KEYS[node.node_type] ? t(NODE_TYPE_LABEL_KEYS[node.node_type]) : node.node_type}
         </Badge>
-        <Button variant="ghost" size="icon-sm" onClick={onClose} className="text-slate-400 hover:text-slate-100 hover:bg-slate-800">
+        <Button variant="ghost" size="icon-sm" onClick={onClose} className="text-muted-foreground hover:text-foreground hover:bg-muted">
           <X size={16} />
         </Button>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="text-sm leading-relaxed text-slate-200 break-words whitespace-pre-wrap">
+        <div className="text-sm leading-relaxed text-foreground break-words whitespace-pre-wrap">
           {node.content}
         </div>
 
-        <div className="space-y-2 text-xs text-slate-400">
+        <div className="space-y-2 text-xs text-muted-foreground">
           {node.occurred_at && (
             <div className="flex gap-2">
-              <span className="text-slate-500 w-12 shrink-0">{t("memory.graphDetailTime")}:</span>
-              <span className="text-slate-300">{new Date(node.occurred_at).toLocaleString()}</span>
+              <span className="w-12 shrink-0">{t("memory.graphDetailTime")}:</span>
+              <span className="text-foreground">{new Date(node.occurred_at).toLocaleString()}</span>
             </div>
           )}
           <div className="flex gap-2">
-            <span className="text-slate-500 w-12 shrink-0">{t("memory.graphDetailImportance")}:</span>
+            <span className="w-12 shrink-0">{t("memory.graphDetailImportance")}:</span>
             <span className="font-semibold" style={{ color }}>{node.importance.toFixed(2)}</span>
           </div>
           {node.action_category && (
             <div className="flex gap-2">
-              <span className="text-slate-500 w-12 shrink-0">{t("memory.graphDetailAction")}:</span>
-              <span className="text-slate-300">{node.action_category}</span>
+              <span className="w-12 shrink-0">{t("memory.graphDetailAction")}:</span>
+              <span className="text-foreground">{node.action_category}</span>
             </div>
           )}
           {node.project && (
             <div className="flex gap-2">
-              <span className="text-slate-500 w-12 shrink-0">{t("memory.graphDetailProject")}:</span>
-              <span className="text-slate-300">{node.project}</span>
+              <span className="w-12 shrink-0">{t("memory.graphDetailProject")}:</span>
+              <span className="text-foreground">{node.project}</span>
             </div>
           )}
         </div>
 
         {node.entities.length > 0 && (
           <div className="space-y-2">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("memory.graphDetailEntities")}</div>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("memory.graphDetailEntities")}</div>
             <div className="flex flex-wrap gap-1.5">
               {node.entities.map((e, i) => (
-                <Badge key={i} variant="outline" className="bg-indigo-500/10 text-indigo-400 border-indigo-500/20 text-[10px] px-2 py-0">
+                <Badge key={i} variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-2 py-0">
                   {e.name}
                 </Badge>
               ))}
@@ -680,7 +800,7 @@ function NodeDetailPanel({
 
         {related.length > 0 && (
           <div className="space-y-2">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               {t("memory.graphRelated", { count: related.length })}
             </div>
             <div className="space-y-1.5">
@@ -688,11 +808,11 @@ function NodeDetailPanel({
                 <div
                   key={i}
                   onClick={() => onNavigate(r.id)}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-md bg-slate-900/50 border border-slate-800/50 cursor-pointer hover:bg-slate-800 hover:border-slate-700 transition-colors"
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-md bg-muted/60 border border-border cursor-pointer hover:bg-muted transition-colors"
                 >
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: DIMENSION_COLORS[r.dimension] || "#666" }} />
-                  <span className="text-xs text-slate-300 truncate">{r.edge_type}</span>
-                  <span className="text-[10px] text-slate-500 font-mono ml-auto shrink-0">
+                  <span className="text-xs text-foreground truncate">{r.edge_type}</span>
+                  <span className="text-[10px] text-muted-foreground font-mono ml-auto shrink-0">
                     {r.id.slice(0, 8)}
                   </span>
                 </div>

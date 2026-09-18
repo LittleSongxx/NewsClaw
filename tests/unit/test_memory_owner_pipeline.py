@@ -331,3 +331,73 @@ async def test_llm_review_cannot_merge_across_owners(make_manager, target_user, 
     assert report["merged"] == 0
     assert mm.store.db.get_memory(source.id)["content"] == source.content
     assert mm.store.db.get_memory(target.id)["content"] == target.content
+
+
+@pytest.mark.asyncio
+async def test_llm_review_owner_filter_matches_panel_stats(make_manager):
+    """面板统计只算当前账号；审查必须用同一过滤，否则进度条会多出隔离桶。"""
+    mm = make_manager()
+    visible_ids = []
+    for i in range(3):
+        mem = SemanticMemory(content=f"Visible desktop memory {i}")
+        mm.store.save_semantic(mem, user_id="desktop_user", scope="user")
+        visible_ids.append(mem.id)
+    stranded = SemanticMemory(content="Stranded default-owner memory")
+    mm.store.save_semantic(stranded, user_id="default", scope="user")
+    pending = SemanticMemory(content="Pending consolidation draft")
+    mm.store.save_semantic(pending, user_id="pending", scope="pending_consolidation")
+
+    seen_ids: list[str] = []
+    ext = extractor()
+
+    async def think(prompt, **_kwargs):
+        seen_ids.extend(
+            part.split(" |", 1)[0]
+            for part in prompt.split("ID=")[1:]
+        )
+        return SimpleNamespace(content="[]")
+
+    ext.brain = SimpleNamespace(think=AsyncMock(side_effect=think))
+    report = await LifecycleManager(mm.store, ext).review_memories_with_llm(
+        user_id="desktop_user",
+        workspace_id="default",
+        scope="user",
+        scope_owner="",
+    )
+    assert set(seen_ids) == set(visible_ids)
+    assert stranded.id not in seen_ids
+    assert pending.id not in seen_ids
+    assert report["kept"] == 3
+
+
+def test_panel_review_passes_current_owner_to_lifecycle(make_manager, monkeypatch):
+    mm = make_manager()
+    captured: dict = {}
+
+    async def fake_review(self, **kwargs):
+        captured.update(kwargs)
+        return {"deleted": 0, "updated": 0, "merged": 0, "kept": 0, "errors": 0}
+
+    monkeypatch.setattr(LifecycleManager, "review_memories_with_llm", fake_review)
+
+    import newsclaw.api.routes.memory as memory_api
+
+    memory_api._review_task = None
+    memory_api._review_cancel = None
+    memory_api._review_progress = {}
+
+    res = contextvars.Context().run(lambda: panel(mm).post("/api/memories/review"))
+    assert res.status_code == 200
+    assert res.json()["status"] == "started"
+
+    import time
+
+    for _ in range(40):
+        if captured:
+            break
+        time.sleep(0.05)
+
+    assert captured.get("user_id") == "desktop_user"
+    assert captured.get("workspace_id") == "default"
+    assert captured.get("scope") == "user"
+    assert captured.get("scope_owner") == ""

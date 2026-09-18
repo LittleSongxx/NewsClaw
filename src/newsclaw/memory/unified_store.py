@@ -34,6 +34,15 @@ logger = logging.getLogger(__name__)
 StoreObserver = Callable[[str, Any], None]
 
 
+def _semantic_memory_from_row(row: dict) -> SemanticMemory:
+    """把 SQLite 行还原成语义记忆，并挂上 metadata（图谱显式连边要用）。"""
+    mem = SemanticMemory.from_dict(row)
+    meta = row.get("metadata") or {}
+    if isinstance(meta, dict) and meta:
+        object.__setattr__(mem, "metadata", meta)
+    return mem
+
+
 class UnifiedStore:
     """统一存储层: SQLite 为主存储, SearchBackend 为搜索引擎"""
 
@@ -487,14 +496,14 @@ class UnifiedStore:
             workspace_id=workspace_id,
             active_only=not include_inactive,
         )
-        return [SemanticMemory.from_dict(r) for r in rows]
+        return [_semantic_memory_from_row(r) for r in rows]
 
     def query_paged(self, **kwargs: Any) -> tuple[list[SemanticMemory], int]:
         """Paginated query delegating to storage.query_paged()."""
         include_inactive = bool(kwargs.pop("include_inactive", False))
         kwargs.setdefault("active_only", not include_inactive)
         rows, total = self.db.query_paged(**kwargs)
-        return [SemanticMemory.from_dict(r) for r in rows], total
+        return [_semantic_memory_from_row(r) for r in rows], total
 
     # ======================================================================
     # Episode Memory
