@@ -19,7 +19,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from .contract import newsroom_root
+from .contract import SCORE_DIMENSIONS, newsroom_root
 from .editorial import (
     MAX_POLICY_BULLETS,
     EditorialPolicy,
@@ -221,6 +221,11 @@ def _now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+#: evidence.dimension 的合法值：四个自评维度 + 人工反馈。写错整份提案判
+#: invalid（复盘 prompt 的 schema 已枚举这些值，这里机验防止模型自由发挥）。
+_VALID_EVIDENCE_DIMENSIONS = frozenset({*SCORE_DIMENSIONS, "feedback"})
+
+
 def _parse_evidence(raw: Any) -> Evidence | None:
     if not isinstance(raw, dict):
         return None
@@ -229,6 +234,18 @@ def _parse_evidence(raw: Any) -> Evidence | None:
     note = str(raw.get("note") or raw.get("feedback") or "").strip()
     if not issue_date and not dimension and not note:
         return None
+    if dimension and dimension not in _VALID_EVIDENCE_DIMENSIONS:
+        raise ProposalError(
+            f"evidence.dimension 非法: {dimension!r}；"
+            f"合法值：{', '.join([*SCORE_DIMENSIONS, 'feedback'])}"
+        )
+    if issue_date:
+        try:
+            date.fromisoformat(issue_date)
+        except ValueError as exc:
+            raise ProposalError(
+                f"evidence.issue_date 不是 YYYY-MM-DD: {issue_date!r}"
+            ) from exc
     return Evidence(issue_date=issue_date, dimension=dimension, note=note)
 
 
@@ -581,7 +598,14 @@ def _apply_policy_ops(policy: EditorialPolicy, ops: list[PolicyBulletOp]) -> Edi
             bullets.pop(index[op.id])
             index = {b.id: i for i, b in enumerate(bullets)}
     if len(bullets) > MAX_POLICY_BULLETS:
-        raise ProposalError(f"policy bullets exceed cap {MAX_POLICY_BULLETS}")
+        added = sum(1 for op in ops if op.action == "add")
+        removed = sum(1 for op in ops if op.action == "remove")
+        current = len(bullets) - added + removed
+        raise ProposalError(
+            f"policy bullets would reach {len(bullets)} (currently {current}, "
+            f"adding {added}; cap {MAX_POLICY_BULLETS}) - remove some bullets "
+            "in the proposal first or trim the adds"
+        )
     return EditorialPolicy(preamble=policy.preamble, bullets=bullets)
 
 

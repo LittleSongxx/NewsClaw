@@ -10,7 +10,8 @@
     skills/newsroom-editor/SKILL.md     操作手册（流程：怎么跑管线，保持稳定）
 
 prompt 版本号 ``PROMPT_VERSION`` 递增时，seed 模块会在下次启动时把已存在
-任务的 prompt 刷新到新版（v17：采集子任务核验完立刻输出，禁止空转推理）
+任务的 prompt 刷新到新版（v18：明示 evidence 的合法维度与日期格式——
+复盘任务的提案解析会机验这两个字段，写错整份提案判 invalid）
 （用户在 GUI 里改排期不受影响，见 seed 模块说明）。
 """
 
@@ -24,7 +25,7 @@ from newsclaw.newsroom.editorial import load_editorial_policy
 from newsclaw.newsroom.items import format_seen_items_for_prompt
 from newsclaw.newsroom.sources import load_sources, sources_path
 
-PROMPT_VERSION = 17
+PROMPT_VERSION = 18
 
 #: 每日任务运行时注入块的起止标记。播种缓存的 prompt 可能含旧块，
 #: 调度触发时会剥掉再拼当期 sources / 方针。
@@ -328,6 +329,9 @@ def build_review_prompt(config: NewsroomConfig | None = None) -> str:
    · {root / "issues"}/review-proposal.md —— 给人读的摘要；
    · {root / "issues"}/review-proposal.json —— 给代码 apply 的结构化提案
      （schema 如下，UTF-8、ensure_ascii=False）。坏 JSON 不会进入 pending。
+     evidence 机验：issue_date 必须是 YYYY-MM-DD；dimension 只能取
+     source_hit / dedup / headline / structure / feedback——写错任一处，
+     整份提案判 invalid。
    自评 scores 只作参考，不能当改信源的闭环信号。
 2. 方针：**禁止**整文件重写 {root / "editorial-policy.md"}。只在 JSON 的
    policy_bullets 里按 id 提交 add / replace / remove（全文上限 30 条）。
