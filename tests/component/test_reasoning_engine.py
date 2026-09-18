@@ -1,12 +1,9 @@
 """L2 Component Tests: ReasoningEngine decision routing and loop detection."""
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
-from newsclaw.core.agent_state import AgentState, TaskState, TaskStatus
 from newsclaw.agent.reasoning import DecisionType
+from newsclaw.core.agent_state import AgentState, TaskState, TaskStatus
 
 
 class TestDecisionType:

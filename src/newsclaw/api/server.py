@@ -50,7 +50,6 @@ from .routes import (
     feishu_onboard,
     files,
     health,
-    hub,
     identity,
     im,
     inbox,
@@ -883,7 +882,6 @@ def create_app(
     app.include_router(workspace_io.router, tags=["工作区"])
     app.include_router(workspaces.router, tags=["工作区管理"])
     app.include_router(ws_routes.router, tags=["WebSocket"])
-    app.include_router(hub.router, tags=["Hub"])
     app.include_router(identity.router, tags=["身份"])
     # P-RC-2 commit P2.8: GET /api/build-info for the frontend
     # stale-bundle banner. Always-mounted, unauthenticated.

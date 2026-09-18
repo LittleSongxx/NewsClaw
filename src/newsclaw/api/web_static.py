@@ -7,10 +7,6 @@ from starlette.types import Scope
 
 class WebStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: Scope) -> Response:
-        # A distinct return URL also avoids already-cached /web/ documents that
-        # predate our cache policy. Keep the instruction in the URL fragment.
-        if path.rstrip("/") == "marketplace-return":
-            path = "index.html"
         fresh = path in {"", ".", "index.html", "sw.js"}
         if fresh:
             scope = {

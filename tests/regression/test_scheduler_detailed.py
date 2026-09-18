@@ -19,7 +19,7 @@ async def test_once_task():
     print("\n1. 测试一次性任务 (Once)")
     print("-" * 40)
 
-    from newsclaw.scheduler import TaskScheduler, ScheduledTask
+    from newsclaw.scheduler import ScheduledTask, TaskScheduler
 
     with tempfile.TemporaryDirectory() as tmpdir:
         executed_tasks = []
@@ -75,7 +75,7 @@ async def test_interval_task():
     print("\n2. 测试间隔任务 (Interval)")
     print("-" * 40)
 
-    from newsclaw.scheduler import TaskScheduler, ScheduledTask
+    from newsclaw.scheduler import ScheduledTask, TaskScheduler
     from newsclaw.scheduler.triggers import IntervalTrigger
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -170,7 +170,7 @@ async def test_task_persistence():
     print("\n4. 测试任务持久化")
     print("-" * 40)
 
-    from newsclaw.scheduler import TaskScheduler, ScheduledTask
+    from newsclaw.scheduler import ScheduledTask, TaskScheduler
 
     with tempfile.TemporaryDirectory() as tmpdir:
         storage_path = Path(tmpdir)
@@ -200,7 +200,7 @@ async def test_task_persistence():
         loaded_task = scheduler2.get_task(task_id)
 
         if loaded_task:
-            print(f"   ✅ 任务成功加载!")
+            print("   ✅ 任务成功加载!")
             print(f"      名称: {loaded_task.name}")
             print(f"      触发器: {loaded_task.trigger_type.value}")
             print(f"      用户: {loaded_task.user_id}")
@@ -218,7 +218,7 @@ async def test_task_lifecycle():
     print("\n5. 测试任务生命周期")
     print("-" * 40)
 
-    from newsclaw.scheduler import ScheduledTask, TaskStatus, TriggerType
+    from newsclaw.scheduler import ScheduledTask, TaskStatus
 
     # 创建任务
     task = ScheduledTask.create_once(
@@ -274,7 +274,7 @@ async def test_concurrent_tasks():
     print("\n6. 测试并发任务执行")
     print("-" * 40)
 
-    from newsclaw.scheduler import TaskScheduler, ScheduledTask
+    from newsclaw.scheduler import ScheduledTask, TaskScheduler
 
     with tempfile.TemporaryDirectory() as tmpdir:
         execution_log = []
@@ -332,7 +332,7 @@ async def test_task_failure():
     print("\n7. 测试任务失败处理")
     print("-" * 40)
 
-    from newsclaw.scheduler import TaskScheduler, ScheduledTask
+    from newsclaw.scheduler import ScheduledTask, TaskScheduler
 
     with tempfile.TemporaryDirectory() as tmpdir:
 
@@ -381,7 +381,7 @@ async def test_manual_trigger():
     print("\n8. 测试手动触发")
     print("-" * 40)
 
-    from newsclaw.scheduler import TaskScheduler, ScheduledTask
+    from newsclaw.scheduler import ScheduledTask, TaskScheduler
 
     with tempfile.TemporaryDirectory() as tmpdir:
         executed = {"count": 0}
@@ -414,7 +414,7 @@ async def test_manual_trigger():
             execution = await scheduler.trigger_now(task_id)
 
             if execution and executed["count"] > 0:
-                print(f"   ✅ 手动触发成功!")
+                print("   ✅ 手动触发成功!")
                 print(f"      执行状态: {execution.status}")
                 print(f"      执行结果: {execution.result}")
                 return True

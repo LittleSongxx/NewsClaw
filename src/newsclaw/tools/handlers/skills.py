@@ -154,7 +154,7 @@ class SkillsHandler:
         for skill in candidates:
             state = "已禁用" if skill.disabled else "可用"
             lines.append(
-                f"- {skill.skill_id}: {skill.marketplace_name or skill.name} "
+                f"- {skill.skill_id}: {skill.name} "
                 f"[{state}] — {skill.description[:120]}"
             )
         lines.append("如果用户意图不足以区分这些候选，请先询问用户，不要任意选择。")
@@ -193,9 +193,6 @@ class SkillsHandler:
         )
 
         def display_name(skill) -> str:
-            official = getattr(skill, "marketplace_name", None)
-            if isinstance(official, str) and official:
-                return f"{official} ({skill.skill_id})"
             zh_name = skill.name_i18n.get("zh", "")
             return f"{skill.name} ({zh_name})" if zh_name else skill.name
 
@@ -390,7 +387,7 @@ class SkillsHandler:
             skill_dir = Path(exposed.skill_path).parent
             body = self._inline_referenced_files(body, skill_dir)
 
-        output = f"# 技能: {getattr(skill, 'marketplace_name', None) or skill.name}\n\n"
+        output = f"# 技能: {skill.name}\n\n"
         output += f"**ID**: {skill.skill_id}\n"
         output += f"**描述**: {skill.description}\n"
         if skill.when_to_use:

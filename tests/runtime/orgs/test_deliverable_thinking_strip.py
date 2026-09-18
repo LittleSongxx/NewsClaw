@@ -19,7 +19,6 @@ chokepoint that removes the reasoning block while preserving the document.
 from __future__ import annotations
 
 import pytest
-
 from newsclaw.orgs._runtime_node_artifacts import (
     classify_node_output,
     strip_deliverable_thinking,

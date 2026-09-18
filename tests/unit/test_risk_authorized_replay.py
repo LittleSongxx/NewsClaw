@@ -14,8 +14,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from newsclaw.agent.safety.destructive_intent import consume_risk_authorization as _consume_risk_authorization
-
+from newsclaw.agent.safety.destructive_intent import (
+    consume_risk_authorization as _consume_risk_authorization,
+)
 
 # ---------------------------------------------------------------------------
 # _consume_risk_authorization

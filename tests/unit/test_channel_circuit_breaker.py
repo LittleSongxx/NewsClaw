@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import logging
 import time
 
 import pytest
 
 from newsclaw.channels._circuit_breaker import CircuitBreaker
-
 
 # ---------------------------------------------------------------------------
 # CircuitBreaker basic behaviour

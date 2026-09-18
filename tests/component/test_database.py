@@ -1,7 +1,8 @@
 """L2 Component Tests: Database CRUD operations."""
 
-import pytest
 from datetime import datetime, timedelta
+
+import pytest
 
 from newsclaw.storage.database import Database
 

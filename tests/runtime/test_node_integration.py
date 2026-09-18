@@ -21,15 +21,15 @@ import asyncio
 import json
 
 import pytest
-
-from newsclaw.runtime.cancel_token import CancellationToken
-from newsclaw.runtime.checkpoint import MemoryCheckpointer
-from newsclaw.runtime.ledger import ProgressLedger
 from newsclaw.runtime.messenger import (
     InMemoryNodeRegistry,
     Messenger,
     NodeAddress,
 )
+
+from newsclaw.runtime.cancel_token import CancellationToken
+from newsclaw.runtime.checkpoint import MemoryCheckpointer
+from newsclaw.runtime.ledger import ProgressLedger
 from newsclaw.runtime.nodes import (
     BrainResponse,
     LLMNode,

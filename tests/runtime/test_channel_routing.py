@@ -9,8 +9,6 @@ are nailed.
 from __future__ import annotations
 
 import pytest
-
-from newsclaw.config import settings
 from newsclaw.orgs import reset_default_store, set_default_org_manager
 from newsclaw.orgs.manager import OrgManager
 from newsclaw.orgs.org_models import OrgEdge, OrgNode
@@ -19,6 +17,8 @@ from newsclaw.runtime.channel_routing import (
     compute_v2_plan_for_org,
     route_inbound_message_to_v2,
 )
+
+from newsclaw.config import settings
 from newsclaw.runtime.models import (
     EdgeKind,
     EdgeV2,

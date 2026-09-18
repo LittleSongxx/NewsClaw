@@ -1,13 +1,13 @@
 """补充检索引擎测试: 附件召回, rerank 权重, 增强查询."""
 
-import pytest
 from datetime import datetime
+
+import pytest
 
 from newsclaw.memory.retrieval import RetrievalCandidate, RetrievalEngine
 from newsclaw.memory.types import (
     Attachment,
     AttachmentDirection,
-    Episode,
     MemoryType,
     SemanticMemory,
 )
@@ -291,7 +291,7 @@ class TestDecomposeWithLLM:
     """测试 LLM 查询拆解 (使用 SimpleMockBrain)."""
 
     def test_llm_decompose_json(self, store):
-        from dataclasses import dataclass, field
+        from dataclasses import dataclass
 
         @dataclass
         class _Resp:

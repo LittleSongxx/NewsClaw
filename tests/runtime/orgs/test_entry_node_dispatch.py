@@ -34,7 +34,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from newsclaw.orgs import _runtime_dispatch as dispatch_mod
 from newsclaw.orgs.command_models import OrgCommandRequest
 from newsclaw.orgs.command_service import OrgCommandService

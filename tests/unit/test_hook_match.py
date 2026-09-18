@@ -17,7 +17,6 @@ import pytest
 from newsclaw.plugins.hooks import HookRegistry
 from newsclaw.plugins.sandbox import PluginErrorTracker
 
-
 # ---------- helpers ----------
 
 

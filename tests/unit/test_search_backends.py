@@ -1,7 +1,5 @@
 """L1 Unit Tests: Search Backends (FTS5, factory, protocol)."""
 
-import tempfile
-from pathlib import Path
 
 import pytest
 

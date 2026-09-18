@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-
 from newsclaw.orgs._runtime_external_tasks import (
     ExternalTaskTimeout,
     ExternalTaskTracker,

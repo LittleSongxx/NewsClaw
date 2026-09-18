@@ -1,6 +1,5 @@
 """L2 Component Tests: ContextManager compression and message grouping."""
 
-import asyncio
 
 import pytest
 

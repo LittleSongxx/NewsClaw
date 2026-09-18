@@ -1,5 +1,5 @@
 """
-Skills route: GET /api/skills, POST /api/skills/config, GET /api/skills/marketplace
+Skills route: GET /api/skills, POST /api/skills/config
 
 技能列表与配置管理。
 
@@ -25,17 +25,7 @@ import logging
 import re
 from pathlib import Path
 
-import httpx
 from fastapi import APIRouter, HTTPException, Request
-
-from newsclaw.skills.marketplace import (
-    MARKETPLACE_SCHEMA_VERSION,
-    SKILLHUB_PROVIDER,
-    SKILLHUB_SKILLS_API,
-    installed_marketplace_names,
-    installed_marketplace_resource_id,
-    normalize_skillhub_response,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -258,17 +248,6 @@ async def _build_skills_list_response(request: Request) -> dict:
 
     # Read local manifests off the event loop. The list cache is invalidated by
     # install/uninstall events, so removed resources cannot stay marked installed.
-    marketplace_names = await asyncio.to_thread(
-        installed_marketplace_names,
-        [skill.skill_path for skill in all_skills if skill.skill_path and not skill.system],
-    )
-    marketplace_ids = await asyncio.to_thread(
-        lambda: {
-            str(skill.skill_path): installed_marketplace_resource_id(skill.skill_path)
-            for skill in all_skills
-            if skill.skill_path and not skill.system
-        }
-    )
     skills = []
     for skill in all_skills:
         config = None
@@ -316,8 +295,6 @@ async def _build_skills_list_response(request: Request) -> dict:
                 "config": config,
                 "path": relative_path,
                 "source_url": getattr(skill, "source_url", None),
-                "marketplace_resource_id": marketplace_ids.get(str(skill.skill_path)),
-                "marketplace_name": marketplace_names.get(str(skill.skill_path)),
                 "runtime_state": {
                     "installed": bool(runtime_state.get("installed", True)),
                     "enabled": is_enabled,
@@ -795,10 +772,8 @@ async def update_skill_config(request: Request):
 async def install_skill(request: Request):
     """安装技能（远程模式替代 Tauri newsclaw_install_skill 命令）。
 
-    POST body supports either a legacy source URL or a normalized marketplace descriptor:
+    POST body carries a source URL:
       { "url": "github:user/repo/skill", "category": "Browser" (optional) }
-      { "install": { "strategy": "registry-zip", "locator": "skillhub:@ns/skill",
-        "version": "1.0.0" }, "category": "Browser" (optional) }
 
     完成后会：
       1. 把新安装 skill_id upsert 到 data/skills.json 的 external_allowlist
@@ -812,19 +787,10 @@ async def install_skill(request: Request):
     from newsclaw.skills.allowlist_io import upsert_skill_ids
 
     body = await request.json()
-    install_descriptor = body.get("install")
-    if isinstance(install_descriptor, dict):
-        from newsclaw.skills.marketplace import resolve_marketplace_install_source
-
-        try:
-            url = resolve_marketplace_install_source(install_descriptor)
-        except ValueError as e:
-            return {"error": str(e), "error_code": "invalid_marketplace_install"}
-    else:
-        url_value = body.get("url", "")
-        url = url_value.strip() if isinstance(url_value, str) else ""
+    url_value = body.get("url", "")
+    url = url_value.strip() if isinstance(url_value, str) else ""
     if not url:
-        return {"error": "url or install is required"}
+        return {"error": "url is required"}
     category_raw = body.get("category")
     category = (
         str(category_raw).strip()
@@ -988,7 +954,7 @@ async def uninstall_skill(request: Request):
 
     from newsclaw.config import settings
 
-    # Match marketplace and agent installs, including development and named workspaces.
+    # Match external installs, including development and named workspaces.
     workspace_dir = str(settings.user_workspace_path)
 
     try:
@@ -1201,56 +1167,6 @@ async def update_skill_content(skill_name: str, request: Request):
         "name": parsed.metadata.name,
         "description": parsed.metadata.description,
     }
-
-
-@router.get("/api/skills/marketplace")
-async def search_marketplace(q: str = "agent", page: int = 1, page_size: int = 20):
-    """Search SkillHub and return NewsClaw's provider-neutral model."""
-    from newsclaw.llm.providers.proxy_utils import (
-        get_httpx_transport,
-        get_proxy_config,
-    )
-
-    page = max(1, page)
-    page_size = min(100, max(1, page_size))
-
-    try:
-        client_kwargs: dict = {
-            "timeout": 15,
-            "follow_redirects": True,
-            "trust_env": False,
-        }
-
-        proxy = get_proxy_config()
-        if proxy:
-            client_kwargs["proxy"] = proxy
-
-        transport = get_httpx_transport()
-        if transport:
-            client_kwargs["transport"] = transport
-
-        async with httpx.AsyncClient(**client_kwargs) as client:
-            resp = await client.get(
-                SKILLHUB_SKILLS_API,
-                params={
-                    "keyword": q.strip(),
-                    "page": page,
-                    "pageSize": page_size,
-                    "sortBy": "downloads",
-                    "order": "desc",
-                },
-            )
-            resp.raise_for_status()
-            return normalize_skillhub_response(resp.json(), page=page, page_size=page_size)
-    except Exception as e:
-        logger.warning("SkillHub API error: %s", e)
-        return {
-            "schemaVersion": MARKETPLACE_SCHEMA_VERSION,
-            "provider": SKILLHUB_PROVIDER,
-            "skills": [],
-            "pagination": {"page": page, "pageSize": page_size, "total": 0},
-            "error": str(e),
-        }
 
 
 # ──────────────────────────────────────────────────────────────────────

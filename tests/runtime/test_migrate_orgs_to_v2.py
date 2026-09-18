@@ -18,9 +18,9 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from newsclaw.orgs import reset_default_store, set_default_org_manager
 from newsclaw.orgs.manager import OrgManager
+
 from newsclaw.runtime.templates import GLOBAL_REGISTRY
 
 # Load the script as a module so we can call its helpers directly

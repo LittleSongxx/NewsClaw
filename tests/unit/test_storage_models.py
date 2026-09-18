@@ -1,13 +1,11 @@
 """L1 Unit Tests: Storage data models (Message, Conversation, etc.)."""
 
-import pytest
-from datetime import datetime
 
 from newsclaw.storage.models import (
-    Message,
     Conversation,
-    SkillRecord,
     MemoryEntry,
+    Message,
+    SkillRecord,
     TaskRecord,
     UserPreference,
 )

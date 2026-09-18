@@ -6,16 +6,16 @@ import importlib
 import sys
 
 import pytest
+from newsclaw.runtime.templates.builtin.aigc_video_studio import (
+    PLUGIN_ID,
+    aigc_video_studio,
+)
 
 from newsclaw.runtime.models import EdgeKind, NodeType
 from newsclaw.runtime.templates import (
     TemplateRegistry,
     TemplateSpec,
     discover_builtins,
-)
-from newsclaw.runtime.templates.builtin.aigc_video_studio import (
-    PLUGIN_ID,
-    aigc_video_studio,
 )
 
 

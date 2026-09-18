@@ -35,7 +35,6 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
-
 from newsclaw.orgs.node_scheduler import (
     OrgNodeScheduler,
     build_schedule_prompt,

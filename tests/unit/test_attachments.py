@@ -8,16 +8,13 @@ Attachment (文件/媒体记忆) 单元测试
 - manager.py: record_attachment / search_attachments
 """
 
-import tempfile
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
 from newsclaw.memory.storage import MemoryStorage
 from newsclaw.memory.types import Attachment, AttachmentDirection
 from newsclaw.memory.unified_store import UnifiedStore
-
 
 # =========================================================================
 # Attachment dataclass tests

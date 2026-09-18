@@ -8,6 +8,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from newsclaw.orgs.manager import OrgManager
+from newsclaw.orgs.store import get_default_org_manager, set_default_org_manager
+from newsclaw.tools.handlers.org_setup import OrgSetupHandler
 
 from newsclaw.agent import Agent, ReasoningEngine, ToolExecutor
 from newsclaw.agent.pending_approvals import (
@@ -31,12 +34,9 @@ from newsclaw.core.policy_v2 import (
     set_engine_v2,
 )
 from newsclaw.core.policy_v2.exceptions import DeferredApprovalRequired
-from newsclaw.orgs.manager import OrgManager
-from newsclaw.orgs.store import get_default_org_manager, set_default_org_manager
 from newsclaw.scheduler.task import ScheduledTask, TaskStatus, TriggerType
 from newsclaw.tools.definitions.org_setup import ORG_SETUP_TOOLS
 from newsclaw.tools.handlers import SystemHandlerRegistry
-from newsclaw.tools.handlers.org_setup import OrgSetupHandler
 from tests.fixtures.mock_llm import MockResponse
 
 NATURAL_REQUEST = "请创建一个名为星火研发组的组织，由技术负责人带领开发工程师。"

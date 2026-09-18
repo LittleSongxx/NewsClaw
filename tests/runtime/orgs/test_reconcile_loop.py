@@ -28,7 +28,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-
 from newsclaw.orgs.command_service import OrgCommandService
 
 # ---------------------------------------------------------------------------

@@ -12,8 +12,8 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-
 from newsclaw.runtime.im_stream_bridge import ImStreamBridge
+
 from newsclaw.runtime.stream import StreamBus
 
 

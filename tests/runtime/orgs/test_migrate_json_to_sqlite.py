@@ -19,6 +19,7 @@ sys.modules["_migrate_json_sqlite"] = _module
 _spec.loader.exec_module(_module)
 
 from newsclaw.orgs.sqlite_store import SqliteOrgStore  # noqa: E402
+
 from newsclaw.runtime.models import OrgV2, new_org_id  # noqa: E402
 
 

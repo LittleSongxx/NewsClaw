@@ -77,8 +77,6 @@ from ..tools.file import FileTool
 # Handler Registry（模块化工具执行）
 from ..tools.handlers import SystemHandlerRegistry
 from ..tools.handlers.agent import create_handler as create_agent_tool_handler
-from ..tools.handlers.agent_hub import create_handler as create_agent_hub_handler
-from ..tools.handlers.agent_package import create_handler as create_agent_package_handler
 
 # NOTE: ``create_browser_handler`` is imported lazily inside ``_init_handlers``
 # (smoke-F0/F6) -- its module top-loads ``newsclaw.agents.lock_manager`` which
@@ -105,7 +103,6 @@ from ..tools.handlers.powershell import create_handler as create_powershell_hand
 from ..tools.handlers.profile import create_handler as create_profile_handler
 from ..tools.handlers.scheduled import create_handler as create_scheduled_handler
 from ..tools.handlers.search import create_handler as create_search_handler
-from ..tools.handlers.skill_store import create_handler as create_skill_store_handler
 
 # NOTE: ``create_skills_handler`` is imported lazily inside ``_init_handlers``
 # (smoke-F0/F6) -- its module top-loads ``..skills.catalog`` which would
@@ -868,13 +865,6 @@ class Agent:
         self._tools.extend(AGENT_TOOLS)
         logger.info(f"Multi-agent tools enabled ({len(AGENT_TOOLS)} tools)")
 
-        # Platform hub tools (Agent Hub + Skill Store, only when enabled)
-        if settings.hub_enabled:
-            from ..tools.definitions import HUB_TOOLS
-
-            self._tools.extend(HUB_TOOLS)
-            logger.info(f"Platform hub tools enabled ({len(HUB_TOOLS)} tools)")
-
         self._update_shell_tool_description()
 
         # 对话上下文
@@ -1358,13 +1348,6 @@ class Agent:
 
         # 初始化 token 用量追踪
         init_token_tracking(str(settings.db_full_path))
-
-        # 自动生成/加载设备 ID（用于平台认证）
-        if not settings.hub_device_id:
-            from newsclaw.hub.device import get_or_create_device_id
-
-            data_dir = Path(settings.project_root) / "data"
-            settings.hub_device_id = get_or_create_device_id(data_dir)
 
         # 加载身份文档
         self.identity.load()
@@ -1860,9 +1843,6 @@ class Agent:
         # 插件查询
         self.handler_registry.register("plugins", create_plugins_handler(self))
 
-        # Agent 包（导入/导出）
-        self.handler_registry.register("agent_package", create_agent_package_handler(self))
-
         # LSP（代码智能）
         self.handler_registry.register("lsp", create_lsp_handler(self))
 
@@ -1877,11 +1857,6 @@ class Agent:
 
         # Worktree（Git 工作树）
         self.handler_registry.register("worktree", create_worktree_handler(self))
-
-        # Agent Hub + Skill Store（平台交互，仅在 hub_enabled 时注册）
-        if settings.hub_enabled:
-            self.handler_registry.register("agent_hub", create_agent_hub_handler(self))
-            self.handler_registry.register("skill_store", create_skill_store_handler(self))
 
         # PowerShell（仅 Windows 平台注册）
         import platform
@@ -8561,14 +8536,6 @@ class Agent:
 
         # F9: 清理技能相关资源
         self._cleanup_skill_resources()
-
-        # 关闭 SkillStoreClient (如有)
-        skill_store_client = getattr(self, "_skill_store_client", None)
-        if skill_store_client and hasattr(skill_store_client, "close"):
-            try:
-                await skill_store_client.close()
-            except Exception:
-                pass
 
         # 结束记忆会话
         self.memory_manager.end_session(

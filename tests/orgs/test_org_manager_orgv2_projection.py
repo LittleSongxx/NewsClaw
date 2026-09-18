@@ -15,7 +15,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from newsclaw.orgs.manager import OrgManager
 from newsclaw.orgs.org_models import (
     EdgeType,
@@ -25,6 +24,7 @@ from newsclaw.orgs.org_models import (
     OrgNode,
     OrgStatus,
 )
+
 from newsclaw.runtime.models import (
     EdgeKind,
     NodeType,

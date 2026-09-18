@@ -1,7 +1,5 @@
 """L2 Component Tests: Prompt retriever (memory injection)."""
 
-import pytest
-from pathlib import Path
 
 from newsclaw.prompt.retriever import retrieve_memory_simple
 

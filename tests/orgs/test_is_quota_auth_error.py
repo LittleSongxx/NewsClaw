@@ -11,8 +11,9 @@ tests target that authoritative entry point.
 
 from __future__ import annotations
 
-from newsclaw.llm.types import AllEndpointsFailedError, LLMError
 from newsclaw.orgs._runtime_agent_pipeline_executor import AgentPipelineExecutor
+
+from newsclaw.llm.types import AllEndpointsFailedError, LLMError
 
 # The authoritative quota/auth classifier (see module docstring).
 classify_quota_auth = AgentPipelineExecutor.is_quota_auth_error

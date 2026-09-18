@@ -21,7 +21,6 @@ from newsclaw.plugins.sandbox import (
     PluginErrorTracker,
 )
 
-
 # ---------- weighted thresholds ----------
 
 

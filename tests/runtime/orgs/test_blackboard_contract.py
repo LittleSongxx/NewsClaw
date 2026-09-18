@@ -33,7 +33,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-
 from newsclaw.orgs.blackboard import (
     MAX_ORG_MEMORIES,
     BlackboardBackendProtocol,

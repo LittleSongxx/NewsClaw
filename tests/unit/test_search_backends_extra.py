@@ -1,7 +1,6 @@
 """补充搜索后端测试: ChromaDB mock, API Embedding mock, 协议验证."""
 
 from unittest.mock import MagicMock, patch
-from datetime import datetime
 
 import pytest
 

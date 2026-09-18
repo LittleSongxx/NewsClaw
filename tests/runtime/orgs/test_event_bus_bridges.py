@@ -29,8 +29,8 @@ import asyncio
 from typing import Any
 
 import pytest
-
 from newsclaw.orgs.runtime import OrgRuntime, _InMemoryEventBus
+
 from newsclaw.runtime import stream_registry
 
 

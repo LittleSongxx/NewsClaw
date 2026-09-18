@@ -1,1 +1,0 @@
-"""Marketplace installation unit tests."""

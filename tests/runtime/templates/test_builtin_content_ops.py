@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from newsclaw.runtime.templates.builtin.content_ops import content_ops
+
 from newsclaw.runtime.models import EdgeKind, NodeType
 from newsclaw.runtime.templates import TemplateRegistry, TemplateSpec
-from newsclaw.runtime.templates.builtin.content_ops import content_ops
 
 
 def _registry() -> TemplateRegistry:

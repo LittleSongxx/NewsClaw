@@ -15,9 +15,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-
 from newsclaw.orgs.blackboard import JsonFileBlackboardBackend, OrgBlackboard
-from newsclaw.orgs.memory_models import MemoryScope
 from newsclaw.orgs.runtime import OrgRuntime
 
 

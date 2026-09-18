@@ -6,7 +6,6 @@ import asyncio
 from typing import Any
 
 import pytest
-
 from newsclaw.orgs.runtime import OrgRuntime
 
 

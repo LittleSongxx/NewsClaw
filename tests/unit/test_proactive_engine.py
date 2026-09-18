@@ -1,8 +1,7 @@
 """L1 Unit Tests: ProactiveEngine feedback tracker and configuration."""
 
+
 import pytest
-from datetime import datetime, timedelta
-from pathlib import Path
 
 from newsclaw.core.proactive import (
     ProactiveConfig,

@@ -15,15 +15,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from newsclaw.orgs import reset_default_store, set_default_org_manager
 from newsclaw.orgs.manager import OrgManager
 from newsclaw.orgs.org_models import OrgNode
-from newsclaw.runtime.cancel_token import CancellationToken, CancelledByToken
 from newsclaw.runtime.channel_routing import (
     RoutingPlan,
     dispatch_inbound_message_to_v2,
 )
+
+from newsclaw.runtime.cancel_token import CancellationToken, CancelledByToken
 from newsclaw.runtime.checkpoint import MemoryCheckpointer
 from newsclaw.runtime.supervisor import FinalOutcome, SupervisorBrain
 

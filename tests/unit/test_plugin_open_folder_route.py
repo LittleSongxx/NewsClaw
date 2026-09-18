@@ -1,6 +1,7 @@
+from zipfile import ZipFile
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from zipfile import ZipFile
 
 from newsclaw.api.routes.plugins import router
 from newsclaw.config import settings

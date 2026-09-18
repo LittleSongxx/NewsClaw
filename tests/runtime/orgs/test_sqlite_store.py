@@ -15,9 +15,9 @@ import threading
 from pathlib import Path
 
 import pytest
+from newsclaw.orgs.sqlite_store import OrgNotFound, SqliteOrgStore
 
 from newsclaw.runtime.models import OrgV2, new_org_id
-from newsclaw.orgs.sqlite_store import OrgNotFound, SqliteOrgStore
 
 
 def _mk_org(name: str = "Test", org_id: str | None = None) -> OrgV2:

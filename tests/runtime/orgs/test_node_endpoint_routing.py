@@ -6,6 +6,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from newsclaw.orgs._default_agent_builder import DefaultAgentBuilder
+from newsclaw.orgs._runtime_agent_pipeline import AgentCache, AgentSpec, ProfileResolver
+from newsclaw.orgs._runtime_node_tools import run_with_tools
+from newsclaw.orgs.org_models import OrgNode
 
 from newsclaw.agent.brain import Brain
 from newsclaw.llm.client import LLMClient
@@ -17,10 +21,6 @@ from newsclaw.llm.types import (
     TextBlock,
     Usage,
 )
-from newsclaw.orgs._default_agent_builder import DefaultAgentBuilder
-from newsclaw.orgs._runtime_agent_pipeline import AgentCache, AgentSpec, ProfileResolver
-from newsclaw.orgs._runtime_node_tools import run_with_tools
-from newsclaw.orgs.org_models import OrgNode
 
 
 @pytest.fixture

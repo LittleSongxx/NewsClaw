@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from newsclaw.api.web_static import WebStaticFiles
 
 
-def test_web_entry_and_marketplace_return_never_reuse_a_cached_document(tmp_path):
+def test_web_entry_never_reuses_a_cached_document(tmp_path):
     (tmp_path / "index.html").write_text("<script src='/web/assets/current.js'></script>")
     (tmp_path / "sw.js").write_text("// current worker")
     (tmp_path / "assets").mkdir()
@@ -12,7 +12,7 @@ def test_web_entry_and_marketplace_return_never_reuse_a_cached_document(tmp_path
     app = FastAPI()
     app.mount("/web", WebStaticFiles(directory=tmp_path, html=True))
     client = TestClient(app)
-    for path in ("/web/", "/web/index.html", "/web/marketplace-return", "/web/sw.js"):
+    for path in ("/web/", "/web/index.html", "/web/sw.js"):
         first = client.get(path)
         assert first.status_code == 200
         assert first.headers["cache-control"] == "no-store"
@@ -25,7 +25,6 @@ def test_web_entry_and_marketplace_return_never_reuse_a_cached_document(tmp_path
         )
         assert repeated.status_code == 200
         assert repeated.content == first.content
-    assert client.get("/web/marketplace-return").text == client.get("/web/").text
     asset = client.get("/web/assets/current.js")
     assert (
         client.get(

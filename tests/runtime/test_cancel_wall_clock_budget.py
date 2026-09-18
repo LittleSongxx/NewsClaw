@@ -45,7 +45,6 @@ import time
 from typing import Any
 
 import pytest
-
 from newsclaw.orgs.command_models import OrgCommandRequest
 from newsclaw.orgs.command_service import OrgCommandService
 
@@ -215,7 +214,7 @@ def _slow_supervisor_factory(_rt: _StubRuntime) -> Any:
                 n_replans=0,
             )
 
-        async def resume_from_checkpoint(self, cp: str) -> "_SlowSupervisor":
+        async def resume_from_checkpoint(self, cp: str) -> _SlowSupervisor:
             return self
 
     def _factory(*, org_id, command_id, root_node_id, task, **_kw):

@@ -40,11 +40,3 @@ def test_system_skill_directories_have_complete_executable_metadata() -> None:
 def test_retired_system_skills_are_not_shipped() -> None:
     shipped = {path.name for path in _system_skill_directories()}
     assert shipped.isdisjoint(RETIRED_SYSTEM_SKILLS)
-
-
-def test_publish_agent_maps_to_agent_hub_handler() -> None:
-    metadata = SkillParser().parse_file(SYSTEM_SKILLS_ROOT / "publish-agent" / "SKILL.md").metadata
-
-    assert metadata.system is True
-    assert metadata.handler == "agent_hub"
-    assert metadata.tool_name == "publish_agent"

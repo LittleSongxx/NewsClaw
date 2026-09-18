@@ -30,13 +30,13 @@ import json
 from collections.abc import Awaitable, Callable
 
 import pytest
-
-from newsclaw.runtime.checkpoint import CheckpointStatus, MemoryCheckpointer
-from newsclaw.runtime.ledger import ProgressLedger
 from newsclaw.runtime.llm_supervisor_brain import (
     LLMSupervisorBrain,
     NodeDescriptor,
 )
+
+from newsclaw.runtime.checkpoint import CheckpointStatus, MemoryCheckpointer
+from newsclaw.runtime.ledger import ProgressLedger
 from newsclaw.runtime.stream import StreamBus
 from newsclaw.runtime.supervisor import (
     DelegationResult,
