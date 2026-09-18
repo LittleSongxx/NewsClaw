@@ -328,12 +328,13 @@ def build_review_prompt(config: NewsroomConfig | None = None) -> str:
 - 列出 issues/ 下最近 7 期有 manifest.json 的期次，读取全部 manifest：
   关注 scores 各维度趋势、sources_used 与 sources.yaml 的对账（哪些信源
   从未被用、哪些高频却低分）；
-- 读 {root / "feedback-export.json"}（若存在）：人工点赞/点踩与短评，
-  逐条对应到当期的选题构成（主题/信源/文风）；
+- 读 {root / "feedback-export.json"}（若存在）：期级点赞/点踩与短评逐条
+  对应到当期选题构成；``issues[].items`` 是**条目级**反馈——反复被点踩的
+  URL / 域名是信源增删与 excluded_keywords 提案最直接的证据；
 - 读 {sources_path()} 与 {root / "editorial-policy.md"}（若存在）。
 
 【第 2 步 · 只写提案，不落盘】（每条 op 必须带 evidence：issue_date +
-分数维度或 feedback）
+分数维度或 feedback；note 里可引用条目级反馈的具体 URL）
 1. 信源：**禁止直接改** {sources_path()}。把增删/改 weight/query/
    excluded_keywords 的提案同时写入：
    · {root / "issues"}/review-proposal.md —— 给人读的摘要；

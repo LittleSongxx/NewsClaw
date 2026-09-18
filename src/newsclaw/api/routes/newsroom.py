@@ -36,10 +36,20 @@ router = APIRouter(prefix="/api/newsroom", tags=["AI 早报"])
 # ── 请求 / 响应模型 ─────────────────────────────────────────────────
 
 
+class ItemFeedbackBody(BaseModel):
+    url: str = Field(min_length=1, description="manifest.items 里的条目 url")
+    rating: int = Field(ge=-1, le=1, description="1 点赞 / 0 仅留言 / -1 点踩")
+    comment: str = Field(default="", max_length=500)
+
+
 class FeedbackBody(BaseModel):
     issue_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     rating: int = Field(ge=-1, le=1, description="1 点赞 / 0 仅留言 / -1 点踩")
     comment: str = Field(default="", max_length=500)
+    items: list[ItemFeedbackBody] = Field(
+        default_factory=list,
+        description="可选的条目级反馈；不参与 ready 判定，仅供周复盘做证据",
+    )
 
 
 class ConfigBody(BaseModel):
@@ -226,7 +236,8 @@ async def post_proposal_reject(body: ProposalRejectBody):
 @router.get("/feedback")
 async def get_feedback():
     records = await feedback.get_all_feedback()
-    summary = {"up": 0, "down": 0, "notes": 0}
+    item_records = await feedback.get_all_item_feedback()
+    summary = {"up": 0, "down": 0, "notes": 0, "item_up": 0, "item_down": 0}
     for r in records:
         if r["rating"] > 0:
             summary["up"] += 1
@@ -234,7 +245,12 @@ async def get_feedback():
             summary["down"] += 1
         else:
             summary["notes"] += 1
-    return {"summary": summary, "records": records}
+    for r in item_records:
+        if r["rating"] > 0:
+            summary["item_up"] += 1
+        elif r["rating"] < 0:
+            summary["item_down"] += 1
+    return {"summary": summary, "records": records, "item_records": item_records}
 
 
 @router.post("/feedback")
@@ -242,10 +258,25 @@ async def post_feedback(body: FeedbackBody):
     manifest = contract.read_manifest(body.issue_date)
     if manifest is None:
         return JSONResponse(status_code=404, content={"error": "issue not found"})
+    # 先整体校验条目归属，再落库：不留下「期级已写、条目被拒」的半截提交
+    ledger_urls = {item.url for item in manifest.items}
+    unknown = [entry.url for entry in body.items if entry.url not in ledger_urls]
+    if unknown:
+        return JSONResponse(
+            status_code=422,
+            content={"error": f"item url not in manifest.items: {', '.join(unknown[:3])}"},
+        )
     try:
         record = await feedback.set_feedback(body.issue_date, body.rating, body.comment)
+        item_records = [
+            await feedback.set_item_feedback(
+                body.issue_date, entry.url, entry.rating, entry.comment
+            )
+            for entry in body.items
+        ]
     except ValueError as e:
         return JSONResponse(status_code=422, content={"error": str(e)})
+    record["items"] = item_records
     return record
 
 
