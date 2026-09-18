@@ -1083,7 +1083,7 @@ class RetrievalEngine:
         return "\n".join(lines)
 
     # Fix-9：被识别为"元监控/自动复盘"的 source 标签集合。
-    # 这些条目通常是 daily_consolidator/auto_postmortem 等后台任务自己写
+    # 这些条目通常是后台整理任务自己写
     # 入的状态文本（路径、耗时、统计数字等），对 LLM 解决用户当前任务
     # 几乎无信息增益，反而稀释了真正有用的 fact/preference。
     _NOISY_EXPERIENCE_SOURCES = frozenset(
@@ -1094,7 +1094,7 @@ class RetrievalEngine:
             "system:daily_memory",
             "system:memory_nudge",
             "consolidator",
-            "daily_consolidator",
+            "legacy_consolidator",
             "self_metric",
         }
     )

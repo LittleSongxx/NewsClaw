@@ -24,7 +24,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import contextvars
-import json
 import logging
 import os
 import re
@@ -266,7 +265,6 @@ class MemoryManager:
         self._relational_pending_nodes = []
 
         # v1 compat: in-memory cache
-        self.memories_file = self.data_dir / "memories.json"
         self._memories: dict[str, Memory] = {}
         self._memories_lock = threading.RLock()
 
@@ -502,23 +500,10 @@ class MemoryManager:
         self.memory_md_path.write_text(default_content, encoding="utf-8")
         logger.info(f"Created default MEMORY.md at {self.memory_md_path}")
 
-    # v4 sentinel：标记 memories.json → SQLite 一次性 backfill 已经做完，
-    # 之后不再读取、也不再写出 memories.json，让 SQLite 成为唯一真相源。
-    _LEGACY_JSON_BACKFILL_SENTINEL = "legacy_json_backfill_done"
-
     def _load_memories(self) -> None:
-        """Load memories from SQLite (authoritative source) into in-memory cache.
-
-        v4：SQLite 是唯一真相源。``memories.json`` 仅作为从旧版本升级时
-        一次性导入兼容入口；backfill 完成后通过 _schema_meta 里的
-        ``legacy_json_backfill_done`` sentinel 标记，并把 ``memories.json``
-        改名归档，``_save_memories`` 退化为 no-op，不再 dual-write。
-        """
+        """Load memories from SQLite (the single source of truth) into cache."""
         try:
             all_mems = self.store.load_all_memories()
-            migrated = self._backfill_legacy_json_memories(all_mems)
-            if migrated > 0:
-                all_mems = self.store.load_all_memories()
             with self._memories_lock:
                 for mem in all_mems:
                     self._memories[mem.id] = mem
@@ -527,145 +512,6 @@ class MemoryManager:
         except Exception as e:
             logger.warning(f"[Manager] Failed to load from SQLite: {e}")
         # v4：_save_memories 已退化为 no-op；不再启动期写 memories.json。
-
-    def _backfill_legacy_json_memories(self, existing_mems: list[Memory]) -> int:
-        """One-shot import of legacy ``memories.json`` into SQLite.
-
-        v4 改造点：
-        - 用 _schema_meta 里的 ``legacy_json_backfill_done`` sentinel 做幂等。
-          一旦标记设置完成，后续启动会跳过整个 backfill 流程，**不再读取
-          memories.json 内容**。
-        - 成功 backfill 后把 ``memories.json`` 改名为
-          ``memories.json.archived.<timestamp>``，让用户能在文件层看到这是
-          已归档的历史副本，同时彻底切断 dual-write 路径。
-        - 移除原来 ``len(existing_ids) >= len(raw)`` 的脆弱启发式：有了
-          sentinel 后我们不再需要它来"猜"是否已经导过。
-        """
-        # Sentinel 设置过 → 一次性 backfill 已完成，直接跳过。
-        try:
-            if self.store.get_meta(self._LEGACY_JSON_BACKFILL_SENTINEL):
-                return 0
-        except Exception:
-            pass
-
-        if not self.memories_file.exists():
-            # 没有 memories.json 也算 backfill 完成，标记 sentinel 避免每次
-            # 启动都走 file.exists 判断。
-            with contextlib.suppress(Exception):
-                self.store.set_meta(self._LEGACY_JSON_BACKFILL_SENTINEL, "no_legacy_file")
-            return 0
-
-        try:
-            raw = json.loads(self.memories_file.read_text(encoding="utf-8"))
-        except Exception as e:
-            logger.warning(f"[Manager] Failed to read legacy memories.json: {e}")
-            return 0
-
-        if not isinstance(raw, list):
-            # JSON 不合法或不是 list，直接归档不再尝试，避免每次重试。
-            self._archive_legacy_memories_json("invalid_format")
-            with contextlib.suppress(Exception):
-                self.store.set_meta(self._LEGACY_JSON_BACKFILL_SENTINEL, "invalid_format")
-            return 0
-        if not raw:
-            self._archive_legacy_memories_json("empty_file")
-            with contextlib.suppress(Exception):
-                self.store.set_meta(self._LEGACY_JSON_BACKFILL_SENTINEL, "empty_file")
-            return 0
-
-        existing_ids = {m.id for m in existing_mems if getattr(m, "id", "")}
-
-        existing_fingerprints = {
-            (
-                (getattr(m, "subject", "") or "").strip().lower(),
-                (getattr(m, "predicate", "") or "").strip().lower(),
-                (getattr(m, "content", "") or "").strip(),
-            )
-            for m in existing_mems
-            if (getattr(m, "content", "") or "").strip()
-        }
-
-        migrated = 0
-        skipped = 0
-        for item in raw:
-            if not isinstance(item, dict):
-                skipped += 1
-                continue
-
-            try:
-                mem = Memory.from_dict(item)
-            except Exception:
-                content = str(item.get("content", "")).strip()
-                if not content:
-                    skipped += 1
-                    continue
-                mem = Memory(
-                    content=content,
-                    type=MemoryType.FACT,
-                    priority=MemoryPriority.SHORT_TERM,
-                    source=str(item.get("source", "legacy_json")),
-                    subject=str(item.get("subject", "")).strip(),
-                    predicate=str(item.get("predicate", "")).strip(),
-                    importance_score=float(item.get("importance_score", 0.5) or 0.5),
-                )
-
-            if not (mem.content or "").strip():
-                skipped += 1
-                continue
-
-            fingerprint = (
-                (mem.subject or "").strip().lower(),
-                (mem.predicate or "").strip().lower(),
-                (mem.content or "").strip(),
-            )
-            if mem.id in existing_ids or fingerprint in existing_fingerprints:
-                skipped += 1
-                continue
-
-            self.store.save_semantic(
-                self._stamp_agent_id(mem),
-                scope="legacy_quarantine",
-                scope_owner="",
-                user_id="legacy",
-                workspace_id=self._current_workspace_id,
-            )
-            existing_ids.add(mem.id)
-            existing_fingerprints.add(fingerprint)
-            migrated += 1
-
-        if migrated:
-            logger.info(
-                f"[Manager] Backfilled {migrated} memories from legacy JSON "
-                f"(skipped={skipped}, sqlite_before={len(existing_mems)}, json_total={len(raw)})"
-            )
-
-        # backfill 流程完成（无论是否真的导入了行）→ 归档 memories.json 文件 +
-        # 写入 sentinel，永久切断 dual-write 路径。
-        self._archive_legacy_memories_json(f"backfilled_{migrated}_skipped_{skipped}")
-        with contextlib.suppress(Exception):
-            self.store.set_meta(
-                self._LEGACY_JSON_BACKFILL_SENTINEL,
-                f"backfilled={migrated},skipped={skipped},total={len(raw)}",
-            )
-        return migrated
-
-    def _archive_legacy_memories_json(self, reason: str) -> None:
-        """把旧 ``memories.json`` 改名到 ``memories.json.archived.<ts>`` 防止被
-        重新读取或被新版 dual-write 覆盖。
-        """
-        try:
-            if not self.memories_file.exists():
-                return
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            archived = self.memories_file.with_name(f"{self.memories_file.name}.archived.{ts}")
-            os.replace(self.memories_file, archived)
-            logger.info(
-                "[Manager] Archived legacy memories.json → %s (reason=%s)",
-                archived.name,
-                reason,
-            )
-        except Exception as e:
-            logger.warning(f"[Manager] Failed to archive legacy memories.json: {e}")
 
     def _save_memories(self) -> None:
         """v4：dual-write 已禁用。SQLite 是唯一真相源；此函数保留兼容旧调用站点，
@@ -2652,23 +2498,9 @@ class MemoryManager:
                 except Exception as e:
                     logger.warning(f"[Manager] Relational consolidation failed: {e}")
                     result["relational_consolidation_error"] = str(e)
-        except Exception as e:
-            from ..llm.types import LLMError
-
-            if isinstance(e, LLMError):
-                self._reload_from_sqlite()
-                raise  # LLM unavailable — legacy fallback would fail too
-            logger.error(f"[Manager] Daily consolidation failed, using legacy: {e}")
-            from .daily_consolidator import DailyConsolidator
-
-            dc = DailyConsolidator(
-                data_dir=self.data_dir,
-                memory_md_path=self.memory_md_path,
-                memory_manager=self,
-                brain=self.brain,
-                identity_dir=self.identity_dir,
-            )
-            result = await dc.consolidate_daily()
+        except Exception:
+            self._reload_from_sqlite()
+            raise  # 单一 v2 路径：失败即上抛，由调度器按任务级重试/checkpoint 处理
 
         # After consolidation, sync SQLite → in-memory cache → JSON
         self._reload_from_sqlite()

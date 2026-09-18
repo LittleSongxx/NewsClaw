@@ -457,7 +457,7 @@ class AgentFactory:
     def _isolated_memory_md_seed(profile: AgentProfile) -> str:
         """Phase 2b.3：生成 isolated agent 的 MEMORY.md 初始内容。
 
-        刻意不引用全局记忆，让 daily_consolidator 在该 Agent 运行一段时间后
+        刻意不引用全局记忆，让每日整理在该 Agent 运行一段时间后
         用它**自己**的对话和经验填充。
         """
         from datetime import datetime
@@ -490,7 +490,7 @@ class AgentFactory:
         # 旧实现（v4 之前）：找不到 profile 自己的 MEMORY.md 时回退到全局
         # ``settings.memory_path``。这有两个问题：
         # 1) 启动时读到的是**别人**（全局）的偏好和经验，破坏 isolated 语义；
-        # 2) daily_consolidator.refresh_memory_md() 会用 isolated MemoryManager
+        # 2) lifecycle.refresh_memory_md() 会用 isolated MemoryManager
         #    的数据**覆写**全局 MEMORY.md —— 这是真正的数据污染 bug。
         #
         # 新实现：永远使用 profile 私有的路径；不存在就写入一份带注释头的

@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from newsclaw.memory.retention import apply_retention
 from newsclaw.memory.session_identity import DESKTOP_USER_ID
-from newsclaw.memory.types import MemoryPriority, MemoryType, SemanticMemory
+from newsclaw.memory.types import MemoryType, SemanticMemory
 
 logger = logging.getLogger(__name__)
 
@@ -115,11 +115,6 @@ class MemoryCreateRequest(BaseModel):
     predicate: str = ""
     importance_score: float = 0.8
     tags: list[str] = []
-
-
-class ClaimLegacyRequest(BaseModel):
-    include_inactive: bool = True
-    include_default_graph_nodes: bool = True
 
 
 class MigrateWorkspaceRequest(BaseModel):
@@ -383,234 +378,11 @@ def _memory_type_value(mem: Any) -> str:
     return mem.type.value if hasattr(mem.type, "value") else str(mem.type)
 
 
-def _normalize_legacy_tags(mem: Any, *extra: str) -> list[str]:
-    existing = getattr(mem, "tags", None) or []
-    return sorted({str(t) for t in [*existing, *extra] if str(t).strip()})
+def _priority_for_importance(mem_type: Any, importance: float) -> Any:
+    """恢复自 legacy 导入助手（原实现，语义保持）。"""
+    from newsclaw.memory.types import MemoryPriority
 
-
-def _is_reviewed_legacy(mem: Any) -> bool:
-    if getattr(mem, "superseded_by", None):
-        return True
-    tags = {str(t) for t in (getattr(mem, "tags", None) or [])}
-    return "legacy_pending_review" in tags or any(t.startswith("legacy_reason:") for t in tags)
-
-
-_LEGACY_BANNER_DISMISSED_KEY = "legacy_banner_dismissed"
-"""_schema_meta 里的 sentinel 键：用户点过"不再提醒"。"""
-
-
-def _legacy_review_counts(store: Any) -> dict[str, int]:
-    """统计真实的 legacy_quarantine（v1/v2 历史旧数据），用于决定 UI 是否再次提示用户。
-
-    v4 改动：
-    - 只统计 ``scope='legacy_quarantine'`` 且 ``user_id='legacy'`` 的桶；
-    - lifecycle 后台合成产物现在落到 ``pending_consolidation`` 桶，
-      单独计数（pending_consolidation 字段），UI 不再用它去推 banner。
-    """
-    legacy = store.load_all_memories(
-        scope="legacy_quarantine",
-        scope_owner="",
-        user_id="legacy",
-        workspace_id=None,
-        include_inactive=True,
-    )
-    pending = sum(1 for mem in legacy if not _is_reviewed_legacy(mem))
-    reviewed = len(legacy) - pending
-    try:
-        pending_consolidation = len(
-            store.load_all_memories(
-                scope="pending_consolidation",
-                scope_owner="",
-                user_id=None,
-                workspace_id=None,
-                include_inactive=True,
-            )
-        )
-    except Exception:
-        pending_consolidation = 0
-    return {
-        "total": len(legacy),
-        "pending": pending,
-        "reviewed": reviewed,
-        "pending_consolidation": pending_consolidation,
-    }
-
-
-def _identity_slot_for(subject: str, predicate: str) -> str:
-    if (subject or "").strip().lower() not in {"用户", "user", "当前用户", "我"}:
-        return ""
-    pred = (predicate or "").strip().lower()
-    for alias, slot in IDENTITY_SLOT_ALIASES.items():
-        if alias.lower() == pred:
-            return slot
-    if pred.startswith("preference.") or pred.startswith("偏好."):
-        return f"user.preference.{pred.split('.', 1)[1]}"
-    return ""
-
-
-def _infer_legacy_subject_predicate(mem: Any) -> tuple[str, str]:
-    subject = (getattr(mem, "subject", "") or "").strip()
-    predicate = (getattr(mem, "predicate", "") or "").strip()
-    if subject and predicate:
-        return subject, predicate
-    content = (getattr(mem, "content", "") or "").strip()
-    patterns = [
-        (r"^(?:用户|我)(?:叫|名叫|名字是|姓名是)\s*([^，。；\s]{1,30})", "姓名"),
-        (r"^(?:用户|我)(?:年龄是|今年)\s*(\d{1,3})\s*岁?", "年龄"),
-        (r"^(?:用户|我)(?:住在|居住在|所在地是|城市是|来自)\s*([^，。；]{1,30})", "城市"),
-        (r"^(?:用户|我)(?:喜欢|偏好)\s*([^，。；]{1,80})", "偏好"),
-    ]
-    for pattern, pred in patterns:
-        if re.search(pattern, content):
-            return "用户", pred
-    return subject, predicate
-
-
-def _looks_like_task_log(mem: Any) -> bool:
-    content = (getattr(mem, "content", "") or "").strip().lower()
-    if any(p.lower() in content for p in TASK_LOG_PATTERNS):
-        return True
-    if re.search(r"\b(read_file|write_file|run_shell|pytest|npm run|git diff)\b", content):
-        return True
-    return False
-
-
-def _legacy_candidate_reason(mem: Any, subject: str, predicate: str) -> str:
-    content = (getattr(mem, "content", "") or "").strip()
-    if not content:
-        return "empty_content"
-    if len(content) > 800:
-        return "too_long"
-    if _looks_like_task_log(mem):
-        return "task_log"
-    mem_type = _memory_type_value(mem)
-    if mem_type not in {t.value for t in MemoryType}:
-        return "unknown_type"
-    if mem_type == MemoryType.FACT.value and not (subject and predicate):
-        return "unstructured_fact"
-    return ""
-
-
-def _legacy_sort_key(mem: Any) -> tuple[str, str]:
-    updated = getattr(mem, "updated_at", None) or getattr(mem, "created_at", None)
-    created = getattr(mem, "created_at", None)
-    return (
-        updated.isoformat() if hasattr(updated, "isoformat") else str(updated or ""),
-        created.isoformat() if hasattr(created, "isoformat") else str(created or ""),
-    )
-
-
-def _active_slot_index(store: Any, user_id: str, workspace_id: str) -> set[str]:
-    active = store.load_all_memories(
-        scope="user",
-        scope_owner="",
-        user_id=user_id,
-        workspace_id=workspace_id,
-    )
-    return {
-        slot
-        for mem in active
-        if (slot := _identity_slot_for(getattr(mem, "subject", ""), getattr(mem, "predicate", "")))
-    }
-
-
-def _mark_legacy_reviewed(
-    store: Any, mem: Any, reason: str, superseded_by: str | None = None
-) -> None:
-    updates: dict[str, Any] = {
-        "tags": _normalize_legacy_tags(mem, "legacy_pending_review", f"legacy_reason:{reason}"),
-    }
-    if superseded_by:
-        updates["superseded_by"] = superseded_by
-    # Route through ``update_semantic`` so the store observer fires and the
-    # FTS index gets reindexed on tag changes. The pre-Path-A bypass via
-    # ``store.db.update_memory`` left both stale and was only saved by the
-    # ``_sync_json`` reload at the end of the claim-legacy route.
-    store.update_semantic(mem.id, updates)
-
-
-def _safe_import_legacy_memories(
-    store: Any,
-    legacy: list[Any],
-    *,
-    user_id: str,
-    workspace_id: str,
-) -> dict[str, Any]:
-    identity_groups: dict[str, list[tuple[Any, str, str]]] = {}
-    accepted_general: list[tuple[Any, str, str]] = []
-    rejected = 0
-    conflict_skipped = 0
-    active_slots = _active_slot_index(store, user_id, workspace_id)
-
-    for mem in legacy:
-        if _is_reviewed_legacy(mem):
-            continue
-        subject, predicate = _infer_legacy_subject_predicate(mem)
-        reason = _legacy_candidate_reason(mem, subject, predicate)
-        if reason:
-            _mark_legacy_reviewed(store, mem, reason)
-            rejected += 1
-            continue
-        slot = _identity_slot_for(subject, predicate)
-        if slot:
-            identity_groups.setdefault(slot, []).append((mem, subject, predicate))
-        else:
-            accepted_general.append((mem, subject, predicate))
-
-    to_promote: list[tuple[Any, str, str]] = []
-    for slot, items in identity_groups.items():
-        items.sort(key=lambda item: _legacy_sort_key(item[0]), reverse=True)
-        winner = items[0]
-        if slot in active_slots:
-            for mem, _subject, _predicate in items:
-                _mark_legacy_reviewed(store, mem, "conflicts_with_current_user")
-                conflict_skipped += 1
-            continue
-        to_promote.append(winner)
-        for mem, _subject, _predicate in items[1:]:
-            _mark_legacy_reviewed(
-                store, mem, "legacy_identity_conflict", superseded_by=winner[0].id
-            )
-            conflict_skipped += 1
-
-    to_promote.extend(accepted_general)
-
-    promoted_ids: set[str] = set()
-    for mem, subject, predicate in to_promote:
-        importance = min(max(float(getattr(mem, "importance_score", 0.5) or 0.5), 0.2), 0.65)
-        updates = {
-            "scope": "user",
-            "scope_owner": "",
-            "user_id": user_id,
-            "workspace_id": workspace_id,
-            "subject": subject,
-            "predicate": predicate,
-            "importance_score": importance,
-            "priority": _priority_for_importance(
-                mem.type
-                if isinstance(mem.type, MemoryType)
-                else MemoryType(_memory_type_value(mem)),
-                importance,
-            ).value,
-            "confidence": min(float(getattr(mem, "confidence", 0.5) or 0.5), 0.7),
-            "tags": _normalize_legacy_tags(mem, "legacy_imported"),
-        }
-        # See ``_mark_legacy_reviewed`` rationale — go through update_semantic
-        # so the observer + search-index reindex run uniformly.
-        if store.update_semantic(mem.id, updates):
-            promoted_ids.add(mem.id)
-
-    return {
-        "promoted_ids": promoted_ids,
-        "promoted": len(promoted_ids),
-        "rejected": rejected,
-        "conflict_skipped": conflict_skipped,
-        "reviewed": len(legacy),
-    }
-
-
-def _priority_for_importance(mem_type: MemoryType, importance: float) -> MemoryPriority:
-    if importance >= 0.85 or mem_type == MemoryType.RULE:
+    if importance >= 0.85 or mem_type == "rule":
         return MemoryPriority.PERMANENT
     if importance >= 0.6:
         return MemoryPriority.LONG_TERM
@@ -760,125 +532,7 @@ async def memory_stats(request: Request):
     }
 
 
-@router.get("/migration-status")
-async def memory_migration_status(request: Request):
-    """Diagnose legacy memory visibility after owner-scoped migration."""
-    store = _get_store(request)
-    if not store:
-        raise HTTPException(503, "Memory store not available")
 
-    user_id, workspace_id = _current_owner(request)
-    current_visible = store.count_memories(
-        scope="user",
-        scope_owner="",
-        user_id=user_id,
-        workspace_id=workspace_id,
-    )
-    stranded_default = (
-        _stranded_default_count(store, workspace_id) if user_id == DESKTOP_USER_ID else 0
-    )
-    legacy_counts = _legacy_review_counts(store)
-    all_counts = _owner_counts(store)
-    graph_counts = _graph_owner_counts(_get_manager(request))
-
-    # Phase 4：show_banner 是前端**唯一**应该信的字段，把 banner 决策完整收敛到后端。
-    # - 只有真历史 legacy_quarantine 还有待 review 条目 (`pending > 0`)；
-    # - 且用户没显式按过"不再提醒"（_schema_meta 里 legacy_banner_dismissed != '1'）。
-    # pending_consolidation 是 v4 新桶（lifecycle 后台合成产物），用户不可见，
-    # **不**触发 banner。这就是为什么修了 Phase 0 之后 banner 不会再反复弹。
-    has_pending_legacy = legacy_counts["pending"] > 0
-    try:
-        dismissed = store.get_meta(_LEGACY_BANNER_DISMISSED_KEY) == "1"
-    except Exception:
-        dismissed = False
-    show_banner = has_pending_legacy and not dismissed
-
-    return {
-        "api_version": "v4",
-        "current_owner": {"user_id": user_id, "workspace_id": workspace_id},
-        "current_visible": current_visible,
-        "stranded_default": stranded_default,
-        "show_stranded_default": stranded_default > 0 and current_visible == 0,
-        "legacy_quarantine": legacy_counts["total"],
-        "legacy_pending": legacy_counts["pending"],
-        "legacy_reviewed": legacy_counts["reviewed"],
-        # v4 字段：lifecycle 后台合成产物的独立桶计数，仅供 DevOps 排查用。
-        "pending_consolidation": legacy_counts.get("pending_consolidation", 0),
-        "semantic": all_counts,
-        "graph": graph_counts,
-        # 旧字段保留，老前端继续可读。
-        "has_recoverable_legacy": has_pending_legacy,
-        # Phase 4：banner 显示与否的唯一权威字段。
-        "show_banner": show_banner,
-        "banner_dismissed": dismissed,
-    }
-
-
-@router.post("/legacy/dismiss")
-async def dismiss_legacy_banner(request: Request):
-    """Phase 4：用户点"不再提醒 legacy 记忆"按钮的端点。
-
-    幂等：重复调用只会重设 timestamp，不会产生副作用。
-    通过 _schema_meta 持久化，跨进程 / 跨重启都生效。
-    取消"不再提醒"目前没有专用按钮 —— 用户重新触发"导入旧记忆"成功后，
-    后端会顺手清除该 sentinel。
-    """
-    store = _get_store(request)
-    if not store:
-        raise HTTPException(503, "Memory store not available")
-    store.set_meta(_LEGACY_BANNER_DISMISSED_KEY, "1")
-    return {"ok": True, "dismissed": True}
-
-
-@router.post("/claim-legacy")
-async def claim_legacy_memories(request: Request, body: ClaimLegacyRequest | None = None):
-    """Safely import quarantined legacy memories into the current desktop owner."""
-    store = _get_store(request)
-    if not store:
-        raise HTTPException(503, "Memory store not available")
-    body = body or ClaimLegacyRequest()
-    user_id, workspace_id = _current_owner(request)
-    legacy = store.load_all_memories(
-        scope="legacy_quarantine",
-        scope_owner="",
-        user_id="legacy",
-        workspace_id=None,
-        include_inactive=body.include_inactive,
-    )
-    report = _safe_import_legacy_memories(
-        store,
-        legacy,
-        user_id=user_id,
-        workspace_id=workspace_id,
-    )
-
-    graph_updated = _claim_graph_nodes(
-        _get_manager(request),
-        memory_ids=report["promoted_ids"],
-        user_id=user_id,
-        workspace_id=workspace_id,
-        include_default_graph_nodes=body.include_default_graph_nodes,
-    )
-    _sync_json(request)
-    # Phase 4：用户主动整理过 legacy 后，重置 dismissed sentinel。
-    # 这样如果未来又出现新的 legacy_quarantine（比如导入了别人的旧 db），banner 还会再提醒一次。
-    try:
-        store.set_meta(_LEGACY_BANNER_DISMISSED_KEY, "0")
-    except Exception:
-        pass
-    return {
-        "ok": True,
-        "claimed": report["promoted"],
-        "promoted": report["promoted"],
-        "reviewed": report["reviewed"],
-        "rejected": report["rejected"],
-        "conflict_skipped": report["conflict_skipped"],
-        "graph_nodes_updated": graph_updated,
-        "current_owner": {"user_id": user_id, "workspace_id": workspace_id},
-    }
-
-
-@router.post("/migrate-workspace")
 async def migrate_workspace(request: Request, body: MigrateWorkspaceRequest):
     """Phase 2a：把当前 user 在某个 workspace_id 下的记忆迁到另一个 workspace_id。
 
@@ -942,7 +596,7 @@ async def merge_owner(request: Request, body: MergeOwnerRequest | None = None):
     desktop canonical identity (``desktop_user``) but left ~150 legacy memories
     stranded in the ``user_id='default'`` bucket — invisible to the panel and
     to conversation recall. ``migrate-workspace`` only rewrites ``workspace_id``
-    and ``claim-legacy`` only handles the ``legacy_quarantine`` scope, so
+    the stranded-bucket claim only covers non-quarantine scopes, so
     neither can perform an owner (``user_id``) merge. This endpoint does it
     safely by routing every source memory through ``save_user_memory`` so the
     existing content-dedup + identity-slot supersede logic applies.
