@@ -96,6 +96,35 @@ def _feishu_ws_loop_exception_handler(loop: asyncio.AbstractEventLoop, context: 
     loop.default_exception_handler(context)
 
 
+class _FeishuSdkNoiseFilter(logging.Filter):
+    """把飞书 SDK 的 keepalive 抖动和关闭残留任务从 ERROR 里拿掉。"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        lowered = message.lower()
+        if "task was destroyed but it is pending" in lowered:
+            return False
+        keepalive_noise = (
+            "1011" in lowered
+            or "timeout" in lowered
+            or "ping" in lowered
+            or "no close frame" in lowered
+        )
+        if "keepalive" in lowered and keepalive_noise:
+            if record.levelno >= logging.ERROR:
+                record.levelno = logging.WARNING
+                record.levelname = "WARNING"
+        return True
+
+
+def _install_feishu_sdk_noise_filter() -> None:
+    filt = _FeishuSdkNoiseFilter()
+    for name in ("Lark", "lark_oapi", "asyncio"):
+        target = logging.getLogger(name)
+        if not any(isinstance(existing, _FeishuSdkNoiseFilter) for existing in target.filters):
+            target.addFilter(filt)
+
+
 # 延迟导入
 lark_oapi = None
 
@@ -110,7 +139,7 @@ def _import_lark():
 
             lark_oapi = lark
         except ImportError as exc:
-            logger.error("lark_oapi import failed: %s", exc, exc_info=True)
+            logger.warning("lark_oapi import failed: %s", exc)
             exc_str = str(exc)
             if "JSONDecodeError" in exc_str and "simplejson" in exc_str:
                 raise ImportError(
@@ -723,6 +752,7 @@ class FeishuAdapter(ChannelAdapter):
             self._setup_event_dispatcher()
 
         logger.info("Starting Feishu WebSocket connection...")
+        _install_feishu_sdk_noise_filter()
 
         # lark_oapi.ws.client 在模块级保存了一个全局 loop 变量，Client 类的
         # start / _connect / _receive_message_loop 等方法全部直接引用该变量。

@@ -412,6 +412,8 @@ class TestSeed:
         # 首次播种同时落盘默认 config/sources，用户开箱可发现
         assert (isolated_newsroom / "config.yaml").is_file()
         assert (isolated_newsroom / "sources.yaml").is_file()
+        assert (isolated_newsroom / "editorial-policy.md").is_file()
+        assert (isolated_newsroom / "feedback-export.json").is_file()
 
     async def test_second_seed_is_noop(self, isolated_newsroom):
         scheduler = FakeScheduler()

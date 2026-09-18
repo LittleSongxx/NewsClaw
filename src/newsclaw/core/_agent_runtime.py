@@ -7161,12 +7161,16 @@ class Agent:
                 return
 
             # 保存到复盘存储
-            from .task_monitor import RetrospectRecord, get_retrospect_storage
+            from .task_monitor import (
+                RetrospectRecord,
+                get_retrospect_storage,
+                summarize_task_description,
+            )
 
             record = RetrospectRecord(
                 task_id=task_monitor.metrics.task_id,
                 session_id=session_id,
-                description=task_monitor.metrics.description,
+                description=summarize_task_description(task_monitor.metrics.description),
                 duration_seconds=task_monitor.metrics.total_duration_seconds,
                 iterations=task_monitor.metrics.total_iterations,
                 model_switched=task_monitor.metrics.model_switched,

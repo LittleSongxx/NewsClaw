@@ -98,6 +98,14 @@ def parse_editorial_policy(text: str) -> EditorialPolicy:
     return EditorialPolicy(preamble=preamble, bullets=bullets)
 
 
+def ensure_editorial_policy_file() -> Path:
+    """首期落盘默认方针，避免管线 read_file 去读一个还不存在的文件。"""
+    path = editorial_policy_path()
+    if path.is_file():
+        return path
+    return save_editorial_policy(EditorialPolicy(preamble=_DEFAULT_PREAMBLE, bullets=[]))
+
+
 def load_editorial_policy() -> EditorialPolicy:
     """读取方针；文件缺失时返回带默认题头的空条目（不主动落盘）。"""
     path = editorial_policy_path()

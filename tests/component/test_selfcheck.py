@@ -144,9 +144,110 @@ class TestSelfCheckResilience:
             ),
         }
 
-        filtered = checker._filter_selfcheck_feedback_patterns(patterns)
+        filtered, dropped = checker._filter_selfcheck_feedback_patterns(patterns)
 
         assert list(filtered) == ["real_error"]
+        assert dropped == 2
+
+    def test_filter_known_optional_file_and_keepalive_noise(self, mock_brain):
+        checker = SelfChecker(brain=mock_brain)
+        now = datetime.now()
+        patterns = {
+            "missing_policy": ErrorPattern(
+                pattern="filesystem_read_missing_editorial_policy",
+                count=1,
+                first_seen=now,
+                last_seen=now,
+                samples=[
+                    LogEntry(
+                        timestamp=now,
+                        level="ERROR",
+                        logger_name="newsclaw.core._tool_runtime",
+                        message="File not found: data/newsroom/editorial-policy.md",
+                    )
+                ],
+            ),
+            "keepalive": ErrorPattern(
+                pattern="lark_ws_keepalive_timeout",
+                count=1,
+                first_seen=now,
+                last_seen=now,
+                samples=[
+                    LogEntry(
+                        timestamp=now,
+                        level="ERROR",
+                        logger_name="Lark",
+                        message="keepalive ping timeout 1011 internal error, no close frame received",
+                    )
+                ],
+            ),
+            "real_error": ErrorPattern(
+                pattern="real_error",
+                count=1,
+                first_seen=now,
+                last_seen=now,
+                samples=[
+                    LogEntry(
+                        timestamp=now,
+                        level="ERROR",
+                        logger_name="newsclaw.tools.browser",
+                        message="Browser failed",
+                    )
+                ],
+            ),
+        }
+
+        filtered, dropped = checker._filter_selfcheck_feedback_patterns(patterns)
+
+        assert list(filtered) == ["real_error"]
+        assert dropped == 2
+
+    def test_digest_keeps_actionable_items_and_hides_prompt_dump(self):
+        from newsclaw.evolution.self_check import DailyReport
+
+        report = DailyReport(
+            date="2026-09-17",
+            timestamp=datetime(2026, 9, 17, 4, 0, 8),
+            total_errors=2,
+            core_errors=1,
+            filtered_noise_count=3,
+            core_error_patterns=[
+                {
+                    "pattern": "policy_context_contextvar_cross_context",
+                    "message": "ContextVar token reset in another Context",
+                    "note_to_user": "已在调度清理路径兜底，重启后生效",
+                    "severity": "high",
+                },
+                {
+                    "pattern": "lark_ws_keepalive_timeout",
+                    "message": "keepalive ping timeout 1011",
+                    "severity": "low",
+                },
+            ],
+            retrospect_summary={
+                "total_tasks": 1,
+                "total_duration": 258,
+                "records": [
+                    {
+                        "description": (
+                            "[任务背景]\n当前日期 2026-09-17。\n"
+                            "[任务指令]\n【任务】AI 早报新闻采集（只采集与核验）\n"
+                            "[委派原因] 并行采集 A 组信源"
+                        ),
+                        "duration_seconds": 258,
+                        "retrospect_result": "后半段出现空转推理。",
+                    }
+                ],
+            },
+        )
+
+        digest = report.to_digest()
+        assert "需要关注" in digest
+        assert "策略上下文" in digest
+        assert "已在调度清理路径兜底" in digest
+        assert "并行采集 A 组信源" in digest
+        assert "【任务】AI 早报新闻采集" not in digest
+        assert "已消化" in digest
 
     @pytest.mark.asyncio
     async def test_run_daily_check_saves_partial_report_on_time_budget(

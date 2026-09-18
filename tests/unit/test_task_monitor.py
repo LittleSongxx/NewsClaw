@@ -9,6 +9,7 @@ from newsclaw.core.task_monitor import (
     TaskMetrics,
     TaskMonitor,
     ToolCallRecord,
+    summarize_task_description,
 )
 
 
@@ -219,3 +220,11 @@ class TestDataclasses:
         m = TaskMetrics(task_id="t", description="d")
         summary = m.to_summary()
         assert isinstance(summary, str)
+
+    def test_summarize_task_description_prefers_delegate_reason(self):
+        text = (
+            "[任务背景]\n当前日期 2026-09-17。\n"
+            "[任务指令]\n【任务】AI 早报新闻采集（只采集与核验）\n"
+            "[委派原因] 并行采集 A 组信源"
+        )
+        assert summarize_task_description(text) == "并行采集 A 组信源"

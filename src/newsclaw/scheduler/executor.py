@@ -678,7 +678,14 @@ class TaskExecutor:
                 # Other exceptions go to the outer handler below
                 raise
             finally:
-                reset_current_context(_ctx_token)
+                # 跨 wait_for / 子任务 Context 时 reset 不得把已成功的任务打成失败
+                try:
+                    reset_current_context(_ctx_token)
+                except Exception:
+                    logger.debug(
+                        "TaskExecutor: policy context reset skipped (cross-context token)",
+                        exc_info=True,
+                    )
 
             # 5. 发送结果通知（如果需要）
             if not agent_success:
@@ -1566,7 +1573,9 @@ class TaskExecutor:
                         adapter = self.gateway.get_adapter(channel)
                         if not adapter or not adapter.is_running:
                             continue
-                        await self._send_report_chunks(adapter, chat_id, report_md, report_date)
+                        await self._send_report_chunks(
+                            adapter, chat_id, report_md, report_date, report=report
+                        )
                         pushed = 1
                         push_target = f"{channel}/{chat_id}"
                         break  # 发送成功，停止尝试
@@ -1724,10 +1733,14 @@ class TaskExecutor:
         chat_id: str,
         report_md: str,
         report_date: str,
+        report: Any | None = None,
     ) -> None:
-        """分段发送自检报告（兼容 Telegram 4096 字符限制）"""
-        header = f"📋 每日系统自检报告（{report_date}）\n\n"
-        full_text = header + report_md
+        """分段发送自检报告。优先推短摘要，避免把整份技术报告塞进一条 IM。"""
+        if report is not None and hasattr(report, "to_digest"):
+            full_text = report.to_digest()
+        else:
+            header = f"📋 每日系统自检报告（{report_date}）\n\n"
+            full_text = header + report_md
 
         max_len = 3500
         text = full_text

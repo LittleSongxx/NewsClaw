@@ -509,6 +509,14 @@ class TestFileReadWriteSafety:
         assert "[OUTPUT_TRUNCATED]" not in result
         assert "offset=3, limit=2" in result
 
+    async def test_read_file_missing_returns_hint_instead_of_raising(self, handler, tmp_path):
+        missing = tmp_path / "editorial-policy.md"
+
+        result = await handler.handle("read_file", {"path": str(missing)})
+
+        assert "文件不存在" in result
+        assert "这不是系统故障" in result
+
     async def test_read_file_reuses_same_range_cache(self, handler, tmp_path):
         target = tmp_path / "cached.txt"
         target.write_text("first\nsecond", encoding="utf-8")

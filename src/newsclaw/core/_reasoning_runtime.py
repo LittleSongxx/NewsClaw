@@ -84,6 +84,36 @@ from .security_confirm_channel import ALLOW_SECURITY_CONFIRM_DECISIONS, register
 #   * supervisor 只关心**纯查询/读取**类（连续 5 次都在 list/search/get → 空转）
 #   * reasoning_engine 关心"未产出 artifact"，自然包含 todo 推进和 memory 写入
 #     （这些工具产生的是"内部状态变化"而非"用户可见交付物"，所以仍算 admin）
+_COLLECT_ONLY_MARKERS = (
+    "只采集",
+    "不要写作",
+    "不要写任何文件",
+    "不要生成稿件",
+    "不要写文件",
+    "只搜索和打开链接",
+    "news-collector",
+)
+
+
+def _is_collect_only_task(user_request: str) -> bool:
+    """采集员任务：搜完交差，不该再走「写文件才算完成」的核验空转。"""
+    text = user_request or ""
+    return sum(1 for marker in _COLLECT_ONLY_MARKERS if marker in text) >= 2
+
+
+def _looks_like_collector_output(text: str) -> bool:
+    stripped = (text or "").strip()
+    if not stripped:
+        return False
+    if "无结果" in stripped or stripped in {"[]", "[ ]"}:
+        return True
+    if stripped.startswith("[") and "]" in stripped:
+        return True
+    if "｜" in stripped:
+        return True
+    return False
+
+
 _ADMIN_TOOL_NAMES = frozenset(
     {
         "create_todo",
@@ -5877,6 +5907,20 @@ class ReasoningEngine:
                     no_confirmation_text_count,
                     max_no_tool_retries,
                 )
+
+        last_user_request = ResponseHandler.get_last_user_request(original_messages)
+        if _is_collect_only_task(last_user_request or ""):
+            collect_text = strip_thinking_tags(decision.text_content) or ""
+            _, collect_text = parse_intent_tag(collect_text)
+            collect_text = (collect_text or "").strip()
+            if collect_text and (
+                tools_executed_in_task or _looks_like_collector_output(collect_text)
+            ):
+                logger.info(
+                    "[TaskVerify] collect-only task: accepting first no-tool answer "
+                    "(skip completion verify / idle retries)"
+                )
+                return clean_llm_response(collect_text)
 
         if tools_executed_in_task:
             cleaned_text = strip_thinking_tags(decision.text_content)

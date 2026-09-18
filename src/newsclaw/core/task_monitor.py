@@ -26,6 +26,26 @@ DEFAULT_RETRY_BEFORE_SWITCH = 2  # 切换模型前重试次数（全局上限由
 DEFAULT_RETRY_INTERVAL = 5  # 重试间隔（秒）
 
 
+def summarize_task_description(description: str, limit: int = 80) -> str:
+    """把复盘/自检里的超长任务包压成一行标题，避免把整份采集 prompt 推给用户。"""
+    text = (description or "").strip()
+    if not text:
+        return "未命名任务"
+    for marker in ("[委派原因]", "【任务】"):
+        idx = text.find(marker)
+        if idx < 0:
+            continue
+        snippet = text[idx + len(marker) :].strip().splitlines()[0].strip()
+        snippet = snippet.strip("*").strip()
+        if snippet:
+            return snippet if len(snippet) <= limit else snippet[: limit - 1] + "…"
+    first = next((line.strip() for line in text.splitlines() if line.strip()), text)
+    first = first.strip("*").strip()
+    if len(first) <= limit:
+        return first
+    return first[: limit - 1] + "…"
+
+
 class TaskPhase(Enum):
     """任务阶段"""
 

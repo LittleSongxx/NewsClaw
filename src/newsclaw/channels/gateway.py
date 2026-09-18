@@ -6217,8 +6217,13 @@ class MessageGateway:
                 if not adapter or not adapter.is_running:
                     continue
 
-                header = f"📋 每日系统自检报告（{report_date}）\n\n"
-                full_text = header + report_md
+                from newsclaw.evolution.self_check import DailyReport
+
+                try:
+                    full_text = DailyReport.from_dict(data).to_digest()
+                except Exception:
+                    header = f"📋 每日系统自检报告（{report_date}）\n\n"
+                    full_text = header + report_md
                 _meta = {
                     "is_group": (message.metadata or {}).get(
                         "is_group", message.chat_type == "group"
