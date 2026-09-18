@@ -230,14 +230,25 @@ def test_merge_owner_endpoint_dry_run_then_execute(tmp_path):
 def test_graph_overlays_semantic_memories_on_sparse_mode2(tmp_path):
     manager = _manager(tmp_path)
     manager.start_session("session-a", user_id="desktop_user")
-    _put(manager, "AI 早报每条新闻需包含标题、来源和原始链接", user_id="desktop_user")
-    _put(manager, "AI 早报时间窗为最近 24-48 小时", user_id="desktop_user")
+    _put(
+        manager,
+        "AI 早报每条新闻需包含标题、来源和原始链接",
+        user_id="desktop_user",
+        subject="早报条目格式",
+    )
+    _put(
+        manager,
+        "AI 早报新闻条目必须写明标题、来源和原始链接",
+        user_id="desktop_user",
+        subject="早报条目格式",
+    )
     client = _memory_client(manager)
     graph = client.get("/api/memories/graph?limit=50").json()
     assert graph["meta"]["total_nodes"] >= 2
     contents = {n["content"] for n in graph["nodes"]}
     assert any("早报" in c for c in contents)
     assert graph["meta"]["total_edges"] >= 1
+    assert "same_type" not in {e["edge_type"] for e in graph["links"]}
 
 
 def test_migration_status_flags_stranded_default_when_list_empty(tmp_path):

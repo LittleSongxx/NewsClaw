@@ -884,7 +884,7 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
           <AlertDialogHeader>
             <AlertDialogTitle>{t("memory.reviewConfirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t("memory.reviewConfirmDesc")}
+              {t("memory.reviewConfirmDesc", { count: stats?.total ?? totalCount })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -901,7 +901,7 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
 
       {/* Graph view */}
       {viewMode === "graph" ? (
-        <Card className="gap-0 overflow-hidden border-border/80 py-0 shadow-sm">
+        <Card className="gap-0 overflow-hidden border-border/80 bg-muted/30 py-0 shadow-sm">
           <Suspense fallback={
             <div className="flex items-center justify-center" style={{ height: graphPanelHeight }}>
               <Loader2 size={24} className="animate-spin text-indigo-500" />
