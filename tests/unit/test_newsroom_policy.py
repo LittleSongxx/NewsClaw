@@ -127,6 +127,52 @@ class TestNewsroomPolicyGuards:
         )
         assert decision.action == DecisionAction.DENY
 
+    def test_opt_install_may_read_newsroom_files(self, isolated_newsroom, monkeypatch):
+        """ECS 装在 /opt/newsclaw 时，读早报目录不能被 /opt/** immune 拦住。"""
+        monkeypatch.setattr(settings, "project_root", Path("/opt/newsclaw"))
+        engine = PolicyEngineV2()
+        ctx = _ctx(Path("/opt/newsclaw"), newsroom="daily", task_id=DAILY_TASK_ID)
+        for tool, params in (
+            ("read_file", {"path": "/opt/newsclaw/data/newsroom/sources.yaml"}),
+            ("list_directory", {"path": "/opt/newsclaw/data/newsroom/issues/2026-09-18"}),
+        ):
+            decision = engine.evaluate_tool_call(ToolCallEvent(tool=tool, params=params), ctx)
+            assert decision.safety_immune_match is None, tool
+            assert decision.action == DecisionAction.ALLOW, (tool, decision.reason)
+
+    def test_opt_install_may_write_issue_artifact(self, isolated_newsroom, monkeypatch):
+        monkeypatch.setattr(settings, "project_root", Path("/opt/newsclaw"))
+        engine = PolicyEngineV2()
+        path = "/opt/newsclaw/data/newsroom/issues/2026-09-18/daily-brief.md"
+        decision = engine.evaluate_tool_call(
+            ToolCallEvent(tool="write_file", params={"path": path, "content": "hi"}),
+            _ctx(Path("/opt/newsclaw"), newsroom="daily", task_id=DAILY_TASK_ID),
+        )
+        assert decision.safety_immune_match is None
+        assert decision.action == DecisionAction.ALLOW
+
+    def test_opt_other_package_still_immune(self, isolated_newsroom, monkeypatch):
+        monkeypatch.setattr(settings, "project_root", Path("/opt/newsclaw"))
+        engine = PolicyEngineV2()
+        decision = engine.evaluate_tool_call(
+            ToolCallEvent(tool="write_file", params={"path": "/opt/other/bin/x", "content": "x"}),
+            _ctx(Path("/opt/newsclaw"), newsroom="daily", task_id=DAILY_TASK_ID),
+        )
+        assert decision.safety_immune_match is not None
+        assert "/opt" in (decision.safety_immune_match or "")
+
+    def test_opt_credentials_outside_newsroom_still_immune(self, isolated_newsroom, monkeypatch):
+        monkeypatch.setattr(settings, "project_root", Path("/opt/newsclaw"))
+        engine = PolicyEngineV2()
+        decision = engine.evaluate_tool_call(
+            ToolCallEvent(
+                tool="write_file",
+                params={"path": "/opt/newsclaw/data/llm_endpoints.json", "content": "{}"},
+            ),
+            _ctx(Path("/opt/newsclaw"), newsroom="daily", task_id=DAILY_TASK_ID),
+        )
+        assert decision.safety_immune_match is not None
+
 
 class TestManifestContractWrite:
     def test_agent_cannot_self_declare_ready_without_artifacts(self, isolated_newsroom):

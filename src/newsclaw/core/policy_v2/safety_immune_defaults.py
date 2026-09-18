@@ -40,6 +40,8 @@ Categories (designed to be cross-platform; ``${CWD}`` is expanded against
    typically requires root and can wedge the host.
 9. **Package install dirs** — Program Files / Program Files (x86) /
    ProgramData / /opt. Modifying these poisons system tooling.
+   ``/opt/**`` 不得误伤本应用自己的 ``data/newsroom``（常见部署
+   ``/opt/newsclaw``）；引擎对早报目录跳过这条 blanket，细规则仍生效。
 
 Each entry uses ``/**`` glob anchor where applicable (engine's
 ``_path_under`` strips the anchor and treats the prefix as a directory
