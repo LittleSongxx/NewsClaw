@@ -233,6 +233,15 @@ async def post_proposal_reject(body: ProposalRejectBody):
 # ── 反馈与手动触发 ──────────────────────────────────────────────────
 
 
+@router.get("/status")
+async def get_status():
+    """主线健康总览（只读聚合；调度器未就绪时任务分区报 present=False）。"""
+    from newsclaw.newsroom.status import build_status
+    from newsclaw.scheduler import get_active_scheduler
+
+    return await build_status(get_active_scheduler())
+
+
 @router.get("/feedback")
 async def get_feedback():
     records = await feedback.get_all_feedback()
