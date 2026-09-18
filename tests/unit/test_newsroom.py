@@ -488,6 +488,8 @@ class TestSeed:
         assert daily.deletable is False
         assert daily.metadata["newsroom"] == "daily"
         assert review.trigger_config["cron"] == "0 20 * * 0"
+        # 复盘任务的最终回复是「待人审 apply」提醒，必须送达 owner
+        assert review.silent is False
         # 首次播种同时落盘默认 config/sources，用户开箱可发现
         assert (isolated_newsroom / "config.yaml").is_file()
         assert (isolated_newsroom / "sources.yaml").is_file()
@@ -521,6 +523,38 @@ class TestSeed:
         daily.metadata = {"newsroom": "daily", "prompt_version": 16}
         assert await ensure_newsroom_tasks(scheduler) is True
         assert daily.metadata["timeout_seconds"] == load_config().task_timeout_seconds
+
+    async def test_reconcile_restores_review_non_silent(self, isolated_newsroom):
+        """GUI 里误静音复盘任务会被拉回：提案提醒是闭环的人工闸门。"""
+        scheduler = FakeScheduler()
+        await ensure_newsroom_tasks(scheduler)
+        scheduler.tasks[REVIEW_TASK_ID].silent = True
+        assert await ensure_newsroom_tasks(scheduler) is True
+        assert scheduler.tasks[REVIEW_TASK_ID].silent is False
+        assert scheduler.tasks[DAILY_TASK_ID].silent is True
+
+    def test_daily_readiness_warning_states(self, isolated_newsroom):
+        from newsclaw.newsroom.contract import daily_readiness_warning
+
+        load_sources()
+        assert "没有落账 manifest" in daily_readiness_warning("2026-09-16")
+
+        contract.write_manifest(
+            contract.IssueManifest(issue_date="2026-09-16", title="t", status="partial")
+        )
+        assert "status=partial" in daily_readiness_warning("2026-09-16")
+
+        _write_required_artifacts("2026-09-16")
+        contract.write_manifest(
+            contract.IssueManifest(
+                issue_date="2026-09-16",
+                title="t",
+                status="ready",
+                sources_used=["AI 综合搜索"],
+                items=_sample_items(),
+            )
+        )
+        assert daily_readiness_warning("2026-09-16") == ""
 
     async def test_prompt_refresh_only_on_version_bump(self, isolated_newsroom):
         from newsclaw.newsroom import prompts, seed
