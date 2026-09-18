@@ -104,6 +104,50 @@ def test_ready_rejects_url_already_used_in_window(isolated_newsroom):
     assert any("already used on 2026-09-10" in e for e in errors)
 
 
+def test_ready_rejects_artifact_url_outside_ledger(isolated_newsroom):
+    """稿里出现账本外链接必须被拒：不入账的链接会永久游离在去重池外。"""
+    load_sources()
+    extra = _VALID + "延伸阅读：https://example.com/extra\n"
+    _write_artifacts("2026-09-15", text=extra)
+    manifest = contract.IssueManifest(
+        issue_date="2026-09-15",
+        title="t",
+        status="ready",
+        sources_used=["AI 综合搜索"],
+        items=_items(),
+    )
+    errors = manifest.validate()
+    assert any("outside items[]" in e and "example.com/extra" in e for e in errors)
+
+
+def test_ready_allows_asset_links_in_platform_artifacts_only(isolated_newsroom):
+    """平台稿的配图建议资源外链豁免；日报总览仍严格要求全部入账。"""
+    load_sources()
+    with_asset = _VALID + "配图建议：https://images.example.com/cover.png\n"
+    for name in (
+        contract.ARTIFACT_DAILY_BRIEF,
+        contract.ARTIFACT_XIAOHONGSHU,
+        contract.ARTIFACT_WECHAT,
+    ):
+        folder = contract.issue_dir("2026-09-15")
+        folder.mkdir(parents=True, exist_ok=True)
+        text = with_asset if name != contract.ARTIFACT_DAILY_BRIEF else _VALID
+        (folder / name).write_text(text, encoding="utf-8")
+    manifest = contract.IssueManifest(
+        issue_date="2026-09-15",
+        title="t",
+        status="ready",
+        sources_used=["AI 综合搜索"],
+        items=_items(),
+    )
+    assert manifest.validate() == []
+
+    folder = contract.issue_dir("2026-09-15")
+    (folder / contract.ARTIFACT_DAILY_BRIEF).write_text(with_asset, encoding="utf-8")
+    errors = manifest.validate()
+    assert any("outside items[]" in e and "cover.png" in e for e in errors)
+
+
 def test_ready_accepts_new_url_and_injection_lists_seen(isolated_newsroom):
     load_sources()
     _write_artifacts("2026-09-10")

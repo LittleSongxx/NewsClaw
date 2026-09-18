@@ -69,6 +69,25 @@ class NewsItem:
         }
 
 
+#: 平台稿「配图建议」常见的外链资源后缀：不是素材引用，不参与账本 ⊆ 机验。
+_ASSET_URL_SUFFIXES = (
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".webp",
+    ".svg",
+    ".mp4",
+    ".mp3",
+)
+
+
+def is_asset_url(raw: str) -> bool:
+    """URL 是否指向图片/音视频等静态资源（按路径后缀判断）。"""
+    text = (raw or "").strip().lower()
+    return any(text.endswith(suffix) for suffix in _ASSET_URL_SUFFIXES)
+
+
 def _is_http_url(raw: str) -> bool:
     try:
         parsed = urlparse(raw.strip())
