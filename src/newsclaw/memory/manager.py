@@ -1388,13 +1388,24 @@ class MemoryManager:
                         return s.id
 
                     if dup_level == "likely":
-                        is_dup = await self._check_duplicate_with_llm(content, existing_content)
-                        if is_dup:
+                        verdict = await self._conflict_verdict_with_llm(content, existing_content)
+                        if verdict == "SAME":
                             self._evolve_memory(s, content, importance)
                             logger.debug(
                                 f"[Memory] Dedup L2: LLM confirmed dup, evolved {s.id[:8]}"
                             )
                             return s.id
+                        if verdict == "SUPERSEDES":
+                            # Mem0 式裁决：旧事实软失效（supersede 链 + valid_until
+                            # 记录失效时刻），新记忆照常走全新落盘——"28→29"既有
+                            # 历史可追溯，检索只见新值（valid_until 过滤）。
+                            now_iso = datetime.now().isoformat()
+                            self.store.update_semantic(
+                                s.id, {"superseded_by": "superseded", "valid_until": now_iso}
+                            )
+                            logger.debug(
+                                f"[Memory] Conflict L2: superseded {s.id[:8]} (valid_until set)"
+                            )
             except Exception as e:
                 logger.debug(f"[Memory] Dedup search failed: {e}")
 
@@ -1486,23 +1497,42 @@ class MemoryManager:
 
     async def _check_duplicate_with_llm(self, new_content: str, existing_content: str) -> bool:
         """Ask LLM whether two memory entries are semantically the same."""
+        verdict = await self._conflict_verdict_with_llm(new_content, existing_content)
+        return verdict == "SAME"
+
+    async def _conflict_verdict_with_llm(
+        self, new_content: str, existing_content: str
+    ) -> str:
+        """Mem0 式写入裁决：SAME（重复）| SUPERSEDES（新信息取代旧信息）| UNRELATED。
+
+        SUPERSEDES 即「矛盾且新者胜」——调用方据此同时做软失效
+        （superseded_by + valid_until=now）与内容前移，provenance 链保留。
+        """
         brain = getattr(self.extractor, "brain", None)
         if not brain:
-            return False
+            return "UNRELATED"
         try:
             resp = await brain.think(
-                f"判断这两条记忆是否表达相同的信息（语义重复）。\n"
-                f"记忆A: {new_content}\n"
-                f"记忆B: {existing_content}\n\n"
-                f"只回答 YES 或 NO。",
-                system="你是记忆去重判断器。如果两条记忆表达的核心信息相同（即使措辞不同），回答YES。否则回答NO。只输出一个词。",
+                f"判断新旧两条用户记忆的关系。\n"
+                f"新记忆: {new_content}\n"
+                f"旧记忆: {existing_content}\n\n"
+                f"只回答一个词：SAME（语义重复）| SUPERSEDES（新信息取代/更新旧信息，"
+                f"如数值变化、偏好改变、明确撤销）| UNRELATED（主题无关）。",
+                system=(
+                    "你是记忆冲突裁决器。语义相同→SAME；新信息使旧信息过时或矛盾"
+                    "（如年龄变化、改用别的工具、撤销旧偏好）→SUPERSEDES；"
+                    "不同主题→UNRELATED。只输出一个词。"
+                ),
                 enable_thinking=False,
                 max_tokens=16,
             )
             text = (getattr(resp, "content", None) or str(resp)).strip().upper()
-            return "YES" in text and "NO" not in text
+            for token in ("SUPERSEDES", "SAME", "UNRELATED"):
+                if token in text:
+                    return token
+            return "UNRELATED"
         except Exception:
-            return False
+            return "UNRELATED"
 
     def _evolve_memory(
         self, existing: SemanticMemory, new_content: str, new_importance: float

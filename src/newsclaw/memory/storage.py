@@ -34,7 +34,7 @@ from .types import normalize_tags
 
 logger = logging.getLogger(__name__)
 
-_SCHEMA_VERSION = 6
+_SCHEMA_VERSION = 7
 
 # Process-level singleton registry: same db_path → same MemoryStorage instance
 _instance_registry: dict[str, MemoryStorage] = {}
@@ -680,7 +680,9 @@ class MemoryStorage:
                 decay_rate REAL DEFAULT 0.1,
                 last_accessed_at TEXT,
                 superseded_by TEXT,
-                source_episode_id TEXT
+                source_episode_id TEXT,
+                occurred_at TEXT,
+                valid_until TEXT
             )
         """)
 
@@ -709,6 +711,18 @@ class MemoryStorage:
         c.execute(
             "CREATE INDEX IF NOT EXISTS idx_memories_owner "
             "ON memories(workspace_id, user_id, scope, scope_owner)"
+        )
+
+        # v7: 双时间线（Zep/Graphiti 式）——occurred_at 是事实在现实世界的
+        # 发生时间，valid_until 是事实失效时间（软失效，不物理删）。
+        # 系统时间族（created_at/updated_at）继续记录"系统何时知道"。
+        for col in ("occurred_at", "valid_until"):
+            try:
+                c.execute(f"ALTER TABLE memories ADD COLUMN {col} TEXT")
+            except sqlite3.OperationalError:
+                pass  # 列已存在
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_memories_valid_until ON memories(valid_until)"
         )
 
         c.execute("""
@@ -1085,8 +1099,9 @@ class MemoryStorage:
                      access_count, tags, created_at, updated_at, expires_at, metadata,
                      subject, predicate, confidence, decay_rate,
                      last_accessed_at, superseded_by, source_episode_id,
+                     occurred_at, valid_until,
                      scope, scope_owner, agent_id, user_id, workspace_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         memory.get("id", ""),
@@ -1108,6 +1123,8 @@ class MemoryStorage:
                         memory.get("last_accessed_at"),
                         memory.get("superseded_by"),
                         memory.get("source_episode_id"),
+                        memory.get("occurred_at"),
+                        memory.get("valid_until"),
                         memory.get("scope", "global"),
                         memory.get("scope_owner", ""),
                         memory.get("agent_id", ""),
@@ -1198,10 +1215,12 @@ class MemoryStorage:
                 conditions.extend(
                     [
                         "(expires_at IS NULL OR expires_at >= ?)",
+                        "(valid_until IS NULL OR valid_until > ?)",
                         "(superseded_by IS NULL OR superseded_by = '')",
                     ]
                 )
-                params.append(datetime.now().isoformat())
+                now_iso = datetime.now().isoformat()
+                params.extend([now_iso, now_iso])
             if user_id is not None:
                 conditions.append("COALESCE(user_id, '') = ?")
                 params.append(user_id)
@@ -1262,6 +1281,8 @@ class MemoryStorage:
             "last_accessed_at",
             "superseded_by",
             "source_episode_id",
+            "occurred_at",
+            "valid_until",
             "updated_at",
             "metadata",
             "scope",
@@ -1345,8 +1366,10 @@ class MemoryStorage:
             conditions.append("COALESCE(workspace_id, 'default') = ?")
             params.append(workspace_id)
         if active_only:
+            now_iso = datetime.now().isoformat()
             conditions.append("(expires_at IS NULL OR expires_at >= ?)")
-            params.append(datetime.now().isoformat())
+            conditions.append("(valid_until IS NULL OR valid_until > ?)")
+            params.extend([now_iso, now_iso])
             conditions.append("(superseded_by IS NULL OR superseded_by = '')")
 
         where = " AND ".join(conditions) if conditions else "1=1"
@@ -1394,8 +1417,10 @@ class MemoryStorage:
                 conditions.append("COALESCE(workspace_id, 'default') = ?")
                 params.append(workspace_id)
             if active_only:
+                now_iso = datetime.now().isoformat()
                 conditions.append("(expires_at IS NULL OR expires_at >= ?)")
-                params.append(datetime.now().isoformat())
+                conditions.append("(valid_until IS NULL OR valid_until > ?)")
+                params.extend([now_iso, now_iso])
                 conditions.append("(superseded_by IS NULL OR superseded_by = '')")
             where = " AND ".join(conditions) if conditions else "1=1"
             cur = self._conn.execute(f"SELECT COUNT(*) FROM memories WHERE {where}", params)
@@ -1459,8 +1484,10 @@ class MemoryStorage:
             conditions.append("COALESCE(workspace_id, 'default') = ?")
             params.append(workspace_id)
         if active_only:
+            now_iso = datetime.now().isoformat()
             conditions.append("(expires_at IS NULL OR expires_at >= ?)")
-            params.append(datetime.now().isoformat())
+            conditions.append("(valid_until IS NULL OR valid_until > ?)")
+            params.extend([now_iso, now_iso])
             conditions.append("(superseded_by IS NULL OR superseded_by = '')")
 
         where = " AND ".join(conditions) if conditions else "1=1"
