@@ -75,7 +75,7 @@ tests/              unit / component / integration / e2e
 - **数据根目录**：`src/newsclaw/data_root.py` 是唯一解析入口（`NEWSCLAW_ROOT` → `~/.newsclaw`）。Rust 桌面壳、安装脚本、Python 运行时、插件 bootstrap 都必须用它或复刻同一规则，否则桌面端与 CLI 会各写各的目录。账号凭据类文件用 `resolve_home_root()`（忽略 env 覆盖）：换工作区不该搬走身份。
 - **环境变量**：统一使用 `NEWSCLAW_*`。旧产品前缀不再映射。
 - **策略矩阵（Policy V2）**：每个工具调用前裁决放行 / 确认 / 拒绝。无人值守任务对 CONFIRM 默认**拒绝**，所以新工具必须声明 `TOOL_CLASSES`（有静态完整性测试）与中断行为（`core/tool_interrupt_behavior.py`，同样有完整性测试），否则会出现"模型决策了、工具从未执行"的静默失败。
-- **newsroom 边界**：Python 只管契约（期次目录、manifest、播种、反馈存储、REST API），采集/写作/复盘由 `ai-news-editor` Agent 执行；行为只能通过 `sources.yaml`、`editorial-policy.md`、技能与记忆改变。
+- **newsroom 边界**：主线的权威描述（目录契约、不变量 I1–I9、术语表）在 `src/newsclaw/newsroom/__init__.py` 的模块 docstring，并由 `tests/unit/test_newsroom_invariants.py` 的同名测试钉住——**此处不复述细节**，避免双源漂移。一句话边界：Python 只管契约与 apply，采集/写作/复盘由 `ai-news-editor` Agent 执行；`sources.yaml` / `editorial-policy.md` / RULE 记忆只能经人审 `apply_proposal` 落盘。
 - **提示词管线**：`prompt/compiler.py` 编译身份文件 → `prompt/builder.py` 分层拼装（身份 → 人格 → 运行时 → 会话规则 → AGENTS.md → 目录 → 记忆 → 用户）。identity 文件改动后需要重新编译。
 - **多 Agent 委派**：主 Agent 通过 `delegate_to_agent` / `delegate_parallel` / `delegate_to_pool` / `delegate_to_role` 派生子 Agent；子 Agent 不再持有委派工具（单跳）。委派规则整章按**实际工具集**门控注入。
 - **技能加载顺序**：`__builtin__` → 工作区 → `.cursor/skills` → `.claude/skills` → `skills/` → 用户主目录。
