@@ -18,10 +18,10 @@ This module ships two implementations:
   ``deliver`` callable. Turn 2 observes the resulting
   :class:`DelegationResult` in ``history`` and emits
   ``is_request_satisfied=True``. Semantic equivalent of the previous
-  ``OrgCommandService._run_minimal`` single-shot dispatch: the node
+  single-shot dispatch: the node
   still owns multi-step orchestration internally via Sprint-4
   ``<dispatch>`` XML parsing inside
-  :class:`~newsclaw.orgs._runtime_agent_pipeline_executor.AgentPipelineExecutor.dispatch_subtask`
+  the agent pipeline executor's dispatch_subtask
   recursion -- the brain does not need to plan multi-turn LLM calls.
   This is the production brain for the HTTP takeover path (Sprint-9).
 

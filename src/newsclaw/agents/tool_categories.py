@@ -1,17 +1,8 @@
-# Restored at P-RC-11 P11.1 (Cluster A) from P9.9 epsilon-2b deletion 90a7d77f.
-# Original path: src/newsclaw/orgs/tool_categories.py; re-instated as this
-# private shard per charter R-11-2 option (b) (P10.5a M-2 split convention;
-# ADR-0011 6-subsystem layout). Body restored verbatim from 90a7d77f~1.
-#
-# A 5-LOC public re-export at src/newsclaw/orgs/tool_categories.py preserves
-# the original import path for runtime filtering, org setup resources, and the
-# Agent capability editor.
+"""外部工具类目定义与岗位角色工具预设。
 
-"""
-外部工具类目定义、岗位角色工具预设、节点头像预设。
-
-将工具按功能域分组为类目（category），节点的 external_tools 字段
-可以混合使用类目名和具体工具名。expand_tool_categories() 负责展开。
+将工具按功能域分组为类目（category），Agent Profile 的 tools 字段可以
+混合使用类目名和具体工具名，``expand_tool_categories()`` 负责展开。
+（自 orgs/ 迁入：与组织编排解耦后仍被 Agent 工厂与能力编辑器使用。）
 """
 
 from __future__ import annotations

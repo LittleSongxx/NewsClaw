@@ -43,11 +43,9 @@ def test_update_runtime_refs_rebinds_org_command_session_manager() -> None:
     api_task = SimpleNamespace(_newsclaw_api_app=app)
     session_manager = object()
 
-    assert app.state.org_command_service._session_manager is None
     assert update_runtime_refs(api_task, session_manager=session_manager) is True
 
     assert app.state.session_manager is session_manager
-    assert app.state.org_command_service._session_manager is session_manager
 
 
 async def test_agent_initialize_is_single_flight(monkeypatch) -> None:

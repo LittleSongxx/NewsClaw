@@ -740,10 +740,8 @@ class Agent:
 
             _all_tools.extend(_DT)
         from ..tools.definitions.agent import AGENT_TOOLS
-        from ..tools.definitions.org_setup import ORG_SETUP_TOOLS
 
         _all_tools.extend(AGENT_TOOLS)
-        _all_tools.extend(ORG_SETUP_TOOLS)
         if opencli_available():
             from ..tools.definitions.opencli import OPENCLI_TOOLS as _OC
 
@@ -866,11 +864,9 @@ class Agent:
             logger.info(f"CLI-Anything tools enabled ({len(CLI_ANYTHING_TOOLS)} tools)")
 
         from ..tools.definitions.agent import AGENT_TOOLS
-        from ..tools.definitions.org_setup import ORG_SETUP_TOOLS
 
         self._tools.extend(AGENT_TOOLS)
-        self._tools.extend(ORG_SETUP_TOOLS)
-        logger.info(f"Multi-agent tools enabled ({len(AGENT_TOOLS) + len(ORG_SETUP_TOOLS)} tools)")
+        logger.info(f"Multi-agent tools enabled ({len(AGENT_TOOLS)} tools)")
 
         # Platform hub tools (Agent Hub + Skill Store, only when enabled)
         if settings.hub_enabled:
@@ -908,13 +904,6 @@ class Agent:
 
         # Sub-agent call flag: set by orchestrator._call_agent()
         self._is_sub_agent_call = False
-        # Organization coordinator flag: set by ``orgs.runtime._create_node_agent``
-        # iff the node has direct subordinates. Used by
-        # ``_prepare_session_context`` to keep the coordinator strictly in
-        # delegation mode (force_tool=True) and by orchestrator to pick the
-        # coordinator-mode prompt independent of the global
-        # ``coordinator_mode_enabled`` flag.
-        self._is_org_coordinator = False
         # Agent tool names to exclude when running as sub-agent
         self._agent_tool_names = frozenset(
             {"delegate_to_agent", "delegate_parallel", "create_agent", "spawn_agent"}
@@ -1915,9 +1904,6 @@ class Agent:
             logger.info("CLI-Anything handler registered (cli-anything-* tools detected)")
 
         self.handler_registry.register("agent", create_agent_tool_handler(self))
-        from ..tools.handlers.org_setup import create_handler as create_org_setup_handler
-
-        self.handler_registry.register("org_setup", create_org_setup_handler(self))
 
         logger.info(
             f"Initialized {len(self.handler_registry._handlers)} handlers with {len(self.handler_registry._tool_to_handler)} tools"

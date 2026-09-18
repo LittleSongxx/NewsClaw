@@ -49,8 +49,6 @@ _PROCESS_RESTART_FIELDS = frozenset(
         "log_format",
         "log_to_console",
         "log_to_file",
-        "runtime_v2_enabled",
-        "orgs_v2_backend",
         "multi_agent_enabled",
     }
 )

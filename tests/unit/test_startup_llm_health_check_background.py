@@ -30,12 +30,10 @@ async def test_startup_hook_schedules_llm_health_check_without_waiting() -> None
     client = BlockingHealthClient()
     brain = SimpleNamespace(_llm_client=client, _compiler_client=None)
     app = create_app(agent=SimpleNamespace(brain=brain))
-    app.state.org_runtime = None
-
     startup_hook = next(
         hook
         for hook in app.state.lifespan_startup_hooks
-        if hook.__name__ == "_startup_org_runtime"
+        if hook.__name__ == "_startup_llm_health_check"
     )
 
     await startup_hook()

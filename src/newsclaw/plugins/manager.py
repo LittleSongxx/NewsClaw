@@ -239,7 +239,7 @@ class PluginManager:
         """Return the parsed v2 ``WORKBENCH`` manifest for a loaded plugin.
 
         Public accessor used by the v2 runtime (``WorkbenchNode``,
-        ``api/routes/orgs_v2``) to discover workbench-capable plugins
+        the org routes) to discover workbench-capable plugins
         without inspecting private state.
 
         Returns ``None`` when the plugin is not loaded, or when the
@@ -987,7 +987,7 @@ class PluginManager:
         # ADR-0009: opt-in v2 workbench manifest discovery. The plugin
         # may declare a top-level ``WORKBENCH`` dict; we parse it via
         # the runtime's typed parser so consumers (WorkbenchNode,
-        # api/routes/orgs_v2) can rely on validated shape. Plugins
+        # API routes) can rely on validated shape. Plugins
         # without the constant — or whose constant fails validation —
         # remain plain tool providers; we never abort plugin loading on
         # a workbench-only error.

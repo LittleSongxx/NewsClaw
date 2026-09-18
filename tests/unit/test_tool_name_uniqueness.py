@@ -1,10 +1,10 @@
 from types import SimpleNamespace
 
 from newsclaw.agent.core import Agent
+from newsclaw.tools.definitions import AGENT_TOOLS, BASE_TOOLS, HUB_TOOLS
 from newsclaw.agent.brain import Brain
 from newsclaw.llm.client import _friendly_error_hint
 from newsclaw.llm.error_types import FailoverReason
-from newsclaw.tools.definitions import AGENT_TOOLS, BASE_TOOLS, HUB_TOOLS, ORG_SETUP_TOOLS
 
 
 def _duplicate_names(tools: list[dict]) -> set[str]:
@@ -21,7 +21,7 @@ def _duplicate_names(tools: list[dict]) -> set[str]:
 
 
 def test_static_tool_definitions_have_unique_names():
-    tools = list(BASE_TOOLS) + list(HUB_TOOLS) + list(AGENT_TOOLS) + list(ORG_SETUP_TOOLS)
+    tools = list(BASE_TOOLS) + list(HUB_TOOLS) + list(AGENT_TOOLS)
 
     assert _duplicate_names(tools) == set()
 

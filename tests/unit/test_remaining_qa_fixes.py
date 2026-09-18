@@ -1,7 +1,6 @@
 import pytest
 
 from newsclaw.core.risk_intent import OperationKind, RiskIntentClassifier, TargetKind
-from newsclaw.orgs.org_models import OrgNode
 from newsclaw.tools.handlers.memory import MemoryHandler
 from newsclaw.tools.handlers.powershell import PowerShellHandler
 from newsclaw.tools.handlers.todo_handler import PlanHandler
@@ -27,16 +26,6 @@ def test_unknown_target_delete_natural_language_requires_confirmation():
 
     assert result.operation_kind == OperationKind.DELETE
     assert result.requires_confirmation is True
-
-
-def test_legacy_org_node_gets_profile_binding():
-    node = OrgNode.from_dict({
-        "id": "dev-a",
-        "role_title": "全栈工程师",
-        "department": "技术部",
-    })
-
-    assert node.agent_profile_id == "code-assistant"
 
 
 def test_powershell_clixml_noise_is_stripped():
