@@ -12,20 +12,13 @@ PERSONA_TOOLS = [
     {
         "name": "switch_persona",
         "category": "Persona",
-        "description": "切换人格预设或用户自创的 Agent 角色。内置预设: default/business/tech_expert/butler/girlfriend/boyfriend/family/jarvis。也支持用户自创的角色名称（如「诸葛亮」「翻译官」等）。当用户要求切换角色或沟通风格时使用。",
+        "description": "切换人格预设或用户自创的 Agent 角色。内置预设: default。也支持用户自创的角色名称（如「诸葛亮」「翻译官」等）。当用户要求切换角色或沟通风格时使用。",
         "detail": """切换 Agent 的人格角色。
 
 **内置预设**：
 - default: 默认助手（专业友好）
-- business: 商务助理（正式高效）
-- tech_expert: 技术专家（严谨深度）
-- butler: 私人管家（周到体贴）
-- girlfriend: 女友感（温柔关心）
-- boyfriend: 男友感（阳光鼓励）
-- family: 家人感（亲切唠叨）
-- jarvis: 贾维斯（英式幽默、小叛逆、话唠、任务时严谨）
 
-也支持传入用户自创的 Agent 角色名称，系统会自动查找匹配的 Agent Profile。
+也支持传入用户自创的 Agent 角色名称（ personas/user_custom.md 或用户 Agent Profile），系统会自动查找匹配。
 
 **适用场景**：
 - 用户要求切换角色/性格

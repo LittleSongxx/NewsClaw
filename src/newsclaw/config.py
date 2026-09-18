@@ -714,7 +714,7 @@ class Settings(BaseSettings):
     # === 人格系统配置 ===
     persona_name: str = Field(
         default="default",
-        description="当前激活的人格预设名称 (default/business/tech_expert/butler/girlfriend/boyfriend/family/jarvis)",
+        description="当前激活的人格预设名称 (default，或用户自创)",
     )
 
     # === 记忆回顾（Memory Nudge）配置 ===

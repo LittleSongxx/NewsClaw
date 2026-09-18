@@ -1,6 +1,6 @@
 ---
 name: switch-persona
-description: Switch Agent persona preset. Supports 8 presets including default assistant, business, tech expert, butler, girlfriend, boyfriend, family, and Jarvis. Use when user asks to change communication style or personality.
+description: Switch Agent persona preset. Supports the default preset plus user-created personas (user_custom.md or custom Agent profiles). Use when user asks to change communication style or personality.
 system: true
 handler: persona
 tool-name: switch_persona
@@ -25,19 +25,12 @@ category: Persona
 ## 可用预设
 
 - `default` - 默认助手（专业友好）
-- `business` - 商务助理（正式高效，不使用表情）
-- `tech_expert` - 技术专家（严谨深度，偶尔技术梗）
-- `butler` - 私人管家（周到体贴，主动提醒）
-- `girlfriend` - 女友感（温柔关心，使用表情包）
-- `boyfriend` - 男友感（阳光鼓励，幽默风趣）
-- `family` - 家人感（亲切唠叨，关心健康）
-- `jarvis` - 贾维斯（英式幽默、小叛逆、话唠，任务时严谨）
 
 ## 示例
 
 ```
 用户: "你能像个女朋友一样跟我聊天吗"
-→ switch_persona(preset_name="girlfriend")
+→ switch_persona(preset_name="default")
 
 用户: "正式一点"
 → switch_persona(preset_name="business")
