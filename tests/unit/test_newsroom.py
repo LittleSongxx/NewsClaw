@@ -30,10 +30,14 @@ def isolated_newsroom(tmp_path, monkeypatch):
 # ── contract ────────────────────────────────────────────────────────
 
 
+#: 合规产物样张：三条外链（与 _sample_items 对齐）+ 平台稿格式钉要求的两个小节。
 _VALID_ARTIFACT = (
-    "今日要点：示例标题｜一句话说明｜https://example.com/news｜大模型\n"
-    "补充：结构校验要求去空白后足够长，并至少有一条可点开的 http 链接。\n"
-    "无结果时必须写明无结果，不能交空壳。\n"
+    "今日要点：\n"
+    "- 示例标题｜一句话说明｜https://example.com/news｜大模型\n"
+    "- 第二条标题｜说明｜https://example.com/second｜公司动态\n"
+    "- 第三条标题｜说明｜https://example.org/third｜开源项目\n\n"
+    "### 标题方案\n1. 今日 AI 三件事\n2. 模型圈速览\n3. 开源动态一览\n\n"
+    "### 基础信息\n- 标题：AI 早报｜三分钟看完今日要点\n- 摘要：示例摘要。\n"
 )
 
 
@@ -44,7 +48,19 @@ def _sample_items() -> list[contract.NewsItem]:
             url="https://example.com/news",
             source_name="AI 综合搜索",
             one_liner="一句话说明",
-        )
+        ),
+        contract.NewsItem(
+            title="第二条标题",
+            url="https://example.com/second",
+            source_name="AI 综合搜索",
+            one_liner="说明",
+        ),
+        contract.NewsItem(
+            title="第三条标题",
+            url="https://example.org/third",
+            source_name="公司与融资",
+            one_liner="说明",
+        ),
     ]
 
 
@@ -66,7 +82,7 @@ class TestContract:
             issue_date="2026-09-16",
             title="AI 早报 #1",
             status="ready",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             items=_sample_items(),
             wiki_entries=["AI早报/大模型.md"],
         )
@@ -99,7 +115,7 @@ class TestContract:
                 issue_date="2026-09-16",
                 title="t",
                 status="ready",
-                sources_used=["AI 综合搜索"],
+                sources_used=["AI 综合搜索", "公司与融资"],
                 items=_sample_items(),
             )
         )
@@ -147,7 +163,7 @@ class TestContract:
             issue_date="2026-09-15",
             title="t1",
             status="ready",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
         )
         errors = manifest.validate()
         assert any("too short" in e for e in errors)
@@ -159,7 +175,7 @@ class TestContract:
             issue_date="2026-09-15",
             title="t1",
             status="ready",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             items=_sample_items(),
         )
         assert manifest.validate() == []
@@ -172,7 +188,7 @@ class TestContract:
             issue_date="2026-09-15",
             title="t1",
             status="ready",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             scores={"source_hit": contract.ScoreEntry(score=5, rationale="perfect")},
         )
         errors = manifest.validate()
@@ -186,7 +202,7 @@ class TestContract:
             issue_date="2026-09-15",
             title="t1",
             status="ready",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             items=_sample_items(),
             feedback={"rating": -1, "comment": "太水"},
         )
@@ -196,6 +212,118 @@ class TestContract:
     def test_rejected_status_is_legal(self, isolated_newsroom):
         manifest = contract.IssueManifest(issue_date="2026-09-15", title="t1", status="rejected")
         assert manifest.validate() == []
+
+
+class TestQualityFloors:
+    """写盘时的质量下限（strict_quality）；读旧期不回溯。"""
+
+    def _compliant_manifest(self, day: str = "2026-09-16") -> contract.IssueManifest:
+        return contract.IssueManifest(
+            issue_date=day,
+            title="t",
+            status="ready",
+            sources_used=["AI 综合搜索", "公司与融资"],
+            items=_sample_items(),
+        )
+
+    def test_write_rejects_too_few_items(self, isolated_newsroom):
+        load_sources()
+        _write_required_artifacts("2026-09-16")
+        manifest = self._compliant_manifest()
+        manifest.items = manifest.items[:1]
+        with pytest.raises(ValueError, match="quality floor.*item"):
+            contract.write_manifest(manifest)
+
+    def test_write_rejects_single_source(self, isolated_newsroom):
+        load_sources()
+        _write_required_artifacts("2026-09-16")
+        manifest = self._compliant_manifest()
+        manifest.sources_used = ["AI 综合搜索"]
+        with pytest.raises(ValueError, match="quality floor.*source"):
+            contract.write_manifest(manifest)
+
+    def test_write_rejects_window_title_clash(self, isolated_newsroom):
+        load_sources()
+        _write_required_artifacts("2026-09-10")
+        contract.write_manifest(self._compliant_manifest("2026-09-10"))
+        _write_required_artifacts("2026-09-16")
+        clash = self._compliant_manifest()
+        clash.items[0] = contract.NewsItem(
+            title="示例标题！！",  # 规范化后与 09-10 的「示例标题」同键
+            url="https://example.com/brand-new",
+            source_name="AI 综合搜索",
+        )
+        clash_text = _VALID_ARTIFACT.replace(
+            "https://example.com/news", "https://example.com/brand-new"
+        )
+        _write_required_artifacts("2026-09-16", text=clash_text)
+        with pytest.raises(ValueError, match="title already used on 2026-09-10"):
+            contract.write_manifest(clash)
+
+    def test_write_rejects_missing_xhs_title_section(self, isolated_newsroom):
+        load_sources()
+        no_section = _VALID_ARTIFACT.replace("### 标题方案\n1. 今日 AI 三件事\n2. 模型圈速览\n3. 开源动态一览\n\n", "")
+        _write_required_artifacts("2026-09-16", text=no_section)
+        with pytest.raises(ValueError, match="标题方案"):
+            contract.write_manifest(self._compliant_manifest())
+
+    def test_write_rejects_overlong_xhs_title_candidate(self, isolated_newsroom):
+        load_sources()
+        long_title = _VALID_ARTIFACT.replace(
+            "1. 今日 AI 三件事",
+            "1. 这是一个明显超过二十个字符长度的超长笔记标题示范例子",
+        )
+        _write_required_artifacts("2026-09-16", text=long_title)
+        with pytest.raises(ValueError, match="title candidate too long"):
+            contract.write_manifest(self._compliant_manifest())
+
+    def test_write_rejects_missing_wechat_title_line(self, isolated_newsroom):
+        load_sources()
+        no_title = _VALID_ARTIFACT.replace("- 标题：AI 早报｜三分钟看完今日要点\n", "")
+        _write_required_artifacts("2026-09-16", text=no_title)
+        with pytest.raises(ValueError, match="标题："):
+            contract.write_manifest(self._compliant_manifest())
+
+    def test_legacy_ready_manifest_still_loads_leniently(self, isolated_newsroom):
+        """读旧期不回溯：旧标准下的 ready（1 条目/单信源/无格式小节）不判 invalid。"""
+        load_sources()
+        day = contract.issue_dir("2026-09-10")
+        day.mkdir(parents=True, exist_ok=True)
+        for name in (
+            contract.ARTIFACT_DAILY_BRIEF,
+            contract.ARTIFACT_XIAOHONGSHU,
+            contract.ARTIFACT_WECHAT,
+        ):
+            (day / name).write_text(
+                "旧产物时期的稿件样张：https://old.example.com/a\n"
+                "这一段是为了凑足最低结构长度而存在的说明文字，旧标准只要求"
+                "去空白后足够长且带一条可点开的链接，没有质量下限与格式钉，"
+                "读取时不按新标准翻旧账。\n",
+                encoding="utf-8",
+            )
+        (day / contract.MANIFEST_FILENAME).write_text(
+            json.dumps(
+                {
+                    "issue_date": "2026-09-10",
+                    "title": "old",
+                    "status": "ready",
+                    "sources_used": ["AI 综合搜索"],
+                    "items": [
+                        {
+                            "title": "旧标题",
+                            "url": "https://old.example.com/a",
+                            "source_name": "AI 综合搜索",
+                            "one_liner": "",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        manifest, error = contract.load_manifest("2026-09-10")
+        assert manifest is not None and error is None
+        assert manifest.status == "ready"
 
     def test_corrupt_sources_yaml_fails_closed(self, isolated_newsroom):
         """信源清单损坏：loader 抛错（注入/执行链路中止），ready 机验降为
@@ -215,7 +343,7 @@ class TestContract:
             issue_date="2026-09-16",
             title="t",
             status="ready",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             items=_sample_items(),
         )
         errors = manifest.validate()
@@ -422,7 +550,7 @@ class TestFeedback:
                 issue_date="2026-09-16",
                 title="t",
                 status="ready",
-                sources_used=["AI 综合搜索"],
+                sources_used=["AI 综合搜索", "公司与融资"],
                 items=_sample_items(),
             )
         )
@@ -550,7 +678,7 @@ class TestSeed:
                 issue_date="2026-09-16",
                 title="t",
                 status="ready",
-                sources_used=["AI 综合搜索"],
+                sources_used=["AI 综合搜索", "公司与融资"],
                 items=_sample_items(),
             )
         )

@@ -219,10 +219,12 @@ config.yaml——那些文件只能经 WebUI 勾选提案 apply 或设置页保�
 三份稿引用的链接必须 ⊆ 入选短名单（稍后写入 manifest.items）：
 1. daily-brief.md —— 编辑内部视角：入选条目（标题+一句话+来源链接+主题标签）、
    落选原因摘要、选题逻辑说明；
-2. xiaohongshu.md —— 按 xiaohongshu-creator 技能规范：笔记标题（≤20 字）、正文
+2. xiaohongshu.md —— 按 xiaohongshu-creator 技能规范：笔记标题（≤20 字；
+   机验：`### 标题方案` 小节必须存在，每个候选去空白后 ≤20 字）、正文
    （emoji 分层、口语化）、话题标签、配图建议清单；
-3. wechat.md —— 按 wechat-article 技能规范：标题、摘要、Markdown 正文（小标题
-   分节、重点加粗）、封面图建议。
+3. wechat.md —— 按 wechat-article 技能规范：标题（机验：`### 基础信息`
+   下必须有 `- 标题：` 行）、摘要、Markdown 正文（小标题分节、重点加粗）、
+   封面图建议。
 
 {wiki_step}
 
@@ -232,7 +234,9 @@ config.yaml——那些文件只能经 WebUI 勾选提案 apply 或设置页保�
   Python 契约函数机验，不是你自评说了算：sources_used 必须非空且每个名字
   ∈ 当期 sources.yaml；三份产物必须存在、去空白后够长、且含 http 链接或
   明确写「无结果」；有外链时 ``items`` 必须非空，每条 url 必须出现在三份
-  稿里，且不得与注入块已见 URL 重复。``scores`` 只作参考。
+  稿里，且不得与注入块已见 URL 重复。写盘时还机验质量下限：items ≥3 条
+  且 ≤40 条、sources_used ≥2、标题不得与近窗口已见标题重复（无结果日
+  允许 0 条 + 「无结果」标记）。``scores`` 只作参考。
   预算耗尽（exit_reason=budget_exceeded）时只能写 ``partial``，禁止 ready。
   schema 严格如下，UTF-8、ensure_ascii=False：
 {_MANIFEST_SCHEMA}
