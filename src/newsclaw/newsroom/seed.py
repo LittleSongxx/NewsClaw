@@ -23,7 +23,12 @@ import logging
 from newsclaw.newsroom.config import config_path, load_config, save_config
 from newsclaw.newsroom.editorial import ensure_editorial_policy_file
 from newsclaw.newsroom.feedback import ensure_feedback_export
-from newsclaw.newsroom.prompts import PROMPT_VERSION, build_daily_prompt, build_review_prompt
+from newsclaw.newsroom.prompts import (
+    PROMPT_VERSION,
+    build_daily_prompt,
+    build_review_prompt,
+    strip_runtime_injection,
+)
 from newsclaw.newsroom.sources import load_sources
 
 logger = logging.getLogger(__name__)
@@ -128,6 +133,26 @@ async def ensure_newsroom_tasks(scheduler) -> bool:
         if metadata.get("timeout_seconds") != cfg.task_timeout_seconds:
             metadata["timeout_seconds"] = cfg.task_timeout_seconds
             meta_changed = True
+        # prompt 漂移检测：版本号没动但内容与 prompts.py 现算不一致——
+        # 要么改了 prompts.py 忘 bump PROMPT_VERSION（运行中的任务会一直用
+        # 旧 prompt），要么有人在 GUI 手改。只告警与打标，不覆盖：
+        # 「版本不变不动用户改动」的语义保持不变。
+        prompt_drift = (
+            metadata.get("prompt_version") == PROMPT_VERSION
+            and strip_runtime_injection(existing.prompt or "")
+            != strip_runtime_injection(prompt)
+        )
+        if bool(metadata.get("prompt_drift")) != prompt_drift:
+            metadata["prompt_drift"] = prompt_drift
+            meta_changed = True
+            if prompt_drift:
+                logger.error(
+                    "[Newsroom] task %s prompt differs from prompts.py while "
+                    "PROMPT_VERSION=%s is unchanged - bump PROMPT_VERSION to "
+                    "refresh seeded tasks (or this is a manual GUI edit)",
+                    task_id,
+                    PROMPT_VERSION,
+                )
         if metadata.get("prompt_version", 0) < PROMPT_VERSION:
             updates["prompt"] = prompt
             updates["description"] = description

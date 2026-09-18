@@ -16,6 +16,7 @@ import pytest
 from newsclaw.config import settings
 from newsclaw.newsroom import contract, feedback
 from newsclaw.newsroom.config import NewsroomConfig, load_config, save_config
+from newsclaw.newsroom.prompts import build_daily_prompt
 from newsclaw.newsroom.seed import DAILY_TASK_ID, REVIEW_TASK_ID, ensure_newsroom_tasks
 from newsclaw.newsroom.sources import NewsSource, SourceBook, load_sources, save_sources
 
@@ -661,6 +662,18 @@ class TestSeed:
         assert scheduler.tasks[REVIEW_TASK_ID].silent is False
         assert scheduler.tasks[DAILY_TASK_ID].silent is True
 
+    async def test_prompt_drift_flagged_and_cleared(self, isolated_newsroom):
+        """版本不变但任务 prompt 与 prompts.py 现算不一致 → 打标告警；一致后清除。"""
+        scheduler = FakeScheduler()
+        await ensure_newsroom_tasks(scheduler)
+        scheduler.tasks[DAILY_TASK_ID].prompt = "被手改的 prompt"
+        assert await ensure_newsroom_tasks(scheduler) is True
+        assert scheduler.tasks[DAILY_TASK_ID].metadata["prompt_drift"] is True
+
+        scheduler.tasks[DAILY_TASK_ID].prompt = build_daily_prompt(load_config())
+        assert await ensure_newsroom_tasks(scheduler) is True
+        assert scheduler.tasks[DAILY_TASK_ID].metadata["prompt_drift"] is False
+
     def test_daily_readiness_warning_states(self, isolated_newsroom):
         from newsclaw.newsroom.contract import daily_readiness_warning
 
@@ -691,12 +704,13 @@ class TestSeed:
         await ensure_newsroom_tasks(scheduler)
         original_prompt = scheduler.tasks[DAILY_TASK_ID].prompt
 
-        # 用户在 GUI 改了 prompt：版本不变时不覆盖
+        # 用户在 GUI 改了 prompt：版本不变时不覆盖（只打漂移标志）
         scheduler.tasks[DAILY_TASK_ID].prompt = "用户自定义 prompt"
-        assert await ensure_newsroom_tasks(scheduler) is False
+        assert await ensure_newsroom_tasks(scheduler) is True  # 仅写 drift 标志
         assert scheduler.tasks[DAILY_TASK_ID].prompt == "用户自定义 prompt"
+        assert scheduler.tasks[DAILY_TASK_ID].metadata["prompt_drift"] is True
 
-        # 版本递增 → prompt 刷新到新版
+        # 版本递增 → prompt 刷新到新版，漂移标志清除
         monkey_target = prompts.PROMPT_VERSION
         try:
             prompts.PROMPT_VERSION = monkey_target + 1
@@ -704,6 +718,7 @@ class TestSeed:
             assert await ensure_newsroom_tasks(scheduler) is True
             assert scheduler.tasks[DAILY_TASK_ID].prompt == original_prompt
             assert scheduler.tasks[DAILY_TASK_ID].metadata["prompt_version"] == monkey_target + 1
+            assert scheduler.tasks[DAILY_TASK_ID].metadata["prompt_drift"] is False
         finally:
             prompts.PROMPT_VERSION = monkey_target
             seed.PROMPT_VERSION = monkey_target
