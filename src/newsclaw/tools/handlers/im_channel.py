@@ -197,22 +197,28 @@ class IMChannelHandler:
         # deliver_artifacts 支持跨通道发送（target_channel 参数）
         if tool_name == "deliver_artifacts":
             params = self._normalize_delivery_params(params)
-            from newsclaw.newsroom.delivery import newsroom_delivery_block_reason
-
-            blocked = newsroom_delivery_block_reason(
-                [str(item.get("path") or "") for item in params.get("artifacts") or []]
+            from newsclaw.newsroom.delivery import (
+                mark_newsroom_delivered,
+                newsroom_delivery_block_reason,
             )
+
+            paths = [str(item.get("path") or "") for item in params.get("artifacts") or []]
+            blocked = newsroom_delivery_block_reason(paths)
             if blocked:
                 return blocked
             target_channel = (params.get("target_channel") or "").strip()
             if target_channel:
                 prefer_chat_type = (params.get("prefer_chat_type") or "private").strip()
-                return await self._deliver_artifacts_cross_channel(
+                result = await self._deliver_artifacts_cross_channel(
                     params, target_channel, prefer_chat_type=prefer_chat_type
                 )
-            if not get_im_session():
-                return await self._deliver_artifacts_desktop(params)
-            return await self._deliver_artifacts(params)
+            elif not get_im_session():
+                result = await self._deliver_artifacts_desktop(params)
+            else:
+                result = await self._deliver_artifacts(params)
+            # 早报产物送达即落 delivered_at（非 JSON 回执 / 失败回执不标记）
+            mark_newsroom_delivered(paths, result)
+            return result
 
         # get_chat_history 在 Desktop 模式下也可用（从 session 读取）
         if tool_name == "get_chat_history":

@@ -5,10 +5,15 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
-from newsclaw.newsroom.contract import load_manifest, newsroom_root
+from newsclaw.newsroom.contract import load_manifest, newsroom_root, write_manifest
+
+logger = logging.getLogger(__name__)
 
 _ISSUE_DATE = re.compile(r"(?:^|/)issues/(\d{4}-\d{2}-\d{2})(?:/|$)")
 
@@ -66,3 +71,27 @@ def newsroom_delivery_block_reason(paths: list[str]) -> str | None:
         + "；".join(blocked)
         + "）。先写过检的 manifest，再 deliver_artifacts。"
     )
+
+
+def mark_newsroom_delivered(paths: list[str], receipt_text: str) -> None:
+    """投递成功后给当期 manifest 落 ``delivered_at``（best-effort）。
+
+    只认 JSON 回执里的 ``ok: true``；解析失败或投递失败一律不标记——
+    宁可漏标（退化为无记录），不可把没送达的期次标成已出门。
+    """
+    try:
+        payload = json.loads(receipt_text)
+        delivered = isinstance(payload, dict) and payload.get("ok") is True
+    except (json.JSONDecodeError, TypeError):
+        return
+    if not delivered:
+        return
+    for day in issue_dates_in_paths(paths):
+        manifest, error = load_manifest(day, require_item_ledger=False)
+        if manifest is None or error or manifest.delivered_at:
+            continue
+        manifest.delivered_at = datetime.now().isoformat(timespec="seconds")
+        try:
+            write_manifest(manifest)
+        except (ValueError, OSError) as exc:
+            logger.warning("[Newsroom] delivered_at write failed for %s: %s", day, exc)

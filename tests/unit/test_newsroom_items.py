@@ -228,6 +228,56 @@ def test_delivery_ignores_unrelated_paths(isolated_newsroom):
     assert newsroom_delivery_block_reason(["/tmp/notes.md"]) is None
 
 
+def _ready_issue(day: str) -> None:
+    load_sources()
+    _write_artifacts(day)
+    contract.write_manifest(
+        contract.IssueManifest(
+            issue_date=day,
+            title="t",
+            status="ready",
+            sources_used=["AI 综合搜索"],
+            items=_items(),
+        )
+    )
+
+
+def test_mark_delivered_records_timestamp_on_ok_receipt(isolated_newsroom):
+    from newsclaw.newsroom.delivery import mark_newsroom_delivered
+
+    _ready_issue("2026-09-15")
+    path = str(contract.issue_dir("2026-09-15") / contract.ARTIFACT_DAILY_BRIEF)
+    mark_newsroom_delivered([path], '{"ok": true, "receipts": []}')
+    assert contract.read_manifest("2026-09-15").delivered_at != ""
+
+
+def test_mark_delivered_ignores_failed_or_non_json_receipt(isolated_newsroom):
+    from newsclaw.newsroom.delivery import mark_newsroom_delivered
+
+    _ready_issue("2026-09-15")
+    path = str(contract.issue_dir("2026-09-15") / contract.ARTIFACT_DAILY_BRIEF)
+    mark_newsroom_delivered([path], '{"ok": false, "receipts": []}')
+    mark_newsroom_delivered([path], "✅ 已发送到桌面（非 JSON 回执）")
+    assert contract.read_manifest("2026-09-15").delivered_at == ""
+
+
+def test_budget_demote_skips_delivered_issue(isolated_newsroom):
+    """预算撞顶的降级不该追上已经推送出门的期次。"""
+    from newsclaw.newsroom.delivery import mark_newsroom_delivered
+
+    _ready_issue("2026-09-15")
+    path = str(contract.issue_dir("2026-09-15") / contract.ARTIFACT_DAILY_BRIEF)
+    mark_newsroom_delivered([path], '{"ok": true, "receipts": []}')
+
+    assert contract.demote_ready_on_budget_exceeded("2026-09-15") is False
+    assert contract.read_manifest("2026-09-15").status == "ready"
+
+    # 未投递的 ready 期次照旧降级
+    _ready_issue("2026-09-14")
+    assert contract.demote_ready_on_budget_exceeded("2026-09-14") is True
+    assert contract.read_manifest("2026-09-14").status == "partial"
+
+
 def test_rejected_issue_still_blocks_window_urls(isolated_newsroom):
     """点踩降级不该把整期链接放回去重池。"""
     from newsclaw.newsroom.items import collect_seen_urls
