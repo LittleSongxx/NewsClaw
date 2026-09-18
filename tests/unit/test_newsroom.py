@@ -702,6 +702,18 @@ class TestSeed:
         assert await ensure_newsroom_tasks(scheduler) is True
         assert scheduler.tasks[DAILY_TASK_ID].metadata["prompt_drift"] is False
 
+    async def test_status_with_scheduler_reports_tasks(self, isolated_newsroom):
+        from newsclaw.newsroom.status import build_status
+
+        scheduler = FakeScheduler()
+        await ensure_newsroom_tasks(scheduler)
+        payload = await build_status(scheduler)
+        assert payload["tasks"]["daily"]["present"] is True
+        assert payload["tasks"]["daily"]["cron"] == "0 8 * * *"
+        assert payload["tasks"]["daily"]["prompt_version_current"] is True
+        assert payload["tasks"]["review"]["silent"] is False
+        assert payload["last_issue"] is None
+
     def test_daily_readiness_warning_states(self, isolated_newsroom):
         from newsclaw.newsroom.contract import daily_readiness_warning
 
