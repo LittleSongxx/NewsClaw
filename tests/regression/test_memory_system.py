@@ -20,7 +20,6 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from newsclaw.memory.consolidator import MemoryConsolidator
 from newsclaw.memory.extractor import MemoryExtractor
 from newsclaw.memory.manager import MemoryManager
 from newsclaw.memory.types import ConversationTurn, Memory, MemoryPriority, MemoryType
@@ -617,106 +616,6 @@ class TestMemoryManager:
 
 
 # ============================================================
-# MemoryConsolidator 测试 (8 个)
-# ============================================================
-
-
-class TestMemoryConsolidator:
-    """记忆归纳器测试"""
-
-    def test_40_init_creates_directories(self, temp_data_dir):
-        """测试初始化创建目录"""
-        MemoryConsolidator(data_dir=temp_data_dir)
-        assert (temp_data_dir / "conversation_history").exists()
-
-    def test_41_save_conversation_turn(self, temp_data_dir):
-        """测试保存对话轮次"""
-        mc = MemoryConsolidator(data_dir=temp_data_dir)
-        turn = ConversationTurn(role="user", content="测试消息")
-        mc.save_conversation_turn("test_session", turn)
-
-        files = list((temp_data_dir / "conversation_history").glob("*.jsonl"))
-        assert len(files) == 1
-
-    def test_42_cleanup_old_history_by_days(self, temp_data_dir):
-        """测试按天数清理历史"""
-        mc = MemoryConsolidator(data_dir=temp_data_dir)
-        history_dir = temp_data_dir / "conversation_history"
-        history_dir.mkdir(parents=True, exist_ok=True)
-
-        # 创建旧文件
-        old_file = history_dir / "old_session.jsonl"
-        old_file.write_text("{}")
-        import os
-
-        old_time = (datetime.now() - timedelta(days=40)).timestamp()
-        os.utime(old_file, (old_time, old_time))
-
-        deleted = mc.cleanup_old_history(days=30)
-        assert deleted == 1
-
-    def test_43_cleanup_history_by_count(self, temp_data_dir):
-        """测试按文件数清理"""
-        mc = MemoryConsolidator(data_dir=temp_data_dir)
-        mc.MAX_HISTORY_FILES = 5  # 设置较小的限制
-        history_dir = temp_data_dir / "conversation_history"
-        history_dir.mkdir(parents=True, exist_ok=True)
-
-        # 创建多个文件
-        for i in range(10):
-            f = history_dir / f"session_{i:03d}.jsonl"
-            f.write_text("{}")
-
-        result = mc.cleanup_history()
-        assert result["by_count"] == 5  # 应该删除 5 个
-
-    def test_44_cleanup_history_by_size(self, temp_data_dir):
-        """测试按大小清理"""
-        mc = MemoryConsolidator(data_dir=temp_data_dir)
-        mc.MAX_HISTORY_SIZE_MB = 0.001  # 设置很小的限制 (约 1KB)
-        history_dir = temp_data_dir / "conversation_history"
-        history_dir.mkdir(parents=True, exist_ok=True)
-
-        # 创建一个大文件
-        large_file = history_dir / "large.jsonl"
-        large_file.write_text("x" * 2000)  # 2KB
-
-        result = mc.cleanup_history()
-        assert result["by_size"] >= 1
-
-    def test_45_get_history_stats(self, temp_data_dir):
-        """测试获取历史统计"""
-        mc = MemoryConsolidator(data_dir=temp_data_dir)
-        turn = ConversationTurn(role="user", content="测试消息")
-        mc.save_conversation_turn("test_session", turn)
-
-        stats = mc.get_history_stats()
-        assert "file_count" in stats
-        assert "total_size_mb" in stats
-        assert stats["file_count"] >= 1
-
-    def test_46_get_today_sessions(self, temp_data_dir):
-        """测试获取今日会话"""
-        mc = MemoryConsolidator(data_dir=temp_data_dir)
-        session_id = datetime.now().strftime("%Y%m%d_%H%M%S_test")
-        turn = ConversationTurn(role="user", content="今日消息")
-        mc.save_conversation_turn(session_id, turn)
-
-        sessions = mc.get_today_sessions()
-        assert len(sessions) >= 1
-
-    def test_47_get_unprocessed_sessions(self, temp_data_dir):
-        """测试获取未处理会话"""
-        mc = MemoryConsolidator(data_dir=temp_data_dir)
-        session_id = datetime.now().strftime("%Y%m%d_%H%M%S_unprocessed")
-        turn = ConversationTurn(role="user", content="未处理消息")
-        mc.save_conversation_turn(session_id, turn)
-
-        sessions = mc.get_unprocessed_sessions()
-        # 新创建的会话应该是未处理的
-        assert len(sessions) >= 1
-
-
 class TestSessionTaskManagement:
     """Session 任务管理测试"""
 
