@@ -473,8 +473,7 @@ class TestApplyProposal:
 
     def test_policy_cap_error_explains_current_and_added(self, isolated_newsroom):
         """方针已满时 add 到 apply 才炸——文案要讲清现状与出路。"""
-        from newsclaw.newsroom.editorial import save_editorial_policy
-        from newsclaw.newsroom.editorial import EditorialPolicy, PolicyBullet
+        from newsclaw.newsroom.editorial import EditorialPolicy, PolicyBullet, save_editorial_policy
 
         load_sources()
         save_editorial_policy(

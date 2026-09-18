@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import pytest
+
 from newsclaw.config import settings
 from newsclaw.newsroom import contract
 from newsclaw.newsroom.delivery import newsroom_delivery_block_reason
 from newsclaw.newsroom.items import normalize_url
 from newsclaw.newsroom.prompts import build_daily_injection_block
 from newsclaw.newsroom.sources import load_sources
-
-import pytest
 
 
 @pytest.fixture(autouse=True)
