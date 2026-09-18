@@ -34,8 +34,9 @@ metadata:
      落选原因、选题逻辑；
    - `xiaohongshu.md`：标题 ≤20 字、emoji 分层正文、话题标签、配图建议；
    - `wechat.md`：标题、摘要、Markdown 正文（小标题分节）、封面建议；
-4. **Wiki 沉淀**（config.yaml 配置了 obsidian_vault 时）：在库内「AI早报」目录
-   按主题/公司建原子页，追加当日要点，wikilink 互链，维护 MOC 索引页；
+4. **Wiki 沉淀**（config.yaml 配置了 obsidian_vault 时）：用 `wiki_upsert`
+   在库内「AI早报」目录按主题/公司建原子页，追加当日要点，wikilink 互链，
+   维护 MOC 索引页（未配置 vault 时跳过本步，不要调用 `wiki_upsert`）；
 5. **自评与落账**：`manifest.items` 写入选条目（title/url/source_name）；
    四个维度分数只作复盘参考。`ready` 由契约机验，不是自评。
    未 ready 禁止 `deliver_artifacts`。
