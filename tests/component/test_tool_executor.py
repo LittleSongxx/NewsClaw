@@ -60,6 +60,10 @@ class TestExecuteTool:
         registry.get_handler_name_for_tool.return_value = "plan"
         registry.get_permission_check.return_value = None
         executor = ToolExecutor(handler_registry=registry, max_parallel=1)
+        # 本测试只关心「字符串化的嵌套字段先归一化再进 registry」；
+        # create_todo 在 DEFAULT 模式会被策略矩阵 CONFIRM 拦住等确认，
+        # 与归一化无关——直接摘掉这道门，避免测试随策略演进而漂移。
+        executor._check_permission_deny_msg = lambda tool_name, tool_input: None
 
         await executor.execute_tool(
             "create_todo",
