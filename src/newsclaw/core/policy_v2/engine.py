@@ -794,9 +794,16 @@ class PolicyEngineV2:
             return None
         safe_params = params or {}
         for raw_path in candidate_path_fields(safe_params):
+            newsroom_owned = _is_newsroom_owned_path(raw_path)
             for protected in immune_paths:
-                if _path_under(raw_path, protected):
-                    return f"{tool} → {raw_path} matches {protected}"
+                if not _path_under(raw_path, protected):
+                    continue
+                # /opt/** 本意是保护 Homebrew / 系统软件，不是保护本应用的
+                # data/newsroom。ECS 装在 /opt/newsclaw 时，早报绝对路径会
+                # 先命中这条 blanket 规则，无人值守再等 60s 确认超时 → 空早报。
+                if newsroom_owned and _is_package_install_immune(protected):
+                    continue
+                return f"{tool} → {raw_path} matches {protected}"
         return None
 
     def _collect_immune_paths(self, ctx: PolicyContext) -> tuple[str, ...]:
@@ -1250,6 +1257,34 @@ def _infer_operation_from_tool(tool: str) -> str | None:
         if tool.startswith(prefix):
             return op
     return None
+
+
+# 内置 category 9（软件安装前缀）。展开后仍是这些字面量；早报目录若落在
+# 其中（典型：/opt/newsclaw/data/newsroom），只跳过这一条，不跳过更细的
+# identity / 凭据 / 审计规则。
+_PACKAGE_INSTALL_IMMUNE_PREFIXES = frozenset(
+    {
+        "/opt",
+        "/usr/local",
+        "c:/program files",
+        "c:/program files (x86)",
+        "c:/programdata",
+    }
+)
+
+
+def _is_package_install_immune(protected: str) -> bool:
+    return _strip_glob_anchor(_normalize_path(protected)) in _PACKAGE_INSTALL_IMMUNE_PREFIXES
+
+
+def _is_newsroom_owned_path(raw: str) -> bool:
+    try:
+        from newsclaw.newsroom.policy import is_newsroom_owned_path
+
+        return bool(is_newsroom_owned_path(raw))
+    except Exception:
+        logger.exception("[PolicyEngineV2] newsroom owned-path check failed")
+        return False
 
 
 def _path_under(raw: str, protected: str) -> bool:

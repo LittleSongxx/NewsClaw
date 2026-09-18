@@ -41,6 +41,7 @@ _MANIFEST_RE = re.compile(r"issues[/\\](\d{4}-\d{2}-\d{2})[/\\]manifest\.json$",
 _PROPOSAL_JSON_RE = re.compile(r"issues[/\\]review-proposal\.json$", re.I)
 
 _DAILY_WRITE_TOOLS = frozenset({"write_file", "edit_file", "append_file"})
+_DAILY_READ_TOOLS = frozenset({"read_file", "list_directory", "glob", "grep"})
 _DAILY_DELEGATE_TOOLS = frozenset({"delegate_parallel", "delegate_to_agent", "task_stop"})
 _REVIEW_WRITE_TOOLS = frozenset({"write_file", "edit_file", "append_file"})
 
@@ -128,6 +129,28 @@ def _under(path: Path, root: Path) -> bool:
             return False
 
 
+def is_newsroom_owned_path(raw: str) -> bool:
+    """路径是否落在 ``data/newsroom``（含信源/方针等只读载体）。
+
+    生产环境常把整个应用装在 ``/opt/newsclaw``。内置 safety_immune 的
+    ``/opt/**`` 会把早报目录误判成系统软件目录；引擎用本函数把早报主线
+    从那条blanket规则里摘出来，更细的 identity / 凭据 / 审计规则不受影响。
+    """
+    root = newsroom_root_or_none()
+    if root is None:
+        return False
+    path = resolve_candidate(raw)
+    if path is None:
+        return False
+    try:
+        resolved = path.expanduser()
+        if not resolved.is_absolute():
+            resolved = root / raw
+        return _under(resolved, root)
+    except (OSError, ValueError):
+        return False
+
+
 def guard_direct_evolution_write(raw: str) -> str | None:
     if not is_protected_evolution_file(raw):
         return None
@@ -213,6 +236,15 @@ def allow_newsroom_unattended(
                 step_name="newsroom_scheduled_allow",
                 reason=f"daily pipeline may use {tool}",
             )
+        if tool in _DAILY_READ_TOOLS:
+            paths = _extract_paths(params)
+            if paths and all(is_newsroom_owned_path(p) for p in paths):
+                return NewsroomPolicyDecision(
+                    action=DecisionAction.ALLOW,
+                    step_name="newsroom_scheduled_allow",
+                    reason="daily pipeline may read newsroom files",
+                )
+            return None
         if tool in _DAILY_WRITE_TOOLS:
             paths = _extract_paths(params)
             if paths and all(_path_allowed_for_kind(p, "daily") for p in paths):
@@ -223,6 +255,15 @@ def allow_newsroom_unattended(
                 )
             return None
     if kind == "review":
+        if tool in _DAILY_READ_TOOLS:
+            paths = _extract_paths(params)
+            if paths and all(is_newsroom_owned_path(p) for p in paths):
+                return NewsroomPolicyDecision(
+                    action=DecisionAction.ALLOW,
+                    step_name="newsroom_scheduled_allow",
+                    reason="weekly review may read newsroom files",
+                )
+            return None
         if tool in _REVIEW_WRITE_TOOLS:
             paths = _extract_paths(params)
             if paths and all(_path_allowed_for_kind(p, "review") for p in paths):
