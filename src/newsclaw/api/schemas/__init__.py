@@ -6,7 +6,7 @@ AttachmentInfo / HealthCheckRequest / HealthResult / ModelInfo /
 SkillInfoResponse) that originally lived in the sibling ``schemas.py``
 module.
 
-The ``schemas/orgs_v2/`` subpackage (P9.7a-2b; D-3 LOCKED) hosts the
+(P9.7a-2b; D-3 LOCKED) hosts the
 v2 REST mint shapes consumed by ``api/routes/orgs_v2_runtime*.py``.
 
 P9.7gamma-3 NIT-A fold-in: the P9.7a-2b commit created this package
@@ -206,23 +206,6 @@ class ChatRequest(BaseModel):
     agent_profile_id: str | None = Field(
         None,
         description="Agent profile to use for this message.",
-    )
-    org_mode: bool | None = Field(
-        None,
-        description=(
-            "实验性第二运行时，面试主故事不讲。"
-            "为 true 且带 org_id 时走组织编排，而不是 ReAct 主聊天。"
-        ),
-    )
-    org_id: str | None = Field(
-        None,
-        description="Selected organization ID for this conversation.",
-        max_length=128,
-    )
-    org_node_id: str | None = Field(
-        None,
-        description="Selected organization node ID for this conversation.",
-        max_length=128,
     )
     client_id: str | None = Field(
         None,

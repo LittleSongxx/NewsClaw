@@ -193,19 +193,12 @@ def test_session_list_returns_conversation_ui_state(tmp_path):
     session.add_message("user", "hello")
     session.set_metadata("selected_endpoint", "deepseek")
     session.set_metadata("pinned", True)
-    session.set_metadata(
-        "ui_org_state",
-        {"orgMode": True, "orgId": "org_company", "orgNodeId": "pm"},
-    )
     app.state.session_manager = manager
 
     body = TestClient(app).get("/api/sessions").json()
 
     assert body["sessions"][0]["endpointId"] == "deepseek"
     assert body["sessions"][0]["pinned"] is True
-    assert body["sessions"][0]["orgMode"] is True
-    assert body["sessions"][0]["orgId"] == "org_company"
-    assert body["sessions"][0]["orgNodeId"] == "pm"
 
 
 def test_session_list_pages_catalog_without_hydrating_histories(tmp_path):
@@ -408,23 +401,13 @@ def test_update_session_ui_state_persists_conversation_selection(tmp_path, monke
         "/api/sessions/conv1/ui-state",
         json={
             "endpointId": "minimax",
-            "orgMode": True,
-            "orgId": "org_ops",
-            "orgNodeId": None,
         },
     )
 
     assert resp.status_code == 200
     assert session.get_metadata("selected_endpoint") == "minimax"
-    assert session.get_metadata("ui_org_state") == {
-        "orgMode": True,
-        "orgId": "org_ops",
-        "orgNodeId": "",
-    }
     summary = manager._catalog_store.get_entry(session.session_key).summary
     assert summary["endpoint_id"] == "minimax"
-    assert summary["org_mode"] is True
-    assert summary["org_id"] == "org_ops"
     assert sessions_file.read_bytes() == original_bytes
     assert sessions_file.stat().st_mtime_ns == original_mtime_ns
 
@@ -433,11 +416,6 @@ def test_update_session_ui_state_persists_conversation_selection(tmp_path, monke
     assert restored is not None
     assert restored.context.messages[0]["content"] == "hello"
     assert restored.get_metadata("selected_endpoint") == "minimax"
-    assert restored.get_metadata("ui_org_state") == {
-        "orgMode": True,
-        "orgId": "org_ops",
-        "orgNodeId": "",
-    }
 
 
 def test_create_session_dispatches_full_persistence_to_thread_pool(tmp_path, monkeypatch):
@@ -471,7 +449,7 @@ def test_update_session_ui_state_does_not_create_empty_session(tmp_path):
 
     resp = TestClient(app).post(
         "/api/sessions/missing/ui-state",
-        json={"endpointId": "minimax", "orgMode": False},
+        json={},
     )
 
     assert resp.status_code == 200
@@ -552,9 +530,6 @@ def test_create_session_persists_empty_conversation_as_list_item(tmp_path):
             "agentProfileId": "research",
             "endpointId": "deepseek",
             "endpointPolicy": "require",
-            "orgMode": True,
-            "orgId": "org_ops",
-            "orgNodeId": "pm",
         },
     )
 
@@ -573,9 +548,6 @@ def test_create_session_persists_empty_conversation_as_list_item(tmp_path):
     assert body["agentProfileId"] == "research"
     assert body["endpointId"] == "deepseek"
     assert body["endpointPolicy"] == "require"
-    assert body["orgMode"] is True
-    assert body["orgId"] == "org_ops"
-    assert body["orgNodeId"] == "pm"
 
     listed = client.get("/api/sessions").json()["sessions"]
     assert [s["id"] for s in listed] == ["draft1"]
@@ -587,11 +559,6 @@ def test_create_session_persists_empty_conversation_as_list_item(tmp_path):
     assert session.get_metadata("conversation_title") == "新对话"
     assert session.get_metadata("selected_endpoint") == "deepseek"
     assert session.get_metadata("endpoint_policy") == "require"
-    assert session.get_metadata("ui_org_state") == {
-        "orgMode": True,
-        "orgId": "org_ops",
-        "orgNodeId": "pm",
-    }
 
     reloaded = SessionManager(storage_path=tmp_path)
     persisted = reloaded.get_session("desktop", "draft1", "desktop_user", create_if_missing=False)

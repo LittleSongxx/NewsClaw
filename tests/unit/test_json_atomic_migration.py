@@ -182,7 +182,6 @@ def test_orchestrator_persist_uses_atomic_json_write(tmp_path, monkeypatch):
         ("newsclaw.workspace.backup", ["read_backup_settings", "write_backup_settings"]),
         ("newsclaw.hub.device", ["get_or_create_device_id"]),
         ("newsclaw.agent.identity", ["_load_hashes", "_save_hashes"]),
-        ("newsclaw.orgs.manager", ["load_state", "save_state"]),
     ],
 )
 def test_migrated_module_exports_target_functions(module_path, functions):

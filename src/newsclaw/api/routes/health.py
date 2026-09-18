@@ -597,39 +597,6 @@ async def last_link_diagnostic(request: Request):
     return getattr(request.app.state, "last_link_diagnostic", None) or {}
 
 
-@router.get("/api/diagnostics/legacy-shim-stats")
-async def deprecated_redirect_stats() -> dict[str, Any]:
-    """Read-only counter for legacy 308 shim hits.
-
-    Used to decide whether the
-    ``src/newsclaw/api/routes/_orgs_v2_deprecated_redirects.py`` shim can
-    be removed in the 2.1.0 minor. See
-    ``docs/follow-ups/skipped-items-roadmap.md`` §A.3 for the full
-    exit criterion. RCA cross-ref: ``_skip_items_rca_v11.md`` §3.
-
-    The counter is in-process and resets on restart — pair this
-    endpoint with log scraping for long-window evidence.
-    """
-    from newsclaw.api.routes._orgs_v2_deprecated_redirects import (
-        get_deprecated_redirect_stats,
-    )
-
-    return {
-        "hits": get_deprecated_redirect_stats(),
-        "removal_target": "2.1.0",
-        "sunset_header": "2026-12-01",
-        "advice": (
-            "Only POST /api/v2/orgs/templates/{id}/instantiate is "
-            "reachable today (the other 8 shim routes are shadowed by "
-            "the v2 runtime router registered first in server.py). "
-            "When hits for that one path stay 0 for >=30 days post the "
-            "Sunset marker, the shim file can be removed. See "
-            "docs/follow-ups/skipped-items-roadmap.md §A.3 and "
-            "_exploratory_test_report_v12.md §10.4."
-        ),
-    }
-
-
 @router.post("/api/diagnostics/clear-session-caches")
 async def clear_session_caches_endpoint(request: Request, conversation_id: str | None = None):
     """User-triggered, non-destructive cache clear for the active session.
@@ -1034,15 +1001,6 @@ async def health_loop(request: Request):
 
     llm_stats = LLMClient.get_concurrency_stats()
 
-    org_runtime = getattr(request.app.state, "org_runtime", None)
-    org_stats = {}
-    if org_runtime:
-        for oid, sem in org_runtime._org_semaphores.items():
-            active = org_runtime.max_concurrent_nodes_per_org - sem._value
-            org_stats[oid] = {
-                "active_nodes": active,
-                "max": org_runtime.max_concurrent_nodes_per_org,
-            }
 
     from newsclaw.core.engine_bridge import is_dual_loop
 
@@ -1050,5 +1008,4 @@ async def health_loop(request: Request):
         "dual_loop": is_dual_loop(),
         "api_loop_lag_ms": lag_ms,
         "llm_concurrent": llm_stats,
-        "org_concurrency": org_stats,
     }

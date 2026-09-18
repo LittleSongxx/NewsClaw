@@ -62,7 +62,6 @@ from .memory import MEMORY_TOOLS
 from .mode import MODE_TOOLS
 from .notebook import NOTEBOOK_TOOLS
 from .opencli import OPENCLI_TOOLS
-from .org_setup import ORG_SETUP_TOOLS
 from .persona import PERSONA_TOOLS
 from .plan import PLAN_TOOLS
 from .plugins import PLUGIN_TOOLS
@@ -154,7 +153,6 @@ __all__ = [
     "BASE_TOOLS",
     "HUB_TOOLS",
     "AGENT_TOOLS",
-    "ORG_SETUP_TOOLS",
     "AGENT_HUB_TOOLS",
     "AGENT_PACKAGE_TOOLS",
     "SKILL_STORE_TOOLS",

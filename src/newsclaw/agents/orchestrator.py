@@ -1298,24 +1298,10 @@ class AgentOrchestrator:
                 _profile = getattr(agent, "_agent_profile", None)
                 _profile_role = getattr(_profile, "role", "worker") if _profile else "worker"
                 _coord_enabled = bool(getattr(_cfg, "coordinator_mode_enabled", False))
-                # Two activation paths for coordinator mode:
-                #
-                # 1. User-managed worker→coordinator profiles (existing path):
-                #    require both ``profile.role == "coordinator"`` AND the
-                #    global ``coordinator_mode_enabled`` switch.
-                #
-                # 2. Organization coordinator nodes (always-on, decoupled from
-                #    the global flag): any org node that has direct
-                #    subordinates is structurally a coordinator — its job is
-                #    to delegate, not to execute. ``runtime._create_node_agent``
-                #    sets ``_is_org_coordinator`` based on
-                #    ``bool(org.get_children(node.id))``. We force the
-                #    coordinator prompt here so the editor-in-chief / CEO /
-                #    tech-lead style roots cannot silently bypass delegation
-                #    (regression that caused root nodes to "do the work
-                #    themselves" after force_tool was relaxed).
-                _is_org_coord = bool(getattr(agent, "_is_org_coordinator", False))
-                if (_profile_role == "coordinator" and _coord_enabled) or _is_org_coord:
+                # Coordinator mode: user-managed worker→coordinator profiles
+                # require both ``profile.role == "coordinator"`` and the global
+                # ``coordinator_mode_enabled`` switch.
+                if _profile_role == "coordinator" and _coord_enabled:
                     _mode = "coordinator"
             except Exception:
                 pass

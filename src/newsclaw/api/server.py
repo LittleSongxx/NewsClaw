@@ -39,7 +39,6 @@ from newsclaw.account.status_store import AccountStatusStore
 from .auth import WebAccessConfig, create_auth_middleware
 from .middleware_setup_gate import create_setup_gate_middleware
 from .routes import (
-    _orgs_v2_deprecated_redirects,
     account_oidc,
     agents,
     bug_report,
@@ -63,9 +62,6 @@ from .routes import (
     newsclaw_internal,
     newsroom,
     optional_features,
-    orgs_v2,
-    orgs_v2_runtime,
-    orgs_v2_stream,
     pending_approvals,
     qqbot_onboard,
     scheduler,
@@ -509,50 +505,6 @@ def _mount_web_frontend(app: FastAPI) -> None:
     app.mount("/web", WebStaticFiles(directory=str(web_dist), html=True), name="web-frontend")
 
 
-def _build_on_stop_org_cancel_inflight_handler(
-    org_command_service: Any,
-) -> Any:
-    """Mint the ``on_stop_org`` callback used by ``OrgRuntime`` lifecycle.
-
-    Sprint-5 P0-2 wired ``POST /api/v2/orgs/{id}/stop`` to drain in-flight
-    commands through :meth:`OrgCommandService.cancel_all_for_org`. Sprint-6
-    P0-2 added the ``cancelled_by`` source that survives onto
-    ``events.jsonl``. Sprint-7 P0-A fixes the regression caught by v18
-    (audit ``_orgs_business_capability_audit_v7.md`` §1.2 + §5 finding 5):
-    the Sprint-6 wiring interpolated the lifecycle's inner reason kwarg
-    (``"stop"`` / ``"restart"`` / ...) into a compound
-    ``stop_org:<reason>`` source value, so the on-disk
-    ``cancelled_by="stop_org:stop"`` no longer matched the Sprint-6
-    changelog's contracted single-value taxonomy
-    {``user_cancel``, ``stop_org``, ``watchdog``}.
-
-    The handler now passes the literal ``"stop_org"`` to
-    ``cancel_all_for_org`` regardless of the lifecycle's inner reason --
-    the inner reason ("stop" vs "restart") is preserved on the separate
-    ``org_stopped`` lifecycle event payload (see
-    :meth:`OrgLifecycleManager.stop_org`), so dropping the suffix here
-    loses no information for downstream readers.
-
-    Extracted to a module-level builder so a regression test can pin
-    the literal source string without standing up the full
-    :func:`create_app` lifespan.
-    """
-
-    async def _on_stop_org_cancel_inflight(org_id: str, reason: str) -> None:  # noqa: ARG001 -- protocol shape
-        try:
-            cancelled = await org_command_service.cancel_all_for_org(org_id, reason="stop_org")
-            if cancelled:
-                logger.info(
-                    "stop_org cancelled %d in-flight orgs_v2 command(s) (org=%s)",
-                    len(cancelled),
-                    org_id,
-                )
-        except Exception:
-            logger.debug("stop_org cancel-all failed", exc_info=True)
-
-    return _on_stop_org_cancel_inflight
-
-
 def _has_web_frontend_mount(app: FastAPI) -> bool:
     return any(getattr(route, "name", None) == "web-frontend" for route in app.routes)
 
@@ -889,288 +841,6 @@ def create_app(
     if agent is not None:
         _attach_agent_to_app(app, agent)
 
-    # Initialize OrgManager & OrgRuntime
-    from newsclaw.orgs._default_agent_builder import DefaultAgentBuilder
-    from newsclaw.orgs._runtime_agent_pipeline import (
-        AgentCache,
-        AgentPipelineExecutor,
-        ProfileResolver,
-    )
-    from newsclaw.orgs._runtime_templates import ensure_builtin_templates
-    from newsclaw.orgs.manager import OrgManager
-    from newsclaw.orgs.runtime import OrgRuntime, _InMemoryEventBus
-    from newsclaw.orgs.store import set_default_org_manager
-
-    org_manager = OrgManager(data_dir)
-    ensure_builtin_templates(data_dir / "org_templates")
-    app.state.org_manager = org_manager
-    # Sprint 13 H2 RC-1 wiring closure (v29 CRUD-1/2 残留): publish the
-    # FastAPI-owned OrgManager as the process-wide default so the
-    # JsonOrgStore shim returned by ``get_default_store()`` and the
-    # spec CRUD's ``_resolve_manager_for_writes()`` resolve to the
-    # same instance (and the same _cache) as ``app.state.org_manager``.
-    # Without this call, the spec router's lazy fallback minted a
-    # second OrgManager rooted at the same disk dir, splitting the
-    # in-memory cache and leaving mint GET reads stale right after a
-    # spec PATCH / DELETE -- the exact symptom v29 CRUD-1 / CRUD-2 hit.
-    set_default_org_manager(org_manager)
-    # H3 fix (audit ``_orgs_business_capability_audit_v1.md`` §3.2 P0):
-    # build the AgentPipelineExecutor BEFORE OrgRuntime and inject its
-    # ``activate_and_run`` as the ``agent_dispatch`` callback. Pre-fix
-    # ``CommandDispatchManager._agent_dispatch`` was ``None`` for every
-    # process, so every user command landed only on the tracker and the
-    # in-memory event-bus -- no agent ever ran. We share a single
-    # ``_InMemoryEventBus`` between the executor and the runtime so the
-    # executor's ``agent_run_started`` / ``agent_run_failed`` /
-    # ``llm_usage`` events flow through the same H4 persist + stream
-    # bridges OrgRuntime installs in ``__init__``.
-    #
-    # Sprint-2 P0-1 (audit ``_orgs_business_capability_audit_v2.md``
-    # §5 / §8): the v13 run found H1-H4 wired correctly but every
-    # orgs_v2 command bouncing off ``_NullAgentBuilder`` (60+ commands,
-    # 0 LLM calls). We now inject :class:`DefaultAgentBuilder` whose
-    # node agents reuse the desktop ``Agent``'s ``Brain`` for a real
-    # single-shot LLM call. The brain is read lazily via
-    # ``app.state.agent`` because the lifespan composes the runtime
-    # *before* ``main.py`` finishes building the desktop Agent; the
-    # closure picks the brain up on first ``build()`` call. If the
-    # desktop Agent is still missing (early cold-boot races, headless
-    # tests) ``DefaultAgentBuilder`` raises ``BuilderUnavailable`` and
-    # the executor turns that into the v1-parity ``agent_run_failed
-    # reason=agent_build_failed`` event -- identical observable to the
-    # legacy ``_NullAgentBuilder``.
-    org_event_bus = _InMemoryEventBus()
-
-    def _orgs_v2_brain_provider() -> Any:
-        candidate = getattr(app.state, "agent", None)
-        if candidate is None:
-            return None
-        return getattr(candidate, "brain", None)
-
-    # Sprint-4 P0-1 (audit ``_orgs_business_capability_audit_v4.md``
-    # §6.2): wire the agent executor's ``dispatch_subtask`` back into
-    # ``DefaultAgentBuilder`` so per-node agents can recurse when the
-    # LLM emits ``<dispatch target="...">...</dispatch>`` blocks. The
-    # callback closure captures ``agent_executor`` *after* it is
-    # defined below; ``DefaultAgentBuilder.build`` is lazy (only fires
-    # on first node activation) so the forward reference resolves by
-    # the time anyone actually calls it.
-    #
-    # The parent ``command_id`` travels through a ContextVar
-    # (``current_command_id_var``) that the executor sets at the start
-    # of ``activate_and_run``, so the subtask callback can attribute
-    # the child run to the same id without threading it through
-    # ``agent.run(content)``. Children share the parent's command id
-    # by design: outcomes / cancellation / status are tracked at the
-    # user-command granularity, not per-node.
-    from newsclaw.orgs._runtime_agent_pipeline import (
-        current_command_id_var,
-    )
-
-    profile_resolver = ProfileResolver(lookup=org_manager)
-
-    async def _dispatch_subtask_cb(
-        *,
-        org_id: str,
-        parent_node_id: str,
-        child_node_id: str,
-        child_content: str,
-        assignment_id: str | None = None,
-        output_slot: str = "default",
-        upstream_context: Any = None,
-        cancel_event: asyncio.Event | None = None,
-    ) -> Any:
-        return await agent_executor.dispatch_subtask(
-            org_id=org_id,
-            parent_node_id=parent_node_id,
-            parent_command_id=current_command_id_var.get("") or None,
-            child_node_id=child_node_id,
-            child_content=child_content,
-            assignment_id=assignment_id,
-            output_slot=output_slot,
-            upstream_context=upstream_context,
-            cancel_event=cancel_event,
-        )
-
-    # Sprint-5 P0-1 (audit ``_orgs_business_capability_audit_v5.md`` §5.2
-    # #1 + §7.1): the node agent's tool-use round emits
-    # ``node_tool_called`` / ``node_tool_completed`` / ``node_tool_failed``
-    # events. We hand the builder a thin emit closure rather than the
-    # raw bus reference so future bus swaps (Sprint-6+ WebSocketEventBus)
-    # do not need a constructor signature change.
-    async def _node_tool_event_emit(event_name: str, payload: dict[str, Any]) -> None:
-        try:
-            await org_event_bus.emit(event_name, payload)
-        except Exception:
-            logger.debug("orgs_v2 node tool event emit failed", exc_info=True)
-
-    # Sprint-6 P0-1 (RCA ``_v17_p1_rca.md`` §1.5): the node agent's
-    # tool execution now routes through a :class:`NodeToolHost`
-    # whose handler registry is the *populated* one from the desktop
-    # Agent (filesystem / memory / web_search / 20 system handlers +
-    # every plugin-registered tool). Without this v17 saw 0
-    # ``node_tool_completed`` events because the global
-    # ``default_handler_registry`` is empty (Sprint-5 misread of the
-    # v1 wiring; see RCA §1.2.3). The provider closure resolves the
-    # host lazily because both ``app.state.agent`` and the runtime
-    # are populated by ``main.py`` after this lifespan callback
-    # returns -- mirrors the Sprint-2 ``brain_provider`` rationale.
-    def _orgs_v2_node_tool_host_provider() -> Any:
-        rt = getattr(app.state, "org_runtime", None)
-        if rt is None:
-            return None
-        get_host = getattr(rt, "get_node_tool_host", None)
-        if not callable(get_host):
-            return None
-        return get_host()
-
-    agent_cache = AgentCache(
-        builder=DefaultAgentBuilder(
-            brain_provider=_orgs_v2_brain_provider,
-            dispatch_callback=_dispatch_subtask_cb,
-            event_emitter=_node_tool_event_emit,
-            tool_host_provider=_orgs_v2_node_tool_host_provider,
-        )
-    )
-    app.state.org_agent_cache = agent_cache
-
-    # Sprint-6 P0-2 (RCA ``_v17_p1_rca.md`` §2.5): resolve the
-    # cancel source the outcome cache stashed
-    # (``stop_org`` / ``watchdog``) so the ``except CancelledError``
-    # branch in :meth:`AgentPipelineExecutor.activate_and_run` can
-    # stamp it on the ``agent_run_cancelled`` events.jsonl payload.
-    # The lookup is lazy because :class:`OrgCommandService` is
-    # constructed *after* the executor here; the closure picks it
-    # up on first cancel.
-    def _orgs_v2_cancel_source_provider(command_id: str) -> str | None:
-        svc = getattr(app.state, "org_command_service", None)
-        if svc is None:
-            return None
-        getter = getattr(svc, "get_cancel_source", None)
-        if not callable(getter):
-            return None
-        try:
-            return getter(command_id)
-        except Exception:  # noqa: BLE001 -- best-effort observability
-            return None
-
-    agent_executor = AgentPipelineExecutor(
-        cache=agent_cache,
-        resolver=profile_resolver,
-        lookup=org_manager,
-        event_bus=org_event_bus,
-        cancel_source_provider=_orgs_v2_cancel_source_provider,
-    )
-
-    async def _agent_dispatch(
-        org_id: str,
-        target_node_id: str,
-        command_id: str,
-        content: str,
-    ) -> dict[str, Any]:
-        return await agent_executor.activate_and_run(
-            org_id=org_id,
-            node_id=target_node_id,
-            content=content,
-            command_id=command_id,
-        )
-
-    # P-RC-9 P9.6 made ``OrgRuntime.__init__`` keyword-only with required
-    # ``lookup`` / ``persistence`` / ``lifecycle_emitter`` Protocols.  The
-    # v2 ``OrgManager`` itself implements ``OrgLookupProtocol`` and owns
-    # the default ``_FilesystemOrgPersistence`` + ``_NoopOrgLifecycleEmitter``
-    # siblings, so the composition root re-uses them.  See
-    # ``tests/api/test_server_app_wiring.py`` for the regression guard.
-    org_runtime = OrgRuntime(
-        lookup=org_manager,
-        persistence=org_manager._persistence,
-        lifecycle_emitter=org_manager._lifecycle,
-        event_bus=org_event_bus,
-        agent_dispatch=_agent_dispatch,
-    )
-    app.state.org_runtime = org_runtime
-    app.state.org_agent_executor = agent_executor
-    from newsclaw.orgs.command_service import OrgCommandService, set_command_service
-
-    # P-RC-9 P9.4 made ``OrgCommandService.__init__`` keyword-only after
-    # the leading ``runtime`` argument; pass session_manager by name.
-    #
-    # Sprint-2 P0-2 (audit ``_orgs_business_capability_audit_v2.md`` §5
-    # F1-new): ``GET /api/v2/orgs/{id}/commands/{cid}`` was returning
-    # ``phase=done, error=null`` while ``events.jsonl`` showed
-    # ``agent_run_failed reason=agent_build_failed``. The status was
-    # written by ``_run_minimal``'s success branch (because
-    # ``runtime.send_command`` returns "submitted" before the agent
-    # dispatch callback observes failure). We now share the same
-    # ``_InMemoryEventBus`` with the service so it can subscribe to
-    # ``agent_run_*`` events keyed by command_id and reflect the real
-    # outcome back through ``get_status`` -- UI shows "failed" when the
-    # node actually failed.
-    # Sprint-9 supervisor takeover: inject the live executor +
-    # per-org sqlite checkpointer factory so submit() can build a
-    # :class:`Supervisor` per command via
-    # :mod:`newsclaw.runtime.supervisor_factory`.
-    from newsclaw.runtime.supervisor_factory import get_or_create_checkpointer
-
-    def _executor_provider() -> Any:
-        return getattr(app.state, "org_agent_executor", None)
-
-    def _checkpointer_provider(org_id: str) -> Any:
-        return get_or_create_checkpointer(org_id)
-
-    org_command_service = OrgCommandService(
-        org_runtime,
-        session_manager=session_manager,
-        event_bus=org_event_bus,
-        executor_provider=_executor_provider,
-        checkpointer_provider=_checkpointer_provider,
-    )
-    set_command_service(org_command_service)
-    app.state.org_command_service = org_command_service
-
-    # B1 (audit data-contract gap): wire the per-org ProjectStore /
-    # OrgBlackboard / NodeScheduler registries. Pre-fix these were never
-    # attached to app.state, so GET /{id}/{projects,memory,tasks,...}
-    # all 503'd ("subsystem_not_wired") and the kanban / blackboard /
-    # project UI panels were permanently empty. The registries resolve
-    # the real per-org backend from the request path (see
-    # ``orgs_v2_runtime._get_project_store`` / ``_get_blackboard``), so
-    # org isolation is preserved. ``/_p97/health`` reports all_wired once
-    # these (plus the runtime status/node-status methods above) exist.
-    from newsclaw.orgs.scoped_subsystems import (
-        OrgScopedBlackboard,
-        OrgScopedProjectStore,
-        OrgScopedScheduler,
-    )
-
-    app.state.project_store = OrgScopedProjectStore(org_manager)
-    app.state.org_blackboard = OrgScopedBlackboard(org_manager)
-    app.state.node_scheduler = OrgScopedScheduler(org_manager)
-
-    # B4/B5/B6: hand the runtime the per-org project/blackboard registries
-    # so its contract-bridge event tap can persist delegated subtasks as
-    # kanban tasks and node deliverables as blackboard facts/resources.
-    org_runtime.set_contract_sinks(
-        project_store=app.state.project_store,
-        blackboard=app.state.org_blackboard,
-    )
-
-    # Sprint-5 P0-2 (audit v5 §5.2 #1 + v15 §6.2.4 B6.4): wire the
-    # lifecycle ``on_stop_org`` callback so ``POST /api/v2/orgs/{id}/stop``
-    # cancels every per-org in-flight task instead of just flipping
-    # the spec to STOPPED while the LLM keeps burning tokens.
-    org_runtime.set_on_stop_org(_build_on_stop_org_cancel_inflight_handler(org_command_service))
-
-    # Sprint-6 P0-1 (RCA ``_v17_p1_rca.md`` §1.5): mint a
-    # :class:`NodeToolHost` from the desktop Agent if one is already
-    # wired. ``main.py`` may complete Agent initialisation after this
-    # lifespan runs, in which case ``update_agent`` /
-    # ``update_runtime_refs`` re-runs the bind below. The provider
-    # closure handed to :class:`DefaultAgentBuilder` reads the host
-    # lazily from ``app.state.org_runtime``, so a late bind here is
-    # observed on the next node activation.
-    _refresh_node_tool_host(app)
-
     # Mount routes
     app.include_router(auth_routes.router, tags=["认证"])
     app.include_router(account_oidc.capability_router)
@@ -1215,34 +885,6 @@ def create_app(
     app.include_router(ws_routes.router, tags=["WebSocket"])
     app.include_router(hub.router, tags=["Hub"])
     app.include_router(identity.router, tags=["身份"])
-    # v2 organisation facade — gated at request time by
-    # ``settings.runtime_v2_enabled`` (returns 404 when off). Safe to
-    # always-mount because the route bodies refuse to serve when the
-    # flag is false.
-    app.include_router(orgs_v2.router)
-    # P-RC-2 commit P2.3: SSE stream endpoint for v2 orgs
-    # (``GET /api/v2/orgs/{id}/stream``). Same flag-gating story as
-    # ``orgs_v2.router`` -- always-mount, refuse-to-serve when
-    # ``runtime_v2_enabled`` is False.
-    app.include_router(orgs_v2_stream.router)
-    # P-RC-9 P9.7a-2c: v2 runtime router skeleton (`/api/v2/orgs`).
-    # Registered BEFORE the 308 redirect shim so the future P9.7
-    # mint endpoints (and the current `/_p97/health` probe) take
-    # precedence over the redirect for any path they claim.
-    app.include_router(orgs_v2_runtime.router)
-    # P-RC-9 P9.7a-2a: 308 Permanent Redirect shim for the
-    # original P-RC-3 Group A paths under ``/api/v2/orgs[/...]``
-    # (frontend rewiring lands in P9.8). See DECISIONS.md D-1
-    # (R3 LOCKED). Registered LAST so future P9.7 mint endpoints
-    # at the same ``/api/v2/orgs`` prefix take precedence over
-    # the redirect for routes the mint actually claims.
-    #
-    # ROADMAP — Legacy shim removal target: NewsClaw 2.1.0 minor.
-    # Deprecation headers were applied in Fix-G5 (RCA v11 §3). The
-    # shim is tracked by ``docs/follow-ups/skipped-items-roadmap.md``
-    # §A.3; monitor ``GET /api/diagnostics/legacy-shim-stats`` to
-    # confirm the 30-day-zero-hits exit criterion before removal.
-    app.include_router(_orgs_v2_deprecated_redirects.router)
     # P-RC-2 commit P2.8: GET /api/build-info for the frontend
     # stale-bundle banner. Always-mounted, unauthenticated.
     app.include_router(build_info_routes.router)
@@ -1516,104 +1158,8 @@ def create_app(
             logger.debug("[Shutdown] Inbox service stop skipped: %s", e)
 
     @on_startup
-    async def _startup_org_runtime():
-        loop = asyncio.get_running_loop()
-        loop.slow_callback_duration = 0.5
-        # v22 RCA RC-7: ``OrgRuntime`` is a composed lifecycle component
-        # whose surface is ``start_org`` / ``stop_org`` / ``pause_org`` /
-        # ``resume_org`` (see ``orgs/runtime.py``). The single
-        # ``OrgRuntime.start()`` entrypoint was retired when org
-        # lifecycle was decomposed; calling it here only produced a
-        # warning on every boot. Reconcile / NodeToolHost / SSE bus
-        # wiring already happens through dedicated component init, so
-        # nothing additional needs to fire at startup.
-        # v22 P1 (audit v10 §19 / cmd_..._f092f4 slot leak): start
-        # the ``OrgCommandService`` reconcile loop so a stale
-        # ``_running_by_root`` slot eventually drops even if the
-        # ``_schedule_run.run`` ``finally`` block was skipped. The
-        # hard ceiling wrapper inside ``_run_supervisor_with_hard_ceiling``
-        # is the first line of defence; reconcile is the second.
-        # Best-effort: a startup failure here must not crash the API.
-        svc = getattr(app.state, "org_command_service", None)
-        if svc is not None:
-            start_loop = getattr(svc, "start_reconcile_loop", None)
-            if callable(start_loop):
-                try:
-                    await start_loop()
-                except Exception as exc:  # noqa: BLE001 -- best-effort
-                    logger.warning(
-                        "[Startup] OrgCommandService.start_reconcile_loop failed: %s",
-                        exc,
-                    )
-        # Sprint-9 supervisor HTTP takeover: the legacy
-        # ``OrgCommandService.start_watchdog()`` wall-clock loop is
-        # gone. Stall detection is now LLM-evaluated by the
-        # supervisor's :class:`StallDetector` on
-        # :class:`ProgressLedger` signals, with the hard
-        # ``max_turns`` cap as the only wall-style guard. The new
-        # reconcile loop above only reconciles bookkeeping; it does
-        # not perform any wall-clock termination.
-
+    async def _startup_llm_health_check():
         _schedule_startup_llm_health_check(app.state)
-
-    @on_shutdown
-    async def _shutdown_org_runtime():
-        # v22 P1: stop the reconcile loop FIRST so it cannot fire
-        # against a half-torn-down runtime. Best-effort; a shutdown
-        # failure here only logs.
-        #
-        # Sprint 14 / v31 Phase A hardening: every unbounded ``await``
-        # in this lifespan handler is now wrapped in a per-stage
-        # ``settings.lifespan_stage_timeout_s`` (default 8s) so a hung
-        # checkpointer / runtime.shutdown cannot block subsequent stages
-        # the way Phase A reproduced 6/6 in v23~v30.
-        try:
-            from newsclaw.config import settings as _settings
-
-            stage_timeout = float(getattr(_settings, "lifespan_stage_timeout_s", 8) or 8)
-        except Exception:
-            stage_timeout = 8.0
-
-        svc = getattr(app.state, "org_command_service", None)
-        if svc is not None:
-            stop_loop = getattr(svc, "stop_reconcile_loop", None)
-            if callable(stop_loop):
-                try:
-                    await stop_loop(timeout=2.0)
-                except Exception as exc:  # noqa: BLE001 -- best-effort
-                    logger.debug("OrgCommandService.stop_reconcile_loop error: %s", exc)
-        # Sprint-9 supervisor takeover: close per-org sqlite
-        # checkpointers so the file handles are released cleanly. The
-        # legacy ``stop_watchdog()`` call is gone with the watchdog
-        # loop itself.
-        try:
-            from newsclaw.runtime.supervisor_factory import (
-                aclose_all_checkpointers,
-            )
-
-            await asyncio.wait_for(aclose_all_checkpointers(), timeout=stage_timeout)
-        except TimeoutError:
-            logger.warning(
-                "[Shutdown] aclose_all_checkpointers exceeded %.1fs, abandoning",
-                stage_timeout,
-            )
-        except Exception:
-            logger.debug("Supervisor checkpointer aclose error", exc_info=True)
-        if hasattr(app.state, "org_runtime") and app.state.org_runtime:
-            try:
-                from newsclaw.core.engine_bridge import to_engine
-
-                await asyncio.wait_for(
-                    to_engine(app.state.org_runtime.shutdown()),
-                    timeout=stage_timeout,
-                )
-            except TimeoutError:
-                logger.warning(
-                    "[Shutdown] OrgRuntime.shutdown exceeded %.1fs, abandoning",
-                    stage_timeout,
-                )
-            except Exception as e:
-                logger.warning(f"OrgRuntime shutdown error: {e}")
 
     @on_shutdown
     async def _shutdown_startup_llm_health_check():
@@ -1709,38 +1255,6 @@ def create_app(
             logger.warning("[Shutdown] AsyncBatchAuditWriter stop error: %s", e)
 
     # ------------------------------------------------------------
-    # P-RC-3 T4: idle StreamBus cleanup (per-org SSE registry).
-    # ------------------------------------------------------------
-    app.state.stream_cleanup_task = None
-
-    @on_startup
-    async def _start_stream_cleanup() -> None:
-        try:
-            from newsclaw.runtime.stream_registry import (
-                cleanup_idle_buses_periodically,
-            )
-
-            app.state.stream_cleanup_task = asyncio.create_task(
-                cleanup_idle_buses_periodically(),
-                name="newsclaw-stream-registry-cleanup",
-            )
-            logger.info("[Startup] StreamRegistry cleanup task started")
-        except Exception as e:  # noqa: BLE001 -- never block startup
-            logger.warning("[Startup] StreamRegistry cleanup not started: %s", e)
-
-    @on_shutdown
-    async def _stop_stream_cleanup() -> None:
-        task = getattr(app.state, "stream_cleanup_task", None)
-        if task is None:
-            return
-        task.cancel()
-        try:
-            await asyncio.wait_for(task, timeout=2.0)
-        except (asyncio.CancelledError, TimeoutError):
-            pass
-        except Exception as e:  # noqa: BLE001
-            logger.warning("[Shutdown] StreamRegistry cleanup stop error: %s", e)
-
     # ------------------------------------------------------------
     # Fix-5 / exploratory v10 issue #5b: frontend bundle drift warn.
     # ------------------------------------------------------------
@@ -2116,45 +1630,9 @@ async def start_api_server(
     return proxy_task
 
 
-def _refresh_node_tool_host(app: FastAPI) -> None:
-    """(Re)bind a :class:`NodeToolHost` on the org runtime if possible.
-
-    Sprint-6 P0-1 (RCA ``_v17_p1_rca.md`` §1.5): the host wraps the
-    desktop Agent's populated ``handler_registry`` so orgs_v2 node
-    tools dispatch to real handlers instead of the empty global
-    registry the Sprint-5 commit aimed at. This helper is idempotent:
-    multiple lifespan paths (``create_app`` initial bind, ``update_agent``
-    late bind, ``update_runtime_refs`` IM-gateway late bind) all
-    converge here, and each rebind disposes the previous host so the
-    source-agent reference is released for a clean rebuild on hot
-    reload.
-    """
-
-    agent = getattr(app.state, "agent", None)
-    rt = getattr(app.state, "org_runtime", None)
-    if rt is None:
-        return
-    setter = getattr(rt, "set_node_tool_host", None)
-    if not callable(setter):
-        return
-    if agent is None:
-        setter(None)
-        return
-    try:
-        from newsclaw.orgs._runtime_agent_host import build_node_tool_host
-    except Exception:  # noqa: BLE001 -- defensive against import-cycle
-        logger.debug("Could not import build_node_tool_host; skipping bind", exc_info=True)
-        return
-    host = build_node_tool_host(agent=agent)
-    setter(host)
-
-
 def update_agent(app: FastAPI, agent: Any) -> None:
     """Update the agent reference in the running app (e.g. after initialization)."""
     _attach_agent_to_app(app, agent)
-    # Sprint-6 P0-1: rebind the orgs_v2 NodeToolHost to the new agent
-    # so any subsequent node activation sees the populated registry.
-    _refresh_node_tool_host(app)
 
 
 def update_runtime_refs(
@@ -2179,15 +1657,8 @@ def update_runtime_refs(
         return False
     if agent is not None:
         _attach_agent_to_app(app, agent)
-        # Sprint-6 P0-1: rebind the orgs_v2 NodeToolHost so the next
-        # node activation picks up the freshly-installed agent's
-        # populated handler registry instead of the empty global.
-        _refresh_node_tool_host(app)
     if session_manager is not None:
         app.state.session_manager = session_manager
-        org_command_service = getattr(app.state, "org_command_service", None)
-        if org_command_service is not None and hasattr(org_command_service, "_session_manager"):
-            org_command_service._session_manager = session_manager
     if gateway is not None:
         app.state.gateway = gateway
     if orchestrator is not None:

@@ -179,52 +179,6 @@ def _profile_references(request: Request, profile_id: str) -> list[dict[str, str
             }
         )
 
-    manager = getattr(request.app.state, "org_manager", None)
-    can_scan_orgs = manager is not None and (
-        hasattr(manager, "list_organizations_strict") or hasattr(manager, "list_orgs")
-    )
-    if not can_scan_orgs:
-        if references:
-            return references
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "error": "profile_reference_check_unavailable",
-                "message": "Organization references cannot be verified while the manager is unavailable",
-            },
-        )
-    try:
-        if hasattr(manager, "list_organizations_strict"):
-            organizations = [
-                (str(getattr(org, "id", "")), org) for org in manager.list_organizations_strict()
-            ]
-        else:
-            organizations = [
-                (
-                    str(summary.get("id", "")),
-                    manager.get(str(summary.get("id", ""))),
-                )
-                for summary in manager.list_orgs(include_archived=True)
-            ]
-        for org_id, org in organizations:
-            for node in getattr(org, "nodes", []) if org is not None else []:
-                if getattr(node, "agent_profile_id", None) == profile_id:
-                    references.append(
-                        {
-                            "kind": "org_node",
-                            "id": f"{org_id}:{getattr(node, 'id', '')}",
-                            "name": str(getattr(node, "name", "") or getattr(node, "id", "")),
-                        }
-                    )
-    except Exception as exc:
-        logger.exception("[Agents API] Failed to inspect organization profile references")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "profile_reference_check_failed",
-                "message": "Could not verify whether the profile is still in use",
-            },
-        ) from exc
     return references
 
 
@@ -772,7 +726,7 @@ async def delete_category(category_id: str):
 @router.get("/api/agents/tool-categories")
 async def list_agent_tool_categories():
     """Return built-in capability categories available to Agent profiles."""
-    from newsclaw.orgs.tool_categories import list_agent_system_tool_categories
+    from newsclaw.agents.tool_categories import list_agent_system_tool_categories
 
     return {"categories": list_agent_system_tool_categories()}
 

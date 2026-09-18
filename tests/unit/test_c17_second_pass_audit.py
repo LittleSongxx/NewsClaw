@@ -34,7 +34,6 @@ from fastapi.testclient import TestClient
 from newsclaw.api.routes import health as health_module
 from newsclaw.core.policy_v2 import audit_chain as ac
 from newsclaw.core.policy_v2.param_mutation_audit import _sanitize_for_chain
-from newsclaw.orgs._runtime_event_store import OrgEventStore
 
 # ---------------------------------------------------------------------------
 # 1. readyz audit path bug
@@ -205,59 +204,6 @@ class TestHugeLineTailReload:
 
 # ---------------------------------------------------------------------------
 # 3. OrgEventStore append/query concurrency
-# ---------------------------------------------------------------------------
-
-
-class TestOrgEventStoreLockingFix:
-    def test_query_returns_complete_events_during_concurrent_append(self, tmp_path: Path) -> None:
-        store = OrgEventStore("org-test", jsonl_path=tmp_path / "events.jsonl")
-
-        errors: list[str] = []
-        stop = threading.Event()
-
-        def writer(i: int) -> None:
-            for k in range(50):
-                if stop.is_set():
-                    break
-                store.append({
-                    "event_type": "test",
-                    "actor": f"actor-{i}",
-                    "k": k,
-                    "i": i,
-                    "payload": "x" * 200,
-                })
-
-        def reader() -> None:
-            while not stop.is_set():
-                try:
-                    events = store.query(limit=500)
-                    if any(e.get("event_type") != "test" for e in events):
-                        errors.append("query returned an incomplete event")
-                except Exception as exc:  # noqa: BLE001
-                    errors.append(f"unexpected: {type(exc).__name__}: {exc}")
-                time.sleep(0.001)
-
-        threads = [threading.Thread(target=writer, args=(i,)) for i in range(4)]
-        rthread = threading.Thread(target=reader)
-        rthread.start()
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        stop.set()
-        rthread.join(timeout=2.0)
-
-        assert not errors, f"observed corrupt reads: {errors[:3]}"
-        assert not rthread.is_alive()
-        events = store.query(limit=500)
-        assert len(events) == 200
-        assert {(e["i"], e["k"]) for e in events} == {
-            (i, k) for i in range(4) for k in range(50)
-        }
-
-
-# ---------------------------------------------------------------------------
-# 4. _sanitize_for_chain set/frozenset deterministic ordering
 # ---------------------------------------------------------------------------
 
 

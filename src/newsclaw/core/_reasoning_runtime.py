@@ -3929,8 +3929,6 @@ class ReasoningEngine:
                             tool_name
                             in (
                                 "deliver_artifacts",
-                                "org_submit_deliverable",
-                                "org_accept_deliverable",
                             )
                             and result_text
                         ):
@@ -5987,8 +5985,6 @@ class ReasoningEngine:
                 is_summary_round = (
                     (last_user_request or "").lstrip().startswith("[用户指令最终汇总]")
                 )
-                # 同时拼装组织级 verify 上下文（B4 由 ValidationContext 消费）
-                org_validation_kwargs = self._build_org_validation_kwargs()
                 # 把子节点已落盘的文件合成回执并入 delivery_receipts，
                 # 避免 coordinator 节点没显式调 deliver_artifacts 时
                 # trust-but-verify 看不到任何"已交付证据"而 INSUFFICIENT。
@@ -6006,7 +6002,6 @@ class ReasoningEngine:
                     tool_results=all_tool_results,
                     conversation_id=conversation_id,
                     bypass=supervisor_intervened or is_summary_round,
-                    **org_validation_kwargs,
                 )
 
                 if is_completed:
@@ -6100,7 +6095,7 @@ class ReasoningEngine:
                 else:
                     # 按"用户是否明确要求附件交付"分两套提示：
                     # - expects_artifact=True：硬约束，给出具体工具签名 + 路径样例，
-                    #   逼 LLM 真的走 write_file / org_submit_deliverable(file_attachments=...)
+                    #   逼 LLM 真的走 write_file 落盘
                     #   而不是再来一段纯文字"我已经做好了"。
                     # - expects_artifact=False：温和复核提示，避免对纯对话场景喷
                     #   "你必须交付文件"的噪音误导。
@@ -6127,13 +6122,7 @@ class ReasoningEngine:
                             "不要再仅靠文字声明完成：\n"
                             '1) `write_file({"path": "<workspace>/deliverables/<title>.md", '
                             '"content": "<完整内容>"})` —— 把成果写到工作区；\n'
-                            "2) 如果你处在协作组织内、需要交给上级，调用 "
-                            '`org_submit_deliverable({"to_node": "<上级>", '
-                            '"deliverable": "<摘要>", "file_attachments": '
-                            '[{"filename": "<title>.md", "file_path": '
-                            '"<workspace>/deliverables/<title>.md"}]})` —— '
-                            "带附件提交并触发上级验收；\n"
-                            "3) 若是图片/视频类成果，先用对应生成工具产出文件，"
+                            "2) 若是图片/视频类成果，先用对应生成工具产出文件，"
                             "再用上面任一方式落盘。\n"
                             "记住：文字描述 ≠ 已交付。"
                         )
@@ -7251,55 +7240,6 @@ class ReasoningEngine:
             }
             return "tool_result" not in part_types
         return False
-
-    def _build_org_validation_kwargs(self) -> dict[str, object]:
-        """从 agent._org_context 拼装组织视角的 verify 上下文 (B4)。
-
-        - 严格分支：runtime.get_accepted_child_count(org_id, chain_id)
-        - 弱信号兜底：runtime.has_recent_accepted_signal(org_id, node_id)
-
-        非组织 agent / 拿不到上下文时返回空 dict，verify 行为与旧版完全一致。
-        """
-        try:
-            agent = getattr(self._tool_executor, "_agent_ref", None)
-            if agent is None:
-                return {}
-            ctx = getattr(agent, "_org_context", None)
-            if not isinstance(ctx, dict):
-                return {}
-            org_id = ctx.get("current_org_id") or ""
-            node_id = ctx.get("current_node_id") or ""
-            chain_id = ctx.get("current_chain_id") or ""
-            if not org_id or not node_id:
-                return {}
-
-            from newsclaw.orgs.runtime import get_runtime  # 延迟导入避免环路
-
-            runtime = get_runtime()
-            if runtime is None:
-                return {}
-
-            accepted = 0
-            try:
-                accepted = int(runtime.get_accepted_child_count(org_id, chain_id) or 0)
-            except Exception:
-                accepted = 0
-
-            has_recent = False
-            if accepted == 0:
-                # 严格信号失败时再问弱信号，避免重复 IO
-                try:
-                    has_recent = bool(runtime.has_recent_accepted_signal(org_id, node_id))
-                except Exception:
-                    has_recent = False
-
-            return {
-                "accepted_child_count": accepted,
-                "has_recent_accepted_signal": has_recent,
-            }
-        except Exception as exc:
-            logger.debug("[Verify] _build_org_validation_kwargs failed: %s", exc)
-            return {}
 
     @staticmethod
     def _is_in_progress_promise(text: str) -> bool:

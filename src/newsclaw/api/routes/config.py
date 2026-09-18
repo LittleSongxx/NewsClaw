@@ -1321,11 +1321,9 @@ def _hot_patch_agent_tools(request: Request, *, enable: bool) -> None:
         return
     try:
         from newsclaw.tools.definitions.agent import AGENT_TOOLS
-        from newsclaw.tools.definitions.org_setup import ORG_SETUP_TOOLS
         from newsclaw.tools.handlers.agent import create_handler as create_agent_handler
-        from newsclaw.tools.handlers.org_setup import create_handler as create_org_setup_handler
 
-        all_tools = AGENT_TOOLS + ORG_SETUP_TOOLS
+        all_tools = AGENT_TOOLS
         tool_names = [t["name"] for t in all_tools]
 
         if enable:
@@ -1335,18 +1333,13 @@ def _hot_patch_agent_tools(request: Request, *, enable: bool) -> None:
                     agent._tools.append(t)
                 agent.tool_catalog.add_tool(t)
             agent.handler_registry.register("agent", create_agent_handler(agent))
-            agent.handler_registry.register("org_setup", create_org_setup_handler(agent))
-            logger.info("[Config API] Agent + org_setup tools hot-patched onto global agent")
+            logger.info("[Config API] Agent tools hot-patched onto global agent")
         else:
             agent._tools = [t for t in agent._tools if t["name"] not in set(tool_names)]
             for name in tool_names:
                 agent.tool_catalog.remove_tool(name)
             agent.handler_registry.unregister("agent")
-            try:
-                agent.handler_registry.unregister("org_setup")
-            except Exception:
-                pass
-            logger.info("[Config API] Agent + org_setup tools removed from global agent")
+            logger.info("[Config API] Agent tools removed from global agent")
     except Exception as e:
         logger.warning(f"[Config API] Failed to hot-patch agent tools: {e}")
 

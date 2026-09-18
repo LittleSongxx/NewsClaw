@@ -28,8 +28,7 @@ class _Store:
 
 def _empty_org_manager():
     return SimpleNamespace(
-        list_orgs=lambda include_archived: [],
-        get=lambda _org_id: None,
+                get=lambda _org_id: None,
     )
 
 
@@ -56,98 +55,8 @@ async def test_delete_profile_rejects_im_bot_reference(monkeypatch) -> None:
     assert store.deleted is False
 
 
-@pytest.mark.asyncio
-async def test_delete_profile_rejects_org_node_reference(monkeypatch) -> None:
-    from newsclaw.agents import profile as profile_module
-    from newsclaw.api.routes.agents import delete_agent_profile
-    from newsclaw.config import settings
-
-    store = _Store()
-    monkeypatch.setattr(profile_module, "get_profile_store", lambda: store)
-    monkeypatch.setattr(settings, "im_bots", [])
-    org = SimpleNamespace(
-        nodes=[SimpleNamespace(id="reviewer", name="Reviewer", agent_profile_id="worker")]
-    )
-    manager = SimpleNamespace(
-        list_orgs=lambda include_archived: [{"id": "org-1"}],
-        get=lambda org_id: org if org_id == "org-1" else None,
-    )
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(org_manager=manager)))
-
-    with pytest.raises(HTTPException) as exc_info:
-        await delete_agent_profile("worker", request)
-
-    assert exc_info.value.status_code == 409
-    assert exc_info.value.detail["references"][0]["id"] == "org-1:reviewer"
-    assert store.deleted is False
 
 
-@pytest.mark.asyncio
-async def test_delete_profile_fails_closed_when_references_cannot_be_checked(monkeypatch) -> None:
-    from newsclaw.agents import profile as profile_module
-    from newsclaw.api.routes.agents import delete_agent_profile
-    from newsclaw.config import settings
-
-    store = _Store()
-    monkeypatch.setattr(profile_module, "get_profile_store", lambda: store)
-    monkeypatch.setattr(settings, "im_bots", [])
-
-    def _fail_list(*, include_archived: bool):
-        raise OSError("organization store unavailable")
-
-    manager = SimpleNamespace(list_orgs=_fail_list)
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(org_manager=manager)))
-
-    with pytest.raises(HTTPException) as exc_info:
-        await delete_agent_profile("worker", request)
-
-    assert exc_info.value.status_code == 500
-    assert exc_info.value.detail["error"] == "profile_reference_check_failed"
-    assert store.deleted is False
-
-
-@pytest.mark.asyncio
-async def test_delete_profile_fails_closed_when_org_manager_is_unavailable(monkeypatch) -> None:
-    from newsclaw.agents import profile as profile_module
-    from newsclaw.api.routes.agents import delete_agent_profile
-    from newsclaw.config import settings
-
-    store = _Store()
-    monkeypatch.setattr(profile_module, "get_profile_store", lambda: store)
-    monkeypatch.setattr(settings, "im_bots", [])
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(org_manager=None)))
-
-    with pytest.raises(HTTPException) as exc_info:
-        await delete_agent_profile("worker", request)
-
-    assert exc_info.value.status_code == 503
-    assert store.deleted is False
-
-
-@pytest.mark.asyncio
-async def test_delete_profile_uses_strict_organization_scan(monkeypatch) -> None:
-    from newsclaw.agents import profile as profile_module
-    from newsclaw.api.routes.agents import delete_agent_profile
-    from newsclaw.config import settings
-
-    store = _Store()
-    monkeypatch.setattr(profile_module, "get_profile_store", lambda: store)
-    monkeypatch.setattr(settings, "im_bots", [])
-
-    def _strict_scan():
-        raise ValueError("corrupt organization")
-
-    manager = SimpleNamespace(
-        list_organizations_strict=_strict_scan,
-        list_orgs=lambda include_archived: [],
-    )
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(org_manager=manager)))
-
-    with pytest.raises(HTTPException) as exc_info:
-        await delete_agent_profile("worker", request)
-
-    assert exc_info.value.status_code == 500
-    assert store.deleted is False
 
 
 @pytest.mark.asyncio

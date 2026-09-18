@@ -32,7 +32,6 @@ from newsclaw.core.engine_bridge import engine_stream, is_dual_loop, to_engine
 from ..schemas import (
     AttachmentInfo,
     ChatAnswerRequest,
-    ChatAttachmentRecord,
     ChatControlRequest,
     ChatRequest,
 )
@@ -791,41 +790,6 @@ def _extract_mcp_call(event: dict) -> dict | None:
     return payload
 
 
-def _extract_org_structure_change(event: dict) -> dict | None:
-    """Extract org create/update/delete metadata from setup_organization results."""
-    if event.get("type") != "tool_call_end":
-        return None
-    if (event.get("tool_name") or event.get("tool", "")) != "setup_organization":
-        return None
-    result = str(event.get("result", ""))
-    marker = "[NEWSCLAW_ORG]"
-    if marker not in result:
-        return None
-    try:
-        line = result[result.index(marker) + len(marker) :].strip().splitlines()[0].strip()
-        payload = json.loads(line)
-    except (json.JSONDecodeError, TypeError, ValueError, IndexError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    payload.setdefault("tool_use_id", event.get("call_id") or event.get("id", ""))
-    payload.setdefault("action", "updated")
-    payload.setdefault("org_id", "")
-    payload.setdefault("org_name", "")
-    return payload
-
-
-def _strip_org_structure_marker(event: dict) -> dict:
-    """Hide the NewsClaw org marker from frontend tool-result rendering."""
-    result = event.get("result")
-    if not isinstance(result, str) or "[NEWSCLAW_ORG]" not in result:
-        return event
-    next_event = dict(event)
-    lines = [line for line in result.splitlines() if not line.strip().startswith("[NEWSCLAW_ORG]")]
-    next_event["result"] = "\n".join(lines).rstrip()
-    return next_event
-
-
 def _artifact_data_from_receipt(receipt: dict) -> dict | None:
     """Convert one delivery receipt into the chat artifact shape."""
     if not isinstance(receipt, dict):
@@ -1518,14 +1482,6 @@ async def _stream_chat(
                     session.set_metadata(
                         "endpoint_policy", chat_request.endpoint_policy or "prefer"
                     )
-                    session.set_metadata(
-                        "ui_org_state",
-                        {
-                            "orgMode": bool(chat_request.org_mode and chat_request.org_id),
-                            "orgId": chat_request.org_id or "",
-                            "orgNodeId": chat_request.org_node_id or "",
-                        },
-                    )
 
                     user_attachments = _history_attachments_from_request(chat_request.attachments)
                     if chat_request.message or user_attachments:
@@ -1720,10 +1676,6 @@ async def _stream_chat(
 
             await _refresh_busy_lease()
             event_type = event.get("type", "")
-            _org_structure_change = _extract_org_structure_change(event)
-            if _org_structure_change:
-                event = _strip_org_structure_marker(event)
-
             # Observe every raw event (before coalescing / disconnect gating) so
             # the persisted timeline is complete regardless of wire state.
             _chain_timeline_builder.observe(event)
@@ -1858,10 +1810,6 @@ async def _stream_chat(
 
             if _mcp_call:
                 yield _sse("mcp_call", _mcp_call)
-                _last_emit_ts = time.time()
-
-            if _org_structure_change:
-                yield _sse("org_structure_changed", _org_structure_change)
                 _last_emit_ts = time.time()
 
             for art_data in _new_artifacts:
@@ -2256,374 +2204,6 @@ async def _stream_chat(
                 )
 
 
-def _org_file_attachments_to_chat_attachments(attachments: list[dict]) -> list[dict]:
-    """Convert org runtime file attachments to ChatView attachment objects."""
-    from pathlib import Path
-
-    converted: list[dict] = []
-    seen: set[str] = set()
-    for att in attachments or []:
-        if not isinstance(att, dict):
-            continue
-        file_path = str(att.get("file_path") or att.get("path") or "").strip()
-        if not file_path:
-            continue
-        key = file_path.lower().replace("\\", "/")
-        if key in seen:
-            continue
-        seen.add(key)
-        name = str(att.get("filename") or Path(file_path).name or "file")
-        suffix = Path(name).suffix.lower()
-        att_type = "document" if suffix in {".doc", ".docx", ".pdf", ".md", ".txt"} else "file"
-        converted.append(
-            ChatAttachmentRecord.model_validate(
-                {
-                    "type": att_type,
-                    "name": name,
-                    "localPath": file_path,
-                    "size": att.get("file_size") or att.get("size"),
-                    "uploadStatus": "uploaded",
-                }
-            ).to_history_dict()
-        )
-    return converted
-
-
-def _enrich_org_content_with_attachments(content: str, attachments: list | None) -> str:
-    """Read text file content from desktop attachments and append to org content.
-
-    Mirrors the gateway's ``_extract_text_file_content`` logic for the desktop
-    API path so that org commands submitted from the setup-center can include
-    file contents inline.
-    """
-    if not attachments:
-        return content
-
-    from pathlib import Path
-
-    from newsclaw.channels.gateway import MessageGateway
-
-    parts: list[str] = []
-    for att in attachments:
-        local_path = getattr(att, "local_path", None) or ""
-        if not local_path:
-            url = getattr(att, "url", None) or ""
-            if url:
-                try:
-                    from newsclaw.api.routes.upload import resolve_upload_path
-
-                    resolved = resolve_upload_path(url)
-                    if resolved:
-                        local_path = str(resolved)
-                except Exception:
-                    logger.debug("[OrgAttach] failed to resolve upload URL %s", url, exc_info=True)
-        if not local_path:
-            continue
-        fpath = Path(local_path)
-        if not fpath.exists():
-            continue
-        name = getattr(att, "name", None) or fpath.name
-        suffix = fpath.suffix.lower()
-        mime = getattr(att, "mime_type", None) or ""
-        try:
-            if suffix in MessageGateway._TEXT_FILE_EXTENSIONS or (
-                mime and mime.startswith("text/")
-            ):
-                if fpath.stat().st_size <= MessageGateway._TEXT_FILE_SIZE_LIMIT:
-                    file_content = fpath.read_text(encoding="utf-8", errors="replace")
-                    parts.append(f"\n\n--- 文件: {name} ---\n{file_content}\n--- 文件结束 ---")
-                else:
-                    parts.append(
-                        f"\n[附件: {name} ({mime or suffix}), "
-                        f"文件过大无法内联，本地路径: {local_path}]"
-                    )
-            elif suffix == ".pdf" or (mime and "pdf" in mime):
-                parts.append(f"\n[附件: {name} (PDF), 本地路径: {local_path}]")
-            else:
-                parts.append(f"\n[附件: {name} ({mime or suffix}), 本地路径: {local_path}]")
-        except Exception:
-            logger.warning(f"Failed to read attachment for org content: {local_path}")
-    if parts:
-        return content + "".join(parts)
-    return content
-
-
-async def _stream_org_command_chat(
-    chat_request: ChatRequest,
-    *,
-    request: Request,
-    conversation_id: str,
-    client_id: str,
-    busy_generation: int,
-) -> AsyncIterator[str]:
-    """Stream a desktop-chat initiated org command as summarized SSE events."""
-
-    def _sse(event_type: str, data: dict | None = None) -> str:
-        from ...events import normalize_stream_event
-
-        payload = normalize_stream_event({"type": event_type, **(data or {})})
-        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-    svc = getattr(request.app.state, "org_command_service", None)
-    session_manager = getattr(request.app.state, "session_manager", None)
-    org_id = chat_request.org_id or ""
-    target_node_id = chat_request.org_node_id or None
-    queue = None
-    command_id = ""
-    _BUSY_REFRESH_INTERVAL = 60.0
-    _last_busy_refresh_ts = 0.0
-
-    async def _persist_org_error(message: str, *, error_code: str, org_status: str | None) -> None:
-        if session_manager is None:
-            return
-        try:
-            session = session_manager.get_session(
-                channel="desktop",
-                chat_id=conversation_id,
-                user_id="desktop_user",
-                create_if_missing=True,
-            )
-            if session is None:
-                return
-            session.add_message(
-                "assistant",
-                "",
-                error_info={
-                    "message": message,
-                    "raw": message,
-                    "error_code": error_code,
-                    "org_status": org_status,
-                },
-            )
-            await asyncio.to_thread(session_manager.persist)
-        except Exception:
-            logger.warning("[Chat API] failed to persist org command error", exc_info=True)
-
-    async def _refresh_busy_lease(*, force: bool = False) -> None:
-        nonlocal _last_busy_refresh_ts
-        if not conversation_id or not busy_generation:
-            return
-        now = time.time()
-        if not force and now - _last_busy_refresh_ts < _BUSY_REFRESH_INTERVAL:
-            return
-        try:
-            refreshed = await get_lifecycle_manager().refresh(
-                conversation_id,
-                generation=busy_generation,
-            )
-            if refreshed:
-                _last_busy_refresh_ts = now
-        except Exception:
-            logger.debug(
-                "[Chat API] org busy lease refresh failed (conv=%s, gen=%d)",
-                conversation_id,
-                busy_generation,
-                exc_info=True,
-            )
-
-    try:
-        await _refresh_busy_lease(force=True)
-        if session_manager:
-            session = session_manager.get_session(
-                channel="desktop",
-                chat_id=conversation_id,
-                user_id="desktop_user",
-                create_if_missing=True,
-            )
-            if session:
-                session.set_metadata(
-                    "ui_org_state",
-                    {
-                        "orgMode": bool(chat_request.org_mode and chat_request.org_id),
-                        "orgId": org_id,
-                        "orgNodeId": target_node_id or "",
-                    },
-                )
-                user_attachments = _history_attachments_from_request(chat_request.attachments)
-                if chat_request.message or user_attachments:
-                    meta = {"attachments": user_attachments} if user_attachments else {}
-                    session.add_message("user", chat_request.message or "", **meta)
-                session_manager.mark_dirty()
-
-        if svc is None:
-            message = "OrgCommandService not initialized"
-            await _persist_org_error(
-                message,
-                error_code="org_command_service_unavailable",
-                org_status=None,
-            )
-            yield _sse("error", {"message": message})
-            yield _sse("done")
-            return
-
-        from newsclaw.orgs.command_models import (
-            OrgCommandError,
-            OrgCommandRequest,
-            OrgCommandSource,
-            OrgCommandSurface,
-            default_scope_for_surface,
-        )
-
-        # Enrich org content with text from uploaded file attachments
-        org_content = chat_request.message or ""
-        if chat_request.attachments:
-            org_content = _enrich_org_content_with_attachments(
-                org_content, chat_request.attachments
-            )
-
-        try:
-            started = await svc.submit(
-                OrgCommandRequest(
-                    org_id=org_id,
-                    content=org_content,
-                    target_node_id=target_node_id,
-                    source=OrgCommandSource(
-                        channel="desktop",
-                        chat_id=conversation_id,
-                        user_id="desktop_user",
-                        client_id=client_id,
-                    ),
-                    origin_surface=OrgCommandSurface.DESKTOP_CHAT,
-                    output_scope=default_scope_for_surface(OrgCommandSurface.DESKTOP_CHAT),
-                    input_attachments=_history_attachments_from_request(chat_request.attachments),
-                )
-            )
-        except OrgCommandError as exc:
-            error_code = getattr(exc, "error_code", "org_command_error")
-            org_status = getattr(exc, "org_status", None)
-            await _persist_org_error(
-                str(exc),
-                error_code=error_code,
-                org_status=org_status,
-            )
-            yield _sse(
-                "error",
-                {
-                    "message": str(exc),
-                    "org_id": org_id,
-                    "error_code": error_code,
-                    "org_status": org_status,
-                },
-            )
-            yield _sse("done")
-            return
-        except Exception:
-            logger.exception("[Chat API] failed to submit org command (org=%s)", org_id)
-            message = "组织命令提交失败，请重试。"
-            await _persist_org_error(
-                message,
-                error_code="org_command_submit_failed",
-                org_status=None,
-            )
-            yield _sse(
-                "error",
-                {"message": message, "org_id": org_id},
-            )
-            yield _sse("done")
-            return
-
-        command_id = started["command_id"]
-        queue = svc.subscribe_summary(
-            command_id,
-            surface="desktop_chat",
-            target=conversation_id,
-        )
-        yield _sse(
-            "org_command_started",
-            {
-                "org_id": org_id,
-                "command_id": command_id,
-                "root_node_id": started.get("root_node_id", ""),
-            },
-        )
-
-        final_text = ""
-        # 进度行只用于历史持久化中的 org_timeline 字段，前端已经通过 org_progress
-        # 事件实时构建独立的 timeline 卡片，不再需要把它塞进 text_replace 正文。
-        progress_entries: list[dict] = []
-        while True:
-            await _refresh_busy_lease()
-            try:
-                item = await asyncio.wait_for(queue.get(), timeout=30)
-            except TimeoutError:
-                yield _sse("heartbeat", {"org_id": org_id, "command_id": command_id})
-                continue
-
-            await _refresh_busy_lease()
-            if item.get("type") == "org_progress":
-                summary = item.get("summary") or ""
-                if summary:
-                    progress_entries.append(
-                        {
-                            "status": "progress",
-                            "summary": str(summary),
-                            "node_id": item.get("node_id"),
-                            "category": item.get("category") or item.get("label"),
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    yield _sse("org_progress", item)
-                continue
-
-            if item.get("type") == "org_command_done":
-                result = item.get("result")
-                error = item.get("error")
-                attachments: list[dict] = []
-                if isinstance(result, dict):
-                    final_text = str(
-                        result.get("result")
-                        or result.get("deliverable")
-                        or result.get("final_message")
-                        or result.get("error")
-                        or ""
-                    )
-                    raw_attachments = result.get("file_attachments") or []
-                    if isinstance(raw_attachments, list):
-                        attachments = [a for a in raw_attachments if isinstance(a, dict)]
-                if error:
-                    final_text = str(error)
-                yield _sse("org_command_done", item)
-                if final_text:
-                    chat_attachments = _org_file_attachments_to_chat_attachments(attachments)
-                    # text_replace 只承载最终回复正文；过程展示由前端的 OrgTimelineCard
-                    # 通过 org_progress 累计渲染，避免"过程引用 + 分隔线 + 回复"
-                    # 全塞在一坨 markdown 里。
-                    yield _sse(
-                        "text_replace",
-                        {"content": final_text, "attachments": chat_attachments},
-                    )
-                    if session_manager:
-                        session = session_manager.get_session(
-                            channel="desktop",
-                            chat_id=conversation_id,
-                            user_id="desktop_user",
-                            create_if_missing=True,
-                        )
-                        if session:
-                            meta: dict[str, Any] = {}
-                            if chat_attachments:
-                                meta["attachments"] = chat_attachments
-                            if progress_entries:
-                                meta["org_timeline"] = [
-                                    *progress_entries,
-                                    {
-                                        "status": "done",
-                                        "summary": "组织命令已结束",
-                                        "timestamp": int(time.time() * 1000),
-                                    },
-                                ]
-                            session.add_message("assistant", final_text, **meta)
-                            session_manager.mark_dirty()
-                yield _sse("done")
-                return
-    finally:
-        if queue is not None and command_id and svc is not None:
-            svc.unsubscribe_summary(command_id, queue)
-        if client_id:
-            with contextlib.suppress(Exception):
-                await get_lifecycle_manager().finish(conversation_id, generation=busy_generation)
-
-
 @router.post("/api/chat")
 async def chat(request: Request, body: ChatRequest):
     """
@@ -2631,9 +2211,6 @@ async def chat(request: Request, body: ChatRequest):
 
     Uses the full Agent pipeline (shared with IM/CLI channels)
     via Agent.chat_with_session_stream().
-
-    ``org_mode`` + ``org_id`` 走实验性组织编排（第二运行时），不是 ReAct 主聊天。
-    面试主故事不讲。
 
     Each conversation gets its own Agent instance via AgentInstancePool
     to support concurrent streaming without shared-state corruption.
@@ -3146,27 +2723,6 @@ async def chat(request: Request, body: ChatRequest):
                     "message": "该会话正在其他终端进行中，请新建会话或稍后再试",
                 },
             )
-
-    if body.org_mode and body.org_id:
-        body.conversation_id = conversation_id
-        sse_gen = _stream_org_command_chat(
-            body,
-            request=request,
-            conversation_id=conversation_id,
-            client_id=client_id,
-            busy_generation=busy_gen,
-        )
-        if is_dual_loop():
-            sse_gen = engine_stream(sse_gen)
-        return StreamingResponse(
-            sse_gen,
-            media_type="text/event-stream; charset=utf-8",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
-        )
 
     chat_endpoint_names = _chat_endpoint_names()
     if not chat_endpoint_names:
@@ -3830,19 +3386,6 @@ async def chat_cancel(request: Request, body: ChatControlRequest):
     """Cancel the current running task for the specified conversation."""
     conv_id = body.conversation_id
     reason = body.reason or "用户从聊天界面取消任务"
-
-    # Org node sessions (e.g. "org:<org_id>:node:<node_id>") live in
-    # OrgRuntime._agent_cache, not in the chat agent_pool.  Route the
-    # cancel directly to the runtime so the correct Agent is stopped.
-    if conv_id and conv_id.startswith("org:"):
-        parts = conv_id.split(":")
-        if len(parts) >= 4 and parts[2] == "node":
-            org_id, node_id = parts[1], parts[3]
-            rt = getattr(request.app.state, "org_runtime", None)
-            if rt:
-                logger.info(f"[Chat API] Cancel routed to OrgRuntime: org={org_id}, node={node_id}")
-                result = await to_engine(rt.cancel_node_task(org_id, node_id, reason))
-                return {"status": "ok", "action": "cancel", "reason": reason, **result}
 
     agent = _get_existing_agent(request, conv_id)
     actual_agent = _resolve_agent(agent) if agent else None

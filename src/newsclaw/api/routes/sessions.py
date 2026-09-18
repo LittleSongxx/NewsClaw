@@ -88,13 +88,6 @@ class SessionUiStateRequest(BaseModel):
 
     endpoint_id: str | None = Field(None, alias="endpointId", max_length=200)
     endpoint_policy: Literal["prefer", "require"] = Field("prefer", alias="endpointPolicy")
-    org_mode: bool = Field(
-        False,
-        alias="orgMode",
-        description="实验性第二运行时，面试主故事不讲。绑定会话到组织编排。",
-    )
-    org_id: str | None = Field(None, alias="orgId", max_length=128)
-    org_node_id: str | None = Field(None, alias="orgNodeId", max_length=128)
 
 
 class SessionCreateRequest(BaseModel):
@@ -108,13 +101,6 @@ class SessionCreateRequest(BaseModel):
     agent_profile_id: str | None = Field(None, alias="agentProfileId", max_length=128)
     endpoint_id: str | None = Field(None, alias="endpointId", max_length=200)
     endpoint_policy: Literal["prefer", "require"] = Field("prefer", alias="endpointPolicy")
-    org_mode: bool = Field(
-        False,
-        alias="orgMode",
-        description="实验性第二运行时，面试主故事不讲。创建会话时绑定组织编排。",
-    )
-    org_id: str | None = Field(None, alias="orgId", max_length=128)
-    org_node_id: str | None = Field(None, alias="orgNodeId", max_length=128)
     working_directory: str | None = Field(None, alias="workingDirectory", max_length=4096)
 
 
@@ -142,20 +128,10 @@ def _apply_session_ui_state(
     *,
     endpoint_id: str | None,
     endpoint_policy: Literal["prefer", "require"],
-    org_mode: bool,
-    org_id: str | None,
-    org_node_id: str | None,
+
 ) -> None:
     session.set_metadata("selected_endpoint", endpoint_id or "")
     session.set_metadata("endpoint_policy", endpoint_policy if endpoint_id else "prefer")
-    session.set_metadata(
-        "ui_org_state",
-        {
-            "orgMode": bool(org_mode and org_id),
-            "orgId": org_id or "",
-            "orgNodeId": org_node_id or "",
-        },
-    )
 
 
 def _visible_history_messages(session) -> list[tuple[int, dict]]:
@@ -299,9 +275,6 @@ def _session_list_item_from_summary(summary: dict) -> dict:
             if summary.get("endpoint_id")
             else "prefer"
         ),
-        "orgMode": bool(summary.get("org_mode")),
-        "orgId": summary.get("org_id") or None,
-        "orgNodeId": summary.get("org_node_id") or None,
         "workingDirectory": str(summary.get("working_directory") or ""),
     }
 
@@ -914,9 +887,6 @@ async def create_session(
         session,
         endpoint_id=body.endpoint_id,
         endpoint_policy=body.endpoint_policy,
-        org_mode=body.org_mode,
-        org_id=body.org_id,
-        org_node_id=body.org_node_id,
     )
     session_manager.mark_dirty()
     try:
@@ -925,7 +895,7 @@ async def create_session(
         logger.warning("[Sessions API] Failed to persist created session: %s", exc)
 
     agent_prewarmed = False
-    if existing is None and channel == "desktop" and not body.org_mode:
+    if existing is None and channel == "desktop":
         prewarm_started = time.perf_counter()
         try:
             agent_prewarmed = await _prewarm_session_agent(
@@ -1002,9 +972,6 @@ async def update_session_ui_state(
         session,
         endpoint_id=body.endpoint_id,
         endpoint_policy=body.endpoint_policy,
-        org_mode=body.org_mode,
-        org_id=body.org_id,
-        org_node_id=body.org_node_id,
     )
     session_manager.mark_dirty()
     try:

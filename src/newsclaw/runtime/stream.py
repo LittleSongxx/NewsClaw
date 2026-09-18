@@ -394,7 +394,7 @@ class StreamBus:
     # ------------------------------------------------------------------
     # Public subscription surface (P-RC-3 T5)
     #
-    # ``api/routes/orgs_v2_stream.py`` previously reached into
+    # (historical note) the org stream route previously reached into
     # ``self._lock`` / ``self._subscriptions`` / ``self._max_queue``
     # to attach a manually-built ``Subscription`` before the SSE
     # handshake. These small helpers expose the same primitives via

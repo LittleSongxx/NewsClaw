@@ -372,7 +372,7 @@ class AgentFactory:
         if profile.tools_mode == "exclusive" and not profile.tools:
             return
 
-        from ..orgs.tool_categories import expand_tool_categories
+        from .tool_categories import expand_tool_categories
 
         specified = expand_tool_categories(profile.tools)
         always_allowed = AgentFactory._always_allowed_tool_names(profile)
