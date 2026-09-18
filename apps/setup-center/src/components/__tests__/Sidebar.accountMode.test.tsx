@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../../i18n";
 import { Sidebar } from "../Sidebar";
 import { connectNewsClawAccount, loadAccountCapability } from "../../utils/accountLogin";
-import { patchInstall, trackInstall } from '../../marketplace/installTasks';
 
 vi.mock("../../utils/accountLogin", () => ({
   getAccountGeneration: () => 0,
@@ -58,10 +57,8 @@ describe("Sidebar account distribution mode", () => {
   it('keeps installation actions out of the application menu even when tasks exist', async () => {
     vi.mocked(loadAccountCapability).mockResolvedValue({ enabled: false, mode: 'disabled', provider: null,
       display_name: null, supports_entitlements: false });
-    const job = { id: 'current', status: 'installing' as const, resource_type: 'skill' as const,
+    void { id: 'current', status: 'installing' as const, resource_type: 'skill' as const,
       resource_name: 'Current skill', progress: null, version: '1', permissions: [], dependencies: [] };
-    const task = trackInstall('http://localhost:18900', job);
-    patchInstall(task.key, { hidden: true, background: true });
     const closeSidebar = vi.fn();
     renderSidebar(closeSidebar);
     fireEvent.click(await screen.findByRole('button', { name: /应用菜单|App menu/i }));

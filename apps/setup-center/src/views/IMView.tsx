@@ -142,12 +142,6 @@ const BOT_TYPES = ["wechat", "feishu", "qqbot"] as const;
 
 const BOT_TYPE_LABEL_KEYS: Record<string, string> = {
   feishu: "im.botTypeFeishu",
-  telegram: "im.botTypeTelegram",
-  dingtalk: "im.botTypeDingtalk",
-  wework: "im.botTypeWeworkHttp",
-  wework_ws: "im.botTypeWeworkWs",
-  onebot: "im.botTypeOnebotForward",
-  onebot_reverse: "im.botTypeOnebotReverse",
   qqbot: "im.botTypeQQBot",
   wechat: "im.botTypeWechat",
 };
@@ -157,45 +151,12 @@ const ONEBOT_TYPES = new Set(["onebot", "onebot_reverse"]);
 
 const CLI_SKILL_HINTS: Record<string, { name: string; cmd: string }> = {
   feishu: { name: "飞书 CLI (lark-cli)", cmd: "npm install -g @larksuite/cli && npx skills add larksuite/cli -y -g" },
-  dingtalk: { name: "钉钉 CLI (dws)", cmd: "npm install -g dingtalk-workspace-cli && npx skills add DingTalk-Real-AI/dingtalk-workspace-cli -y -g" },
-  wework: { name: "企微 CLI (wecom-cli)", cmd: "npm install -g @wecom/cli && npx skills add WeComTeam/wecom-cli -y -g" },
-  wework_ws: { name: "企微 CLI (wecom-cli)", cmd: "npm install -g @wecom/cli && npx skills add WeComTeam/wecom-cli -y -g" },
 };
 
 const CREDENTIAL_FIELDS: Record<string, { key: string; label: string; secret?: boolean; placeholder?: string }[]> = {
   feishu: [
     { key: "app_id", label: "App ID" },
     { key: "app_secret", label: "App Secret", secret: true },
-  ],
-  telegram: [
-    { key: "bot_token", label: "Bot Token", secret: true, placeholder: "BotFather token" },
-    { key: "proxy", label: "config.imProxy", placeholder: "http://127.0.0.1:7890" },
-    { key: "pairing_code", label: "config.imPairingCode", placeholder: "config.imPairingCodeHint" },
-    { key: "webhook_url", label: "Webhook URL", placeholder: "https://..." },
-  ],
-  dingtalk: [
-    { key: "client_id", label: "Client ID / App Key" },
-    { key: "client_secret", label: "Client Secret / App Secret", secret: true },
-  ],
-  wework: [
-    { key: "corp_id", label: "Corp ID" },
-    { key: "token", label: "Token", secret: true },
-    { key: "encoding_aes_key", label: "Encoding AES Key", secret: true },
-    { key: "callback_port", label: "Callback Port" },
-    { key: "callback_host", label: "Callback Host" },
-  ],
-  wework_ws: [
-    { key: "bot_id", label: "Bot ID" },
-    { key: "secret", label: "Secret", secret: true },
-  ],
-  onebot: [
-    { key: "ws_url", label: "WebSocket URL" },
-    { key: "access_token", label: "Access Token", secret: true },
-  ],
-  onebot_reverse: [
-    { key: "reverse_host", label: "Listen Host" },
-    { key: "reverse_port", label: "Listen Port" },
-    { key: "access_token", label: "Access Token", secret: true },
   ],
   qqbot: [
     { key: "app_id", label: "App ID" },
@@ -217,8 +178,6 @@ const EMPTY_BOT: IMBot = {
 
 const BOT_ID_PREFIX: Record<string, string> = {
   feishu: "feishu", telegram: "telegram", dingtalk: "dingtalk",
-  wework: "wecom", wework_ws: "wecom", qqbot: "qq",
-  onebot: "onebot", onebot_reverse: "onebot", wechat: "wechat",
 };
 
 function generateBotId(type: string): string {
@@ -2175,9 +2134,6 @@ function getRequiredCredKeys(botType: string): string[] {
   const requiredByType: Record<string, string[]> = {
     feishu: ["app_id", "app_secret"],
     telegram: TG_CORE_FIELDS,
-    dingtalk: ["client_id", "client_secret"],
-    wework: ["corp_id", "token", "encoding_aes_key"],
-    wework_ws: ["bot_id", "secret"],
     qqbot: ["app_id", "app_secret"],
     wechat: ["token"],
   };

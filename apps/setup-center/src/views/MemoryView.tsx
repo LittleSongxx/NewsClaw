@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, lazy, Suspense } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { IconBrain } from "../icons";
 import { safeFetch } from "../providers";
@@ -16,16 +16,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Loader2, RefreshCw, Trash2, Pencil, Check, X, Search, Brain, Ban, List, Network, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, RefreshCw, Trash2, Pencil, Check, X, Search, Brain, Ban, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { useMdModules } from "./chat/hooks/useMdModules";
 import type { MdModules } from "./chat/utils/chatTypes";
 
-const MemoryGraph3D = lazy(() =>
-  import("../components/MemoryGraph3D").then((m) => ({ default: m.MemoryGraph3D }))
-);
 
 type MemoryItem = {
   id: string;
@@ -49,39 +45,6 @@ type Stats = {
   total: number;
   by_type: Record<string, number>;
   avg_score: number;
-};
-
-type MigrationStatus = {
-  // v4 起后端返回该字段；旧版本后端不会有，前端做兼容。
-  api_version?: string;
-  current_owner: { user_id: string; workspace_id: string };
-  current_visible: number;
-  stranded_default?: number;
-  show_stranded_default?: boolean;
-  legacy_quarantine: number;
-  legacy_pending?: number;
-  legacy_reviewed?: number;
-  /** v4：lifecycle 后台合成产物的独立桶计数（DevOps 用，不触发 banner） */
-  pending_consolidation?: number;
-  semantic: {
-    total: number;
-    by_scope: Record<string, number>;
-    by_owner: Array<{
-      scope: string;
-      scope_owner: string;
-      user_id: string;
-      workspace_id: string;
-      count: number;
-    }>;
-  };
-  graph: {
-    total_nodes: number;
-    by_owner: Array<{ user_id: string; workspace_id: string; count: number }>;
-  };
-  has_recoverable_legacy: boolean;
-  /** v4：banner 显示与否的唯一权威字段。v3 之前的后端没有这个字段，前端会回退到旧逻辑。 */
-  show_banner?: boolean;
-  banner_dismissed?: boolean;
 };
 
 type ReviewResult = {
@@ -231,25 +194,10 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth <= 768);
-  const [viewMode, setViewMode] = useState<"list" | "graph">("list");
   const [sortBy, setSortBy] = useState("importance_score");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
-  const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(null);
-  const [claimingLegacy, setClaimingLegacy] = useState(false);
-  const [claimingStranded, setClaimingStranded] = useState(false);
-  const [dismissingLegacy, setDismissingLegacy] = useState(false);
-  // 本会话内点了"稍后提醒"，刷新页面后会重新出现。
-  // 用 sessionStorage 而不是 React state，是为了切到别的 Tab 再回来 banner 不会回来。
-  const [sessionLegacyDismissed, setSessionLegacyDismissed] = useState<boolean>(() => {
-    try {
-      return window.sessionStorage.getItem("newsclaw.legacy_banner_snoozed") === "1";
-    } catch {
-      return false;
-    }
-  });
-  const [graphRefreshKey, setGraphRefreshKey] = useState(0);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 768);
@@ -292,21 +240,10 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
     } catch { /* ignore */ }
   }, [serviceRunning, API_BASE]);
 
-  const loadMigrationStatus = useCallback(async () => {
-    if (!serviceRunning) return;
-    try {
-      const res = await safeFetch(`${API_BASE}/api/memories/migration-status`);
-      setMigrationStatus(await res.json());
-    } catch {
-      setMigrationStatus(null);
-    }
-  }, [serviceRunning, API_BASE]);
-
   useEffect(() => {
     loadMemories();
     loadStats();
-    loadMigrationStatus();
-  }, [loadMemories, loadStats, loadMigrationStatus]);
+  }, [loadMemories, loadStats]);
 
   const doDelete = async (id: string) => {
     try {
@@ -343,97 +280,6 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
       toast.error(e.message);
     }
   }, [API_BASE, loadStats]);
-
-  const handleClaimStrandedDefault = async () => {
-    setClaimingStranded(true);
-    try {
-      const res = await safeFetch(`${API_BASE}/api/memories/merge-owner`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          dry_run: false,
-          from_owner: "default",
-          to_owner: "desktop_user",
-        }),
-      });
-      const data = await res.json();
-      toast.success(t("memory.strandedDefaultSuccess", { merged: data.merged ?? 0 }));
-      await Promise.all([loadMemories(), loadStats(), loadMigrationStatus()]);
-    } catch (e: any) {
-      toast.error(e.message || t("memory.strandedDefaultFailed"));
-    } finally {
-      setClaimingStranded(false);
-    }
-  };
-
-  const handleClaimLegacy = async () => {
-    setClaimingLegacy(true);
-    try {
-      const res = await safeFetch(`${API_BASE}/api/memories/claim-legacy`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ include_inactive: true, include_default_graph_nodes: true }),
-      });
-      const data = await res.json();
-      toast.success(t("memory.legacyClaimSuccess", {
-        promoted: data.promoted ?? data.claimed ?? 0,
-        reviewed: data.reviewed ?? 0,
-        rejected: data.rejected ?? 0,
-        conflicts: data.conflict_skipped ?? 0,
-        graph: data.graph_nodes_updated ?? 0,
-      }));
-      // Phase 4：用户主动整理过了，本会话 snooze 也应该清掉。
-      // 否则后续真的又出现新 legacy 时（极端：用户导入了别人的旧 db），banner 会被
-      // 残留的 sessionStorage 静默拦住。后端 dismiss sentinel 已在路由里被清，
-      // 这里把前端 snooze 一起对齐。
-      try {
-        window.sessionStorage.removeItem("newsclaw.legacy_banner_snoozed");
-      } catch {
-        /* ignore */
-      }
-      setSessionLegacyDismissed(false);
-      await Promise.all([loadMemories(), loadStats(), loadMigrationStatus()]);
-      setGraphRefreshKey((v) => v + 1);
-    } catch (e: any) {
-      toast.error(e.message || t("memory.legacyClaimFailed"));
-    } finally {
-      setClaimingLegacy(false);
-    }
-  };
-
-  const handleSnoozeLegacy = () => {
-    // 本会话临时关闭：只写 sessionStorage，刷新或下次启动还会再问。
-    try {
-      window.sessionStorage.setItem("newsclaw.legacy_banner_snoozed", "1");
-    } catch {
-      /* ignore */
-    }
-    setSessionLegacyDismissed(true);
-  };
-
-  const handleDismissLegacyForever = async () => {
-    setDismissingLegacy(true);
-    try {
-      await safeFetch(`${API_BASE}/api/memories/legacy/dismiss`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      // 同时关掉本会话的 snooze，避免下次后端重置后又被本地 snooze 拦住。
-      try {
-        window.sessionStorage.removeItem("newsclaw.legacy_banner_snoozed");
-      } catch {
-        /* ignore */
-      }
-      setSessionLegacyDismissed(false);
-      await loadMigrationStatus();
-      toast.success(t("memory.legacyDismissForeverSuccess"));
-    } catch (e: any) {
-      toast.error(e.message || t("memory.legacyDismissForeverFailed"));
-    } finally {
-      setDismissingLegacy(false);
-    }
-  };
 
   const handleBatchDelete = () => {
     if (selected.size === 0) return;
@@ -587,23 +433,6 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
     );
   }
 
-  const graphPanelHeight = isMobile ? "max(560px, calc(100vh - 22rem))" : "max(620px, calc(100vh - 18rem))";
-  const currentOwner = migrationStatus?.current_owner;
-  const defaultGraphNodes = migrationStatus?.graph.by_owner.find(
-    (o) => o.user_id === "default" && o.workspace_id === "default"
-  )?.count ?? 0;
-  const pendingLegacy = migrationStatus?.legacy_pending ?? migrationStatus?.legacy_quarantine ?? 0;
-  // Phase 4：banner 显示规则收敛到后端，前端只信 show_banner。
-  // 兼容：旧后端没有 show_banner，则继续看 has_recoverable_legacy + pendingLegacy（v3 行为）。
-  const sessionDismissed = sessionLegacyDismissed; // 本会话临时关闭（"稍后提醒"）
-  const backendSaysShow =
-    migrationStatus?.show_banner !== undefined
-      ? migrationStatus.show_banner
-      : !!migrationStatus && migrationStatus.has_recoverable_legacy && pendingLegacy > 0;
-  const showLegacyRecovery = backendSaysShow && !sessionDismissed && pendingLegacy > 0;
-  const strandedDefault = migrationStatus?.stranded_default ?? 0;
-  const showStrandedDefault =
-    !!migrationStatus?.show_stranded_default && strandedDefault > 0 && !showLegacyRecovery;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -637,76 +466,6 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
       )}
 
       {/* Toolbar */}
-      {showStrandedDefault && (
-        <Card className="gap-0 border-sky-500/30 bg-sky-500/10 py-0 shadow-sm shrink-0">
-          <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="text-sm font-semibold text-sky-700 dark:text-sky-300">
-                {t("memory.strandedDefaultTitle")}
-              </div>
-              <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                {t("memory.strandedDefaultDesc", { count: strandedDefault })}
-              </div>
-            </div>
-            <Button
-              onClick={handleClaimStrandedDefault}
-              disabled={claimingStranded}
-              className="h-9 shrink-0"
-            >
-              {claimingStranded ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
-              {t("memory.strandedDefaultAction")}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-      {showLegacyRecovery && (
-        <Card className="gap-0 border-amber-500/30 bg-amber-500/10 py-0 shadow-sm shrink-0">
-          <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                {t("memory.legacyRecoveryTitle")}
-              </div>
-              <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                {t("memory.legacyRecoveryDesc", {
-                  legacy: pendingLegacy,
-                  graph: defaultGraphNodes,
-                  user: currentOwner?.user_id || "default",
-                  workspace: currentOwner?.workspace_id || "default",
-                })}
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              <Button
-                onClick={handleClaimLegacy}
-                disabled={claimingLegacy || dismissingLegacy}
-                className="h-9 bg-amber-500 text-white hover:bg-amber-600"
-              >
-                {claimingLegacy ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
-                {t("memory.legacyClaimAction")}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleSnoozeLegacy}
-                disabled={claimingLegacy || dismissingLegacy}
-                className="h-9"
-                title={t("memory.legacySnoozeHint")}
-              >
-                {t("memory.legacySnoozeAction")}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={handleDismissLegacyForever}
-                disabled={claimingLegacy || dismissingLegacy}
-                className="h-9 text-muted-foreground"
-                title={t("memory.legacyDismissForeverHint")}
-              >
-                {dismissingLegacy ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
-                {t("memory.legacyDismissForeverAction")}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Toolbar */}
       <Card className="gap-0 border-border/80 py-0 shadow-sm shrink-0">
@@ -798,23 +557,6 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
                 </Button>
               )}
 
-              {/* View mode toggle */}
-              <ToggleGroup
-                type="single"
-                value={viewMode}
-                onValueChange={(v) => { if (v) setViewMode(v as "list" | "graph"); }}
-                variant="outline"
-                className="shrink-0 justify-end"
-              >
-                <ToggleGroupItem value="list" className="h-9 px-3 text-sm data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" title={t("memory.listView")}>
-                  <List size={14} className="mr-1.5" />
-                  <span className="hidden xl:inline">{t("memory.listView")}</span>
-                </ToggleGroupItem>
-                <ToggleGroupItem value="graph" className="h-9 px-3 text-sm data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" title={t("memory.graphView")}>
-                  <Network size={14} className="mr-1.5" />
-                  <span className="hidden xl:inline">{t("memory.graphView")}</span>
-                </ToggleGroupItem>
-              </ToggleGroup>
             </div>
           </div>
         </CardContent>
@@ -899,24 +641,8 @@ export function MemoryView({ serviceRunning, apiBaseUrl = "" }: Props) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Graph view */}
-      {viewMode === "graph" ? (
-        <Card className="gap-0 overflow-hidden border-border/80 bg-muted/30 py-0 shadow-sm">
-          <Suspense fallback={
-            <div className="flex items-center justify-center" style={{ height: graphPanelHeight }}>
-              <Loader2 size={24} className="animate-spin text-indigo-500" />
-              <span className="ml-2 text-sm text-muted-foreground">{t("memory.loadingGraph")}</span>
-            </div>
-          }>
-            <CardContent className="p-0" style={{ height: graphPanelHeight }}>
-              <MemoryGraph3D apiBaseUrl={API_BASE} searchQuery={searchQuery} refreshKey={graphRefreshKey} />
-            </CardContent>
-          </Suspense>
-        </Card>
-      ) : null}
-
       {/* Memory list */}
-      {viewMode !== "list" ? null : isMobile ? (
+      {isMobile ? (
         /* ── Mobile: card-based layout ── */
         <div className="flex flex-col gap-3">
           {loading ? (

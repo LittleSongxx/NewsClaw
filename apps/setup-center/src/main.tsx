@@ -28,11 +28,8 @@ import { StaleBundleBanner } from "./components/StaleBundleBanner";
 import { initTheme } from "./theme";
 import { logger } from "./platform/logger";
 import { copyToClipboard, readFromClipboard } from "./utils/clipboard";
-import { captureWebInstallReturn } from './marketplace/web';
 import { IS_WEB } from './platform/detect';
-import { MarketplaceWebReturn } from './components/MarketplaceWebReturn';
 
-if (IS_WEB) captureWebInstallReturn();
 
 // Initialize theme before rendering to catch OS changes
 initTheme();
@@ -444,7 +441,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <PetView />
       ) : (
         <TooltipProvider>
-          {IS_WEB ? <MarketplaceWebReturn><App /></MarketplaceWebReturn> : <App />}
+          <App />
         </TooltipProvider>
       )}
     </GlobalErrorBoundary>

@@ -7,10 +7,7 @@ import remarkGfm from "remark-gfm";
 import { safeFetch } from "../providers";
 import { showInFolder, downloadFile, openFileDialog } from "../platform";
 import { IconCode, IconPlug, IconFileText2, IconPackage, IconBook, IconGear, IconShield, IconFolderOpen, IconDownload, IconTerminal, IconHeartPulse, IconRefresh } from "../icons";
-import { ChevronDown, Store } from "lucide-react";
-import { marketplaceOpenErrorKey, openMarketplaceWithAccount } from "../marketplace/open";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "../components/ui/dropdown-menu";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card";
@@ -228,7 +225,6 @@ export default function PluginManagerView({ visible, httpApiBase, desktopVersion
   const [installing, setInstalling] = useState(false);
   const [installDialogOpen, setInstallDialogOpen] = useState(false);
   const [installError, setInstallError] = useState("");
-  const [marketplaceOpening, setMarketplaceOpening] = useState(false);
   const installMenuRef = useRef<HTMLButtonElement>(null);
   const [installConfirmOpen, setInstallConfirmOpen] = useState(false);
 
@@ -551,18 +547,6 @@ export default function PluginManagerView({ visible, httpApiBase, desktopVersion
     }
   };
 
-  const openMarketplace = async () => {
-    if (marketplaceOpening) return;
-    setMarketplaceOpening(true);
-    try {
-      await openMarketplaceWithAccount(desktopVersion, apiBaseRef.current(), "/catalog?type=plugin");
-    } catch (e) {
-      showToast(t(marketplaceOpenErrorKey(e)), "err");
-    } finally {
-      setMarketplaceOpening(false);
-    }
-  };
-
   const requestInstall = () => {
     if (!installUrl.trim()) return;
     setInstallConfirmOpen(true);
@@ -839,25 +823,12 @@ export default function PluginManagerView({ visible, httpApiBase, desktopVersion
               </div>
             </div>
             <div className="flex shrink-0 items-center">
-              <Button className="rounded-r-none" onClick={openMarketplace} disabled={marketplaceOpening}>
-                <Store size={16} />{t("plugins.goToMarketplace")}
+              <Button disabled={notAvailable} onClick={() => {
+                setInstallError("");
+                setInstallDialogOpen(true);
+              }}>
+                <IconFolderOpen size={16} />{t("plugins.manualInstall")}
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button ref={installMenuRef} size="icon" className="rounded-l-none border-l border-primary-foreground/30"
-                    aria-label={t("plugins.otherInstallMethods")}>
-                    <ChevronDown size={16} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem disabled={notAvailable} onSelect={() => {
-                    setInstallError("");
-                    setInstallDialogOpen(true);
-                  }}>
-                    <IconFolderOpen size={16} />{t("plugins.manualInstall")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </div>
           </div>
         </CardHeader>

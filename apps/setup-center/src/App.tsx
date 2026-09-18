@@ -26,10 +26,7 @@ const MemoryView = lazy(() => import("./views/MemoryView").then(m => ({ default:
 const IdentityView = lazy(() => import("./views/IdentityView").then(m => ({ default: m.IdentityView })));
 const AgentDashboardView = lazy(() => import("./views/AgentDashboardView").then(m => ({ default: m.AgentDashboardView })));
 const AgentManagerView = lazy(() => import("./views/AgentManagerView").then(m => ({ default: m.AgentManagerView })));
-const OrgEditorView = lazy(() => import("./views/OrgEditorView").then(m => ({ default: m.OrgEditorView })));
 const PixelOfficeView = lazy(() => import("./views/PixelOfficeView").then(m => ({ default: m.PixelOfficeView })));
-const AgentStoreView = lazy(() => import("./views/AgentStoreView").then(m => ({ default: m.AgentStoreView })));
-const SkillStoreView = lazy(() => import("./views/SkillStoreView").then(m => ({ default: m.SkillStoreView })));
 const SecurityView = lazy(() => import("./views/SecurityView"));
 const PendingApprovalsView = lazy(() => import("./views/PendingApprovalsView").then(m => ({ default: m.PendingApprovalsView })));
 const PetView = lazy(() => import("./views/PetView").then(m => ({ default: m.PetView })));
@@ -97,8 +94,6 @@ import { ModalOverlay } from "./components/ModalOverlay";
 import { Sidebar } from "./components/Sidebar";
 import { Topbar } from "./components/Topbar";
 import { AppUpdateDialog, UpdateProgressToast } from "./components/AppUpdateDialog";
-import { INSTALL_TASK_OPEN } from './marketplace/installTasks';
-import { MarketplaceInstallDialog } from "./components/MarketplaceInstallDialog";
 import { useNotifications } from "./hooks/useNotifications";
 import { notifySuccess, notifyError, notifyLoading, dismissLoading } from "./utils/notify";
 import { Toaster } from "@/components/ui/sonner";
@@ -396,12 +391,6 @@ function MainApp() {
   const [inboxRefreshKey, setInboxRefreshKey] = useState(0);
   const [inboxDialogOpen, setInboxDialogOpen] = useState(false);
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
-  useEffect(() => {
-    const revealInstall = () => { setInboxDialogOpen(false); setMobileSidebarOpen(false); };
-    window.addEventListener(INSTALL_TASK_OPEN, revealInstall);
-    return () => window.removeEventListener(INSTALL_TASK_OPEN, revealInstall);
-  }, []);
-
   const [unreadFeedbackCount, setUnreadFeedbackCount] = useState(0);
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
   const [disabledViews, setDisabledViews] = useState<string[]>([]);
@@ -1441,7 +1430,7 @@ function MainApp() {
         void checkForAppUpdate();
       }
       // 桥接技能变更：把 WS 'skills:changed' 转成全局 window CustomEvent，
-      // 各组件（SkillManager / OrgEditorView 等）可以监听同一事件实现实时刷新，
+      // 各组件（SkillManager 等）可以监听同一事件实现实时刷新，
       // 无需让 App 知道具体组件存在。``action`` 透传给监听方按需做差异化处理。
       if (event === "skills:changed") {
         try {
@@ -4667,9 +4656,6 @@ function MainApp() {
         />
       );
     }
-    if (view === "org_editor") {
-      return null;
-    }
     if (view === "pixel_office") {
       return (
         <PixelOfficeView
@@ -4683,22 +4669,6 @@ function MainApp() {
         <AgentManagerView
           apiBaseUrl={apiBaseUrl}
           visible={view === "agent_manager"}
-        />
-      );
-    }
-    if (view === "agent_store") {
-      return (
-        <AgentStoreView
-          apiBaseUrl={apiBaseUrl}
-          visible={view === "agent_store"}
-        />
-      );
-    }
-    if (view === "skill_store") {
-      return (
-        <SkillStoreView
-          apiBaseUrl={apiBaseUrl}
-          visible={view === "skill_store"}
         />
       );
     }
@@ -4791,12 +4761,6 @@ function MainApp() {
 
         <ConfirmDialog dialog={confirmDialog} onClose={() => setConfirmDialog(null)} />
         <Toaster position="top-right" richColors closeButton />
-        <MarketplaceInstallDialog
-          discoverTasks
-          apiBaseUrl={IS_TAURI ? DEFAULT_LOCAL_API_BASE : httpApiBase()}
-          desktopVersion={desktopVersion}
-          onManageServers={() => setShowServerManager(true)}
-        />
       </div>
       </EnvFieldContext.Provider>
     );
@@ -5129,17 +5093,10 @@ function MainApp() {
               }}
             />
           </div>
-          <div style={{ display: view === "org_editor" ? undefined : "none", flex: 1, minHeight: 0 }}>
-            <ErrorBoundary>
-              <Suspense fallback={<div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", opacity: 0.5 }}><div className="spinner" style={{ width: 24, height: 24 }} /></div>}>
-                <OrgEditorView apiBaseUrl={apiBaseUrl} visible={view === "org_editor"} />
-              </Suspense>
-            </ErrorBoundary>
-          </div>
           <div
             className="content"
             style={{
-              display: view !== "chat" && view !== "org_editor" ? undefined : "none",
+              display: view !== "chat" ? undefined : "none",
               flex: 1,
               minHeight: 0,
             }}
@@ -5362,12 +5319,6 @@ function MainApp() {
           onRepairRuntime={repairRuntimeAndRestart}
         />
         <Toaster position="top-right" richColors closeButton />
-        <MarketplaceInstallDialog
-          discoverTasks
-          apiBaseUrl={IS_TAURI ? DEFAULT_LOCAL_API_BASE : httpApiBase()}
-          desktopVersion={desktopVersion}
-          onManageServers={() => setShowServerManager(true)}
-        />
 
         {view === "wizard" ? (() => {
           const saveConfig = footerSaveConfig;
