@@ -91,7 +91,7 @@ SCAN_FILES = [
     SRC_ROOT / "core" / "_reasoning_runtime.py",
     SRC_ROOT / "core" / "agent_state.py",
     SRC_ROOT / "core" / "_agent_runtime.py",
-    SRC_ROOT / "agent" / "ralph.py",
+     SRC_ROOT / "agent" / "task_types.py",
     SRC_ROOT / "agent" / "pending_approvals.py",
 ]
 

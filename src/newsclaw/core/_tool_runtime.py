@@ -1279,7 +1279,7 @@ class ToolExecutor:
                 #   2. Return a tool_result that tells LLM **the truth**:
                 #      task is paused awaiting owner approval
                 #   3. Mark the result with ``_deferred_approval_id`` so the
-                #      Ralph loop in agent.py / scheduler can raise
+                #      outer task loop can raise
                 #      ``DeferredApprovalRequired`` and halt the task
                 #      cleanly (instead of letting LLM re-try / use ask_user)
                 if perm_decision.metadata.get("is_unattended_path"):
@@ -1972,7 +1972,7 @@ class ToolExecutor:
         - Emit ``pending_approval_created`` SSE event (via Store hook)
         - Return a tool_result containing both LLM-readable text (so the LLM
           stops trying) AND a ``_deferred_approval_id`` field that the
-          surrounding Ralph loop / scheduler picks up to halt the task
+          surrounding task loop / scheduler picks up to halt the task
 
         Failure mode (Store unavailable / disk full):
         - Catch + log + return a deny-shaped tool_result with reason. Never
