@@ -108,6 +108,31 @@ class TestProposalParse:
         assert snap.status == STATUS_INVALID
         assert "rewrite" in (snap.parse_error or "")
 
+    def test_evidence_bad_dimension_is_invalid(self, isolated_newsroom):
+        payload = _add_source_payload()
+        payload["sources"][0]["evidence"] = {
+            "issue_date": "2026-09-10",
+            "dimension": "vibes",
+            "note": "编造维度",
+        }
+        _write_proposal(payload)
+        snap = load_latest_proposal()
+        assert snap.status == STATUS_INVALID
+        assert "dimension" in (snap.parse_error or "")
+        assert "vibes" in (snap.parse_error or "")
+
+    def test_evidence_bad_issue_date_is_invalid(self, isolated_newsroom):
+        payload = _add_source_payload()
+        payload["sources"][0]["evidence"] = {
+            "issue_date": "上周三",
+            "dimension": "source_hit",
+            "note": "日期格式错",
+        }
+        _write_proposal(payload)
+        snap = load_latest_proposal()
+        assert snap.status == STATUS_INVALID
+        assert "issue_date" in (snap.parse_error or "")
+
 
 class TestApplyProposal:
     def test_without_apply_source_names_unchanged(self, isolated_newsroom):
@@ -445,6 +470,40 @@ class TestApplyProposal:
         with pytest.raises(ProposalError, match="already applied"):
             apply_proposal(selected_op_ids=["src-add-arxiv"], actor="test")
         assert sources_path().read_bytes() == yaml_after
+
+    def test_policy_cap_error_explains_current_and_added(self, isolated_newsroom):
+        """方针已满时 add 到 apply 才炸——文案要讲清现状与出路。"""
+        from newsclaw.newsroom.editorial import save_editorial_policy
+        from newsclaw.newsroom.editorial import EditorialPolicy, PolicyBullet
+
+        load_sources()
+        save_editorial_policy(
+            EditorialPolicy(
+                bullets=[
+                    PolicyBullet(id=f"p{i}", text=f"既有规则 {i}")
+                    for i in range(MAX_POLICY_BULLETS)
+                ]
+            )
+        )
+        _write_proposal(
+            {
+                "policy_bullets": [
+                    {
+                        "id": "new-one",
+                        "action": "add",
+                        "text": "新规则",
+                        "evidence": _evidence(),
+                    }
+                ]
+            }
+        )
+        with pytest.raises(ProposalError) as excinfo:
+            apply_proposal(selected_op_ids=["new-one"], actor="test")
+        message = str(excinfo.value)
+        assert f"cap {MAX_POLICY_BULLETS}" in message
+        assert f"currently {MAX_POLICY_BULLETS}" in message
+        assert "remove some bullets" in message
+        assert len(load_editorial_policy().bullets) == MAX_POLICY_BULLETS
 
     def test_memory_failure_does_not_rollback_yaml(self, isolated_newsroom):
         load_sources()
