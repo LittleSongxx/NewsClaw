@@ -58,12 +58,15 @@ _MANIFEST_SCHEMA = """\
   "wiki_entries": ["本期更新/新建的本地 Wiki 页面相对路径（如 主题/大模型.md）"],
   "feishu_doc_url": "飞书云文档归档链接（第 6 步产出；失败则空字符串）",
   "scores": {
-    "source_hit": {"score": 1-5, "rationale": "一句话"},
-    "dedup":      {"score": 1-5, "rationale": "一句话"},
-    "headline":   {"score": 1-5, "rationale": "一句话"},
-    "structure":  {"score": 1-5, "rationale": "一句话"}
+    "source_hit": {"score": 4, "rationale": "一句话（score 为 1-5 整数）"},
+    "dedup":      {"score": 4, "rationale": "一句话"},
+    "headline":   {"score": 4, "rationale": "一句话"},
+    "structure":  {"score": 4, "rationale": "一句话"}
   },
-  "generator": "ai-news-editor"
+  "generator": "ai-news-editor",
+  "delivered_at": "（代码维护：投递成功时间；不要写这个字段，写了也会被旧值覆盖）",
+  "feedback": "（代码维护：人工反馈；不要写这个字段）",
+  "created_at": "（代码维护）"
 }"""
 
 

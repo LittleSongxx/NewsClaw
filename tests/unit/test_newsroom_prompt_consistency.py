@@ -67,3 +67,34 @@ class TestPromptSkillConsistency:
     @pytest.mark.parametrize("token", _PROMPT_ONLY_TOKENS)
     def test_prompt_keeps_machine_validated_semantics(self, token):
         assert token in build_daily_prompt()
+
+    def test_manifest_schema_matches_dataclass_fields(self):
+        """提示词里的 manifest schema 与 IssueManifest 字段一一对应。
+
+        Agent 按旧 schema 写、代码按新字段读的事故靠这个测试拦住：
+        加字段必须同步 _MANIFEST_SCHEMA，反之亦然。
+        """
+        import json
+        from dataclasses import fields
+
+        from newsclaw.newsroom.contract import IssueManifest
+        from newsclaw.newsroom.prompts import _MANIFEST_SCHEMA
+
+        schema_keys = set(json.loads(_MANIFEST_SCHEMA))
+        dataclass_fields = {f.name for f in fields(IssueManifest)}
+        assert not schema_keys - dataclass_fields, (
+            f"schema 提示词里有多余字段（数据类没有）: {schema_keys - dataclass_fields}"
+        )
+        assert not dataclass_fields - schema_keys, (
+            f"IssueManifest 字段未写进 schema 提示词: {dataclass_fields - schema_keys}"
+        )
+
+    def test_platform_section_pins_match_skill_templates(self):
+        """契约格式钉的小节名与两份平台技能的输出模板保持同名。"""
+        from pathlib import Path
+
+        skills_root = Path(__file__).resolve().parents[2] / "skills"
+        xhs = (skills_root / "xiaohongshu-creator" / "SKILL.md").read_text(encoding="utf-8")
+        wechat = (skills_root / "wechat-article" / "SKILL.md").read_text(encoding="utf-8")
+        assert "标题方案" in xhs, "契约机验钉住的小节『标题方案』在技能模板里消失了"
+        assert "基础信息" in wechat, "契约机验钉住的小节『基础信息』在技能模板里消失了"
