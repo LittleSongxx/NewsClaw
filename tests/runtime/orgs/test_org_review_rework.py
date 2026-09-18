@@ -30,7 +30,6 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-
 from newsclaw.orgs._default_agent_builder import (
     DefaultAgentBuilder,
     _parse_review_verdict,
@@ -56,6 +55,7 @@ from newsclaw.orgs._runtime_media_quality import (
     current_media_quality_failures,
     current_media_quality_failures_var,
 )
+
 from newsclaw.runtime.execution_context import UpstreamContext
 
 

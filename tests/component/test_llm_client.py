@@ -1,9 +1,7 @@
 """L2 Component Tests: MockLLMClient behavior and LLM type contracts."""
 
-import pytest
 
 from newsclaw.llm.types import (
-    ContentBlockType,
     EndpointConfig,
     LLMResponse,
     Message,

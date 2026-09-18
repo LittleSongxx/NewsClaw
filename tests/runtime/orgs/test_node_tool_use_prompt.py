@@ -30,7 +30,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
 from newsclaw.orgs._default_agent_builder import (
     _BrainBackedNodeAgent,
     _persona_system_prompt,

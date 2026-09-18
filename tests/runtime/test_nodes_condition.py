@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from newsclaw.runtime.messenger import NodeAddress, NodeMessage
 
 from newsclaw.runtime.cancel_token import CancellationToken
 from newsclaw.runtime.checkpoint import MemoryCheckpointer
-from newsclaw.runtime.messenger import NodeAddress, NodeMessage
 from newsclaw.runtime.nodes import (
     BranchInputs,
     ConditionNode,

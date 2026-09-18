@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from newsclaw.api.schemas import ChatRequest
 from newsclaw.agent.core import Agent
+from newsclaw.api.schemas import ChatRequest
 from newsclaw.sessions.session import Session
 
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 
 import pytest
-
 from newsclaw.orgs._runtime_agent_pipeline_executor import _direct_dispatch_children
 from newsclaw.orgs._runtime_templates import (
     AIGC_VIDEO_STUDIO,
@@ -12,11 +11,12 @@ from newsclaw.orgs._runtime_templates import (
 )
 from newsclaw.orgs.manager import OrgManager
 from newsclaw.orgs.org_models import EdgeType, OrgEdge
-from newsclaw.runtime.models import EdgeKind, EdgeV2
 from newsclaw.runtime.templates.schema import (
     EdgeSpec,
     TemplateValidationError,
 )
+
+from newsclaw.runtime.models import EdgeKind, EdgeV2
 
 
 def _binding() -> dict:

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from newsclaw.runtime.llm_supervisor_client import GatewaySupervisorLLMClient
 
 from newsclaw.llm.types import ConfigurationError
-from newsclaw.runtime.llm_supervisor_client import GatewaySupervisorLLMClient
 
 
 class _MissingEndpointGateway:

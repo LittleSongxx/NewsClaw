@@ -56,10 +56,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-from newsclaw.config import settings
 from newsclaw.orgs.command_models import OrgCommandRequest
 from newsclaw.orgs.command_service import OrgCommandService
+
+from newsclaw.config import settings
 from newsclaw.runtime.cancel_token import CancellationToken, CancelledByToken
 from newsclaw.runtime.checkpoint import MemoryCheckpointer
 from newsclaw.runtime.ledger import ProgressLedger

@@ -8,8 +8,8 @@ these would use a real LLM and evaluate statistically.
 
 import pytest
 
-from tests.fixtures.mock_llm import MockBrain, MockLLMClient, MockResponse
 from newsclaw.llm.types import ToolUseBlock
+from tests.fixtures.mock_llm import MockBrain, MockLLMClient
 
 
 @pytest.fixture

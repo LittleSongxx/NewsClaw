@@ -1007,11 +1007,6 @@ def list_skills(workspace_dir: str) -> None:
     loader = SkillLoader()
     loader.load_all(base_path=wd)
     skills = loader.registry.list_all()
-    from newsclaw.skills.marketplace import installed_marketplace_names
-
-    marketplace_names = installed_marketplace_names(
-        [s.skill_path for s in skills if s.skill_path and not s.system]
-    )
     out = []
     for s in skills:
         skill_path = getattr(s, "skill_path", None)
@@ -1040,7 +1035,6 @@ def list_skills(workspace_dir: str) -> None:
                 "category": getattr(s, "category", None),
                 "path": skill_path,
                 "source_url": source_url,
-                "marketplace_name": marketplace_names.get(str(skill_path)),
                 "config": getattr(s, "config", None) or getattr(s, "config_schema", None),
             }
         )
@@ -1207,70 +1201,6 @@ def _validate_zip_members(zf: zipfile.ZipFile) -> None:
             raise RuntimeError(f"Zip Slip detected: dangerous member '{name}'")
 
 
-_SKILLHUB_ARCHIVE_MAX_BYTES = 50 * 1024 * 1024
-_SKILLHUB_UNCOMPRESSED_MAX_BYTES = 200 * 1024 * 1024
-_SKILLHUB_ARCHIVE_MAX_FILES = 5000
-
-
-def _download_skillhub_skill(source: str, dest_dir: Path) -> dict[str, str | None]:
-    """Download and safely extract a SkillHub registry package."""
-    import io
-    import shutil
-    import tempfile
-    import urllib.request
-    import zipfile
-
-    from newsclaw.skills.marketplace import (
-        build_skillhub_download_url,
-        parse_skillhub_locator,
-    )
-
-    locator = parse_skillhub_locator(source)
-    request = urllib.request.Request(
-        build_skillhub_download_url(locator),
-        headers={"User-Agent": "NewsClaw-SetupCenter"},
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        content_length = response.headers.get("Content-Length")
-        if content_length and int(content_length) > _SKILLHUB_ARCHIVE_MAX_BYTES:
-            raise ValueError("SkillHub 技能包超过 50 MiB 下载限制")
-        data = response.read(_SKILLHUB_ARCHIVE_MAX_BYTES + 1)
-    if len(data) > _SKILLHUB_ARCHIVE_MAX_BYTES:
-        raise ValueError("SkillHub 技能包超过 50 MiB 下载限制")
-
-    tmp_extract = Path(tempfile.mkdtemp(prefix="newsclaw_skillhub_"))
-    staging_root = Path(tempfile.mkdtemp(prefix=".newsclaw-skillhub-", dir=str(dest_dir.parent)))
-    try:
-        with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            _validate_zip_members(zf)
-            files = [item for item in zf.infolist() if not item.is_dir()]
-            if len(files) > _SKILLHUB_ARCHIVE_MAX_FILES:
-                raise ValueError("SkillHub 技能包文件数量超过安全限制")
-            if sum(item.file_size for item in files) > _SKILLHUB_UNCOMPRESSED_MAX_BYTES:
-                raise ValueError("SkillHub 技能包解压后超过 200 MiB 安全限制")
-            zf.extractall(tmp_extract)
-
-        source_dir = tmp_extract
-        if not (source_dir / "SKILL.md").is_file():
-            children = list(source_dir.iterdir())
-            if len(children) == 1 and children[0].is_dir():
-                source_dir = children[0]
-        if not (source_dir / "SKILL.md").is_file():
-            raise ValueError("SkillHub 技能包根目录缺少 SKILL.md")
-        staged_skill = staging_root / "skill"
-        _copy_skill_tree(source_dir, staged_skill)
-        staged_skill.rename(dest_dir)
-    finally:
-        shutil.rmtree(str(tmp_extract), ignore_errors=True)
-        shutil.rmtree(str(staging_root), ignore_errors=True)
-
-    return {
-        "provider": "skillhub",
-        "locator": locator.canonical_locator,
-        "namespace": locator.namespace,
-        "slug": locator.slug,
-        "version": locator.version,
-    }
 
 
 _PROXY_ENV_KEYS: tuple[str, ...] = (
@@ -1629,19 +1559,13 @@ def install_skill(
 
     Args:
         workspace_dir: 工作区根目录
-        url: 技能来源（skillhub:@namespace/slug / Git URL / owner/repo / 本地路径）
+        url: 技能来源（Git URL / owner/repo / 本地路径）
         category: 可选大类。命中且通过校验时，安装到 ``skills/<category>/<skill_id>/``；
             否则维持旧行为安装到 ``skills/<skill_id>/``（顶层平铺）。
     """
     url = _extract_skill_signal(url)
     if not url:
         raise ValueError("请输入有效的技能地址，如 owner/repo 或 Git URL")
-    from newsclaw.skills.marketplace import normalize_skillhub_source
-
-    skillhub_source = normalize_skillhub_source(url)
-    if skillhub_source:
-        url = skillhub_source
-
     root_skills_dir = _resolve_skills_dir(workspace_dir)
     root_skills_dir.mkdir(parents=True, exist_ok=True)
     origin_metadata: dict[str, str | None] | None = None
@@ -1661,21 +1585,6 @@ def install_skill(
         except Exception as ce:
             sys.stderr.write(f"[install_skill] 分类校验异常 {category!r}: {ce}，已安装到顶层\n")
             skills_dir = root_skills_dir
-
-    if url.startswith("skillhub:"):
-        from newsclaw.skills.marketplace import parse_skillhub_locator
-
-        locator = parse_skillhub_locator(url)
-        source_locator = locator.canonical_locator
-        skill_name = _sanitize_skill_dir_name(locator.slug)
-        target = skills_dir / skill_name
-        if target.exists() and _is_valid_skill_dir(target):
-            if _read_skill_source(target) != source_locator and locator.namespace:
-                skill_name = _sanitize_skill_dir_name(f"{locator.namespace}-{locator.slug}")
-                target = skills_dir / skill_name
-        _ensure_target_available(target, source_locator)
-        origin_metadata = _download_skillhub_skill(url, target)
-        url = source_locator
 
     elif url.startswith("github:"):
         # github:user/repo/path -> clone from GitHub
@@ -1823,7 +1732,7 @@ def install_skill(
         _ensure_target_available(target, url)
         _copy_skill_tree(src, target)
 
-    # Record install origin for marketplace matching (Issue #15)
+    # Record install origin for later reference matching
     try:
         origin_file = target / ".newsclaw-source"
         origin_file.write_text(url, encoding="utf-8")
@@ -1869,33 +1778,6 @@ def uninstall_skill(workspace_dir: str, skill_name: str) -> None:
 
     shutil.rmtree(str(target))
     _json_print({"status": "ok", "removed": skill_name})
-
-
-def list_marketplace(query: str = "agent", page: int = 1, page_size: int = 20) -> None:
-    """Search SkillHub and emit the provider-neutral marketplace model."""
-    import urllib.parse
-    import urllib.request
-
-    from newsclaw.skills.marketplace import SKILLHUB_SKILLS_API, normalize_skillhub_response
-
-    page = max(1, page)
-    page_size = min(100, max(1, page_size))
-    params = urllib.parse.urlencode(
-        {
-            "keyword": query.strip(),
-            "page": page,
-            "pageSize": page_size,
-            "sortBy": "downloads",
-            "order": "desc",
-        }
-    )
-    request = urllib.request.Request(
-        f"{SKILLHUB_SKILLS_API}?{params}",
-        headers={"User-Agent": "NewsClaw-SetupCenter"},
-    )
-    with urllib.request.urlopen(request, timeout=15) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    _json_print(normalize_skillhub_response(payload, page=page, page_size=page_size))
 
 
 def get_skill_config(workspace_dir: str, skill_name: str) -> None:
@@ -1954,11 +1836,6 @@ def main(argv: list[str] | None = None) -> None:
     p_uninst = sub.add_parser("uninstall-skill", help="卸载技能")
     p_uninst.add_argument("--workspace-dir", required=True, help="工作区目录")
     p_uninst.add_argument("--skill-name", required=True, help="技能名称")
-
-    p_market = sub.add_parser("list-marketplace", help="搜索市场可用技能（JSON）")
-    p_market.add_argument("--query", default="agent", help="搜索关键词")
-    p_market.add_argument("--page", type=int, default=1, help="结果页码")
-    p_market.add_argument("--page-size", type=int, default=20, help="每页结果数")
 
     p_cfg = sub.add_parser("get-skill-config", help="获取技能配置 schema（JSON）")
     p_cfg.add_argument("--workspace-dir", required=True, help="工作区目录")
@@ -2050,10 +1927,6 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.cmd == "uninstall-skill":
         uninstall_skill(workspace_dir=args.workspace_dir, skill_name=args.skill_name)
-        return
-
-    if args.cmd == "list-marketplace":
-        list_marketplace(query=args.query, page=args.page, page_size=args.page_size)
         return
 
     if args.cmd == "get-skill-config":

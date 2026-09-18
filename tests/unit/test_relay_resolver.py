@@ -20,8 +20,6 @@ to make sure the full ``api_key_env`` -> .env lookup path works.
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from newsclaw.llm.endpoint_manager import EndpointManager

@@ -13,18 +13,13 @@
 """
 
 import sys
-import asyncio
-import json
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from newsclaw.memory.types import Memory, MemoryType, MemoryPriority, ConversationTurn
-from newsclaw.memory.vector_store import VectorStore
-from newsclaw.memory.extractor import MemoryExtractor
 from newsclaw.memory.manager import MemoryManager
-from newsclaw.memory.daily_consolidator import DailyConsolidator
+from newsclaw.memory.types import Memory, MemoryPriority, MemoryType
 from newsclaw.sessions.session import Session
 
 
@@ -148,7 +143,7 @@ class MemoryInteractionTester:
     def test_vector_search_with_filter(self):
         """测试带过滤的搜索"""
         results = self.vs.search("用户", limit=5, filter_type="preference")
-        self.log("向量搜索-类型过滤", isinstance(results, list), f"过滤 preference")
+        self.log("向量搜索-类型过滤", isinstance(results, list), "过滤 preference")
 
     def test_vector_search_relevance(self):
         """测试搜索相关性"""
@@ -185,7 +180,7 @@ class MemoryInteractionTester:
         """测试带任务的注入"""
         context = self.mm.get_injection_context(task_description="编写 Python 代码")
         has_related = "相关记忆" in context or "语义匹配" in context or len(context) > 100
-        self.log("记忆注入-带任务", len(context) > 0, f"任务: 编写 Python 代码")
+        self.log("记忆注入-带任务", len(context) > 0, "任务: 编写 Python 代码")
 
     def test_injection_code_task(self):
         """测试代码任务注入"""

@@ -6,10 +6,10 @@ import asyncio
 from typing import Any
 
 import pytest
+from newsclaw.runtime.messenger import MessengerNode, NodeAddress, NodeMessage
 
 from newsclaw.runtime.cancel_token import CancellationToken, CancelledByToken
 from newsclaw.runtime.checkpoint import MemoryCheckpointer
-from newsclaw.runtime.messenger import MessengerNode, NodeAddress, NodeMessage
 from newsclaw.runtime.models import NodeStatus
 from newsclaw.runtime.nodes import (
     BaseNode,

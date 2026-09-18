@@ -5,7 +5,6 @@ import time
 from pathlib import Path
 
 import pytest
-
 from newsclaw.orgs._runtime_delivery_manifest import (
     DeliveryManifest,
     DeliveryManifestError,
@@ -14,6 +13,7 @@ from newsclaw.orgs._runtime_delivery_manifest import (
     validate_manifest_runtime_evidence,
 )
 from newsclaw.orgs._runtime_node_tools import execute_node_tool, resolve_node_tools
+
 from newsclaw.runtime.execution_context import ExecutionPhase, current_execution_phase_var
 
 

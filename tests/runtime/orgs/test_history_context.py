@@ -13,7 +13,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-
 from newsclaw.orgs.command_models import OrgCommandRequest
 from newsclaw.orgs.command_service import (
     ORG_HISTORY_INSTRUCTION_CHARS,

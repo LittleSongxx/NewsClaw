@@ -135,7 +135,7 @@ class MockLLMClient:
             return self._default_response.to_llm_response()
         return MockResponse(content="No mock response configured").to_llm_response()
 
-    def chat_sync(self, messages: list[Any], **kwargs: Any) -> "LLMResponse":
+    def chat_sync(self, messages: list[Any], **kwargs: Any) -> LLMResponse:
         """Synchronous version of chat() for non-async tests."""
         self.call_log.append(
             {
@@ -152,7 +152,6 @@ class MockLLMClient:
             return self._responses.pop(0).to_llm_response()
         if self._default_response:
             return self._default_response.to_llm_response()
-        from newsclaw.llm.types import LLMResponse
 
         return MockResponse(content="No mock response configured").to_llm_response()
 

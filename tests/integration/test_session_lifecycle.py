@@ -1,7 +1,7 @@
 """L3 Integration Tests: SessionManager lifecycle."""
 
+
 import pytest
-from pathlib import Path
 
 from newsclaw.sessions.manager import SessionManager
 from newsclaw.sessions.session import SessionState

@@ -1,8 +1,5 @@
 """L3 Integration Tests: IM channel adapter protocol compliance."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from pathlib import Path
 
 from newsclaw.channels.base import ChannelAdapter
 from newsclaw.channels.types import MessageContent, OutgoingMessage

@@ -40,7 +40,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-
 from newsclaw.orgs.project_models import (
     OrgProject,
     ProjectTask,

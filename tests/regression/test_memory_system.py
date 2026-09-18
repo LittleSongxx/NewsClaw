@@ -8,28 +8,28 @@
     uv run pytest tests/regression/test_memory_system.py -v -k "vector"  # 只运行向量相关测试
 """
 
-import pytest
 import json
-import tempfile
 import shutil
-from pathlib import Path
-from datetime import datetime, timedelta
-from unittest.mock import Mock, AsyncMock
-
 import sys
+import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from newsclaw.memory.types import Memory, MemoryType, MemoryPriority, ConversationTurn
-from newsclaw.memory.vector_store import VectorStore
-from newsclaw.memory.extractor import MemoryExtractor
-from newsclaw.memory.manager import MemoryManager
 from newsclaw.memory.consolidator import MemoryConsolidator
 from newsclaw.memory.daily_consolidator import DailyConsolidator
+from newsclaw.memory.extractor import MemoryExtractor
+from newsclaw.memory.manager import MemoryManager
+from newsclaw.memory.types import ConversationTurn, Memory, MemoryPriority, MemoryType
+from newsclaw.memory.vector_store import VectorStore
 
 try:
-    import sentence_transformers  # noqa: F401
     import chromadb  # noqa: F401
+    import sentence_transformers  # noqa: F401
 
     _VECTOR_DEPS_AVAILABLE = True
 except ImportError:

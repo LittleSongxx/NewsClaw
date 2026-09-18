@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from newsclaw.orgs._runtime_artifact_flow import (
     ArtifactBindingError,
     CommandArtifactLedger,

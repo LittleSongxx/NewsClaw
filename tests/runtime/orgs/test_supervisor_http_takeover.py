@@ -39,9 +39,9 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-
 from newsclaw.orgs.command_models import OrgCommandRequest
 from newsclaw.orgs.command_service import OrgCommandService
+
 from newsclaw.runtime.cancel_token import CancellationToken
 from newsclaw.runtime.supervisor import FinalOutcome, SupervisorOutcome
 

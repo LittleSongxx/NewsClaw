@@ -16,8 +16,6 @@ These tests freeze the contract that:
 
 from __future__ import annotations
 
-import pytest
-
 from newsclaw.llm.types import EndpointConfig
 
 

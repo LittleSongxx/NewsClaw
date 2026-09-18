@@ -37,7 +37,6 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-
 from newsclaw.orgs import _runtime_dispatch as dispatch_mod
 from newsclaw.orgs._default_agent_builder import (
     DefaultAgentBuilder,

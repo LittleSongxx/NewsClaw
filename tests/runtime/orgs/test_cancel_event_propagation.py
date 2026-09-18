@@ -43,8 +43,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-
-from newsclaw.config import settings
 from newsclaw.orgs._default_agent_builder import (
     AgentSpec,
     _BrainBackedNodeAgent,
@@ -52,6 +50,12 @@ from newsclaw.orgs._default_agent_builder import (
 from newsclaw.orgs._runtime_node_tools import run_with_tools
 from newsclaw.orgs.command_models import OrgCommandRequest
 from newsclaw.orgs.command_service import OrgCommandService
+from newsclaw.runtime.supervisor_factory import (
+    _make_executor_deliver,
+    build_supervisor_for_command,
+)
+
+from newsclaw.config import settings
 from newsclaw.runtime.cancel_token import CancellationToken
 from newsclaw.runtime.checkpoint import MemoryCheckpointer
 from newsclaw.runtime.stream import StreamBus
@@ -60,10 +64,6 @@ from newsclaw.runtime.supervisor import (
     FinalOutcome,
     Supervisor,
     SupervisorBrain,
-)
-from newsclaw.runtime.supervisor_factory import (
-    _make_executor_deliver,
-    build_supervisor_for_command,
 )
 
 # ---------------------------------------------------------------------------

@@ -23,7 +23,6 @@ import pytest
 from newsclaw.plugins.asset_bus import AssetBus
 from newsclaw.plugins.manifest import PluginManifest
 
-
 # ---------- fixtures ----------
 
 

@@ -4,15 +4,14 @@
 测试 BudgetConfig.for_context_window() 和 get_max_context_tokens() 的行为。
 """
 
-import pytest
 from unittest.mock import MagicMock, PropertyMock
 
-from newsclaw.prompt.budget import BudgetConfig, estimate_tokens
 from newsclaw.core.context_utils import (
     DEFAULT_MAX_CONTEXT_TOKENS,
     get_max_context_tokens,
     get_raw_context_window,
 )
+from newsclaw.prompt.budget import BudgetConfig
 
 
 class TestBudgetConfigForContextWindow:

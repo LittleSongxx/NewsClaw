@@ -31,7 +31,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
 from newsclaw.orgs.manager import (
     OrgManager,
     OrgNameConflictError,

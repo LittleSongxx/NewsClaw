@@ -10,12 +10,9 @@
 """
 
 import asyncio
-import json
 import sys
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -33,7 +30,7 @@ class TestSession:
 
     def test_session_creation(self):
         """测试会话创建"""
-        from newsclaw.sessions import Session, SessionConfig
+        from newsclaw.sessions import Session
 
         session = Session.create(
             channel="telegram",
@@ -50,7 +47,7 @@ class TestSession:
 
     def test_session_context(self):
         """测试会话上下文"""
-        from newsclaw.sessions import Session, SessionContext
+        from newsclaw.sessions import Session
 
         session = Session.create(
             channel="telegram",
@@ -384,7 +381,7 @@ class TestTaskScheduler:
     @pytest.mark.asyncio
     async def test_scheduler_basic(self, temp_storage):
         """测试调度器基本功能"""
-        from newsclaw.scheduler import TaskScheduler, ScheduledTask
+        from newsclaw.scheduler import ScheduledTask, TaskScheduler
 
         scheduler = TaskScheduler(storage_path=temp_storage)
         await scheduler.start()
@@ -422,7 +419,7 @@ class TestTaskScheduler:
     @pytest.mark.asyncio
     async def test_scheduler_immediate_trigger(self, temp_storage):
         """测试立即触发任务"""
-        from newsclaw.scheduler import TaskScheduler, ScheduledTask
+        from newsclaw.scheduler import ScheduledTask, TaskScheduler
 
         # 记录执行
         executed = {"count": 0, "result": None}
@@ -463,7 +460,7 @@ class TestTaskScheduler:
     @pytest.mark.asyncio
     async def test_scheduler_persistence(self, temp_storage):
         """测试任务持久化"""
-        from newsclaw.scheduler import TaskScheduler, ScheduledTask
+        from newsclaw.scheduler import ScheduledTask, TaskScheduler
 
         # 第一次：创建并保存
         scheduler1 = TaskScheduler(storage_path=temp_storage)
@@ -521,7 +518,7 @@ class TestMessageTypes:
 
     def test_message_content(self):
         """测试消息内容"""
-        from newsclaw.channels import MessageContent, MediaFile, MessageType
+        from newsclaw.channels import MediaFile, MessageContent, MessageType
 
         # 纯文本
         content1 = MessageContent.text_only("Hello World")
@@ -542,7 +539,7 @@ class TestMessageTypes:
 
     def test_unified_message(self):
         """测试统一消息"""
-        from newsclaw.channels import UnifiedMessage, MessageContent
+        from newsclaw.channels import MessageContent, UnifiedMessage
 
         content = MessageContent.text_only("/start 参数")
 
@@ -564,7 +561,7 @@ class TestMessageTypes:
 
     def test_message_plain_text(self):
         """测试消息转纯文本"""
-        from newsclaw.channels import MessageContent, MediaFile
+        from newsclaw.channels import MediaFile, MessageContent
 
         media = MediaFile.create(
             filename="voice.ogg",
@@ -604,7 +601,7 @@ class TestTelegramAdapter:
             bot = Bot(token=self.BOT_TOKEN)
             me = await bot.get_me()
 
-            print(f"✅ Telegram Bot 连接成功!")
+            print("✅ Telegram Bot 连接成功!")
             print(f"   Bot ID: {me.id}")
             print(f"   Bot Name: {me.first_name}")
             print(f"   Bot Username: @{me.username}")
@@ -680,7 +677,7 @@ class TestTelegramAdapter:
 
             # 获取 Bot 信息
             me = await adapter._bot.get_me()
-            print(f"✅ TelegramAdapter 启动成功")
+            print("✅ TelegramAdapter 启动成功")
             print(f"   连接到: @{me.username}")
 
             # 停止
@@ -707,8 +704,8 @@ class TestTelegramIntegration:
     async def test_telegram_full_flow(self):
         """完整流程测试 (需要手动给 Bot 发消息)"""
         try:
-            from newsclaw.channels.adapters import TelegramAdapter
             from newsclaw.channels import UnifiedMessage
+            from newsclaw.channels.adapters import TelegramAdapter
 
             received_messages = []
 
@@ -726,7 +723,7 @@ class TestTelegramIntegration:
             print("\n" + "=" * 50)
             print("Telegram 集成测试")
             print("=" * 50)
-            print(f"请在 Telegram 中给 @Jarvisuen_bot 发送消息")
+            print("请在 Telegram 中给 @Jarvisuen_bot 发送消息")
             print("等待 10 秒接收消息...")
             print("=" * 50 + "\n")
 
@@ -772,8 +769,8 @@ class TestMediaHandler:
     @pytest.mark.asyncio
     async def test_text_extraction(self, tmp_path):
         """测试文本提取"""
-        from newsclaw.channels.media import MediaHandler
         from newsclaw.channels import MediaFile
+        from newsclaw.channels.media import MediaHandler
 
         handler = MediaHandler()
 
@@ -803,8 +800,8 @@ class TestMediaStorage:
     @pytest.mark.asyncio
     async def test_storage_basic(self, temp_storage):
         """测试基本存储功能"""
-        from newsclaw.channels.media import MediaStorage
         from newsclaw.channels import MediaFile
+        from newsclaw.channels.media import MediaStorage
 
         storage = MediaStorage(base_path=temp_storage)
 
@@ -832,8 +829,8 @@ class TestMediaStorage:
     @pytest.mark.asyncio
     async def test_storage_dedup(self, temp_storage):
         """测试文件去重"""
-        from newsclaw.channels.media import MediaStorage
         from newsclaw.channels import MediaFile
+        from newsclaw.channels.media import MediaStorage
 
         storage = MediaStorage(base_path=temp_storage)
 
@@ -863,9 +860,9 @@ class TestIntegration:
     @pytest.mark.asyncio
     async def test_full_message_flow(self, tmp_path):
         """完整消息流程测试"""
-        from newsclaw.sessions import SessionManager
-        from newsclaw.channels import MessageGateway, MessageContent, UnifiedMessage
+        from newsclaw.channels import MessageContent, MessageGateway, UnifiedMessage
         from newsclaw.channels.base import CLIAdapter
+        from newsclaw.sessions import SessionManager
 
         # 创建组件
         session_manager = SessionManager(storage_path=tmp_path / "sessions")

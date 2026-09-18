@@ -21,8 +21,6 @@ import asyncio
 import contextlib
 
 import pytest
-
-from newsclaw.runtime.cancel_token import CancellationToken
 from newsclaw.runtime.messenger import (
     InMemoryNodeRegistry,
     Messenger,
@@ -31,6 +29,8 @@ from newsclaw.runtime.messenger import (
     NodeAddressResolveError,
     NodeMessage,
 )
+
+from newsclaw.runtime.cancel_token import CancellationToken
 from newsclaw.runtime.stream import StreamBus
 from newsclaw.runtime.supervisor import DelegationResult
 

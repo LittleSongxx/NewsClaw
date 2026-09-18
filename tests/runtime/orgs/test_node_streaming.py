@@ -18,7 +18,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
 from newsclaw.orgs._default_agent_builder import _BrainBackedNodeAgent, _clean_thinking
 from newsclaw.orgs._runtime_agent_pipeline import AgentSpec, current_command_id_var
 

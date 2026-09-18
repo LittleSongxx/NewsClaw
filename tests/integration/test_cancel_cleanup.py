@@ -40,7 +40,6 @@ from newsclaw.core.cancel_cleanup import (
     synthesize_tool_results_for_orphans,
 )
 
-
 # ── AbortScope tree behaviour ────────────────────────────────────────
 
 

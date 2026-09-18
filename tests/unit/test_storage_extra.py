@@ -1,6 +1,5 @@
 """补充 storage.py 单元测试: 连接异常降级, FTS5 rebuild, 边界条件."""
 
-import sqlite3
 from datetime import datetime
 
 import pytest

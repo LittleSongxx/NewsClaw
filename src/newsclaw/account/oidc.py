@@ -8,7 +8,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -769,67 +768,6 @@ class AccountOIDCManager:
             raise AccountOIDCError("account revocation is temporarily unavailable") from exc
         if response.status_code >= 300:
             raise AccountOIDCError("account revocation is temporarily unavailable")
-
-    async def marketplace_handoff(self, target_origin: str) -> str | None:
-        async with self._credentials():
-            identity = await self._identity_locked()
-            if identity["status"] == "signed_out":
-                return None
-            if identity["status"] != "active":
-                raise AccountOIDCError("marketplace_account_required")
-            refresh = await self._tokens.load_refresh_token()
-            if not refresh:
-                return None
-            return await self._marketplace_proof_locked(
-                "/oauth/desktop-handoff",
-                refresh,
-                {"target_origin": target_origin},
-                "ticket",
-            )
-
-    async def marketplace_install_proof(self, token: str, device_id: str) -> str:
-        async with self._credentials():
-            if (await self._identity_locked())["status"] != "active":
-                raise AccountOIDCError("marketplace_account_required")
-            refresh = await self._tokens.load_refresh_token()
-            if not refresh:
-                raise AccountOIDCError("marketplace_account_required")
-            return await self._marketplace_proof_locked(
-                "/oauth/desktop-install-proof",
-                refresh,
-                {"installation_token": token, "device_id": device_id},
-                "proof",
-            )
-
-    async def _marketplace_proof_locked(
-        self,
-        path: str,
-        refresh: str,
-        values: dict[str, str],
-        field_name: str,
-    ) -> str:
-        generation = self._generation
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    f"{self._base_url}{path}",
-                    json={
-                        "client_id": self._client_id,
-                        "refresh_token": refresh,
-                        "target_client_id": "marketplace",
-                        **values,
-                    },
-                )
-            if generation != self._generation:
-                raise AccountOIDCError("account changed during request")
-            if response.status_code != 200:
-                raise AccountOIDCError("marketplace account authorization failed")
-            value = response.json().get(field_name)
-            if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{32,512}", value):
-                raise AccountOIDCError("invalid marketplace account authorization")
-            return value
-        except (httpx.HTTPError, ValueError) as exc:
-            raise AccountOIDCError("marketplace account authorization unavailable") from exc
 
     async def _callback(
         self,

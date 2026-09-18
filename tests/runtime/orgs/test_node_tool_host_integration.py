@@ -39,7 +39,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from newsclaw.orgs._runtime_agent_host import NodeToolHost, build_node_tool_host
 from newsclaw.orgs._runtime_delegation import (
     current_delegation_assignment_var,
@@ -50,6 +49,7 @@ from newsclaw.orgs._runtime_node_tools import (
     execute_node_tool,
     resolve_node_tools,
 )
+
 from newsclaw.tools.handlers import SystemHandlerRegistry
 
 

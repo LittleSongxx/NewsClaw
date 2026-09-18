@@ -1,5 +1,5 @@
-from newsclaw.config import settings
 from newsclaw.agent.tools import ToolExecutor
+from newsclaw.config import settings
 from newsclaw.tools.handlers import SystemHandlerRegistry
 
 

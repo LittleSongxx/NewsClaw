@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from newsclaw.orgs._runtime_node_artifacts import classify_node_output
 
 

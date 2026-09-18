@@ -5,7 +5,6 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-
 from newsclaw.orgs._default_agent_builder import _BrainBackedNodeAgent
 from newsclaw.orgs._runtime_agent_pipeline import AgentSpec, current_command_id_var
 from newsclaw.orgs._runtime_artifact_flow import artifact_ledger, record_tool_result

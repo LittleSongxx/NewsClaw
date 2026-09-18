@@ -10,15 +10,11 @@ Covers:
 """
 
 import json
-import re
-import tempfile
 from datetime import datetime, timedelta
-from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -78,7 +74,7 @@ class TestNoSessionExpiry:
 
     def test_load_sessions_preserves_messages(self, tmp_path):
         """_load_sessions should NOT clear messages for stale sessions."""
-        from newsclaw.sessions.session import Session, SessionConfig, SessionContext
+        from newsclaw.sessions.session import Session, SessionContext
 
         session = Session(
             id="test_id",
@@ -167,8 +163,8 @@ class TestTurnIndexContinuity:
         for i in range(3):
             store.save_turn(session_id="s1", turn_index=i, role="user", content=f"old{i}")
 
-        from newsclaw.memory.manager import MemoryManager
         from newsclaw.memory.consolidator import MemoryConsolidator
+        from newsclaw.memory.manager import MemoryManager
 
         mm = MemoryManager.__new__(MemoryManager)
         mm.store = store
@@ -194,8 +190,8 @@ class TestTurnIndexContinuity:
         store = _make_unified_store(tmp_path)
         store.save_turn(session_id="s1", turn_index=0, role="user", content="original")
 
-        from newsclaw.memory.manager import MemoryManager
         from newsclaw.memory.consolidator import MemoryConsolidator
+        from newsclaw.memory.manager import MemoryManager
 
         mm = MemoryManager.__new__(MemoryManager)
         mm.store = store
@@ -332,8 +328,8 @@ class TestSearchMemorySemantic:
         assert saved_memory.content == "用户喜欢简洁回答"
 
     def test_uses_retrieval_engine_when_available(self):
-        from newsclaw.tools.handlers.memory import MemoryHandler
         from newsclaw.memory.retrieval import RetrievalCandidate
+        from newsclaw.tools.handlers.memory import MemoryHandler
 
         candidate = RetrievalCandidate(
             content="用户喜欢Python编程",
@@ -357,8 +353,8 @@ class TestSearchMemorySemantic:
         engine.retrieve_candidates.assert_called_once()
 
     def test_falls_back_to_substring_on_no_engine(self):
-        from newsclaw.tools.handlers.memory import MemoryHandler
         from newsclaw.memory.types import Memory, MemoryType
+        from newsclaw.tools.handlers.memory import MemoryHandler
 
         mm = MagicMock()
         mm.retrieval_engine = None
@@ -375,8 +371,8 @@ class TestSearchMemorySemantic:
         mm.search_memories.assert_called_once()
 
     def test_falls_back_on_type_filter(self):
-        from newsclaw.tools.handlers.memory import MemoryHandler
         from newsclaw.memory.types import Memory, MemoryType
+        from newsclaw.tools.handlers.memory import MemoryHandler
 
         engine = MagicMock()
         mm = MagicMock()

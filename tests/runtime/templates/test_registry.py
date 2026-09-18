@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from newsclaw.runtime.templates.registry import _PENDING
 
 from newsclaw.runtime.models import EdgeKind, NodeStatus, NodeType, OrgStatus
 from newsclaw.runtime.templates import (
@@ -19,7 +20,6 @@ from newsclaw.runtime.templates import (
     collect_builtin_factories,
     template,
 )
-from newsclaw.runtime.templates.registry import _PENDING
 
 
 def _spec(*, sid: str = "demo") -> TemplateSpec:

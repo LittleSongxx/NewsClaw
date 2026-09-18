@@ -65,7 +65,6 @@ _INTERRUPT_BEHAVIOR_MAP: dict[str, InterruptBehavior] = {
     "export_agent": "block",
     "get_hub_agent_detail": "cancel",
     "import_agent": "block",
-    "inspect_agent_package": "cancel",
     "install_hub_agent": "block",
     "list_exportable_agents": "cancel",
     "publish_agent": "block",

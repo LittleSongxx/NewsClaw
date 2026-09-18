@@ -17,8 +17,7 @@ import importlib
 import pkgutil
 
 from newsclaw.core.policy_v2.classifier import ApprovalClassifier
-from newsclaw.core.policy_v2.enums import ApprovalClass
-from newsclaw.core.policy_v2.enums import DecisionSource
+from newsclaw.core.policy_v2.enums import ApprovalClass, DecisionSource
 from newsclaw.tools import handlers as handlers_pkg
 from newsclaw.tools.definitions import BASE_TOOLS
 

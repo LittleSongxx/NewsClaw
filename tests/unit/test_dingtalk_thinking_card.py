@@ -14,11 +14,12 @@ Validates all paths identified in the plan:
 
 import json
 import time
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from newsclaw.channels.adapters.dingtalk import DingTalkAdapter, _CardState
-from newsclaw.channels.types import MessageContent, OutgoingMessage, MediaFile
+from newsclaw.channels.types import MediaFile, MessageContent, OutgoingMessage
 
 
 def _sk(chat_id: str, thread_id: str | None = None) -> str:

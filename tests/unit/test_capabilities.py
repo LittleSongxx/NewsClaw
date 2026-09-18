@@ -1,6 +1,5 @@
 """L1 Unit Tests: LLM model capability inference and matching."""
 
-import pytest
 
 from newsclaw.llm.capabilities import (
     get_all_providers,

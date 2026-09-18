@@ -29,8 +29,6 @@
 
 # 基础模块
 from .agent import AGENT_TOOLS
-from .agent_hub import AGENT_HUB_TOOLS
-from .agent_package import AGENT_PACKAGE_TOOLS
 from .base import (
     Prerequisite,
     RelatedTool,
@@ -69,7 +67,6 @@ from .powershell import POWERSHELL_TOOLS
 from .profile import PROFILE_TOOLS
 from .scheduled import SCHEDULED_TOOLS
 from .search import SEARCH_TOOLS
-from .skill_store import SKILL_STORE_TOOLS
 from .skills import SKILLS_TOOLS
 from .sleep import SLEEP_TOOLS
 from .sticker import STICKER_TOOLS
@@ -81,7 +78,7 @@ from .web_search import WEB_SEARCH_TOOLS
 from .wiki import WIKI_TOOLS
 from .worktree import WORKTREE_TOOLS
 
-# 合并所有工具定义（不含平台连接类工具，后者由 agent 根据 hub_enabled 动态加载）
+# 合并所有工具定义
 BASE_TOOLS = (
     FILESYSTEM_TOOLS
     + SKILLS_TOOLS
@@ -104,7 +101,6 @@ BASE_TOOLS = (
     + PERSONA_TOOLS
     + STICKER_TOOLS
     + CONFIG_TOOLS
-    + AGENT_PACKAGE_TOOLS
     + PLUGIN_TOOLS
     + POWERSHELL_TOOLS
     + TOOL_SEARCH_TOOLS
@@ -115,10 +111,7 @@ BASE_TOOLS = (
     + KNOWLEDGE_TOOLS
 )
 
-# 平台连接工具（Agent Hub + Skill Store），仅在 hub_enabled=True 时注册
-HUB_TOOLS = AGENT_HUB_TOOLS + SKILL_STORE_TOOLS
-
-_ALL_TOOLS = list(BASE_TOOLS) + list(HUB_TOOLS) + list(AGENT_TOOLS)
+_ALL_TOOLS = list(BASE_TOOLS) + list(AGENT_TOOLS)
 _TOOL_DEFINITIONS_BY_NAME = {tool["name"]: tool for tool in _ALL_TOOLS}
 
 
@@ -151,11 +144,7 @@ __all__ = [
     "filter_tools_by_category",
     # 工具列表
     "BASE_TOOLS",
-    "HUB_TOOLS",
     "AGENT_TOOLS",
-    "AGENT_HUB_TOOLS",
-    "AGENT_PACKAGE_TOOLS",
-    "SKILL_STORE_TOOLS",
     "BROWSER_TOOLS",
     "CODE_QUALITY_TOOLS",
     "FILESYSTEM_TOOLS",

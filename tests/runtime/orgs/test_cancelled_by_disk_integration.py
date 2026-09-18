@@ -48,7 +48,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from newsclaw.orgs._runtime_dispatch import (
     CommandDispatchManager,
     _CommandTracker,
@@ -306,7 +305,7 @@ async def test_stop_org_flow_writes_cancelled_by_to_disk(tmp_path: Path) -> None
 
         async def resume_from_checkpoint(
             self, checkpoint_id: str
-        ) -> "_SlowSupervisor":
+        ) -> _SlowSupervisor:
             return self
 
     def _slow_factory(*, org_id, command_id, root_node_id, task, **_kw):

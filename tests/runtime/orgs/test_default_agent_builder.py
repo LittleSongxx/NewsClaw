@@ -24,7 +24,6 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-
 from newsclaw.orgs._default_agent_builder import (
     BuilderUnavailable,
     DefaultAgentBuilder,
@@ -32,6 +31,7 @@ from newsclaw.orgs._default_agent_builder import (
     _extract_text_from_response,
 )
 from newsclaw.orgs._runtime_agent_pipeline import AgentSpec
+
 from newsclaw.runtime.execution_context import (
     ExecutionPhase,
     UpstreamContext,

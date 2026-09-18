@@ -34,7 +34,6 @@ from newsclaw.channels.adapters.wework_ws import (
 )
 from newsclaw.channels.types import MediaFile, OutgoingMessage
 
-
 # ==================== Fixtures ====================
 
 

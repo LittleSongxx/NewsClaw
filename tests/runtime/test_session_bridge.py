@@ -17,7 +17,6 @@ Plus a few defensive cases (empty session key, non-string return).
 from __future__ import annotations
 
 import pytest
-
 from newsclaw.runtime.session_bridge import (
     SessionOrgLookup,
     get_org_id_for_session,

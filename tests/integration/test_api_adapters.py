@@ -2,23 +2,24 @@
 API 集成测试框架
 """
 
-import pytest
-import asyncio
-from typing import Any, Dict, Optional
-import os
 import json
+import os
+from typing import Any
+
+import pytest
+
+from newsclaw.integrations.adapters.crm import create_crm_adapter
+from newsclaw.integrations.adapters.im import create_im_adapter
 
 # 导入所有适配器
 from newsclaw.integrations.adapters.mail import create_mail_adapter
-from newsclaw.integrations.adapters.sheets import create_sheets_adapter
-from newsclaw.integrations.adapters.crm import create_crm_adapter
-from newsclaw.integrations.adapters.im import create_im_adapter
-from newsclaw.integrations.adapters.storage import create_storage_adapter
-from newsclaw.integrations.adapters.sms import create_sms_adapter
-from newsclaw.integrations.adapters.payment import create_payment_adapter
 from newsclaw.integrations.adapters.map import create_map_adapter
-from newsclaw.integrations.adapters.weather import create_weather_adapter
 from newsclaw.integrations.adapters.news import create_news_adapter
+from newsclaw.integrations.adapters.payment import create_payment_adapter
+from newsclaw.integrations.adapters.sheets import create_sheets_adapter
+from newsclaw.integrations.adapters.sms import create_sms_adapter
+from newsclaw.integrations.adapters.storage import create_storage_adapter
+from newsclaw.integrations.adapters.weather import create_weather_adapter
 
 
 class APITestBase:
@@ -29,11 +30,11 @@ class APITestBase:
         """设置测试环境"""
         self.config = self.load_test_config()
 
-    def load_test_config(self) -> Dict[str, Any]:
+    def load_test_config(self) -> dict[str, Any]:
         """加载测试配置"""
         config_file = "tests/integration/config.test.json"
         if os.path.exists(config_file):
-            with open(config_file, "r", encoding="utf-8") as f:
+            with open(config_file, encoding="utf-8") as f:
                 return json.load(f)
         return {}
 

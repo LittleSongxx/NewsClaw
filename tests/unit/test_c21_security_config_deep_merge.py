@@ -36,7 +36,6 @@ from fastapi.testclient import TestClient
 from newsclaw.api.routes import config as config_routes
 from newsclaw.api.routes.config import _deep_merge_security
 
-
 # ---------------------------------------------------------------------------
 # Unit tests for _deep_merge_security
 # ---------------------------------------------------------------------------

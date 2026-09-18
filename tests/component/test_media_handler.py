@@ -1,10 +1,11 @@
 """L2 Component Tests: Media handling (storage, audio utils)."""
 
-import pytest
 from pathlib import Path
 
-from newsclaw.channels.media.storage import MediaStorage
+import pytest
+
 from newsclaw.channels.media.audio_utils import is_silk_file
+from newsclaw.channels.media.storage import MediaStorage
 
 
 class TestMediaStorage:

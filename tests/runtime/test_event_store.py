@@ -18,7 +18,6 @@ import hashlib
 import sqlite3
 
 import pytest
-
 from newsclaw.runtime.event_store import (
     GENESIS_HASH,
     ChainBrokenError,
@@ -26,6 +25,7 @@ from newsclaw.runtime.event_store import (
     canonical_event_bytes,
     chain_hash,
 )
+
 from newsclaw.runtime.stream import StreamBus
 
 # ---------------------------------------------------------------------------

@@ -33,13 +33,8 @@ logger = logging.getLogger(__name__)
 
 
 def skill_catalog_name(skill: object) -> str:
-    """Keep the human-facing marketplace name paired with its callable ID."""
-    name = str(getattr(skill, "name", "") or getattr(skill, "skill_id", "skill"))
-    official = getattr(skill, "marketplace_name", None)
-    if isinstance(official, str) and official:
-        sid = str(getattr(skill, "skill_id", "") or name)
-        return f"{official} ({sid})"
-    return name
+    """Human-facing skill name for the catalog."""
+    return str(getattr(skill, "name", "") or getattr(skill, "skill_id", "skill"))
 
 
 DEFAULT_SKILL_METADATA_TOKEN_BUDGET = 800
@@ -695,9 +690,6 @@ Do not infer filesystem paths from the workspace map; `get_skill_info` is author
                 continue
 
             score = 0.0
-            official = getattr(s, "marketplace_name", None)
-            if isinstance(official, str) and official and official.lower() in query_lower:
-                score += 10.0
             when = getattr(s, "when_to_use", "") or ""
             kws = getattr(s, "keywords", []) or []
 
@@ -807,8 +799,6 @@ Do not infer filesystem paths from the workspace map; `get_skill_info` is author
         current = self._build_manifest()
         if current != snap_manifest:
             return None
-        if data.get("marketplace_names", {}) != self._marketplace_name_snapshot():
-            return None
         result: dict[tuple, str] = {}
         for k, v in snap_catalogs.items():
             if not isinstance(v, str):
@@ -836,7 +826,6 @@ Do not infer filesystem paths from the workspace map; `get_skill_info` is author
             "version": 1,
             "manifest": manifest,
             "catalogs": catalogs,
-            "marketplace_names": self._marketplace_name_snapshot(),
         }
 
         try:
@@ -854,13 +843,6 @@ Do not infer filesystem paths from the workspace map; `get_skill_info` is author
                     tmp_path.unlink()
             except OSError:
                 pass
-
-    def _marketplace_name_snapshot(self) -> dict[str, str]:
-        return {
-            entry.skill_id: entry.marketplace_name
-            for entry in self.registry.list_all()
-            if isinstance(getattr(entry, "marketplace_name", None), str) and entry.marketplace_name
-        }
 
     def _invalidate_disk_snapshot(self) -> None:
         """清空磁盘 snapshot 与 ``_snapshot_loaded`` 标记。"""

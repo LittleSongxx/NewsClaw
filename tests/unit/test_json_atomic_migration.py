@@ -180,7 +180,6 @@ def test_orchestrator_persist_uses_atomic_json_write(tmp_path, monkeypatch):
         ("newsclaw.channels.media.storage", ["_load_index", "_save_index"]),
         ("newsclaw.llm.registries", ["load_custom_providers", "save_custom_providers"]),
         ("newsclaw.workspace.backup", ["read_backup_settings", "write_backup_settings"]),
-        ("newsclaw.hub.device", ["get_or_create_device_id"]),
         ("newsclaw.agent.identity", ["_load_hashes", "_save_hashes"]),
     ],
 )
@@ -203,43 +202,6 @@ def test_migrated_module_exports_target_functions(module_path, functions):
         assert f"def {fn}(" in src, f"{module_path} missing function {fn} after refactor"
 
 
-def test_device_id_persists_via_atomic_json_write(tmp_path):
-    from newsclaw.hub.device import get_or_create_device_id
-
-    did = get_or_create_device_id(tmp_path)
-    assert did and len(did) == 16
-    # File exists and is parseable.
-    p = tmp_path / "device.json"
-    assert p.is_file()
-    data = json.loads(p.read_text(encoding="utf-8"))
-    assert data["device_id"] == did
-
-    # Calling again returns the same id.
-    did2 = get_or_create_device_id(tmp_path)
-    assert did2 == did
-
-
-def test_device_id_recovers_from_corruption(tmp_path):
-    from newsclaw.hub.device import get_or_create_device_id
-
-    get_or_create_device_id(tmp_path)
-    p = tmp_path / "device.json"
-    bak = tmp_path / "device.json.bak"
-
-    # First call had no prior content → no .bak.
-    assert not bak.exists()
-
-    # Force a second write so a .bak exists.
-    get_or_create_device_id(tmp_path)  # idempotent
-
-    # Now write something else so we get a .bak
-    atomic_json_write(p, {"device_id": "ffffeeee00001111"})
-    assert bak.exists()
-
-    # Corrupt the primary; reader should still get a valid id back.
-    _corrupt(p)
-    did3 = get_or_create_device_id(tmp_path)
-    assert len(did3) == 16  # either restored from .bak or freshly regenerated
 
 
 def test_backup_settings_roundtrip(tmp_path):

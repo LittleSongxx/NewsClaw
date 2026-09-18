@@ -2,7 +2,7 @@
 
 import pytest
 
-from newsclaw.logging.session_buffer import SessionLogBuffer, LogEntry
+from newsclaw.logging.session_buffer import LogEntry, SessionLogBuffer
 
 
 class TestLogEntry:

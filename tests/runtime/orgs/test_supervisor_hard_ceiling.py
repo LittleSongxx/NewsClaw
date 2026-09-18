@@ -29,10 +29,10 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-
-from newsclaw.config import settings
 from newsclaw.orgs.command_models import OrgCommandRequest
 from newsclaw.orgs.command_service import OrgCommandService
+
+from newsclaw.config import settings
 from newsclaw.runtime.cancel_token import CancellationToken
 from newsclaw.runtime.supervisor import FinalOutcome, SupervisorOutcome
 
@@ -495,6 +495,7 @@ def test_reflect_done_rejects_unregistered_video_in_complete_manifest(monkeypatc
 
 def test_reflect_done_accepts_runtime_registered_validated_video(monkeypatch, tmp_path) -> None:
     from newsclaw.orgs._runtime_artifact_flow import artifact_ledger, record_tool_result
+
     from newsclaw.runtime.supervisor import FinalOutcome, SupervisorOutcome
 
     svc = _make_service(supervisor=_SleepForeverSupervisor())

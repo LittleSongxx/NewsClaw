@@ -46,7 +46,7 @@ SYSTEM_PRESETS: list[AgentProfile] = [
             # 组织编排
             "setup_organization",
             # Agent 包分发（含批量导出与详情查询）
-            "export_agent", "import_agent", "inspect_agent_package", "publish_agent",
+
             "search_hub_agents", "install_hub_agent", "list_exportable_agents",
             "batch_export_agents", "get_hub_agent_detail",
             # 技能商店

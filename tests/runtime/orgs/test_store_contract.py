@@ -20,9 +20,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-
 from newsclaw.orgs.sqlite_store import SqliteOrgStore
 from newsclaw.orgs.store import OrgNotFound
+
 from newsclaw.runtime.models import OrgV2, new_org_id
 
 # Each "backend factory" returns a freshly opened store rooted under

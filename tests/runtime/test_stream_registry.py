@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-
 from newsclaw.runtime.stream_registry import (
     cleanup_idle,
     cleanup_idle_buses_periodically,
