@@ -126,7 +126,7 @@ if TYPE_CHECKING:
         PersonaTrait,
         persist_trait_to_memory,
     )
-    from .ralph import RalphLoop, StopHook, Task, TaskResult, TaskStatus
+    from .task_types import Task, TaskResult, TaskStatus
     from .reasoning import Checkpoint, DecisionType, ReasoningEngine
     from .reasoning import Decision as ReasoningDecision
     from .resource_budget import (
@@ -308,7 +308,6 @@ __all__ = [
     "PersonaTrait",
     "PromptStrategy",
     "READONLY_EXPLORATION_TOOLS",
-    "RalphLoop",
     "ReasoningDecision",
     "ReasoningEngine",
     "ResourceBudget",
@@ -327,7 +326,6 @@ __all__ = [
     "SandboxVerdict",
     "ShellHook",
     "SkillManager",
-    "StopHook",
     "StreamJSONFormatter",
     "SupervisorBrain",
     "TRAIT_MINING_PROMPT",
@@ -499,7 +497,6 @@ _EXPORTS = {
     "PersonaTrait": (".persona", "PersonaTrait"),
     "PromptStrategy": (".core", "PromptStrategy"),
     "READONLY_EXPLORATION_TOOLS": (".loop_budget", "READONLY_EXPLORATION_TOOLS"),
-    "RalphLoop": (".ralph", "RalphLoop"),
     "ReasoningDecision": (".reasoning", "Decision"),
     "ReasoningEngine": (".reasoning", "ReasoningEngine"),
     "ResourceBudget": (".resource_budget", "ResourceBudget"),
@@ -521,14 +518,13 @@ _EXPORTS = {
     "SandboxVerdict": (".sandbox", "SandboxVerdict"),
     "ShellHook": (".hooks", "ShellHook"),
     "SkillManager": (".skill_manager", "SkillManager"),
-    "StopHook": (".ralph", "StopHook"),
     "StreamJSONFormatter": (".output_formatter", "StreamJSONFormatter"),
     "SupervisorBrain": (".brain", "SupervisorBrain"),
     "TRAIT_MINING_PROMPT": (".trait_miner", "TRAIT_MINING_PROMPT"),
     "TRAIT_MINING_SYSTEM": (".trait_miner", "TRAIT_MINING_SYSTEM"),
-    "Task": (".ralph", "Task"),
-    "TaskResult": (".ralph", "TaskResult"),
-    "TaskStatus": (".ralph", "TaskStatus"),
+    "Task": (".task_types", "Task"),
+    "TaskResult": (".task_types", "TaskResult"),
+    "TaskStatus": (".task_types", "TaskStatus"),
     "TextFormatter": (".output_formatter", "TextFormatter"),
     "TokenBudget": (".token_budget", "TokenBudget"),
     "ToolExecutor": (".tools", "ToolExecutor"),

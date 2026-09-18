@@ -74,7 +74,7 @@ class LogAnalyzer:
     CORE_COMPONENTS = [
         "newsclaw.core._brain_runtime",
         "newsclaw.core._agent_runtime",
-        "newsclaw.agent.ralph",
+        "newsclaw.agent.task_types",
         "newsclaw.memory",
         "newsclaw.scheduler",
         "newsclaw.llm",

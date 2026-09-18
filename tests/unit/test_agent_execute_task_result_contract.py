@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from newsclaw.agent.core import Agent
-from newsclaw.agent.ralph import TaskResult
+from newsclaw.agent.task_types import TaskResult
 from newsclaw.core.intent_analyzer import IntentResult, IntentType
 from newsclaw.llm.types import AllEndpointsFailedError
 
