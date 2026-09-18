@@ -163,7 +163,7 @@ class TestTurnIndexContinuity:
         for i in range(3):
             store.save_turn(session_id="s1", turn_index=i, role="user", content=f"old{i}")
 
-        from newsclaw.memory.consolidator import MemoryConsolidator
+        from unittest.mock import MagicMock as _MM
         from newsclaw.memory.manager import MemoryManager
 
         mm = MemoryManager.__new__(MemoryManager)
@@ -173,7 +173,7 @@ class TestTurnIndexContinuity:
         mm._recent_messages = []
         mm._turn_offset = 0
         mm._memories_lock = __import__("threading").Lock()
-        mm.consolidator = MagicMock(spec=MemoryConsolidator)
+        mm.consolidator = MagicMock()
         mm.extractor = MagicMock()
 
         mm.start_session("s1")
@@ -190,7 +190,7 @@ class TestTurnIndexContinuity:
         store = _make_unified_store(tmp_path)
         store.save_turn(session_id="s1", turn_index=0, role="user", content="original")
 
-        from newsclaw.memory.consolidator import MemoryConsolidator
+        
         from newsclaw.memory.manager import MemoryManager
 
         mm = MemoryManager.__new__(MemoryManager)
@@ -200,7 +200,7 @@ class TestTurnIndexContinuity:
         mm._recent_messages = []
         mm._turn_offset = 0
         mm._memories_lock = __import__("threading").Lock()
-        mm.consolidator = MagicMock(spec=MemoryConsolidator)
+        mm.consolidator = MagicMock()
         mm.extractor = MagicMock()
 
         mm.start_session("s1")

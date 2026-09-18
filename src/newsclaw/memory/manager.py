@@ -15,7 +15,6 @@ v2 架构:
 - store: UnifiedStore
 - extractor: MemoryExtractor
 - retrieval_engine: RetrievalEngine
-- consolidator: MemoryConsolidator (保留, JSONL 双写)
 - vector_store: VectorStore (可选, 由 SearchBackend 封装)
 """
 
@@ -33,7 +32,6 @@ from pathlib import Path
 from typing import Any
 
 from ..core.log_health import record_health_event
-from .consolidator import MemoryConsolidator
 from .exceptions import MemoryStorageUnavailable
 from .extractor import MemoryExtractor
 from .json_utils import coerce_text
@@ -244,7 +242,6 @@ class MemoryManager:
 
         # Sub-components
         self.extractor = MemoryExtractor(brain)
-        self.consolidator = MemoryConsolidator(data_dir, brain, self.extractor)
 
         # VectorStore: only create when chromadb backend is selected
         if search_backend == "chromadb":
@@ -1222,10 +1219,6 @@ class MemoryManager:
                 tool_calls=tool_calls,
                 tool_results=tool_results,
             )
-
-        # v1 compat: Write to JSONL
-        if self._current_session_id:
-            self.consolidator.save_conversation_turn(self._current_session_id, turn)
 
     def record_cited_memories(self, memories: list[dict]) -> None:
         """Record memories retrieved via search_memory for later LLM scoring.
@@ -2651,7 +2644,7 @@ class MemoryManager:
             "total": total,
             "by_type": type_counts,
             "by_priority": priority_counts,
-            "sessions_today": len(self.consolidator.get_today_sessions()),
-            "unprocessed_sessions": len(self.consolidator.get_unprocessed_sessions()),
+            "sessions_today": self.store.count_sessions_today(),
+            "unprocessed_sessions": self.store.count_unextracted_sessions(),
             "v2_store": v2_stats,
         }

@@ -13,7 +13,6 @@ NewsClaw 记忆系统 (v2)
 - Scratchpad: 工作记忆草稿本 (跨 session 持久化)
 """
 
-from .consolidator import MemoryConsolidator
 from .extractor import MemoryExtractor
 from .manager import MemoryManager
 from .retrieval import RetrievalEngine
@@ -42,7 +41,6 @@ from .unified_store import UnifiedStore
 __all__ = [
     "MemoryManager",
     "MemoryExtractor",
-    "MemoryConsolidator",
     "UnifiedStore",
     "RetrievalEngine",
     # Search backends

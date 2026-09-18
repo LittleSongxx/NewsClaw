@@ -2130,6 +2130,34 @@ class MemoryStorage:
                     raise
                 logger.error(f"Failed to save turn: {e}")
 
+    def count_sessions_today(self) -> int:
+        """今日有对话轮的会话数（conversation_turns 为唯一正典）。"""
+        if not self._conn:
+            return 0
+        with self._lock:
+            try:
+                cur = self._conn.execute(
+                    "SELECT COUNT(DISTINCT session_id) FROM conversation_turns "
+                    "WHERE date(timestamp) = date('now', 'localtime')"
+                )
+                return int(cur.fetchone()[0] or 0)
+            except Exception:
+                return 0
+
+    def count_unextracted_sessions(self) -> int:
+        """仍有未提取轮次的会话数（每日整理的输入规模信号）。"""
+        if not self._conn:
+            return 0
+        with self._lock:
+            try:
+                cur = self._conn.execute(
+                    "SELECT COUNT(DISTINCT session_id) FROM conversation_turns "
+                    "WHERE extracted = FALSE"
+                )
+                return int(cur.fetchone()[0] or 0)
+            except Exception:
+                return 0
+
     def get_unextracted_turns(self, limit: int = 100) -> list[dict]:
         if not self._conn:
             return []

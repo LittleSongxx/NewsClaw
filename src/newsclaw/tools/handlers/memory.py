@@ -1061,28 +1061,6 @@ class MemoryHandler:
                     allowed_session_ids=allowed_session_ids,
                 )
 
-        # === 数据源 3: JSONL fallback（SQLite 无结果或更早历史） ===
-        if len(results) < max_results:
-            cutoff = datetime.now() - timedelta(days=days_back)
-            from ...config import settings
-
-            data_root = settings.project_root / "data"
-
-            history_dir = data_root / "memory" / "conversation_history"
-            if history_dir.exists():
-                remaining = max_results - len(results)
-                seen_timestamps = {r.get("timestamp", "") for r in results}
-                self._search_jsonl_history(
-                    history_dir,
-                    keyword,
-                    session_id_filter,
-                    cutoff,
-                    remaining,
-                    results,
-                    seen_timestamps,
-                    allowed_session_ids=allowed_session_ids,
-                )
-
         if not results:
             return f"未找到包含 '{keyword}' 的对话记录（最近 {days_back} 天）"
 
@@ -1467,70 +1445,6 @@ class MemoryHandler:
                         return
                 if count >= limit:
                     return
-            if count >= limit:
-                return
-
-    def _search_jsonl_history(
-        self,
-        history_dir: Path,
-        keyword: str,
-        session_id_filter: str,
-        cutoff: datetime,
-        limit: int,
-        results: list[dict],
-        seen_timestamps: set[str],
-        *,
-        allowed_session_ids: set[str] | None = None,
-    ) -> None:
-        """搜索 conversation_history/*.jsonl，跳过 SQLite 已返回的条目。
-
-        Phase 2b.5 二次审计：增加 allowed_session_ids 参数 —— 多用户 IM
-        部署里这个目录可能存放多个 user 的 jsonl，必须按 owner 收敛。
-        """
-        count = 0
-        for jsonl_file in sorted(history_dir.glob("*.jsonl"), reverse=True):
-            if session_id_filter and session_id_filter not in jsonl_file.stem:
-                continue
-            if allowed_session_ids is not None and not self._stem_matches_session_allow_set(
-                jsonl_file.stem, allowed_session_ids
-            ):
-                continue
-            try:
-                file_mtime = datetime.fromtimestamp(jsonl_file.stat().st_mtime)
-                if file_mtime < cutoff:
-                    continue
-            except Exception:
-                continue
-            try:
-                for line in jsonl_file.read_text(encoding="utf-8").splitlines():
-                    if not line.strip():
-                        continue
-                    if keyword.lower() not in line.lower():
-                        continue
-                    try:
-                        turn = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    ts = turn.get("timestamp", "")
-                    if ts in seen_timestamps:
-                        continue
-                    results.append(
-                        {
-                            "source": "conversation_history",
-                            "file": jsonl_file.name,
-                            "timestamp": ts,
-                            "role": turn.get("role", ""),
-                            "content": coerce_text(turn.get("content"))[:500],
-                            "tool_calls": turn.get("tool_calls", []),
-                            "tool_results": turn.get("tool_results", []),
-                        }
-                    )
-                    seen_timestamps.add(ts)
-                    count += 1
-                    if count >= limit:
-                        return
-            except Exception as e:
-                logger.debug(f"Error reading {jsonl_file}: {e}")
             if count >= limit:
                 return
 

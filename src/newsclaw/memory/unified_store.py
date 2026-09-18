@@ -621,6 +621,14 @@ class UnifiedStore:
     # Conversation Turns
     # ======================================================================
 
+    def count_sessions_today(self) -> int:
+        """今日有对话轮的会话数（代理底层 SQLite 存储）。"""
+        return self.db.count_sessions_today()
+
+    def count_unextracted_sessions(self) -> int:
+        """仍有未提取轮次的会话数（代理底层 SQLite 存储）。"""
+        return self.db.count_unextracted_sessions()
+
     def save_turn(self, **kwargs: Any) -> None:
         self.db.save_turn(**kwargs)
 
