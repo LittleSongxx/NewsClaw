@@ -3,6 +3,15 @@
 Policy V2 出厂是 protect + default：写文件 / 委派都是 CONFIRM，无人值守再
 默认 deny。早报两条 cron 没有人点确认，必须在引擎里给**受控放行**，同时
 把 sources.yaml / editorial-policy.md / config.yaml 从 Agent 写盘里拿掉。
+
+已接受的边界（收紧前需单独提案，不在本模块随手改）：
+
+- INTERACTIVE / NETWORK_OUT 在 agent 矩阵所有模式下默认 ALLOW，第 5/6 步的
+  deliver_artifacts（INTERACTIVE）与 feishu_doc（NETWORK_OUT）正是靠这条
+  矩阵短路放行的，走不到 unattended 分支。代价是任何无人值守任务默认都能
+  调用外发类工具；收紧会波及全部定时任务与 IM 流程。
+- 周复盘提案的 update op 对空值字段是「跳过」语义：无法用提案清空一个信源
+  的 topics/url，需要清空时用 remove + add 组合。
 """
 
 from __future__ import annotations
