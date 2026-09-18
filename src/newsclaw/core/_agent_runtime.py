@@ -50,8 +50,8 @@ if TYPE_CHECKING:
 # agent.core -> _agent_runtime -> shim). See ADR-0003.
 from newsclaw.agent.errors import UserCancelledError
 from newsclaw.agent.identity import Identity
-from newsclaw.agent.task_types import Task, TaskResult
 from newsclaw.agent.skill_manager import SkillManager
+from newsclaw.agent.task_types import Task, TaskResult
 from newsclaw.agent.user_profile import get_profile_manager
 
 from ..config import settings

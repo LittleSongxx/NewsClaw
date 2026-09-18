@@ -126,7 +126,6 @@ if TYPE_CHECKING:
         PersonaTrait,
         persist_trait_to_memory,
     )
-    from .task_types import Task, TaskResult, TaskStatus
     from .reasoning import Checkpoint, DecisionType, ReasoningEngine
     from .reasoning import Decision as ReasoningDecision
     from .resource_budget import (
@@ -174,6 +173,7 @@ if TYPE_CHECKING:
         parse_last_event_id,
         reset_registry_for_testing,
     )
+    from .task_types import Task, TaskResult, TaskStatus
     from .token_budget import TokenBudget, parse_token_budget
     from .tool_result_budget import (
         DEFAULT_MAX_RESULT_CHARS,
