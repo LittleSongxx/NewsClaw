@@ -197,6 +197,51 @@ class TestContract:
         manifest = contract.IssueManifest(issue_date="2026-09-15", title="t1", status="rejected")
         assert manifest.validate() == []
 
+    def test_corrupt_sources_yaml_fails_closed(self, isolated_newsroom):
+        """信源清单损坏：loader 抛错（注入/执行链路中止），ready 机验降为
+        校验错误而不是崩溃，列表读取照常工作。"""
+        from newsclaw.newsroom.prompts import build_daily_injection_block
+        from newsclaw.newsroom.sources import sources_path
+
+        load_sources()  # 先落默认文件，再写坏
+        sources_path().write_text("{ unclosed mapping", encoding="utf-8")
+        with pytest.raises(ValueError, match="unreadable"):
+            load_sources()
+        with pytest.raises(ValueError):
+            build_daily_injection_block()
+
+        _write_required_artifacts("2026-09-16")
+        manifest = contract.IssueManifest(
+            issue_date="2026-09-16",
+            title="t",
+            status="ready",
+            sources_used=["AI 综合搜索"],
+            items=_sample_items(),
+        )
+        errors = manifest.validate()
+        assert any("cannot verify sources_used" in e for e in errors)
+
+        contract.write_manifest(
+            contract.IssueManifest(issue_date="2026-09-16", title="t", status="partial")
+        )
+        issues = contract.list_issues()
+        assert any(row["issue_date"] == "2026-09-16" for row in issues)
+
+    def test_sources_yaml_non_mapping_root_fails_closed(self, isolated_newsroom):
+        from newsclaw.newsroom.sources import sources_path
+
+        sources_path().parent.mkdir(parents=True, exist_ok=True)
+        sources_path().write_text("- just\n- a\n- list\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="not a mapping"):
+            load_sources()
+
+    def test_corrupt_editorial_policy_fails_closed(self, isolated_newsroom):
+        from newsclaw.newsroom.editorial import editorial_policy_path, load_editorial_policy
+
+        editorial_policy_path().parent.mkdir(parents=True, exist_ok=True)
+        editorial_policy_path().write_bytes(b"\xff\xfe not utf8")
+        with pytest.raises(ValueError, match="unreadable"):
+            load_editorial_policy()
     def test_classify_issue_failure_enum(self):
         assert (
             contract.classify_issue_failure(exit_reason="budget_exceeded")
