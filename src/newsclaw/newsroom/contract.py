@@ -195,13 +195,20 @@ class IssueManifest:
         if self.status not in VALID_STATUSES:
             errors.append(f"unknown status: {self.status!r}")
         if self.status == "ready":
+            allowed: set[str] | None = None
             if not self.sources_used:
                 errors.append("status=ready requires non-empty sources_used")
             else:
-                allowed = _allowed_source_names()
-                for name in self.sources_used:
-                    if name not in allowed:
-                        errors.append(f"status=ready sources_used unknown: {name!r}")
+                try:
+                    allowed = _allowed_source_names()
+                except ValueError as exc:
+                    # sources.yaml 损坏：fail-closed 成校验错误，而不是让
+                    # load_manifest/list_issues 在读列表时直接崩掉。
+                    errors.append(f"status=ready cannot verify sources_used: {exc}")
+                if allowed is not None:
+                    for name in self.sources_used:
+                        if name not in allowed:
+                            errors.append(f"status=ready sources_used unknown: {name!r}")
             if _feedback_blocks_ready(self.feedback):
                 errors.append("status=ready forbidden: human feedback is reject/low")
             day_dir = artifact_dir if artifact_dir is not None else issue_dir(self.issue_date)
@@ -217,15 +224,21 @@ class IssueManifest:
                 except OSError:
                     artifact_texts[name] = ""
             if require_item_ledger:
-                errors.extend(self._item_ledger_errors(artifact_texts))
+                errors.extend(self._item_ledger_errors(artifact_texts, allowed))
         for index, item in enumerate(self.items):
             errors.extend(f"items[{index}]: {msg}" for msg in item.validate())
         for dim, entry in self.scores.items():
             errors.extend(f"scores[{dim}]: {msg}" for msg in entry.validate())
         return errors
 
-    def _item_ledger_errors(self, artifact_texts: dict[str, str]) -> list[str]:
-        """写 ready 时的素材账本门。无结果日允许 items 为空。"""
+    def _item_ledger_errors(
+        self, artifact_texts: dict[str, str], allowed: set[str] | None = None
+    ) -> list[str]:
+        """写 ready 时的素材账本门。无结果日允许 items 为空。
+
+        ``allowed`` 为 None 表示 sources.yaml 损坏（validate 已记一条错误），
+        这里跳过 source_name 对账，其余检查照常。
+        """
         errors: list[str] = []
         has_http = any(
             "http://" in text or "https://" in text for text in artifact_texts.values()
@@ -238,14 +251,17 @@ class IssueManifest:
             if not self.items:
                 errors.append("status=ready with outbound links requires non-empty items")
             keys: list[str] = []
-            allowed = _allowed_source_names()
             for index, item in enumerate(self.items):
                 key = normalize_url(item.url)
                 if key in keys:
                     errors.append(f"status=ready duplicate item url: {item.url}")
                 elif key:
                     keys.append(key)
-                if item.source_name and item.source_name not in allowed:
+                if (
+                    allowed is not None
+                    and item.source_name
+                    and item.source_name not in allowed
+                ):
                     errors.append(
                         f"status=ready items[{index}] source_name unknown: "
                         f"{item.source_name!r}"

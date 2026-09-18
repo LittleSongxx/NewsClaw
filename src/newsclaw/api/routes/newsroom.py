@@ -167,7 +167,11 @@ async def put_sources(body: SourcesBody):
 
 @router.get("/editorial-policy")
 async def get_editorial_policy():
-    policy = load_editorial_policy()
+    try:
+        policy = load_editorial_policy()
+    except ValueError as exc:
+        # 方针文件损坏：如实报错，不静默展示一份「空方针」
+        return JSONResponse(status_code=500, content={"error": str(exc)})
     return {
         "text": policy.to_text(),
         "bullets": [{"id": b.id, "text": b.text} for b in policy.bullets],

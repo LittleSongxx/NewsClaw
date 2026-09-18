@@ -176,7 +176,12 @@ def sources_path() -> Path:
 
 
 def load_sources() -> SourceBook:
-    """读取信源清单；文件缺失时写入默认清单（首次使用即有可用配置）。"""
+    """读取信源清单；文件缺失时写入默认清单（首次使用即有可用配置）。
+
+    文件存在但损坏（YAML 解析失败 / 根不是 mapping）时抛 ``ValueError``：
+    信源清单是自进化的落点、ready 机验的对账基准，静默退回默认值会让
+    管线用默认信源采集再用默认信源自洽通过，损坏无从暴露。
+    """
     path = sources_path()
     if not path.is_file():
         save_sources(SourceBook())
@@ -184,11 +189,9 @@ def load_sources() -> SourceBook:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except (yaml.YAMLError, OSError) as e:
-        logger.warning("[Newsroom] sources.yaml unreadable (%s); using defaults", e)
-        return SourceBook()
+        raise ValueError(f"sources.yaml unreadable ({path}): {e}") from e
     if not isinstance(data, dict):
-        logger.warning("[Newsroom] sources.yaml is not a mapping; using defaults")
-        return SourceBook()
+        raise ValueError(f"sources.yaml is not a mapping ({path})")
     return SourceBook.from_dict(data)
 
 

@@ -107,15 +107,18 @@ def ensure_editorial_policy_file() -> Path:
 
 
 def load_editorial_policy() -> EditorialPolicy:
-    """读取方针；文件缺失时返回带默认题头的空条目（不主动落盘）。"""
+    """读取方针；文件缺失时返回带默认题头的空条目（不主动落盘）。
+
+    文件存在但读不了时抛 ``ValueError``：方针由每日注入块全文携带，静默
+    退回空方针等于管线在无方针状态下照跑。
+    """
     path = editorial_policy_path()
     if not path.is_file():
         return EditorialPolicy(preamble=_DEFAULT_PREAMBLE, bullets=[])
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.warning("[Newsroom] editorial-policy.md unreadable (%s); using empty", exc)
-        return EditorialPolicy(preamble=_DEFAULT_PREAMBLE, bullets=[])
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ValueError(f"editorial-policy.md unreadable ({path}): {exc}") from exc
     parsed = parse_editorial_policy(text)
     if not parsed.preamble.strip() and not parsed.bullets:
         parsed.preamble = _DEFAULT_PREAMBLE
