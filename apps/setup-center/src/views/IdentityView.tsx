@@ -57,6 +57,11 @@ const WARNING_KEYS: Record<string, string> = {
   "prompts/policies.md": "policiesMdWarning",
 };
 
+const btn: React.CSSProperties = {
+  border: "1px solid #c7d2fe", borderRadius: 4, padding: "2px 10px",
+  fontSize: 12, cursor: "pointer", background: "#fff",
+};
+
 export function IdentityView({ serviceRunning, apiBaseUrl }: Props) {
   const API = apiBaseUrl;
   const { t } = useTranslation();
@@ -100,6 +105,35 @@ export function IdentityView({ serviceRunning, apiBaseUrl }: Props) {
       setError(String(e));
     }
   }, [API, serviceRunning]);
+
+  const [pendingUpgrades, setPendingUpgrades] = useState<{ name: string }[]>([]);
+
+  const loadPendingUpgrades = useCallback(async () => {
+    if (!serviceRunning) return;
+    try {
+      const res = await safeFetch(`${API}/api/identity/pending-upgrades`);
+      const data = await res.json();
+      setPendingUpgrades(data.pending || []);
+    } catch { setPendingUpgrades([]); }
+  }, [API, serviceRunning]);
+
+  useEffect(() => { loadPendingUpgrades(); }, [loadPendingUpgrades]);
+
+  const decideUpgrade = useCallback(async (name: string, accept: boolean) => {
+    try {
+      const res = await safeFetch(`${API}/api/identity/apply-upgrade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, accept }),
+      });
+      const data = await res.json();
+      setPendingUpgrades(data.pending || []);
+      showToast(accept ? `已升级 ${name}` : `已保留当前版本 ${name}`);
+      loadFiles();
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [API, loadFiles, showToast]);
 
   useEffect(() => { loadFiles(); }, [loadFiles]);
 
@@ -228,6 +262,23 @@ export function IdentityView({ serviceRunning, apiBaseUrl }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, height: "100%" }}>
+      {/* Identity template upgrade notices */}
+      {pendingUpgrades.length > 0 && (
+        <div style={{
+          background: "#eef2ff", border: "1px solid #818cf8", borderRadius: 6,
+          padding: "8px 12px", marginBottom: 8, fontSize: 12,
+        }}>
+          {pendingUpgrades.map((u) => (
+            <div key={u.name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "2px 0" }}>
+              <span style={{ flex: 1 }}>
+                {u.name} 有新版本模板（你改过此文件，需手动决定）
+              </span>
+              <button onClick={() => decideUpgrade(u.name, true)} style={{ ...btn, background: "#4f46e5", color: "#fff" }}>升级到新版</button>
+              <button onClick={() => decideUpgrade(u.name, false)} style={btn}>保留当前</button>
+            </div>
+          ))}
+        </div>
+      )}
       {/* Page-level warning banner (dismissible) */}
       {!bannerDismissed && (
         <div style={{

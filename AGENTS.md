@@ -8,7 +8,7 @@
 - **前端**：React 18 + TypeScript + Vite 6（`apps/setup-center/`）
 - **桌面**：Tauri 2（Rust 外壳）
 - **模型**：32 家 provider 预设（Anthropic、OpenAI 兼容、国内模型、本地 ollama）
-- **IM**：Telegram、飞书、钉钉、企业微信（含 WS 模式）、QQ 官方、OneBot、微信
+- **IM**：飞书、微信、QQ 官方（收敛后仅此三个；其余适配器已删，git 历史可恢复）。
 
 ## 开发环境
 
@@ -62,10 +62,10 @@ src/newsclaw/
   tools/        工具系统（handlers/ + definitions/）与搜索号池
   prompt/       提示词编译与分层拼装
   memory/       三层记忆（存储 / 向量 / 检索）
-  skills/       技能加载、注册、市场、i18n
+  skills/       技能加载、注册、i18n（市场安装器已删，本地 git/URL 安装保留）
   api/routes/   FastAPI 路由    scheduler/ 定时任务    channels/ IM 适配器
 apps/setup-center/  桌面端与 Web 前端（Tauri + React）
-skills/             系统技能 77 + 精选外部技能 11
+skills/             系统技能 + 精选外部技能（catalog.json 为准）
 identity/           Agent 身份（SOUL / AGENT / POLICIES / 人格库）
 tests/              unit / component / integration / e2e
 ```

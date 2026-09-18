@@ -312,6 +312,32 @@ async def validate_file(req: ValidateRequest):
     return result
 
 
+@router.get("/pending-upgrades")
+async def get_pending_upgrades(request: Request):
+    """列出等待用户确认的 identity 模板升级（用户改过的文件 + 新模板）。"""
+    agent = getattr(request.app.state, "agent", None)
+    identity = getattr(agent, "identity", None)
+    if identity is None:
+        return {"pending": []}
+    return {"pending": identity.get_pending_upgrades()}
+
+
+@router.post("/apply-upgrade")
+async def apply_identity_upgrade(request: Request):
+    """接受或拒绝一次 identity 升级（accept=True 覆盖为新模板）。"""
+    body = await request.json()
+    name = str(body.get("name") or "")
+    accept = bool(body.get("accept"))
+    if not name:
+        raise HTTPException(422, detail="name is required")
+    agent = getattr(request.app.state, "agent", None)
+    identity = getattr(agent, "identity", None)
+    if identity is None:
+        raise HTTPException(503, detail="agent not initialized")
+    identity.apply_upgrade(name, accept)
+    return {"applied": name, "accepted": accept, "pending": identity.get_pending_upgrades()}
+
+
 @router.post("/reload")
 async def reload_identity(request: Request):
     """Hot-reload identity files into the running agent."""
