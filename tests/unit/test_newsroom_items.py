@@ -18,10 +18,14 @@ def isolated_newsroom(tmp_path, monkeypatch):
     return tmp_path / "data" / "newsroom"
 
 
+#: 合规产物样张：三条外链（与 _items 对齐）+ 平台稿格式钉要求的两个小节。
 _VALID = (
-    "今日要点：示例标题｜说明｜https://example.com/news｜大模型\n"
-    "补充：结构校验要求去空白后足够长，并至少有一条可点开的 http 链接。\n"
-    "无结果时必须写明无结果，不能交空壳。账本条目必须出现在正文里。\n"
+    "今日要点：\n"
+    "- 示例标题｜说明｜https://example.com/news｜大模型\n"
+    "- 第二条标题｜说明｜https://example.com/second｜公司动态\n"
+    "- 第三条标题｜说明｜https://example.org/third｜开源项目\n\n"
+    "### 标题方案\n1. 今日 AI 三件事\n2. 模型圈速览\n3. 开源动态一览\n\n"
+    "### 基础信息\n- 标题：AI 早报｜三分钟看完今日要点\n- 摘要：示例摘要。\n"
 )
 
 
@@ -32,7 +36,19 @@ def _items(url: str = "https://example.com/news") -> list[contract.NewsItem]:
             url=url,
             source_name="AI 综合搜索",
             one_liner="说明",
-        )
+        ),
+        contract.NewsItem(
+            title="第二条标题",
+            url="https://example.com/second",
+            source_name="AI 综合搜索",
+            one_liner="说明",
+        ),
+        contract.NewsItem(
+            title="第三条标题",
+            url="https://example.org/third",
+            source_name="公司与融资",
+            one_liner="说明",
+        ),
     ]
 
 
@@ -60,7 +76,7 @@ def test_ready_requires_items_when_artifacts_have_links(isolated_newsroom):
         issue_date="2026-09-15",
         title="t",
         status="ready",
-        sources_used=["AI 综合搜索"],
+        sources_used=["AI 综合搜索", "公司与融资"],
     )
     errors = manifest.validate()
     assert any("requires non-empty items" in e for e in errors)
@@ -73,7 +89,7 @@ def test_ready_rejects_duplicate_item_url(isolated_newsroom):
         issue_date="2026-09-15",
         title="t",
         status="ready",
-        sources_used=["AI 综合搜索"],
+        sources_used=["AI 综合搜索", "公司与融资"],
         items=_items() + _items("https://example.com/news?utm_source=dup"),
     )
     errors = manifest.validate()
@@ -88,7 +104,7 @@ def test_ready_rejects_url_already_used_in_window(isolated_newsroom):
             issue_date="2026-09-10",
             title="old",
             status="ready",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             items=_items(),
         )
     )
@@ -97,7 +113,7 @@ def test_ready_rejects_url_already_used_in_window(isolated_newsroom):
         issue_date="2026-09-15",
         title="new",
         status="ready",
-        sources_used=["AI 综合搜索"],
+        sources_used=["AI 综合搜索", "公司与融资"],
         items=_items("https://www.example.com/news"),
     )
     errors = later.validate()
@@ -113,7 +129,7 @@ def test_ready_rejects_artifact_url_outside_ledger(isolated_newsroom):
         issue_date="2026-09-15",
         title="t",
         status="ready",
-        sources_used=["AI 综合搜索"],
+        sources_used=["AI 综合搜索", "公司与融资"],
         items=_items(),
     )
     errors = manifest.validate()
@@ -137,7 +153,7 @@ def test_ready_allows_asset_links_in_platform_artifacts_only(isolated_newsroom):
         issue_date="2026-09-15",
         title="t",
         status="ready",
-        sources_used=["AI 综合搜索"],
+        sources_used=["AI 综合搜索", "公司与融资"],
         items=_items(),
     )
     assert manifest.validate() == []
@@ -156,17 +172,32 @@ def test_ready_accepts_new_url_and_injection_lists_seen(isolated_newsroom):
             issue_date="2026-09-10",
             title="old",
             status="ready",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             items=_items(),
         )
     )
-    _write_artifacts("2026-09-15", text=_VALID.replace("example.com/news", "example.com/fresh"))
+    fresh_text = (
+        _VALID.replace("example.com/news", "example.com/fresh1")
+        .replace("example.com/second", "example.com/fresh2")
+        .replace("example.org/third", "example.org/fresh3")
+    )
+    _write_artifacts("2026-09-15", text=fresh_text)
     later = contract.IssueManifest(
         issue_date="2026-09-15",
         title="new",
         status="ready",
-        sources_used=["AI 综合搜索"],
-        items=_items("https://example.com/fresh"),
+        sources_used=["AI 综合搜索", "公司与融资"],
+        items=[
+            contract.NewsItem(
+                title="全新标题一", url="https://example.com/fresh1", source_name="AI 综合搜索"
+            ),
+            contract.NewsItem(
+                title="全新标题二", url="https://example.com/fresh2", source_name="AI 综合搜索"
+            ),
+            contract.NewsItem(
+                title="全新标题三", url="https://example.org/fresh3", source_name="公司与融资"
+            ),
+        ],
     )
     assert later.validate() == []
     block = build_daily_injection_block()
@@ -198,7 +229,7 @@ def test_delivery_blocks_partial_issue(isolated_newsroom):
             issue_date="2026-09-15",
             title="t",
             status="partial",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             items=_items(),
         )
     )
@@ -216,7 +247,7 @@ def test_delivery_allows_ready_issue(isolated_newsroom):
             issue_date="2026-09-15",
             title="t",
             status="ready",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             items=_items(),
         )
     )
@@ -236,7 +267,7 @@ def _ready_issue(day: str) -> None:
             issue_date=day,
             title="t",
             status="ready",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             items=_items(),
         )
     )
@@ -318,7 +349,7 @@ def test_rejected_issue_still_blocks_window_urls(isolated_newsroom):
             issue_date="2026-09-10",
             title="old",
             status="ready",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             items=_items(),
         )
     )
@@ -339,7 +370,7 @@ def test_partial_issue_with_items_blocks_window_urls(isolated_newsroom):
             issue_date="2026-09-10",
             title="partial",
             status="partial",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             items=_items(),
         )
     )
@@ -371,7 +402,7 @@ def test_injection_seen_list_covers_full_window(isolated_newsroom):
             issue_date="2026-09-10",
             title="big",
             status="partial",
-            sources_used=["AI 综合搜索"],
+            sources_used=["AI 综合搜索", "公司与融资"],
             items=many,
         )
     )

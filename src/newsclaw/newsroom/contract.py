@@ -20,6 +20,7 @@ import enum
 import json
 import logging
 import os
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -44,7 +45,18 @@ ARTIFACT_WECHAT = "wechat.md"
 ARTIFACT_MIN_CHARS = 80
 #: 允许代替外链的「无结果」整词标记（子串命中即可，须写进正文）。
 NO_RESULT_MARKERS: tuple[str, ...] = ("无结果", "[NO_RESULT]", "NO_RESULT")
+#: 人工点踩（rating < 0）存在时禁止把期次标成 ready（见 _feedback_blocks_ready）。
 VALID_STATUSES: tuple[str, ...] = ("ready", "partial", "rejected")
+
+# ── 写盘时的质量下限（strict_quality；读旧期次不回溯适用）──────────────
+#: 有外链的正常新闻日，items 至少几条（无结果日 0 条 + 标记仍合法）。
+MIN_ITEMS_WITH_LINKS = 3
+#: items 上限：防账本灌水。
+MAX_ITEMS = 40
+#: 有账底的期次至少两个信源——单信源撑不起一期。
+MIN_SOURCES_WHEN_LEDGER = 2
+#: 小红书笔记标题候选的字数上限（技能规范的「硬性要求」，此处机验）。
+XIAOHONGSHU_TITLE_MAX_CHARS = 20
 
 #: 自评维度（顺序即 manifest 中的呈现顺序）。维度集合是契约的一部分，
 #: 复盘任务按维度名聚合趋势——新增维度是兼容变更，改名是破坏性变更。
@@ -109,6 +121,49 @@ def _feedback_blocks_ready(feedback: dict[str, Any]) -> bool:
         return int(rating) < 0
     except (TypeError, ValueError):
         return False
+
+
+# ── 平台稿格式钉的解析助手（与两份平台技能的输出模板耦合）────────────
+
+_HEADING_RE = re.compile(r"^#{2,6}\s")
+_LIST_ITEM_RE = re.compile(r"^(?:\d+[.、)]\s*|[-*]\s+)(.+)$")
+_WECHAT_TITLE_RE = re.compile(r"^[-*]?\s*标题[：:]\s*(.+)$")
+
+
+def _section_lines(text: str, section: str) -> list[str]:
+    """取 ``### <section>`` 小节内的行（到下一个同级/更高级标题为止）。"""
+    lines: list[str] = []
+    inside = False
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if _HEADING_RE.match(stripped):
+            inside = stripped.lstrip("#").strip() == section
+            continue
+        if inside:
+            lines.append(stripped)
+    return lines
+
+
+def _xhs_title_candidates(text: str) -> list[str]:
+    """小红书稿 `### 标题方案` 下的候选标题列表（去列表符与强调符）。"""
+    candidates: list[str] = []
+    for line in _section_lines(text, "标题方案"):
+        match = _LIST_ITEM_RE.match(line)
+        if not match:
+            continue
+        title = match.group(1).replace("**", "").strip()
+        if title:
+            candidates.append(title)
+    return candidates
+
+
+def _wechat_title(text: str) -> str | None:
+    """公众号稿 `### 基础信息` 下的 `- 标题：` 行（存在性机验用）。"""
+    for line in _section_lines(text, "基础信息"):
+        match = _WECHAT_TITLE_RE.match(line)
+        if match:
+            return match.group(1).strip()
+    return None
 
 
 def _artifact_structure_errors(name: str, path: Path) -> list[str]:
@@ -182,12 +237,16 @@ class IssueManifest:
         *,
         artifact_dir: Path | None = None,
         require_item_ledger: bool = True,
+        strict_quality: bool = False,
     ) -> list[str]:
         """校验契约，返回错误列表（空列表 = 合法）。
 
         ``status=ready`` 必须同时满足：信源集合合法、三份产物存在且过最低结构。
         写盘时（``require_item_ledger=True``）还要求：有外链的期次必须带
         ``items``，条目 URL 互不重复，且不与窗口内其它 ready 期次撞链。
+        ``strict_quality=True`` 再加质量下限（条目数 / 信源多样性 / 标题
+        撞窗 / 平台稿格式钉）——只在 :func:`write_manifest` 时开启，读历史
+        期次不按今天的标准翻旧账。
         ``scores`` 只做字段合法性检查，不参与 ready 判定。
         """
         errors: list[str] = []
@@ -228,6 +287,8 @@ class IssueManifest:
                     artifact_texts[name] = ""
             if require_item_ledger:
                 errors.extend(self._item_ledger_errors(artifact_texts, allowed))
+            if strict_quality:
+                errors.extend(self._quality_floor_errors(artifact_texts))
         for index, item in enumerate(self.items):
             errors.extend(f"items[{index}]: {msg}" for msg in item.validate())
         for dim, entry in self.scores.items():
@@ -305,6 +366,86 @@ class IssueManifest:
                         )
         elif all_no_result and self.items:
             errors.append("status=ready no-result day should not list leftover items")
+        return errors
+
+    def _quality_floor_errors(self, artifact_texts: dict[str, str]) -> list[str]:
+        """写盘时的质量下限（读旧期不回溯）。
+
+        条目数下限 / 信源多样性 / 标题撞窗 / 平台稿格式钉只对「正常新闻日」
+        （产物含外链）生效；无结果日只保留条目数上限。
+        """
+        errors: list[str] = []
+        has_http = any("http://" in t or "https://" in t for t in artifact_texts.values())
+        if len(self.items) > MAX_ITEMS:
+            errors.append(
+                f"status=ready quality floor: items count {len(self.items)} > {MAX_ITEMS}"
+            )
+        if not has_http:
+            return errors
+        if len(self.items) < MIN_ITEMS_WITH_LINKS:
+            errors.append(
+                f"status=ready quality floor: only {len(self.items)} item(s), "
+                f"need >= {MIN_ITEMS_WITH_LINKS} on a day with links "
+                "(凑不满就如实写「无结果」标记，不要硬凑)"
+            )
+        if len(self.sources_used) < MIN_SOURCES_WHEN_LEDGER:
+            errors.append(
+                f"status=ready quality floor: only {len(self.sources_used)} source(s), "
+                f"need >= {MIN_SOURCES_WHEN_LEDGER} (检查采集分组是否只覆盖了一组)"
+            )
+        errors.extend(self._title_window_errors())
+        errors.extend(self._artifact_format_errors(artifact_texts))
+        return errors
+
+    def _title_window_errors(self) -> list[str]:
+        """同题换链接重发的防线：标题规范化键不得撞窗口，也不得本期内部重复。"""
+        from newsclaw.newsroom.config import load_config
+        from newsclaw.newsroom.items import collect_seen_titles, normalize_title
+
+        errors: list[str] = []
+        window = load_config().issue_history_days
+        seen = collect_seen_titles(before_date=self.issue_date, days=window)
+        intra: set[str] = set()
+        for item in self.items:
+            key = normalize_title(item.title)
+            if not key:
+                continue
+            prev = seen.get(key)
+            if prev:
+                errors.append(
+                    f"status=ready item title already used on {prev}: {item.title!r} "
+                    "(同题重发请换角度改标题，或放弃该条)"
+                )
+            if key in intra:
+                errors.append(f"status=ready duplicate item title: {item.title!r}")
+            intra.add(key)
+        return errors
+
+    def _artifact_format_errors(self, artifact_texts: dict[str, str]) -> list[str]:
+        """平台稿格式钉：把两份平台技能输出模板的关键小节升为机验。
+
+        与 skills/xiaohongshu-creator、skills/wechat-article 的输出格式
+        耦合——改技能模板时需同步这里的解析（一致性测试钉住小节名）。
+        """
+        errors: list[str] = []
+        xhs_titles = _xhs_title_candidates(artifact_texts.get(ARTIFACT_XIAOHONGSHU, ""))
+        if not xhs_titles:
+            errors.append(
+                f"status=ready format pin: {ARTIFACT_XIAOHONGSHU} missing "
+                "'### 标题方案' with at least one numbered candidate"
+            )
+        for title in xhs_titles:
+            width = sum(1 for ch in title if not ch.isspace())
+            if width > XIAOHONGSHU_TITLE_MAX_CHARS:
+                errors.append(
+                    f"status=ready format pin: xiaohongshu title candidate too long "
+                    f"({width} > {XIAOHONGSHU_TITLE_MAX_CHARS} chars): {title!r}"
+                )
+        if not _wechat_title(artifact_texts.get(ARTIFACT_WECHAT, "")):
+            errors.append(
+                f"status=ready format pin: {ARTIFACT_WECHAT} missing "
+                "a '- 标题：' line under '### 基础信息'"
+            )
         return errors
 
     # ── 序列化 ────────────────────────────────────────────────────
@@ -464,8 +605,14 @@ def demote_ready_on_budget_exceeded(issue_date: str | None = None) -> bool:
 
 
 def write_manifest(manifest: IssueManifest) -> Path:
-    """原子写入 manifest（tmp + rename），并保证目录存在。"""
-    errors = manifest.validate(artifact_dir=issue_dir(manifest.issue_date))
+    """原子写入 manifest（tmp + rename），并保证目录存在。
+
+    写盘按当前质量下限严格机验（``strict_quality``）；读取旧期次走
+    :func:`load_manifest` 的宽松口径，不按今天的标准翻旧账。
+    """
+    errors = manifest.validate(
+        artifact_dir=issue_dir(manifest.issue_date), strict_quality=True
+    )
     if errors:
         reason = classify_issue_failure(validate_errors=errors)
         raise ValueError(

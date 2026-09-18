@@ -33,6 +33,11 @@ _TRACKING_QUERY_KEYS = frozenset(
 # 污染去重键。字符集取 RFC 3986 的保留 + 非保留字符（去掉引号）。
 _URL_IN_TEXT = re.compile(r"https?://[0-9A-Za-z\-._~:/?#\[\]@!$&()*+,;=%]+", re.IGNORECASE)
 
+# 标题去重键要剥掉的空白与中英文标点（不做模糊/向量匹配，只防同题换壳）。
+_TITLE_STRIP_RE = re.compile(
+    r"[\s\-—–·、，。！？：；「」『』《》〈〉（）()\[\]【】〖〗“”\"'‘’.,!?:;|/\\#*~`$%^&+=_<>=]+"
+)
+
 
 @dataclass
 class NewsItem:
@@ -122,6 +127,16 @@ def normalize_url(raw: str) -> str:
     return urlunparse(("https", host, path, "", urlencode(query_pairs), ""))
 
 
+def normalize_title(raw: str) -> str:
+    """标题去重键：去空白与中英文标点后 casefold。
+
+    精确匹配（同一标题的排版差异收拢），不做模糊/相似度——连续报道的
+    相近标题留给编辑判断，这里只防「同题换链接重发」。
+    """
+    text = (raw or "").strip().casefold()
+    return _TITLE_STRIP_RE.sub("", text)
+
+
 def extract_urls_from_text(text: str) -> list[str]:
     """从稿件里抽出 http(s) 链接（去标点尾巴）。"""
     found: list[str] = []
@@ -182,6 +197,32 @@ def collect_seen_urls(*, before_date: str, days: int) -> dict[str, str]:
                     urls = []
         for url in urls:
             key = normalize_url(url)
+            if key and key not in seen:
+                seen[key] = day
+    return seen
+
+
+def collect_seen_titles(*, before_date: str, days: int) -> dict[str, str]:
+    """窗口内各期 manifest.items 的已见标题规范化键 → 期次日期。
+
+    只走 items 账本：标题无法从稿面可靠抽取，不设 brief 兜底——没有
+    账本的旧期对标题去重没有贡献（它们的链接已被 URL 去重覆盖）。
+    """
+    from newsclaw.newsroom.contract import load_manifest
+
+    try:
+        end = date.fromisoformat(before_date)
+    except ValueError:
+        return {}
+    window = max(1, int(days))
+    seen: dict[str, str] = {}
+    for offset in range(1, window + 1):
+        day = (end - timedelta(days=offset)).isoformat()
+        manifest, _error = load_manifest(day, require_item_ledger=False)
+        if manifest is None:
+            continue
+        for item in manifest.items:
+            key = normalize_title(item.title)
             if key and key not in seen:
                 seen[key] = day
     return seen
