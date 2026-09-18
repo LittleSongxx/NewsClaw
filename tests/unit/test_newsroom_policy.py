@@ -182,6 +182,32 @@ class TestManifestContractWrite:
                 '{"issue_date":"2026-09-18","title":"t","status":"ready"}',
             )
 
+    def test_windows_drive_path_is_not_newsroom_owned_or_protected(self, isolated_newsroom):
+        """POSIX 上盘符路径是「相对路径」，曾被 root/raw 兜底误判成早报目录，
+        导致 C:/Program Files/** 的 safety_immune 保护被整体跳过。"""
+        from newsclaw.newsroom.policy import is_newsroom_owned_path
+
+        assert not is_newsroom_owned_path("C:/Program Files/SomeApp/config.ini")
+        assert not is_protected_evolution_file("C:/Program Files/SomeApp/config.yaml")
+
+    def test_unanchored_relative_config_yaml_is_not_protected(self, isolated_newsroom):
+        """按基名全盘拦截 config.yaml 会误伤任意目录的同名文件；只有真正
+        落在早报根下的载体才受保护。"""
+        from pathlib import Path
+
+        from newsclaw.newsroom.policy import is_protected_evolution_file
+        from newsclaw.newsroom.sources import sources_path
+
+        # 干净根：相对 config.yaml 锚不到载体 → 不拦
+        assert not is_protected_evolution_file("config.yaml")
+        # 真载体（root 下存在同名文件时相对路径会锚定到它）→ 拦
+        sources_path().parent.mkdir(parents=True, exist_ok=True)
+        (sources_path().parent / "config.yaml").write_text("enabled: true\n", encoding="utf-8")
+        assert is_protected_evolution_file("config.yaml")
+        # 早报根下的绝对路径 → 拦（原有保护不变）
+        assert is_protected_evolution_file(str(sources_path()))
+        assert not is_protected_evolution_file(str(Path("/tmp") / "sources.yaml"))
+
     def test_agent_rewrite_cannot_launder_rejected_issue(self, isolated_newsroom):
         """点踩降级后，同日重写 manifest 不许洗回 ready（feedback 以旧值为准）。"""
         from newsclaw.newsroom import contract
