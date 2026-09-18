@@ -42,12 +42,3 @@ def test_format_user_friendly_error_simplifies_wework_credential_error():
     assert "1779005048242621460379807" not in msg
     assert "27.156.101.242" not in msg
     assert "open.work.weixin.qq.com" not in msg
-
-
-def test_format_user_friendly_error_simplifies_telegram_token_error():
-    raw = "Telegram Bot Token 验证失败，请到 @BotFather 重新获取 Token 后重试"
-
-    msg = format_user_friendly_error(raw)
-
-    assert "Telegram Bot Token 无效或未配置" in msg
-    assert "@BotFather" in msg

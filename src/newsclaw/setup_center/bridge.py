@@ -625,46 +625,16 @@ async def health_check_im(workspace_dir: str, channel: str | None) -> None:
 
     channels_def = [
         {
-            "id": "telegram",
-            "name": "Telegram",
-            "enabled_key": "TELEGRAM_ENABLED",
-            "required_keys": ["TELEGRAM_BOT_TOKEN"],
-        },
-        {
             "id": "feishu",
             "name": "飞书",
             "enabled_key": "FEISHU_ENABLED",
             "required_keys": ["FEISHU_APP_ID", "FEISHU_APP_SECRET"],
         },
         {
-            "id": "wework",
-            "name": "企业微信",
-            "enabled_key": "WEWORK_ENABLED",
-            "required_keys": ["WEWORK_CORP_ID", "WEWORK_TOKEN", "WEWORK_ENCODING_AES_KEY"],
-        },
-        {
-            "id": "dingtalk",
-            "name": "钉钉",
-            "enabled_key": "DINGTALK_ENABLED",
-            "required_keys": ["DINGTALK_CLIENT_ID", "DINGTALK_CLIENT_SECRET"],
-        },
-        {
-            "id": "onebot",
-            "name": "OneBot",
-            "enabled_key": "ONEBOT_ENABLED",
-            "required_keys": [],  # 动态：forward 需要 WS_URL，reverse 需要端口
-        },
-        {
             "id": "qqbot",
             "name": "QQ 官方机器人",
             "enabled_key": "QQBOT_ENABLED",
             "required_keys": ["QQBOT_APP_ID", "QQBOT_APP_SECRET"],
-        },
-        {
-            "id": "wework_ws",
-            "name": "企业微信(WS)",
-            "enabled_key": "WEWORK_WS_ENABLED",
-            "required_keys": ["WEWORK_WS_BOT_ID", "WEWORK_WS_SECRET"],
         },
         {
             "id": "wechat",
@@ -716,14 +686,8 @@ async def health_check_im(workspace_dir: str, channel: str | None) -> None:
 
             ch_client_kw = get_httpx_client_kwargs(timeout=15)
             async with httpx.AsyncClient(**ch_client_kw) as client:
-                if ch["id"] == "telegram":
-                    token = env["TELEGRAM_BOT_TOKEN"]
-                    resp = await client.get(f"https://api.telegram.org/bot{token}/getMe")
-                    resp.raise_for_status()
-                    data = resp.json()
-                    if not data.get("ok"):
-                        raise Exception(data.get("description", "Telegram API 返回错误"))
-                elif ch["id"] == "feishu":
+
+                if ch["id"] == "feishu":
                     app_id = env["FEISHU_APP_ID"]
                     app_secret = env["FEISHU_APP_SECRET"]
                     resp = await client.post(
@@ -734,48 +698,9 @@ async def health_check_im(workspace_dir: str, channel: str | None) -> None:
                     data = resp.json()
                     if data.get("code", -1) != 0:
                         raise Exception(data.get("msg", "飞书验证失败"))
-                elif ch["id"] == "wework":
-                    # 智能机器人模式不需要 secret/access_token，无法通过 API 验证
-                    # 只检查必填参数是否完整
-                    corp_id = env.get("WEWORK_CORP_ID", "").strip()
-                    token = env.get("WEWORK_TOKEN", "").strip()
-                    aes_key = env.get("WEWORK_ENCODING_AES_KEY", "").strip()
-                    if not corp_id or not token or not aes_key:
-                        missing = []
-                        if not corp_id:
-                            missing.append("WEWORK_CORP_ID")
-                        if not token:
-                            missing.append("WEWORK_TOKEN")
-                        if not aes_key:
-                            missing.append("WEWORK_ENCODING_AES_KEY")
-                        raise Exception(f"缺少必填参数: {', '.join(missing)}")
-                elif ch["id"] == "dingtalk":
-                    client_id = env["DINGTALK_CLIENT_ID"]
-                    client_secret = env["DINGTALK_CLIENT_SECRET"]
-                    resp = await client.post(
-                        "https://api.dingtalk.com/v1.0/oauth2/accessToken",
-                        json={"appKey": client_id, "appSecret": client_secret},
-                    )
-                    resp.raise_for_status()
-                    data = resp.json()
-                    if not data.get("accessToken"):
-                        raise Exception(data.get("message", "钉钉验证失败"))
-                elif ch["id"] == "onebot":
-                    ob_mode = env.get("ONEBOT_MODE", "reverse").strip().lower()
-                    if ob_mode == "forward":
-                        ws_url = env.get("ONEBOT_WS_URL", "")
-                        if not ws_url.startswith(("ws://", "wss://")):
-                            raise Exception(f"无效的 WebSocket URL: {ws_url}")
-                        http_url = ws_url.replace("ws://", "http://").replace("wss://", "https://")
-                        resp = await client.get(http_url, timeout=5)
-                    else:
-                        port_str = env.get("ONEBOT_REVERSE_PORT", "6700").strip()
-                        try:
-                            port = int(port_str)
-                            if not (1 <= port <= 65535):
-                                raise ValueError
-                        except (ValueError, TypeError):
-                            raise Exception(f"无效的端口: {port_str}")
+
+
+
                 elif ch["id"] == "qqbot":
                     # QQ 官方机器人：验证 AppID/AppSecret 能获取 Access Token
                     app_id = env["QQBOT_APP_ID"]
@@ -788,16 +713,7 @@ async def health_check_im(workspace_dir: str, channel: str | None) -> None:
                     data = resp.json()
                     if not data.get("access_token"):
                         raise Exception(data.get("message", "QQ 机器人验证失败"))
-                elif ch["id"] == "wework_ws":
-                    bot_id = env.get("WEWORK_WS_BOT_ID", "").strip()
-                    secret = env.get("WEWORK_WS_SECRET", "").strip()
-                    if not bot_id or not secret:
-                        missing_ws = []
-                        if not bot_id:
-                            missing_ws.append("WEWORK_WS_BOT_ID")
-                        if not secret:
-                            missing_ws.append("WEWORK_WS_SECRET")
-                        raise Exception(f"缺少必填参数: {', '.join(missing_ws)}")
+
                 elif ch["id"] == "wechat":
                     token = env.get("WECHAT_TOKEN", "").strip()
                     if not token:

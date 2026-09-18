@@ -176,7 +176,6 @@ def test_orchestrator_persist_uses_atomic_json_write(tmp_path, monkeypatch):
         # ``def _load_state(``), so point the source-scan at the canonical home.
         ("newsclaw.agent.user_profile", ["_load_state", "_save_state"]),
         ("newsclaw.sessions.user", ["_load_users", "_save_users"]),
-        ("newsclaw.channels.adapters.telegram", ["_load_paired_users", "_save_paired_users"]),
         ("newsclaw.channels.media.storage", ["_load_index", "_save_index"]),
         ("newsclaw.llm.registries", ["load_custom_providers", "save_custom_providers"]),
         ("newsclaw.workspace.backup", ["read_backup_settings", "write_backup_settings"]),

@@ -102,7 +102,6 @@ def _format_channel_config_error(error: str, lower: str) -> str | None:
 
     if "853000" in lower or "invalid bot_id" in lower or "invalid secret" in lower:
         return "⚠️ 企业微信 Bot ID / Secret 配置无效，请重新检查该机器人的凭据后重试。"
-    if "telegram bot token" in lower or "botfather" in lower:
         return "⚠️ Telegram Bot Token 无效或未配置，请在 @BotFather 重新获取 Token 后重试。"
     return None
 

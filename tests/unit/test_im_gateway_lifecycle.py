@@ -77,12 +77,7 @@ async def test_empty_gateway_starts_without_dependency_check_and_accepts_hot_bot
     import newsclaw.main as main
 
     for setting_name in (
-        "telegram_enabled",
         "feishu_enabled",
-        "wework_enabled",
-        "wework_ws_enabled",
-        "dingtalk_enabled",
-        "onebot_enabled",
         "qqbot_enabled",
         "wechat_enabled",
     ):

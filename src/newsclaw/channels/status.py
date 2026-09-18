@@ -11,24 +11,13 @@ from __future__ import annotations
 from typing import Any
 
 _ENV_CHANNELS: dict[str, tuple[str, list[str]]] = {
-    "telegram": ("telegram_enabled", ["telegram_bot_token"]),
     "feishu": ("feishu_enabled", ["feishu_app_id", "feishu_app_secret"]),
-    "wework": ("wework_enabled", ["wework_corp_id", "wework_token", "wework_encoding_aes_key"]),
-    "wework_ws": ("wework_ws_enabled", ["wework_ws_bot_id", "wework_ws_secret"]),
-    "dingtalk": ("dingtalk_enabled", ["dingtalk_client_id", "dingtalk_client_secret"]),
-    "onebot": ("onebot_enabled", []),
     "qqbot": ("qqbot_enabled", ["qqbot_app_id", "qqbot_app_secret"]),
     "wechat": ("wechat_enabled", ["wechat_token"]),
 }
 
 BOT_REQUIRED_CREDENTIALS: dict[str, list[str]] = {
-    "telegram": ["bot_token"],
     "feishu": ["app_id", "app_secret"],
-    "wework": ["corp_id", "token", "encoding_aes_key"],
-    "wework_ws": ["bot_id", "secret"],
-    "dingtalk": ["client_id", "client_secret"],
-    "onebot": [],
-    "onebot_reverse": [],
     "qqbot": ["app_id", "app_secret"],
     "wechat": ["token"],
 }

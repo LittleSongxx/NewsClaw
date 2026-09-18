@@ -893,25 +893,17 @@ NewsClaw 按「现状」(AS IS) 提供，不附带任何形式的明示或暗示
 
         # 选择通道
         console.print("\nAvailable channels:\n")
-        console.print("  [1] Telegram (recommended)")
-        console.print("  [2] Feishu (Lark)")
-        console.print("  [3] WeCom (企业微信)")
-        console.print("  [4] DingTalk (钉钉)")
-        console.print("  [5] OneBot (NapCat / Lagrange 等)")
-        console.print("  [6] QQ 官方机器人")
-        console.print("  [7] Skip\n")
+        console.print("  [1] 飞书")
+        console.print("  [2] QQ 官方机器人")
+        console.print("  [3] Skip\n")
 
         choice = Prompt.ask(
-            "Select channel", choices=["1", "2", "3", "4", "5", "6", "7"], default="7"
+            "Select channel", choices=["1", "2", "3"], default="3"
         )
 
         channel_map = {
-            "1": ("telegram", self._configure_telegram),
-            "2": ("feishu", self._configure_feishu),
-            "3": ("wework", self._configure_wework),
-            "4": ("dingtalk", self._configure_dingtalk),
-            "5": ("onebot", self._configure_onebot),
-            "6": ("qqbot", self._configure_qqbot),
+            "1": ("feishu", self._configure_feishu),
+            "2": ("qqbot", self._configure_qqbot),
         }
         if choice in channel_map:
             channel_name, configure_fn = channel_map[choice]
@@ -919,34 +911,6 @@ NewsClaw 按「现状」(AS IS) 提供，不附带任何形式的明示或暗示
             configure_fn()
 
         console.print("\n[green]IM channel configuration complete![/green]\n")
-
-    def _configure_telegram(self):
-        """配置 Telegram"""
-        console.print("\n[bold]Telegram Bot Configuration[/bold]\n")
-        console.print("To create a bot, message @BotFather on Telegram and use /newbot\n")
-
-        token = _ask_secret("Enter your Bot Token")
-        self.config["TELEGRAM_ENABLED"] = "true"
-        self.config["TELEGRAM_BOT_TOKEN"] = token
-
-        use_pairing = Confirm.ask("Require pairing code for new users?", default=True)
-        self.config["TELEGRAM_REQUIRE_PAIRING"] = "true" if use_pairing else "false"
-
-        # Webhook（可选）
-        webhook_url = Prompt.ask("Webhook URL (leave empty for long-polling)", default="")
-        if webhook_url:
-            self.config["TELEGRAM_WEBHOOK_URL"] = webhook_url
-
-        # 代理配置（大陆用户常用）
-        use_proxy = Confirm.ask(
-            "Use a proxy for Telegram? (recommended in mainland China)", default=False
-        )
-        if use_proxy:
-            proxy = Prompt.ask(
-                "Enter proxy URL",
-                default="http://127.0.0.1:7890",
-            )
-            self.config["TELEGRAM_PROXY"] = proxy
 
     def _configure_feishu(self):
         """配置飞书（支持扫码创建 / 手动输入 / 使用现有凭证）"""
@@ -1058,80 +1022,6 @@ NewsClaw 按「现状」(AS IS) 提供，不附带任何形式的明示或暗示
             console.print("[dim]请改用手动输入方式[/dim]")
             self.config["FEISHU_APP_ID"] = Prompt.ask("Enter App ID")
             self.config["FEISHU_APP_SECRET"] = _ask_secret("Enter App Secret")
-
-    def _configure_wework(self):
-        """配置企业微信"""
-        console.print("\n[bold]WeCom Configuration[/bold]\n")
-        console.print("Note: WeCom callback requires a public URL (use ngrok/frp/cpolar)\n")
-
-        corp_id = Prompt.ask("Enter Corp ID")
-
-        self.config["WEWORK_ENABLED"] = "true"
-        self.config["WEWORK_CORP_ID"] = corp_id
-
-        # 回调加解密配置（智能机器人必填）
-        console.print("\n[bold]Callback Configuration (required for Smart Bot):[/bold]\n")
-        console.print("Get these from WeCom admin -> Smart Bot -> Receive Messages settings\n")
-
-        token = Prompt.ask("Enter callback Token")
-        if token:
-            self.config["WEWORK_TOKEN"] = token
-
-        aes_key = Prompt.ask("Enter EncodingAESKey")
-        if aes_key:
-            self.config["WEWORK_ENCODING_AES_KEY"] = aes_key
-
-        port = Prompt.ask("Callback port", default="9880")
-        if port != "9880":
-            self.config["WEWORK_CALLBACK_PORT"] = port
-
-        host = Prompt.ask("Callback bind host", default="0.0.0.0")
-        if host != "0.0.0.0":
-            self.config["WEWORK_CALLBACK_HOST"] = host
-
-    def _configure_dingtalk(self):
-        """配置钉钉"""
-        console.print("\n[bold]DingTalk Configuration[/bold]\n")
-
-        app_key = Prompt.ask("Enter App Key")
-        app_secret = _ask_secret("Enter App Secret")
-
-        self.config["DINGTALK_ENABLED"] = "true"
-        self.config["DINGTALK_CLIENT_ID"] = app_key
-        self.config["DINGTALK_CLIENT_SECRET"] = app_secret
-
-    def _configure_onebot(self):
-        """配置 OneBot 协议通道"""
-        console.print("\n[bold]OneBot Configuration[/bold]\n")
-        console.print("OneBot 通道需要先部署 NapCat / Lagrange 等 OneBot 实现端\n")
-        console.print("参考: https://github.com/botuniverse/onebot-11\n")
-
-        console.print("Connection mode:\n")
-        console.print("  [1] Reverse WebSocket (recommended, NapCat connects to NewsClaw)")
-        console.print("  [2] Forward WebSocket (NewsClaw connects to NapCat)\n")
-        mode_choice = Prompt.ask("Select mode", choices=["1", "2"], default="1")
-
-        self.config["ONEBOT_ENABLED"] = "true"
-
-        if mode_choice == "1":
-            self.config["ONEBOT_MODE"] = "reverse"
-            reverse_port = Prompt.ask("Enter reverse WS listen port", default="6700")
-            self.config["ONEBOT_REVERSE_PORT"] = reverse_port
-            console.print(
-                f"\n[dim]NapCat 端请配置 Websocket 客户端，"
-                f"地址填 ws://<本机IP>:{reverse_port}[/dim]\n"
-            )
-        else:
-            self.config["ONEBOT_MODE"] = "forward"
-            onebot_url = Prompt.ask(
-                "Enter OneBot WebSocket URL",
-                default="ws://127.0.0.1:8080",
-            )
-            self.config["ONEBOT_WS_URL"] = onebot_url
-
-        access_token = _ask_secret("Enter Access Token (leave empty if not set)", allow_empty=True)
-        if access_token:
-            self.config["ONEBOT_ACCESS_TOKEN"] = access_token
 
     def _configure_qqbot(self):
         """配置 QQ 官方机器人"""
@@ -1566,42 +1456,6 @@ NewsClaw 按「现状」(AS IS) 提供，不附带任何形式的明示或暗示
             )
         lines.append("")
 
-        if self.config.get("ONEBOT_ENABLED"):
-            onebot_mode = self.config.get("ONEBOT_MODE", "reverse")
-            lines.extend(
-                [
-                    f"ONEBOT_ENABLED={self.config.get('ONEBOT_ENABLED', 'false')}",
-                    f"ONEBOT_MODE={onebot_mode}",
-                ]
-            )
-            if onebot_mode == "forward":
-                lines.append(
-                    f"ONEBOT_WS_URL={self.config.get('ONEBOT_WS_URL', 'ws://127.0.0.1:8080')}"
-                )
-                lines.append("# ONEBOT_REVERSE_PORT=6700")
-                lines.append("# ONEBOT_REVERSE_HOST=0.0.0.0")
-            else:
-                lines.append(
-                    f"ONEBOT_REVERSE_PORT={self.config.get('ONEBOT_REVERSE_PORT', '6700')}"
-                )
-                lines.append(
-                    f"ONEBOT_REVERSE_HOST={self.config.get('ONEBOT_REVERSE_HOST', '0.0.0.0')}"
-                )
-                lines.append("# ONEBOT_WS_URL=ws://127.0.0.1:8080")
-            lines.append(f"ONEBOT_ACCESS_TOKEN={self.config.get('ONEBOT_ACCESS_TOKEN', '')}")
-        else:
-            lines.extend(
-                [
-                    "ONEBOT_ENABLED=false",
-                    "# ONEBOT_MODE=reverse",
-                    "# ONEBOT_WS_URL=ws://127.0.0.1:8080",
-                    "# ONEBOT_REVERSE_PORT=6700",
-                    "# ONEBOT_REVERSE_HOST=0.0.0.0",
-                    "# ONEBOT_ACCESS_TOKEN=",
-                ]
-            )
-        lines.append("")
-
         if self.config.get("QQBOT_ENABLED"):
             lines.extend(
                 [
@@ -1791,7 +1645,7 @@ NewsClaw 按「现状」(AS IS) 提供，不附带任何形式的明示或暗示
             return
 
         # Telegram 是核心依赖，无需额外安装
-        if self._selected_channel == "telegram":
+        if False:
             return
 
         import importlib
@@ -1922,15 +1776,13 @@ NewsClaw 按「现状」(AS IS) 提供，不附带任何形式的明示或暗示
         """对已选通道做轻量凭证/连通性验证（可选）。"""
         if not self._selected_channel:
             return
-        if not self._channel_deps_ok and self._selected_channel != "telegram":
+        if not self._channel_deps_ok:
             console.print("  [dim]跳过通道连通性测试（依赖未就绪）[/dim]\n")
             return
 
         # 仅对有简易验证 API 的通道提供测试
         verifiers: dict[str, tuple[str, callable]] = {
-            "dingtalk": ("DingTalk", self._verify_dingtalk),
             "feishu": ("Feishu", self._verify_feishu),
-            "telegram": ("Telegram", self._verify_telegram),
         }
 
         entry = verifiers.get(self._selected_channel)
@@ -1967,27 +1819,6 @@ NewsClaw 按「现状」(AS IS) 提供，不附带任何形式的明示或暗示
                 )
         console.print()
 
-    def _verify_dingtalk(self) -> tuple[bool, str]:
-        """验证钉钉凭证：请求 access_token。"""
-        import httpx
-
-        client_id = self.config.get("DINGTALK_CLIENT_ID", "")
-        client_secret = self.config.get("DINGTALK_CLIENT_SECRET", "")
-        if not client_id or not client_secret:
-            return False, "Client ID or Secret is empty"
-
-        with httpx.Client(timeout=10) as client:
-            resp = client.post(
-                "https://api.dingtalk.com/v1.0/oauth2/accessToken",
-                json={"appKey": client_id, "appSecret": client_secret},
-            )
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("accessToken"):
-                return True, ""
-            return False, data.get("message", "No accessToken in response")
-        return False, f"HTTP {resp.status_code}"
-
     def _verify_feishu(self) -> tuple[bool, str]:
         """验证飞书凭证：请求 tenant_access_token。"""
         import httpx
@@ -2007,25 +1838,6 @@ NewsClaw 按「现状」(AS IS) 提供，不附带任何形式的明示或暗示
             if data.get("code") == 0:
                 return True, ""
             return False, data.get("msg", f"code={data.get('code')}")
-        return False, f"HTTP {resp.status_code}"
-
-    def _verify_telegram(self) -> tuple[bool, str]:
-        """验证 Telegram Bot Token：调用 getMe。"""
-        import httpx
-
-        token = self.config.get("TELEGRAM_BOT_TOKEN", "")
-        if not token:
-            return False, "Bot token is empty"
-
-        proxy = self.config.get("TELEGRAM_PROXY", "") or None
-        with httpx.Client(timeout=10, proxy=proxy) as client:
-            resp = client.get(f"https://api.telegram.org/bot{token}/getMe")
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("ok"):
-                bot_name = data.get("result", {}).get("username", "")
-                return True, f"@{bot_name}" if bot_name else ""
-            return False, data.get("description", "Unknown error")
         return False, f"HTTP {resp.status_code}"
 
     def _test_connection(self):
