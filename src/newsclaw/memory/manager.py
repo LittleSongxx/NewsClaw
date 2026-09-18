@@ -68,7 +68,19 @@ def _migrate_legacy_db_name(data_dir: Path) -> None:
     """
     legacy = data_dir / "openakita.db"
     current = data_dir / "newsclaw.db"
-    if not legacy.exists() or current.exists():
+    if not legacy.exists():
+        return
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if current.exists():
+        # 两库并存：newsclaw.db 恒为生效库，openakita.db 是孤儿（可能是某次
+        # 旧版本启动留下的）。改名隔离避免误拷回，真实数据永远在 newsclaw.db。
+        for suffix in ("", "-wal", "-shm"):
+            source = data_dir / f"openakita.db{suffix}"
+            if source.exists():
+                source.rename(data_dir / f"openakita.db.orphan.{stamp}{suffix}")
+        logger.warning(
+            "orphan legacy memory db renamed aside: openakita.db.orphan.%s", stamp
+        )
         return
     try:
         for suffix in ("", "-wal", "-shm"):
