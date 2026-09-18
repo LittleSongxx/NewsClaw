@@ -10,8 +10,8 @@
     skills/newsroom-editor/SKILL.md     操作手册（流程：怎么跑管线，保持稳定）
 
 prompt 版本号 ``PROMPT_VERSION`` 递增时，seed 模块会在下次启动时把已存在
-任务的 prompt 刷新到新版（v19：注入块印记本期 issue_date，跨午夜运行的
-目录名以注入为准，不要用 Agent 自己的「今天」）
+任务的 prompt 刷新到新版（v19：注入块印记本期 issue_date；ready 但未投递
+的期次下次运行自动补推；复盘增加窗口对比的质量回归检测）
 （用户在 GUI 里改排期不受影响，见 seed 模块说明）。
 """
 
@@ -184,6 +184,8 @@ def build_daily_prompt(config: NewsroomConfig | None = None) -> str:
   可安全重跑的）：
   · ``wiki_entries`` 为空且已配置 obsidian_vault → 执行第 3 步（本地 Wiki 沉淀）；
     未配置 vault 则跳过 Wiki，不要调用 wiki_upsert；
+  · ``delivered_at`` 为空且 status=ready → 执行第 5 步**补推**（上次投递
+    未送达的期次在此自动重发；送达后代码会回写 delivered_at）；
   · ``feishu_doc_url`` 为空 → 执行第 6 步（飞书云文档归档）；
   · ``scores`` 已有内容 → 跳过第 4 步自评（没有才补）；
   · 最后执行第 5 步推送与汇报。
@@ -328,6 +330,10 @@ def build_review_prompt(config: NewsroomConfig | None = None) -> str:
 - 列出 issues/ 下最近 7 期有 manifest.json 的期次，读取全部 manifest：
   关注 scores 各维度趋势、sources_used 与 sources.yaml 的对账（哪些信源
   从未被用、哪些高频却低分）；
+- **质量回归检测**：把近 7 期与前 7 期（最多读 14 期 manifest）做窗口
+  对比——四个维度的窗口均分、反馈比率（up/(up+down)，期级与条目级分开
+  算）。任一指标连续两个窗口下降，必须在复盘报告里解释原因，并尽量
+  给出对应提案（这是自进化是否在收敛的判据，不是可选项）；
 - 读 {root / "feedback-export.json"}（若存在）：期级点赞/点踩与短评逐条
   对应到当期选题构成；``issues[].items`` 是**条目级**反馈——反复被点踩的
   URL / 域名是信源增删与 excluded_keywords 提案最直接的证据；
@@ -354,7 +360,8 @@ review-proposal.json schema::
 {_REVIEW_JSON_SCHEMA}
 
 【第 3 步 · 复盘报告】写入 {root / "reviews"}/YYYY-MM-DD.md（当日日期）：
-- 近 7 期各维度分数趋势表（自评只作参考，ready 由契约函数决定）；
+- 近 7 期各维度分数趋势表 + 两窗口对比表（维度均分、期级/条目级反馈比率）
+  与回归解释（自评只作参考，ready 由契约函数决定）；
 - 反馈与选题的对应分析；
 - 本轮提案（review-proposal.md / .json）摘要与预期效果（尚未 apply）；
 - 下周观察点（给下次复盘的问题清单）。
