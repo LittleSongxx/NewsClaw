@@ -244,13 +244,8 @@ class Settings(BaseSettings):
     double_texting_per_channel: dict = Field(
         default_factory=lambda: {
             "feishu": "reject",
-            "wework": "reject",
-            "wework_ws": "reject",
-            "telegram": "queue",
-            "dingtalk": "reject",
-            "qqbot": "queue",
-            "onebot": "queue",
-            "wechat": "reject",
+                                                "qqbot": "queue",
+                        "wechat": "reject",
             "desktop": "steer",
             "cli": "queue",
         },
@@ -653,17 +648,6 @@ class Settings(BaseSettings):
     )
 
     # === 通道配置 ===
-    # Telegram
-    telegram_enabled: bool = Field(default=False, description="是否启用 Telegram")
-    telegram_bot_token: str = Field(default="", description="Telegram Bot Token")
-    telegram_webhook_url: str = Field(default="", description="Telegram Webhook URL")
-    telegram_pairing_code: str = Field(default="", description="Telegram 配对码（留空则自动生成）")
-    telegram_require_pairing: bool = Field(default=True, description="是否需要配对验证")
-    telegram_proxy: str = Field(
-        default="",
-        description="Telegram 代理地址 (如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080)",
-    )
-
     # 飞书
     feishu_enabled: bool = Field(default=False, description="是否启用飞书")
     feishu_app_id: str = Field(default="", description="飞书 App ID")
@@ -690,50 +674,6 @@ class Settings(BaseSettings):
             "留空则仅落在云空间。需应用开通 wiki:wiki 权限且空间对其可见。"
         ),
     )
-
-    # 企业微信（智能机器人 — HTTP 回调模式）
-    wework_enabled: bool = Field(default=False, description="是否启用企业微信（HTTP 回调模式）")
-    wework_corp_id: str = Field(default="", description="企业微信 Corp ID")
-    wework_token: str = Field(default="", description="企业微信回调 Token")
-    wework_encoding_aes_key: str = Field(default="", description="企业微信回调加密 AES Key")
-    wework_callback_port: int = Field(default=9880, description="企业微信回调服务端口")
-    wework_callback_host: str = Field(default="0.0.0.0", description="企业微信回调服务绑定地址")
-
-    # 企业微信（智能机器人 — WebSocket 长连接模式）
-    wework_ws_enabled: bool = Field(default=False, description="是否启用企业微信 WebSocket 长连接")
-    wework_ws_bot_id: str = Field(default="", description="企业微信机器人 ID（后台获取）")
-    wework_ws_secret: str = Field(default="", description="企业微信机器人 Secret（后台获取）")
-    wework_ws_thinking_indicator: bool = Field(
-        default=True, description="收到消息后立即发送'思考中'流式首帧提示"
-    )
-    wework_ws_msg_item_images: bool = Field(
-        default=False,
-        description="流式回复中使用 msg_item 发送图片（当前企业微信版本可能不渲染，默认关闭）",
-    )
-    wework_ws_webhook_url: str = Field(
-        default="",
-        description="企业微信群机器人 Webhook URL（用于 WS 模式下发送图片/语音/文件）",
-    )
-
-    # 钉钉
-    dingtalk_enabled: bool = Field(default=False, description="是否启用钉钉")
-    dingtalk_client_id: str = Field(default="", description="钉钉 Client ID（原 App Key）")
-    dingtalk_client_secret: str = Field(
-        default="", description="钉钉 Client Secret（原 App Secret）"
-    )
-
-    # OneBot 协议（通用）
-    onebot_enabled: bool = Field(default=False, description="是否启用 OneBot")
-    onebot_mode: str = Field(
-        default="reverse",
-        description="OneBot 连接模式: reverse（反向WS，推荐）或 forward（正向WS）",
-    )
-    onebot_ws_url: str = Field(
-        default="ws://127.0.0.1:8080", description="OneBot 正向 WS 地址（仅 forward 模式）"
-    )
-    onebot_reverse_host: str = Field(default="0.0.0.0", description="OneBot 反向 WS 监听地址")
-    onebot_reverse_port: int = Field(default=6700, description="OneBot 反向 WS 监听端口")
-    onebot_access_token: str = Field(default="", description="OneBot 访问令牌（可选）")
 
     # QQ 官方机器人
     qqbot_enabled: bool = Field(default=False, description="是否启用 QQ 官方机器人")

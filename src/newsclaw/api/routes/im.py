@@ -287,7 +287,7 @@ def _get_storage():
 
 
 def _to_safe_session_id(session_key: str) -> str:
-    """Convert session_key (e.g. 'telegram:123:user') to the safe format
+    """Convert session_key (e.g. 'feishu:123:user') to the safe format
     used as SQLite session_id (e.g. 'telegram__123__user').
 
     Must match the logic in agent.py _prepare_session_context.
@@ -816,7 +816,7 @@ async def set_owner_allowlist(request: Request, body: OwnerAllowlistRequest):
     return JSONResponse(content={"ok": True})
 
 
-@router.get("/api/im/telegram/pairing-code")
+("/api/im/telegram/pairing-code")
 async def get_telegram_pairing_code(request: Request):
     """Return the current Telegram pairing code (from running adapter or file)."""
     gateway = _get_gateway(request)

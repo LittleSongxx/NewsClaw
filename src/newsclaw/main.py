@@ -2,7 +2,7 @@
 NewsClaw CLI 入口
 
 使用 Typer 和 Rich 提供交互式命令行界面
-支持同时运行 CLI 和 IM 通道（Telegram、飞书等）
+支持同时运行 CLI 和 IM 通道（飞书等）
 支持多 Agent 协同模式（通过 ORCHESTRATION_ENABLED 配置）
 """
 
@@ -450,12 +450,7 @@ async def start_im_channels(agent_or_master):
     global _message_gateway
 
     any_enabled = (
-        settings.telegram_enabled
-        or settings.feishu_enabled
-        or settings.wework_enabled
-        or settings.wework_ws_enabled
-        or settings.dingtalk_enabled
-        or settings.onebot_enabled
+        settings.feishu_enabled
         or settings.qqbot_enabled
         or settings.wechat_enabled
         or any(b.get("enabled", True) for b in (settings.im_bots or []))
@@ -538,37 +533,6 @@ async def start_im_channels(agent_or_master):
     # 注册启用的适配器
     adapters_started = []
 
-    # Telegram
-    if settings.telegram_enabled and settings.telegram_bot_token:
-        _tg_dup = any(
-            b.get("type") == "telegram"
-            and b.get("credentials", {}).get("bot_token") == settings.telegram_bot_token
-            and b.get("enabled", True)
-            for b in (settings.im_bots or [])
-        )
-        if _tg_dup:
-            logger.info(
-                "Telegram adapter skipped: im_bots already contains a telegram bot "
-                f"with the same bot_token ({settings.telegram_bot_token[:8]}...)"
-            )
-        else:
-            try:
-                from .channels.adapters import TelegramAdapter
-
-                telegram = TelegramAdapter(
-                    bot_token=settings.telegram_bot_token,
-                    webhook_url=settings.telegram_webhook_url or None,
-                    media_dir=settings.project_root / "data" / "media" / "telegram",
-                    pairing_code=settings.telegram_pairing_code or None,
-                    require_pairing=settings.telegram_require_pairing,
-                    proxy=settings.telegram_proxy or None,
-                )
-                await _message_gateway.register_adapter(telegram)
-                adapters_started.append("telegram")
-                logger.info("Telegram adapter registered")
-            except Exception as e:
-                logger.error(f"Failed to start Telegram adapter: {e}")
-
     # 飞书
     if settings.feishu_enabled and settings.feishu_app_id:
         _feishu_dup = any(
@@ -595,106 +559,6 @@ async def start_im_channels(agent_or_master):
                 logger.info("Feishu adapter registered")
             except Exception as e:
                 logger.error(f"Failed to start Feishu adapter: {e}")
-
-    # 企业微信（智能机器人模式）
-    if settings.wework_enabled and settings.wework_corp_id:
-        try:
-            from .channels.adapters import WeWorkBotAdapter
-
-            wework = WeWorkBotAdapter(
-                corp_id=settings.wework_corp_id,
-                token=settings.wework_token,
-                encoding_aes_key=settings.wework_encoding_aes_key,
-                callback_port=settings.wework_callback_port,
-                callback_host=settings.wework_callback_host,
-            )
-            await _message_gateway.register_adapter(wework)
-            adapters_started.append("wework")
-            logger.info("WeWork Smart Robot adapter registered")
-        except Exception as e:
-            logger.error(f"Failed to start WeWork adapter: {e}")
-
-    # 企业微信（智能机器人 — WebSocket 长连接模式）
-    if settings.wework_ws_enabled and settings.wework_ws_bot_id:
-        # 双开警告：HTTP 回调与 WS 长连接同时启用
-        if settings.wework_enabled:
-            logger.warning(
-                "WeWork HTTP callback and WebSocket are both enabled. "
-                "If they share the same bot, messages may be processed twice."
-            )
-
-        # 重复注册检查：im_bots 中是否已含相同 bot_id 的 wework_ws 条目
-        _wework_ws_dup = any(
-            b.get("type") == "wework_ws"
-            and b.get("credentials", {}).get("bot_id") == settings.wework_ws_bot_id
-            and b.get("enabled", True)
-            for b in (settings.im_bots or [])
-        )
-        if _wework_ws_dup:
-            logger.info(
-                "WeWork WS adapter skipped: im_bots already contains a wework_ws bot "
-                f"with the same bot_id ({settings.wework_ws_bot_id[:8]}...)"
-            )
-        else:
-            try:
-                from .channels.adapters import WeWorkWsAdapter
-
-                wework_ws = WeWorkWsAdapter(
-                    bot_id=settings.wework_ws_bot_id,
-                    secret=settings.wework_ws_secret,
-                    webhook_url=settings.wework_ws_webhook_url,
-                )
-                await _message_gateway.register_adapter(wework_ws)
-                adapters_started.append("wework_ws")
-                logger.info("WeWork WS (WebSocket) adapter registered")
-            except Exception as e:
-                logger.error(f"Failed to start WeWork WS adapter: {e}")
-
-    # 钉钉
-    if settings.dingtalk_enabled and settings.dingtalk_client_id:
-        _ding_dup = any(
-            b.get("type") == "dingtalk"
-            and b.get("credentials", {}).get("client_id") == settings.dingtalk_client_id
-            and b.get("enabled", True)
-            for b in (settings.im_bots or [])
-        )
-        if _ding_dup:
-            logger.info(
-                "DingTalk adapter skipped: im_bots already contains a dingtalk bot "
-                f"with the same client_id ({settings.dingtalk_client_id[:8]}...)"
-            )
-        else:
-            try:
-                from .channels.adapters import DingTalkAdapter
-
-                dingtalk = DingTalkAdapter(
-                    app_key=settings.dingtalk_client_id,
-                    app_secret=settings.dingtalk_client_secret,
-                )
-                await _message_gateway.register_adapter(dingtalk)
-                adapters_started.append("dingtalk")
-                logger.info("DingTalk adapter registered")
-            except Exception as e:
-                logger.error(f"Failed to start DingTalk adapter: {e}")
-
-    # OneBot (通用协议)
-    if settings.onebot_enabled:
-        try:
-            from .channels.adapters import OneBotAdapter
-
-            onebot = OneBotAdapter(
-                mode=settings.onebot_mode,
-                ws_url=settings.onebot_ws_url,
-                reverse_host=settings.onebot_reverse_host,
-                reverse_port=settings.onebot_reverse_port,
-                access_token=settings.onebot_access_token or None,
-            )
-            await _message_gateway.register_adapter(onebot)
-            adapters_started.append("onebot")
-            _mode_label = "reverse" if settings.onebot_mode == "reverse" else "forward"
-            logger.info(f"OneBot adapter registered (mode={_mode_label})")
-        except Exception as e:
-            logger.error(f"Failed to start OneBot adapter: {e}")
 
     # QQ 官方机器人
     if settings.qqbot_enabled and settings.qqbot_app_id:
@@ -998,18 +862,7 @@ def show_channels():
     table.add_column("状态", style="yellow")
 
     channels = [
-        ("Telegram", settings.telegram_enabled, settings.telegram_bot_token),
         ("飞书", settings.feishu_enabled, settings.feishu_app_id),
-        ("企业微信(HTTP)", settings.wework_enabled, settings.wework_corp_id),
-        ("企业微信(WS)", settings.wework_ws_enabled, settings.wework_ws_bot_id),
-        ("钉钉", settings.dingtalk_enabled, settings.dingtalk_client_id),
-        (
-            "OneBot",
-            settings.onebot_enabled,
-            settings.onebot_ws_url
-            if settings.onebot_mode == "forward"
-            else f"{settings.onebot_reverse_host}:{settings.onebot_reverse_port}",
-        ),
         ("QQ 官方机器人", settings.qqbot_enabled, settings.qqbot_app_id),
         ("微信", settings.wechat_enabled, settings.wechat_token),
     ]
