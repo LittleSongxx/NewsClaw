@@ -29,7 +29,9 @@ _TRACKING_QUERY_KEYS = frozenset(
     }
 )
 
-_URL_IN_TEXT = re.compile(r"https?://[^\s)\]>\"']+", re.IGNORECASE)
+# URL 只含 ASCII 字符；不排除全角/中文会让稿面抽取带上尾随中文（如「…/news｜大模型」），
+# 污染去重键。字符集取 RFC 3986 的保留 + 非保留字符（去掉引号）。
+_URL_IN_TEXT = re.compile(r"https?://[0-9A-Za-z\-._~:/?#\[\]@!$&()*+,;=%]+", re.IGNORECASE)
 
 
 @dataclass
@@ -128,10 +130,11 @@ def parse_items(raw: Any) -> list[NewsItem]:
 
 
 def collect_seen_urls(*, before_date: str, days: int) -> dict[str, str]:
-    """窗口内其它 ready 期次的已见规范化 URL → 期次日期。
+    """窗口内各期（ready / partial / rejected 一视同仁）的已见规范化 URL → 期次日期。
 
-    优先读 ``manifest.items``；旧期没有账本时，从日报稿抽链接顶一下，
-    避免历史期次完全帮不上忙。
+    优先读 ``manifest.items``；旧期没有账本、或根本没有 manifest（跑了一半的
+    现场）时，从日报稿抽链接顶一下。只按 ready 收录会让点踩降级把整期链接
+    放回去重池——负反馈反而放行重复采集。损坏 manifest 的期次退回稿面抽取。
     """
     from newsclaw.newsroom.contract import (
         ARTIFACT_DAILY_BRIEF,
@@ -147,10 +150,10 @@ def collect_seen_urls(*, before_date: str, days: int) -> dict[str, str]:
     seen: dict[str, str] = {}
     for offset in range(1, window + 1):
         day = (end - timedelta(days=offset)).isoformat()
-        manifest, error = load_manifest(day, require_item_ledger=False)
-        if manifest is None or error or manifest.status != "ready":
-            continue
-        urls: list[str] = [item.url for item in manifest.items if item.url]
+        urls: list[str] = []
+        manifest, _error = load_manifest(day, require_item_ledger=False)
+        if manifest is not None:
+            urls = [item.url for item in manifest.items if item.url]
         if not urls:
             brief = issue_dir(day) / ARTIFACT_DAILY_BRIEF
             if brief.is_file():
@@ -165,8 +168,13 @@ def collect_seen_urls(*, before_date: str, days: int) -> dict[str, str]:
     return seen
 
 
-def format_seen_items_for_prompt(*, before_date: str, days: int, limit: int = 40) -> str:
-    """给每日注入块用的「近 N 天已见」清单。"""
+def format_seen_items_for_prompt(*, before_date: str, days: int, limit: int = 400) -> str:
+    """给每日注入块用的「近 N 天已见」清单。
+
+    ``limit`` 必须容纳窗口全量（7 天 × 十余条 ≈ 百余）：机验对账用的是不截断
+    的 :func:`collect_seen_urls`，注入端截断会让编辑在看不见的链接上撞车，
+    直到写 manifest 才报错作废。
+    """
     seen = collect_seen_urls(before_date=before_date, days=days)
     if not seen:
         return "（窗口内无已 ready 期次，或尚无条目账本）"
