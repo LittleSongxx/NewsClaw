@@ -764,6 +764,10 @@ class Agent:
             embedding_api_provider=settings.embedding_api_provider,
             embedding_api_key=settings.embedding_api_key,
             embedding_api_model=settings.embedding_api_model,
+            embedding_api_base_url=settings.embedding_api_base_url,
+            embedding_source=settings.embedding_source,
+            memory_rerank_enabled=settings.memory_rerank_enabled,
+            memory_rerank_model=settings.memory_rerank_model,
             agent_id=self.name,
             desktop_owner_alignment=True,
         )

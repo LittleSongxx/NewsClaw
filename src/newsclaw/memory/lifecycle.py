@@ -286,57 +286,47 @@ class LifecycleManager:
     def _sync_vector_store(self) -> None:
         """Rebuild vector store index from current SQLite data.
 
-        双向同步：
+        双向同步（经 ChromaDBBackend 包装后端的透传方法；fts5 / api_embedding
+        后端没有 existing_ids，直接跳过）：
         - 删 stale：SQLite 已不存在的 id 从向量库剔除
         - 补 missing：SQLite 有但向量库无的 id 重新嵌入（避免 Chroma 启动期
           竞态导致的"写入失败 + 后续无补全"洞口，参考 vector_store.py 300s 冷却）
         """
         try:
-            if not hasattr(self.store, "search") or not self.store.search:
+            search = getattr(self.store, "search", None)
+            if search is None or not hasattr(search, "existing_ids"):
                 return
             all_mems = self.store.load_all_memories()
             mem_ids = {m.id for m in all_mems}
-            search = self.store.search
 
-            existing_ids: set[str] | None = None
-            if hasattr(search, "_collection"):
-                try:
-                    existing_ids = set(search._collection.get()["ids"])
-                except Exception:
-                    existing_ids = None
+            search.delete_not_in(mem_ids)
 
-            if hasattr(search, "delete_not_in"):
-                search.delete_not_in(mem_ids)
+            existing_ids = search.existing_ids()
+            if existing_ids is None or not hasattr(search, "batch_add"):
+                return
+            missing = [m for m in all_mems if m.id not in existing_ids]
+            if not missing:
                 logger.info(f"[Lifecycle] Vector store synced ({len(mem_ids)} memories)")
-            elif existing_ids is not None:
-                stale = existing_ids - mem_ids
-                if stale:
-                    search._collection.delete(ids=list(stale))
-                    logger.info(f"[Lifecycle] Removed {len(stale)} stale vectors")
-
-            if existing_ids is not None and hasattr(search, "add"):
-                missing = [m for m in all_mems if m.id not in existing_ids]
-                if missing:
-                    added = 0
-                    for mem in missing:
-                        try:
-                            search.add(
-                                mem.id,
-                                mem.content,
-                                {
-                                    "type": mem.type.value,
-                                    "priority": mem.priority.value,
-                                    "importance": mem.importance_score,
-                                    "tags": mem.tags,
-                                },
-                            )
-                            added += 1
-                        except Exception as _e:
-                            logger.debug(f"[Lifecycle] backfill embed failed for {mem.id}: {_e}")
-                    if added:
-                        logger.info(
-                            f"[Lifecycle] Backfilled {added}/{len(missing)} missing vectors"
-                        )
+                return
+            added = 0
+            # 批量回填：api embedding 模式下每次 batch_add 只占一次网关分片调用
+            for start in range(0, len(missing), 50):
+                chunk = missing[start : start + 50]
+                items = [
+                    {
+                        "id": m.id,
+                        "content": m.content,
+                        "type": m.type.value,
+                        "priority": m.priority.value,
+                        "importance": m.importance_score,
+                        "tags": m.tags,
+                    }
+                    for m in chunk
+                ]
+                added += search.batch_add(items)
+            if added:
+                logger.info(f"[Lifecycle] Backfilled {added}/{len(missing)} missing vectors")
+            logger.info(f"[Lifecycle] Vector store synced ({len(mem_ids)} memories)")
         except Exception as e:
             logger.debug(f"[Lifecycle] Vector store sync skipped: {e}")
 

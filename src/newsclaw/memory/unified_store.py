@@ -46,6 +46,10 @@ def _semantic_memory_from_row(row: dict) -> SemanticMemory:
 class UnifiedStore:
     """统一存储层: SQLite 为主存储, SearchBackend 为搜索引擎"""
 
+    # RRF (Reciprocal Rank Fusion) 平滑常数：控制头部名次差异对融合分的影响，
+    # 60 是常用起点，需在验证集上与通道权重一起调
+    RRF_K: int = 60
+
     def __init__(
         self,
         db_path: str | Path,
@@ -56,6 +60,7 @@ class UnifiedStore:
         api_provider: str = "",
         api_key: str = "",
         api_model: str = "",
+        api_base_url: str = "",
     ) -> None:
         self.db = get_shared_storage(db_path)
 
@@ -69,6 +74,7 @@ class UnifiedStore:
                 api_provider=api_provider,
                 api_key=api_key,
                 api_model=api_model,
+                api_base_url=api_base_url,
             )
 
         self._fts5_fallback: FTS5Backend | None = None
@@ -349,8 +355,11 @@ class UnifiedStore:
         """Like search_semantic but also returns the raw similarity score.
 
         当主搜索后端（如 Chroma）启用时，**始终**额外 union 一次 FTS5 结果，
-        避免向量索引尚未补全/异步未刷新时新写入的记忆被静默漏掉。按 id 去重后
-        取最高分，FTS5 结果保留原始分数（FTS5 backend 输出已落在 [0,1]）。
+        避免向量索引尚未补全/异步未刷新时新写入的记忆被静默漏掉。
+        两路分数量纲不同（cosine vs BM25 归一分），直接拼分数会系统性偏向
+        某一路；因此**排序用 RRF（只看名次不看分值）**，返回值仍取命中通道的
+        最高原始分，保持 [0,1] 语义不变（find_similar 的 0.8 阈值与下游
+        MIN_RERANK_SCORE 均依赖该语义）。
         """
         primary = self.search.search(
             query,
@@ -361,7 +370,14 @@ class UnifiedStore:
             user_id=user_id,
             workspace_id=workspace_id,
         )
-        merged: dict[str, float] = {mid: float(s) for mid, s in primary}
+        # 每通道的有序 id 列表（供 RRF）+ 每条记忆在命中通道中的最高原始分（供返回值）
+        channels: list[list[str]] = [[mid for mid, _s in primary]]
+        raw_scores: dict[str, float] = {}
+        for mid, s in primary:
+            fs = float(s)
+            prev = raw_scores.get(mid)
+            if prev is None or fs > prev:
+                raw_scores[mid] = fs
 
         if self._fts5_fallback is not None:
             try:
@@ -374,18 +390,26 @@ class UnifiedStore:
                     user_id=user_id,
                     workspace_id=workspace_id,
                 )
+                channels.append([mid for mid, _s in fts_results])
                 for mid, s in fts_results:
-                    prev = merged.get(mid)
                     fs = float(s)
+                    prev = raw_scores.get(mid)
                     if prev is None or fs > prev:
-                        merged[mid] = fs
+                        raw_scores[mid] = fs
             except Exception as _e:
                 logger.debug(f"[UnifiedStore] FTS5 union skipped (non-fatal): {_e}")
 
-        ordered = sorted(merged.items(), key=lambda kv: kv[1], reverse=True)
+        # RRF 融合：score = Σ 1/(k + rank)。只用名次，天然免疫两路分数量纲差异
+        rrf_scores: dict[str, float] = {}
+        for channel in channels:
+            for rank, mid in enumerate(channel, start=1):
+                rrf_scores[mid] = rrf_scores.get(mid, 0.0) + 1.0 / (self.RRF_K + rank)
+
+        ordered = sorted(rrf_scores.items(), key=lambda kv: kv[1], reverse=True)
 
         scored: list[tuple[SemanticMemory, float]] = []
-        for memory_id, score in ordered:
+        for memory_id, _rrf in ordered:
+            score = raw_scores.get(memory_id, 0.0)
             d = self.db.get_memory(memory_id)
             if d:
                 if not include_inactive and not self._is_active_dict(d):
