@@ -28,6 +28,7 @@ _SHARED_TOKENS = (
     "wiki_upsert",
     "deliver_artifacts",
     "feishu_doc",
+    "wechat_mp_publish",
     "delegate_parallel",
     "news-collector",
 )

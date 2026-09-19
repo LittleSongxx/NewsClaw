@@ -11,7 +11,8 @@
 
 prompt 版本号 ``PROMPT_VERSION`` 递增时，seed 模块会在下次启动时把已存在
 任务的 prompt 刷新到新版（v19：注入块印记本期 issue_date；ready 但未投递
-的期次下次运行自动补推；复盘增加窗口对比的质量回归检测）
+的期次下次运行自动补推；复盘增加窗口对比的质量回归检测；v20：新增第 7 步
+微信公众号发布，公众号稿经 wechat_mp_publish 发布并回写 wechat_mp_url）
 （用户在 GUI 里改排期不受影响，见 seed 模块说明）。
 """
 
@@ -25,7 +26,7 @@ from newsclaw.newsroom.editorial import load_editorial_policy
 from newsclaw.newsroom.items import format_seen_items_for_prompt
 from newsclaw.newsroom.sources import load_sources, sources_path
 
-PROMPT_VERSION = 19
+PROMPT_VERSION = 20
 
 #: 每日任务运行时注入块的起止标记。播种缓存的 prompt 可能含旧块，
 #: 调度触发时会剥掉再拼当期 sources / 方针。
@@ -57,6 +58,7 @@ _MANIFEST_SCHEMA = """\
   ],
   "wiki_entries": ["本期更新/新建的本地 Wiki 页面相对路径（如 主题/大模型.md）"],
   "feishu_doc_url": "飞书云文档归档链接（第 6 步产出；失败则空字符串）",
+  "wechat_mp_url": "微信公众号发布链接（第 7 步产出；未配置/仅存草稿/失败则空字符串）",
   "scores": {
     "source_hit": {"score": 4, "rationale": "一句话（score 为 1-5 整数）"},
     "dedup":      {"score": 4, "rationale": "一句话"},
@@ -130,8 +132,33 @@ def build_daily_injection_block() -> str:
     lines.append("## 编辑方针全文")
     policy_text = load_editorial_policy().to_text().strip()
     lines.append(policy_text if policy_text else "（尚未制定，按默认品味）")
+    lines.append("")
+    lines.append("## 渠道状态")
+    lines.append(
+        "- 微信公众号发布（第 7 步，wechat_mp_publish）："
+        + _wechat_mp_channel_status()
+    )
     lines.append(INJECTION_END)
     return "\n".join(lines)
+
+
+def _wechat_mp_channel_status() -> str:
+    """公众号渠道是否已配置（读 settings，惰性导入避免加载顺序问题）。"""
+    try:
+        from newsclaw.config import settings
+
+        configured = bool(
+            (getattr(settings, "wechat_mp_app_id", "") or "").strip()
+            and (getattr(settings, "wechat_mp_app_secret", "") or "").strip()
+        )
+    except Exception:  # pragma: no cover - settings 不可用时按未配置处理
+        configured = False
+    if configured:
+        return (
+            "已配置：manifest 落账后执行第 7 步，把 wechat.md 经 wechat_mp_publish "
+            "发布（发布链接回写 wechat_mp_url）"
+        )
+    return "未配置（缺 WECHAT_MP_APP_ID / WECHAT_MP_APP_SECRET）：第 7 步跳过，wechat_mp_url 留空"
 
 
 def strip_runtime_injection(prompt: str) -> str:
@@ -162,7 +189,8 @@ def build_daily_prompt(config: NewsroomConfig | None = None) -> str:
     wiki_step = _wiki_step_block(cfg)
     body = f"""\
 你是「AI 早报」主线的值班编辑。按以下流程产出今天的早报。产物**只推送给 owner
-本人审核**（飞书私聊，第 5 步），不向任何公开平台发布、不群发。
+本人审核**（飞书私聊，第 5 步）；唯一的对外发布出口是第 7 步的微信公众号
+（渠道未配置时自动跳过），除此之外不向任何平台发布、不群发、不发群聊。
 
 工作目录（全部使用绝对路径）：{root}
 
@@ -187,6 +215,8 @@ def build_daily_prompt(config: NewsroomConfig | None = None) -> str:
   · ``delivered_at`` 为空且 status=ready → 执行第 5 步**补推**（上次投递
     未送达的期次在此自动重发；送达后代码会回写 delivered_at）；
   · ``feishu_doc_url`` 为空 → 执行第 6 步（飞书云文档归档）；
+  · ``wechat_mp_url`` 为空且注入块「渠道状态」标注公众号已配置 → 执行第 7 步
+    （补发布；未配置则跳过）；
   · ``scores`` 已有内容 → 跳过第 4 步自评（没有才补）；
   · 最后执行第 5 步推送与汇报。
   也就是说：manifest 里已有值的字段对应步骤不再重复执行，避免产生重复的云文档/通知。
@@ -272,8 +302,23 @@ config.yaml——那些文件只能经 WebUI 勾选提案 apply 或设置页保�
 - 若返回 ``ok=false``（例如应用未开通 wiki:wiki 权限），不要重试、不要换手段，
   在最终回复里如实说明"归档未完成 + 原因"，其余流程照常收尾。
 
+【第 7 步 · 发布到微信公众号（渠道未配置则跳过）】
+注入块「渠道状态」标注**微信公众号已配置**时，用 **wechat_mp_publish** 把
+公众号稿发布出去（未配置/未标注则跳过本步，manifest.wechat_mp_url 留空）：
+- content_path 传今天 wechat.md 的绝对路径。工具会自动解析「基础信息」小节的
+  标题/摘要/作者、把正文与封面图上传到微信素材库并转换排版，你不需要传
+  title/digest 等参数；
+- 是否"立即发布"由配置 wechat_mp_auto_publish 决定（代码读配置），**不要**
+  自行传 publish 参数覆盖；仅存草稿时 receipt 里的 url 为空；
+- receipt ``ok=true`` 且 ``url`` 非空 → 把 url 写入当天 manifest.json 的
+  ``wechat_mp_url`` 字段（与 feishu_doc_url 一样属于发布出口记录，**不要**
+  写进 wiki_entries）；仅存草稿（url 为空）时该字段留空；
+- 若返回 ``ok=false``（IP 白名单 / 账号未认证无接口权限等），不要重试、
+  不要换手段，在最终回复里如实说明"公众号未发布 + 原因"，其余流程照常收尾。
+
 - 最终回复只需简短交代：本期标题、入选条数、三个产物路径、自评总分、
-  本地 Wiki 更新页数、飞书推送结果、云文档归档链接（或失败原因）。"""
+  本地 Wiki 更新页数、飞书推送结果、云文档归档链接（或失败原因）、
+  公众号发布结果（发布链接 / 仅存草稿 / 跳过原因）。"""
     return with_runtime_injection(body)
 
 
@@ -372,7 +417,8 @@ review-proposal.json schema::
 #: 预设 Agent 的 custom_prompt（身份层，简短；具体流程都在任务 prompt 里）
 EDITOR_DIRECTIVE = (
     "你是「AI 早报」主线的值班编辑，专注 AI 科技圈每日资讯的采集、筛选与多平台"
-    "内容改写。你的产出物供人工审核后手动发布：小红书稿要口语化有钩子，公众号稿"
+    "内容改写。产物推送人工审核；公众号稿在渠道配置后由管线自动发布到微信公众号。"
+    "小红书稿要口语化有钩子，公众号稿"
     "要结构清晰有信息密度，日报总览要交代选题逻辑。一切数字与事实必须有来源链接，"
     "不确定的不写。采集员用 news-collector，不要派 content-creator 去搜。"
 )

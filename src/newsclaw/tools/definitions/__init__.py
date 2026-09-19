@@ -75,6 +75,7 @@ from .system import SYSTEM_TOOLS
 from .tool_search import TOOL_SEARCH_TOOLS
 from .web_fetch import WEB_FETCH_TOOLS
 from .web_search import WEB_SEARCH_TOOLS
+from .wechat_mp import WECHAT_MP_TOOLS
 from .wiki import WIKI_TOOLS
 from .worktree import WORKTREE_TOOLS
 
@@ -87,6 +88,7 @@ BASE_TOOLS = (
     + SCHEDULED_TOOLS
     + IM_CHANNEL_TOOLS
     + FEISHU_DOC_TOOLS
+    + WECHAT_MP_TOOLS
     + WIKI_TOOLS
     + SYSTEM_TOOLS
     + PROFILE_TOOLS

@@ -106,8 +106,8 @@ SYSTEM_PRESETS: list[AgentProfile] = [
             "get_tool_info", "tool_search",
             # 并行采集（多 Agent supervisor-workers）
             "delegate_parallel", "delegate_to_agent", "task_stop",
-            # 交付与沉淀：本地 Wiki 知识库 + 飞书私聊推送 + 飞书云文档归档
-            "deliver_artifacts", "feishu_doc", "wiki_upsert",
+            # 交付与沉淀：本地 Wiki 知识库 + 飞书私聊推送 + 飞书云文档归档 + 公众号发布
+            "deliver_artifacts", "feishu_doc", "wiki_upsert", "wechat_mp_publish",
         ],
         tools_mode="inclusive",
         # 未接任何 MCP 服务：inclusive + 空列表 = 不放行 MCP 网关工具

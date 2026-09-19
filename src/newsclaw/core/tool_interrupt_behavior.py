@@ -232,6 +232,10 @@ _INTERRUPT_BEHAVIOR_MAP: dict[str, InterruptBehavior] = {
     # Both write outside the process (Markdown files / Feishu cloud docs).
     "wiki_upsert": "block",
     "feishu_doc": "block",
+    # WeChat Official Account publish uploads media then creates/publishes a
+    # draft — aborting mid-flow could leave an orphan draft or half-submitted
+    # publish job.
+    "wechat_mp_publish": "block",
     # ── Worktree ────────────────────────────────────────────
     # Worktree ops touch git internals — block for safety.
     "enter_worktree": "block",

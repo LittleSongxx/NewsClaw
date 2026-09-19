@@ -85,6 +85,10 @@ _CHANNEL_FIELDS = frozenset(
         "qqbot_webhook_path",
         "wechat_enabled",
         "wechat_token",
+        "wechat_mp_app_id",
+        "wechat_mp_app_secret",
+        "wechat_mp_author",
+        "wechat_mp_auto_publish",
         "im_bots",
     }
 )

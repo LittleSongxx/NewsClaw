@@ -220,6 +220,8 @@ class IssueManifest:
     wiki_entries: list[str] = field(default_factory=list)
     #: 飞书云文档归档链接（对外分享出口；与本地 Wiki 相互独立）
     feishu_doc_url: str = ""
+    #: 微信公众号发布链接（wechat_mp_publish 发布成功后回填；仅存草稿/未配置时为空）
+    wechat_mp_url: str = ""
     #: 产物已推送 owner 的时间（投递工具成功后回写；Agent 重写时保留）。
     #: 预算耗尽的降级以此判断内容是否已出门，避免「已推送却降回 partial」。
     delivered_at: str = ""
@@ -468,6 +470,7 @@ class IssueManifest:
             sources_used=[str(s) for s in data.get("sources_used") or []],
             wiki_entries=[str(w) for w in data.get("wiki_entries") or []],
             feishu_doc_url=str(data.get("feishu_doc_url", "")),
+            wechat_mp_url=str(data.get("wechat_mp_url", "")),
             delivered_at=str(data.get("delivered_at", "")),
             feedback=dict(data.get("feedback") or {}),
             scores=scores,

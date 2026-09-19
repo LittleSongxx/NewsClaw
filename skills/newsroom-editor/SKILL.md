@@ -1,6 +1,6 @@
 ---
 name: newsclaw/skills@newsroom-editor
-description: "AI 早报主线操作手册：每日采集 AI 圈新闻，产出日报总览/小红书/公众号三产物，沉淀 Obsidian Wiki 并自评落账。由定时任务 newsroom_daily_pipeline 与 newsroom_weekly_review 驱动，产物供人工审核后手动发布。"
+description: "AI 早报主线操作手册：每日采集 AI 圈新闻，产出日报总览/小红书/公众号三产物，沉淀 Obsidian Wiki 并自评落账。由定时任务 newsroom_daily_pipeline 与 newsroom_weekly_review 驱动，产物推送 owner 审核后归档；公众号稿经 wechat_mp_publish 发布到微信公众号（渠道已配置时）。"
 license: MIT
 metadata:
   author: newsclaw
@@ -39,13 +39,17 @@ metadata:
    维护 MOC 索引页（未配置 vault 时跳过本步，不要调用 `wiki_upsert`）；
 5. **自评与落账**：`manifest.items` 写入选条目（title/url/source_name）；
    四个维度分数只作复盘参考。`ready` 由契约机验，不是自评。
-   未 ready 禁止 `deliver_artifacts`。
+   未 ready 禁止 `deliver_artifacts` 与 `wechat_mp_publish`；
+6. **投递与发布**：`deliver_artifacts` 推飞书私聊、`feishu_doc` 云文档归档；
+   注入块「渠道状态」标注公众号已配置时，用 `wechat_mp_publish` 发布
+   `wechat.md`，发布链接写当天 `manifest.wechat_mp_url`（未配置则跳过）。
 
 ## 硬规则
 
 - 一切数字与事实必须带来源链接，不确定的不写；
 - 产物用 `deliver_artifacts` 推送给 owner 的**飞书私聊**（target_channel=feishu,
-  prefer_chat_type=private）供其审核；不向任何公开平台发布、不群发、不发群聊；
+  prefer_chat_type=private）供其审核；除 `wechat_mp_publish` 发布公众号稿
+  （渠道已配置时，见流程第 6 条）外，不向任何平台发布、不群发、不发群聊；
 - 云文档归档（`feishu_doc`）三约定：① **标题日期前置**，格式
   `YYYY-MM-DD｜AI 早报 #N｜一句话要点（≤30 字）`；② 正文**首行**为
   `> 归档时间：YYYY-MM-DD（NewsClaw AI 早报管线自动生成）`；③ 归档链接写入
