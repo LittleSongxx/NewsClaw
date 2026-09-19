@@ -5,7 +5,7 @@ export const HASH_TO_VIEW: Record<string, ViewId> = {
   "scheduler": "scheduler", "memory": "memory", "status": "status",
   "newsroom": "newsroom", "wiki": "wiki",
   "token-stats": "token_stats", "skill-usage": "skill_usage", "identity": "identity",
-  "dashboard": "dashboard", "org-editor": "org_editor",
+  "dashboard": "dashboard",
   "pixel-office": "pixel_office",
   "agent-manager": "agent_manager", "agent-store": "agent_store",
   "skill-store": "skill_store", "wizard": "wizard", "docs": "docs",

@@ -17,7 +17,6 @@ import { logger } from "../platform";
 import { IS_WEB, onWsEvent } from "../platform";
 import { FeishuQRModal } from "../components/FeishuQRModal";
 import { QQBotQRModal } from "../components/QQBotQRModal";
-import { WecomQRModal } from "../components/WecomQRModal";
 import { WechatQRModal } from "../components/WechatQRModal";
 import { AgentIcon } from "../components/AgentIcon";
 import { cn } from "@/lib/utils";
@@ -33,8 +32,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { LogoTelegram, LogoFeishu, LogoWework, LogoDingtalk, LogoQQ, LogoOneBot, LogoWechat } from "../icons";
-import { AlertCircle, ArrowLeft, ArrowRight, Bot, BotOff, Check, Dices, ExternalLink, Loader2, MoreHorizontal, Pencil, RefreshCw, Sparkles, Terminal, Trash2 } from "lucide-react";
+import { LogoFeishu, LogoQQ, LogoWechat } from "../icons";
+import { AlertCircle, ArrowLeft, ArrowRight, Bot, BotOff, Check, Dices, Loader2, MoreHorizontal, Pencil, RefreshCw, Sparkles, Terminal, Trash2 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -146,8 +145,6 @@ const BOT_TYPE_LABEL_KEYS: Record<string, string> = {
   wechat: "im.botTypeWechat",
 };
 
-const WEWORK_TYPES = new Set(["wework", "wework_ws"]);
-const ONEBOT_TYPES = new Set(["onebot", "onebot_reverse"]);
 
 const CLI_SKILL_HINTS: Record<string, { name: string; cmd: string }> = {
   feishu: { name: "飞书 CLI (lark-cli)", cmd: "npm install -g @larksuite/cli && npx skills add larksuite/cli -y -g" },
@@ -177,7 +174,7 @@ const EMPTY_BOT: IMBot = {
 };
 
 const BOT_ID_PREFIX: Record<string, string> = {
-  feishu: "feishu", telegram: "telegram", dingtalk: "dingtalk",
+  feishu: "feishu",
 };
 
 function generateBotId(type: string): string {
@@ -201,14 +198,7 @@ function generateBotName(
   return `${agent} ${channel} ${suffix}`;
 }
 
-const TG_CORE_FIELDS = ["bot_token"];
-const TG_ADVANCED_FIELDS = ["proxy", "webhook_url"];
 
-function generatePairingCode(): string {
-  let code = "";
-  for (let i = 0; i < 6; i++) code += Math.floor(Math.random() * 10);
-  return code;
-}
 
 // ─── Main Component ─────────────────────────────────────────────────────
 
@@ -1250,25 +1240,10 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
   const [showFeishuQR, setShowFeishuQR] = useState(false);
   const [showQQBotQR, setShowQQBotQR] = useState(false);
-  const [showWecomQR, setShowWecomQR] = useState(false);
   const [showWechatQR, setShowWechatQR] = useState(false);
-  const [, setTgPairingCode] = useState<string | null>(null);
-  const [, setTgPairingLoading] = useState(false);
   const [isAutoId, setIsAutoId] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
 
-  const loadTgPairingCode = useCallback(async () => {
-    setTgPairingLoading(true);
-    try {
-      const res = await safeFetch(`${apiBase}/api/im/telegram/pairing-code`);
-      const data = await res.json();
-      setTgPairingCode(data.code || null);
-    } catch {
-      setTgPairingCode(null);
-    } finally {
-      setTgPairingLoading(false);
-    }
-  }, [apiBase]);
 
   const fetchBots = useCallback(async (): Promise<boolean> => {
     setLoading(true);
@@ -1333,7 +1308,6 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
     const bot = { ...EMPTY_BOT, id: generateBotId(EMPTY_BOT.type), name: defaultName };
     setEditingBot(bot);
     setIsCreating(true);
-    setIsAutoId(true);
     setEditorOpen(true);
     setRevealedSecrets(new Set());
   };
@@ -1344,7 +1318,6 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
     setIsAutoId(false);
     setEditorOpen(true);
     setRevealedSecrets(new Set());
-    if (bot.type === "telegram") loadTgPairingCode();
   };
 
   const closeEditor = () => {
@@ -1614,8 +1587,8 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
       <Dialog open={editorOpen} onOpenChange={(open) => { if (!open) closeEditor(); }}>
         <DialogContent
           className="sm:max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
-          onPointerDownOutside={(e) => { if (showFeishuQR || showQQBotQR || showWecomQR || showWechatQR) e.preventDefault(); }}
-          onInteractOutside={(e) => { if (showFeishuQR || showQQBotQR || showWecomQR || showWechatQR) e.preventDefault(); }}
+          onPointerDownOutside={(e) => { if (showFeishuQR || showQQBotQR || showWechatQR) e.preventDefault(); }}
+          onInteractOutside={(e) => { if (showFeishuQR || showQQBotQR || showWechatQR) e.preventDefault(); }}
         >
           <DialogHeader>
             <DialogTitle>{isCreating ? t("im.createBot") : t("im.editBot")}</DialogTitle>
@@ -1663,7 +1636,7 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
             <div className="space-y-1.5">
               <Label>{t("im.botType")}</Label>
               <Select
-                value={WEWORK_TYPES.has(editingBot.type) ? "wework_ws" : ONEBOT_TYPES.has(editingBot.type) ? "onebot_reverse" : editingBot.type}
+                value={editingBot.type}
                 onValueChange={(val) => {
                   setEditingBot((p) => ({
                     ...p,
@@ -1686,36 +1659,8 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
             </div>
 
             {/* 4a. OneBot mode selector */}
-            {ONEBOT_TYPES.has(editingBot.type) && (
-              <div className="space-y-1.5">
-                <Label>{t("config.imOneBotMode")}</Label>
-                <ToggleGroup type="single" variant="outline" size="sm" value={editingBot.type} onValueChange={(v) => {
-                  if (v && v !== editingBot.type) setEditingBot((p) => ({ ...p, type: v as typeof editingBot.type, credentials: {} }));
-                }} className="[&_[data-state=on]]:bg-primary [&_[data-state=on]]:text-primary-foreground">
-                  <ToggleGroupItem value="onebot_reverse">{t("config.imOneBotModeReverse")}</ToggleGroupItem>
-                  <ToggleGroupItem value="onebot">{t("config.imOneBotModeForward")}</ToggleGroupItem>
-                </ToggleGroup>
-                <p className="text-[11px] text-muted-foreground">
-                  {editingBot.type === "onebot_reverse" ? t("config.imOneBotModeReverseHint") : t("config.imOneBotModeForwardHint")}
-                </p>
-              </div>
-            )}
 
             {/* 4b. WeWork mode selector */}
-            {WEWORK_TYPES.has(editingBot.type) && (
-              <div className="space-y-1.5">
-                <Label>{t("config.imWeworkMode")}</Label>
-                <ToggleGroup type="single" variant="outline" size="sm" value={editingBot.type} onValueChange={(v) => {
-                  if (v && v !== editingBot.type) setEditingBot((p) => ({ ...p, type: v as typeof editingBot.type, credentials: {} }));
-                }} className="[&_[data-state=on]]:bg-primary [&_[data-state=on]]:text-primary-foreground">
-                  <ToggleGroupItem value="wework_ws">{t("config.imWeworkModeWs")}</ToggleGroupItem>
-                  <ToggleGroupItem value="wework">{t("config.imWeworkModeHttp")}</ToggleGroupItem>
-                </ToggleGroup>
-                <p className="text-[11px] text-muted-foreground">
-                  {editingBot.type === "wework_ws" ? t("config.imWeworkModeWsHint") : t("config.imWeworkModeHttpHint")}
-                </p>
-                </div>
-            )}
 
             {/* 4c. QQ Bot mode selector */}
             {editingBot.type === "qqbot" && (
@@ -1767,11 +1712,6 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
                 {t("qqbot.qrScanCreate")}
               </Button>
             )}
-            {editingBot.type === "wework_ws" && venvDir && (
-              <Button variant="outline" className="w-full border-dashed border-primary text-primary" onClick={() => setShowWecomQR(true)}>
-                {t("wecom.qrScanCreate")}
-              </Button>
-            )}
             {editingBot.type === "wechat" && (venvDir || apiBaseUrl) && (
               <>
                 <Button variant="outline" className="w-full border-dashed border-primary text-primary" onClick={() => setShowWechatQR(true)}>
@@ -1779,26 +1719,6 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
                 </Button>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">{t("wechat.hint")}</p>
               </>
-            )}
-            {editingBot.type === "dingtalk" && (
-              <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 space-y-2">
-                <p className="text-xs font-medium text-primary">{t("dingtalk.guideTitle")}</p>
-                <ol className="text-[11px] text-muted-foreground leading-relaxed space-y-0.5 list-none">
-                  <li>{t("dingtalk.guideStep1")}</li>
-                  <li>{t("dingtalk.guideStep2")}</li>
-                  <li>{t("dingtalk.guideStep3")}</li>
-                  <li>{t("dingtalk.guideStep4")}</li>
-                </ol>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full border-primary/60 text-primary"
-                  onClick={() => window.open("https://open.dingtalk.com/", "_blank", "noopener,noreferrer")}
-                >
-                  <ExternalLink size={13} className="mr-1.5" />
-                  {t("dingtalk.guideOpenConsole")}
-                </Button>
-              </div>
             )}
 
             {/* 6b. CLI Skill recommendation */}
@@ -1820,10 +1740,7 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
             {/* 7. Credentials */}
             <div className="space-y-2.5">
               <Label>{t("im.botCredentials")}</Label>
-              {(editingBot.type === "telegram"
-                ? credFields.filter((f) => TG_CORE_FIELDS.includes(f.key))
-                : credFields
-              ).map((field) => (
+              {credFields.map((field) => (
                 <div key={field.key} className="space-y-1">
                   <Label className="text-sm text-muted-foreground">{t(field.label, { defaultValue: field.label })}</Label>
                   <div className="flex gap-1.5">
@@ -1850,65 +1767,6 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
               ))}
             </div>
 
-            {/* 8. Telegram: pairing code + advanced */}
-            {editingBot.type === "telegram" && (
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-muted-foreground">{t("config.imPairingCode")}</Label>
-                  <div className="flex gap-1.5">
-                    <Input
-                      value={String(editingBot.credentials.pairing_code ?? "")}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, "");
-                        updateCredential("pairing_code", val);
-                      }}
-                      inputMode="numeric"
-                      placeholder={t("config.imPairingCodeHint", { defaultValue: "输入或点击随机生成" })}
-                      className="flex-1 font-mono tracking-wider placeholder:text-foreground/40"
-                    />
-                    <Button
-                      variant="outline" size="icon"
-                      className="h-9 w-9 shrink-0"
-                      title={t("im.botAutoGenName")}
-                      onClick={() => updateCredential("pairing_code", generatePairingCode())}
-                    >
-                      <Dices size={15} />
-                    </Button>
-                  </div>
-                </div>
-
-                <details className="group">
-                  <summary className="text-xs text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">
-                    {t("im.botAdvancedConfig")} ▸
-                  </summary>
-                  <div className="mt-2 space-y-2.5 pl-1">
-                    {credFields.filter((f) => TG_ADVANCED_FIELDS.includes(f.key)).map((field) => (
-                      <div key={field.key} className="space-y-1">
-                        <Label className="text-sm text-muted-foreground">{t(field.label, { defaultValue: field.label })}</Label>
-                        <Input
-                          value={String(editingBot.credentials[field.key] ?? "")}
-                          onChange={(e) => updateCredential(field.key, e.target.value)}
-                          placeholder={field.placeholder ? t(field.placeholder, { defaultValue: field.placeholder }) : undefined}
-                          className="placeholder:text-foreground/40"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </details>
-
-                <div className="space-y-1.5">
-                  <Label>{t("telegram.footerTitle")}</Label>
-                  <label className="flex items-center justify-between p-2.5 rounded-lg border cursor-pointer select-none">
-                    <span className="text-sm">{t("telegram.footerElapsed")}</span>
-                    <Switch checked={footerElapsed} onCheckedChange={(v) => updateCredential("footer_elapsed", v ? "true" : "false")} />
-                  </label>
-                  <label className="flex items-center justify-between p-2.5 rounded-lg border cursor-pointer select-none">
-                    <span className="text-sm">{t("telegram.footerStatus")}</span>
-                    <Switch checked={footerStatus} onCheckedChange={(v) => updateCredential("footer_status", v ? "true" : "false")} />
-                  </label>
-                </div>
-              </div>
-            )}
 
             {/* QQ Bot extras */}
             {editingBot.type === "qqbot" && (
@@ -1977,22 +1835,6 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
             )}
 
             {/* DingTalk extras */}
-            {editingBot.type === "dingtalk" && (
-              <div className="space-y-4">
-                <div className="border-t" />
-                <div className="space-y-1.5">
-                  <Label>{t("dingtalk.footerTitle")}</Label>
-                  <label className="flex items-center justify-between p-2.5 rounded-lg border cursor-pointer select-none">
-                    <span className="text-sm">{t("dingtalk.footerElapsed")}</span>
-                    <Switch checked={footerElapsed} onCheckedChange={(v) => updateCredential("footer_elapsed", v ? "true" : "false")} />
-                  </label>
-                  <label className="flex items-center justify-between p-2.5 rounded-lg border cursor-pointer select-none">
-                    <span className="text-sm">{t("dingtalk.footerStatus")}</span>
-                    <Switch checked={footerStatus} onCheckedChange={(v) => updateCredential("footer_status", v ? "true" : "false")} />
-                  </label>
-                </div>
-              </div>
-            )}
 
             {/* WeChat extras */}
             {editingBot.type === "wechat" && (
@@ -2045,18 +1887,6 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
         />
       )}
 
-      {showWecomQR && venvDir && (
-        <WecomQRModal
-          venvDir={venvDir}
-          apiBaseUrl={apiBaseUrl}
-          onClose={() => setShowWecomQR(false)}
-          onSuccess={(botId, secret) => {
-            updateCredential("bot_id", botId);
-            updateCredential("secret", secret);
-            setShowWecomQR(false);
-          }}
-        />
-      )}
 
       {showWechatQR && (
         <WechatQRModal
@@ -2089,11 +1919,7 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
 const WIZARD_PLATFORMS = [
   { id: "wechat", botType: "wechat", title: "config.imWechat", logo: LogoWechat },
   { id: "feishu", botType: "feishu", title: "config.imFeishu", logo: LogoFeishu },
-  { id: "dingtalk", botType: "dingtalk", title: "config.imDingtalk", logo: LogoDingtalk },
-  { id: "wework", botType: "wework_ws", title: "config.imWework", logo: LogoWework },
   { id: "qqbot", botType: "qqbot", title: "config.imQQBot", logo: LogoQQ },
-  { id: "telegram", botType: "telegram", title: "Telegram", logo: LogoTelegram },
-  { id: "onebot", botType: "onebot_reverse", title: "OneBot", logo: LogoOneBot },
 ] as const;
 
 type WizardStep = "platform" | "agent" | "mode" | "idname" | "credentials" | "extra" | "done";
@@ -2110,16 +1936,12 @@ const STEP_LABELS: Record<WizardStep, string> = {
   done: "im.wizardStepDone",
 };
 
-function hasMode(botType: string): boolean {
-  return ONEBOT_TYPES.has(botType) || WEWORK_TYPES.has(botType);
+function hasMode(_botType: string): boolean {
+  return false;
 }
 
 function hasExtra(botType: string): boolean {
   return botType === "feishu" || botType === "qqbot";
-}
-
-function hasQrScan(botType: string): boolean {
-  return ["feishu", "qqbot", "wework_ws", "wechat"].includes(botType);
 }
 
 function getActiveSteps(botType: string): WizardStep[] {
@@ -2133,7 +1955,6 @@ function getActiveSteps(botType: string): WizardStep[] {
 function getRequiredCredKeys(botType: string): string[] {
   const requiredByType: Record<string, string[]> = {
     feishu: ["app_id", "app_secret"],
-    telegram: TG_CORE_FIELDS,
     qqbot: ["app_id", "app_secret"],
     wechat: ["token"],
   };
@@ -2168,12 +1989,10 @@ function BotCreationWizard({
   const { t } = useTranslation();
   const [step, setStep] = useState<WizardStep>("platform");
   const [bot, setBot] = useState<IMBot>({ ...EMPTY_BOT, id: generateBotId("feishu") });
-  const [isAutoId, setIsAutoId] = useState(true);
   const [saving, setSaving] = useState(false);
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
   const [showFeishuQR, setShowFeishuQR] = useState(false);
   const [showQQBotQR, setShowQQBotQR] = useState(false);
-  const [showWecomQR, setShowWecomQR] = useState(false);
   const [showWechatQR, setShowWechatQR] = useState(false);
 
   const activeSteps = getActiveSteps(bot.type);
@@ -2183,7 +2002,6 @@ function BotCreationWizard({
     setStep("platform");
     const defaultName = generateBotName(EMPTY_BOT.type, EMPTY_BOT.agent_profile_id, profiles, BOT_TYPE_LABEL_KEYS, t);
     setBot({ ...EMPTY_BOT, id: generateBotId("feishu"), name: defaultName });
-    setIsAutoId(true);
     setSaving(false);
     setRevealedSecrets(new Set());
   }, [profiles, t]);
@@ -2210,7 +2028,6 @@ function BotCreationWizard({
     const newId = generateBotId(p.botType);
     const newName = generateBotName(p.botType, bot.agent_profile_id, profiles, BOT_TYPE_LABEL_KEYS, t);
     setBot((prev) => ({ ...prev, type: p.botType, credentials: {}, id: newId, name: newName }));
-    setIsAutoId(true);
   };
 
   const updateCredential = (key: string, value: string) => {
@@ -2263,8 +2080,8 @@ function BotCreationWizard({
       <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
         <DialogContent
           className="sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden"
-          onPointerDownOutside={(e) => { if (showFeishuQR || showQQBotQR || showWecomQR || showWechatQR) e.preventDefault(); }}
-          onInteractOutside={(e) => { if (showFeishuQR || showQQBotQR || showWecomQR || showWechatQR) e.preventDefault(); }}
+          onPointerDownOutside={(e) => { if (showFeishuQR || showQQBotQR || showWechatQR) e.preventDefault(); }}
+          onInteractOutside={(e) => { if (showFeishuQR || showQQBotQR || showWechatQR) e.preventDefault(); }}
         >
           <DialogHeader>
             <div className="flex items-center gap-2.5">
@@ -2383,108 +2200,12 @@ function BotCreationWizard({
             {/* Step: Mode */}
             {step === "mode" && (
               <div className="space-y-3">
-                {ONEBOT_TYPES.has(bot.type) && (
-                  <div className="space-y-1.5">
-                    <Label>{t("config.imOneBotMode")}</Label>
-                    <ToggleGroup type="single" variant="outline" size="sm" value={bot.type} onValueChange={(v) => {
-                      if (v && v !== bot.type) {
-                        setBot((prev) => ({ ...prev, type: v, credentials: {}, ...(isAutoId ? { id: generateBotId(v) } : {}) }));
-                      }
-                    }} className="[&_[data-state=on]]:bg-primary [&_[data-state=on]]:text-primary-foreground">
-                      <ToggleGroupItem value="onebot_reverse">{t("config.imOneBotModeReverse")}</ToggleGroupItem>
-                      <ToggleGroupItem value="onebot">{t("config.imOneBotModeForward")}</ToggleGroupItem>
-                    </ToggleGroup>
-                    <p className="text-[11px] text-muted-foreground">
-                      {bot.type === "onebot_reverse" ? t("config.imOneBotModeReverseHint") : t("config.imOneBotModeForwardHint")}
-                    </p>
-                    </div>
-                  )}
-                {WEWORK_TYPES.has(bot.type) && (
-                  <div className="space-y-1.5">
-                    <Label>{t("config.imWeworkMode")}</Label>
-                    <ToggleGroup type="single" variant="outline" size="sm" value={bot.type} onValueChange={(v) => {
-                      if (v && v !== bot.type) {
-                        setBot((prev) => ({ ...prev, type: v, credentials: {}, ...(isAutoId ? { id: generateBotId(v) } : {}) }));
-                      }
-                    }} className="[&_[data-state=on]]:bg-primary [&_[data-state=on]]:text-primary-foreground">
-                      <ToggleGroupItem value="wework_ws">{t("config.imWeworkModeWs")}</ToggleGroupItem>
-                      <ToggleGroupItem value="wework">{t("config.imWeworkModeHttp")}</ToggleGroupItem>
-                    </ToggleGroup>
-                    <p className="text-[11px] text-muted-foreground">
-                      {bot.type === "wework_ws" ? t("config.imWeworkModeWsHint") : t("config.imWeworkModeHttpHint")}
-                    </p>
-                </div>
-            )}
-          </div>
-            )}
-
-            {/* Step: ID & Name */}
-            {step === "idname" && (
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">{t("im.wizardIdNameHint")}</p>
-                <div className="space-y-1.5">
-                  <div className="flex items-baseline gap-2">
-                    <Label>{t("im.botId")}</Label>
-                    <span className="text-[11px] text-muted-foreground/50">{t("im.botIdHint")}</span>
-                  </div>
-                  <Input
-                    value={bot.id}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^a-z0-9_-]/gi, "").toLowerCase();
-                      setBot((prev) => ({ ...prev, id: val }));
-                      setIsAutoId(false);
-                    }}
-                    className={cn(isAutoId && "text-muted-foreground")}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("im.botName")}</Label>
-                  <div className="flex gap-1.5">
-                    <Input
-                      value={bot.name}
-                      onChange={(e) => setBot((prev) => ({ ...prev, name: e.target.value }))}
-                      className="flex-1"
-                    />
-                    <Button
-                      variant="outline" size="icon"
-                      className="h-9 w-9 shrink-0"
-                      title={t("im.botAutoGenName")}
-                      onClick={() => {
-                        const name = generateBotName(bot.type, bot.agent_profile_id, profiles, BOT_TYPE_LABEL_KEYS, t);
-                        setBot((prev) => ({ ...prev, name }));
-                      }}
-                    >
-                      <Dices size={15} />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Step: Credentials */}
-            {step === "credentials" && (
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">{t("im.wizardCredHint")}</p>
-
-                {/* QR scan */}
-                {hasQrScan(bot.type) && (
-                  <div className="space-y-2">
-                    {bot.type === "feishu" && venvDir && (
-                      <Button variant="outline" className="w-full border-dashed border-primary text-primary" onClick={() => setShowFeishuQR(true)}>
-                        {t("feishu.qrScanCreate")}
-                      </Button>
-                    )}
                     {bot.type === "qqbot" && venvDir && (
                       <Button variant="outline" className="w-full border-dashed border-primary text-primary" onClick={() => setShowQQBotQR(true)}>
                         {t("qqbot.qrScanCreate")}
                       </Button>
                     )}
-                    {bot.type === "wework_ws" && venvDir && (
-                      <Button variant="outline" className="w-full border-dashed border-primary text-primary" onClick={() => setShowWecomQR(true)}>
-                        {t("wecom.qrScanCreate")}
-                      </Button>
-                    )}
-                    {bot.type === "wechat" && (venvDir || apiBaseUrl) && (
+                        {bot.type === "wechat" && (venvDir || apiBaseUrl) && (
                       <>
                         <Button variant="outline" className="w-full border-dashed border-primary text-primary" onClick={() => setShowWechatQR(true)}>
                           {t("wechat.qrScanLogin")}
@@ -2495,34 +2216,12 @@ function BotCreationWizard({
                   </div>
                 )}
 
-                {/* DingTalk: open console guide (no Device Flow available) */}
-                {bot.type === "dingtalk" && (
-                  <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 space-y-2">
-                    <p className="text-xs font-medium text-primary">{t("dingtalk.guideTitle")}</p>
-                    <ol className="text-[11px] text-muted-foreground leading-relaxed space-y-0.5 list-none">
-                      <li>{t("dingtalk.guideStep1")}</li>
-                      <li>{t("dingtalk.guideStep2")}</li>
-                      <li>{t("dingtalk.guideStep3")}</li>
-                      <li>{t("dingtalk.guideStep4")}</li>
-                    </ol>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full border-primary/60 text-primary"
-                      onClick={() => window.open("https://open.dingtalk.com/", "_blank", "noopener,noreferrer")}
-                    >
-                      <ExternalLink size={13} className="mr-1.5" />
-                      {t("dingtalk.guideOpenConsole")}
-                    </Button>
-                  </div>
-                )}
-
+            {/* Step: Credentials */}
+            {step === "credentials" && (
+              <div className="space-y-2.5">
                 {/* Credential fields */}
                 <div className="space-y-2.5">
-                  {(bot.type === "telegram"
-                    ? credFields.filter((f) => TG_CORE_FIELDS.includes(f.key))
-                    : credFields
-                  ).map((field) => (
+                  {credFields.map((field) => (
                     <div key={field.key} className="space-y-1">
                       <Label className="text-sm text-muted-foreground">{t(field.label, { defaultValue: field.label })}</Label>
                       <div className="flex gap-1.5">
@@ -2544,63 +2243,10 @@ function BotCreationWizard({
                             {revealedSecrets.has(field.key) ? t("skills.hide") : t("skills.show")}
                           </Button>
                         )}
-          </div>
-        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
-
-                {/* Telegram pairing + advanced */}
-                {bot.type === "telegram" && (
-                  <div className="space-y-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-sm text-muted-foreground">{t("config.imPairingCode")}</Label>
-                      <div className="flex gap-1.5">
-                        <Input
-                          value={String(bot.credentials.pairing_code ?? "")}
-                          onChange={(e) => updateCredential("pairing_code", e.target.value.replace(/\D/g, ""))}
-                          inputMode="numeric"
-                          placeholder={t("config.imPairingCodeHint")}
-                          className="flex-1 font-mono tracking-wider placeholder:text-foreground/40"
-                        />
-                        <Button variant="outline" size="icon" className="h-9 w-9 shrink-0"
-                          onClick={() => updateCredential("pairing_code", generatePairingCode())}
-                        >
-                          <Dices size={15} />
-                        </Button>
-                      </div>
-                    </div>
-                    <details className="group">
-                      <summary className="text-xs text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">
-                        {t("im.botAdvancedConfig")} ▸
-                      </summary>
-                      <div className="mt-2 space-y-2.5 pl-1">
-                        {credFields.filter((f) => TG_ADVANCED_FIELDS.includes(f.key)).map((field) => (
-                          <div key={field.key} className="space-y-1">
-                            <Label className="text-sm text-muted-foreground">{t(field.label, { defaultValue: field.label })}</Label>
-                            <Input
-                              value={String(bot.credentials[field.key] ?? "")}
-                              onChange={(e) => updateCredential(field.key, e.target.value)}
-                              placeholder={field.placeholder ? t(field.placeholder, { defaultValue: field.placeholder }) : undefined}
-                              className="placeholder:text-foreground/40"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-
-                    <div className="space-y-1.5">
-                      <Label>{t("telegram.footerTitle")}</Label>
-                      <label className="flex items-center justify-between p-2.5 rounded-lg border cursor-pointer select-none">
-                        <span className="text-sm">{t("telegram.footerElapsed")}</span>
-                        <Switch checked={footerElapsed} onCheckedChange={(v) => updateCredential("footer_elapsed", v ? "true" : "false")} />
-                      </label>
-                      <label className="flex items-center justify-between p-2.5 rounded-lg border cursor-pointer select-none">
-                        <span className="text-sm">{t("telegram.footerStatus")}</span>
-                        <Switch checked={footerStatus} onCheckedChange={(v) => updateCredential("footer_status", v ? "true" : "false")} />
-                      </label>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -2645,21 +2291,6 @@ function BotCreationWizard({
                       </label>
                       <label className="flex items-center justify-between p-2.5 rounded-lg border cursor-pointer select-none">
                         <span className="text-sm">{t("feishu.footerStatus")}</span>
-                        <Switch checked={footerStatus} onCheckedChange={(v) => updateCredential("footer_status", v ? "true" : "false")} />
-                      </label>
-                    </div>
-                  </div>
-                )}
-                {bot.type === "dingtalk" && (
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label>{t("dingtalk.footerTitle")}</Label>
-                      <label className="flex items-center justify-between p-2.5 rounded-lg border cursor-pointer select-none">
-                        <span className="text-sm">{t("dingtalk.footerElapsed")}</span>
-                        <Switch checked={footerElapsed} onCheckedChange={(v) => updateCredential("footer_elapsed", v ? "true" : "false")} />
-                      </label>
-                      <label className="flex items-center justify-between p-2.5 rounded-lg border cursor-pointer select-none">
-                        <span className="text-sm">{t("dingtalk.footerStatus")}</span>
                         <Switch checked={footerStatus} onCheckedChange={(v) => updateCredential("footer_status", v ? "true" : "false")} />
                       </label>
                     </div>
@@ -2798,12 +2429,6 @@ function BotCreationWizard({
         <QQBotQRModal venvDir={venvDir} apiBaseUrl={apiBaseUrl}
           onClose={() => setShowQQBotQR(false)}
           onSuccess={(appId, appSecret) => { updateCredential("app_id", appId); updateCredential("app_secret", appSecret); setShowQQBotQR(false); }}
-        />
-      )}
-      {showWecomQR && venvDir && (
-        <WecomQRModal venvDir={venvDir} apiBaseUrl={apiBaseUrl}
-          onClose={() => setShowWecomQR(false)}
-          onSuccess={(botId, secret) => { updateCredential("bot_id", botId); updateCredential("secret", secret); setShowWecomQR(false); }}
         />
       )}
       {showWechatQR && (

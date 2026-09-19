@@ -1,8 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { invoke, IS_TAURI } from "../platform";
-import { safeFetch } from "../providers";
-import { IconInfo, IconKey } from "../icons";
+import { IconInfo } from "../icons";
 import type { EnvMap } from "../types";
 import { envGet, envSet } from "../utils";
 import { Input } from "@/components/ui/input";
@@ -10,10 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { IconRefresh } from "../icons";
 
 type EnvFieldProps = {
   envDraft: EnvMap;
@@ -229,66 +224,3 @@ export function FieldSlider({
   );
 }
 
-export function TelegramPairingCodeHint({
-  currentWorkspaceId, apiBase, envDraft, onEnvChange,
-}: {
-  currentWorkspaceId: string | null;
-  apiBase?: string;
-  envDraft?: EnvMap;
-  onEnvChange?: (updater: (prev: EnvMap) => EnvMap) => void;
-}) {
-  const { t } = useTranslation();
-  const [currentCode, setCurrentCode] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const syncToEnv = useCallback((code: string) => {
-    if (!onEnvChange || !envDraft) return;
-    const existing = envGet(envDraft, "TELEGRAM_PAIRING_CODE", "");
-    if (!existing) {
-      onEnvChange((m) => envSet(m, "TELEGRAM_PAIRING_CODE", code));
-    }
-  }, [onEnvChange, envDraft]);
-
-  const loadCode = useCallback(async () => {
-    setLoading(true);
-    try {
-      let code: string | null = null;
-      if (IS_TAURI && currentWorkspaceId) {
-        const raw = await invoke<string>("workspace_read_file", {
-          workspaceId: currentWorkspaceId,
-          relativePath: "data/telegram/pairing/pairing_code.txt",
-        });
-        code = raw.trim() || null;
-      } else {
-        const base = apiBase || "";
-        const res = await safeFetch(`${base}/api/im/telegram/pairing-code`);
-        const data = await res.json();
-        code = data.code || null;
-      }
-      setCurrentCode(code);
-      if (code) syncToEnv(code);
-    } catch {
-      setCurrentCode(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentWorkspaceId, apiBase, syncToEnv]);
-
-  useEffect(() => { loadCode(); }, [loadCode]);
-
-  return (
-    <div className="flex items-center gap-1.5 flex-wrap text-xs text-muted-foreground mt-1 leading-7">
-      <span><IconKey size={12} /> {t("config.imCurrentPairingCode")}：</span>
-      {loading ? (
-        <span className="opacity-50">...</span>
-      ) : currentCode ? (
-        <code className="bg-muted px-2 py-0.5 rounded text-[13px] font-semibold tracking-widest select-all">{currentCode}</code>
-      ) : (
-        <span className="opacity-50">{t("config.imPairingCodeNotGenerated")}</span>
-      )}
-      <Button variant="outline" size="sm" className="h-6 px-2 text-[11px] gap-1" onClick={loadCode} disabled={loading}>
-        <IconRefresh size={12} /> {t("common.refresh")}
-      </Button>
-    </div>
-  );
-}

@@ -55,16 +55,9 @@ _PROCESS_RESTART_FIELDS = frozenset(
 
 _CHANNEL_FIELDS = frozenset(
     {
-        "telegram_enabled",
-        "telegram_bot_token",
-        "telegram_webhook_url",
-        "telegram_pairing_code",
-        "telegram_require_pairing",
-        "telegram_proxy",
         "feishu_enabled",
         "feishu_app_id",
         "feishu_app_secret",
-        "wework_enabled",
         "wework_corp_id",
         "wework_token",
         "wework_encoding_aes_key",
@@ -76,10 +69,8 @@ _CHANNEL_FIELDS = frozenset(
         "wework_ws_thinking_indicator",
         "wework_ws_msg_item_images",
         "wework_ws_webhook_url",
-        "dingtalk_enabled",
         "dingtalk_client_id",
         "dingtalk_client_secret",
-        "onebot_enabled",
         "onebot_mode",
         "onebot_ws_url",
         "onebot_reverse_host",

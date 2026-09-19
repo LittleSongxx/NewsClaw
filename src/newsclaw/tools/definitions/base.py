@@ -207,7 +207,6 @@ CATEGORY_PREFIXES = {
     "Agent Package": (
         "export_agent",
         "import_agent",
-        "inspect_agent_package",
         "publish_agent",
         "search_hub_agents",
         "install_hub_agent",
