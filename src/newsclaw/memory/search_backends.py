@@ -198,6 +198,121 @@ class ChromaDBBackend:
     def batch_add(self, items: list[dict]) -> int:
         return self._vs.batch_add(items)
 
+    # ── 增量同步透传（供 lifecycle 每日同步/启动回填使用）──
+
+    def existing_ids(self) -> set[str] | None:
+        """当前向量索引中的全部 id；后端未就绪返回 None。"""
+        try:
+            if self._vs.enabled and self._vs._collection is not None:
+                return set(self._vs._collection.get()["ids"])
+        except Exception as e:
+            logger.debug(f"[ChromaDBBackend] existing_ids failed: {e}")
+        return None
+
+    def delete_ids(self, ids: list[str]) -> bool:
+        """按 id 删除向量；空列表直接成功。"""
+        if not ids:
+            return True
+        try:
+            self._vs._collection.delete(ids=list(ids))
+            return True
+        except Exception as e:
+            logger.debug(f"[ChromaDBBackend] delete_ids failed: {e}")
+            return False
+
+    def delete_not_in(self, keep_ids: set[str]) -> None:
+        """删除不在 keep_ids 中的全部向量（stale 清理）。"""
+        existing = self.existing_ids()
+        if existing is None:
+            return
+        stale = existing - set(keep_ids)
+        if stale:
+            self.delete_ids(list(stale))
+
+
+# =========================================================================
+# Embedding API Client (shared)
+# =========================================================================
+
+
+class EmbeddingAPIClient:
+    """在线 Embedding API 客户端（API 检索后端与向量索引共用）。
+
+    支持 OpenAI 兼容网关（含百炼 compatible-mode）与 DashScope 官方端点，
+    自定义 base_url 优先。批量分片、单次重试；任何失败返回 None，由调用方兜底。
+    """
+
+    BATCH_SIZE = 16
+    TIMEOUT_SECONDS = 30.0
+
+    def __init__(
+        self,
+        provider: str = "dashscope",
+        api_key: str = "",
+        model: str = "",
+        base_url: str = "",
+        dimensions: int = 0,
+    ) -> None:
+        self._provider = provider
+        self._api_key = api_key
+        self._model = model
+        self._base_url = (base_url or "").strip()
+        self._dimensions = dimensions
+        self._httpx = None
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    def embed(self, texts: list[str]) -> list[list[float]] | None:
+        """批量编码：输出与输入等长的向量列表；任一分片失败返回 None。"""
+        cleaned = [t for t in texts if t and t.strip()]
+        if not cleaned or not self._api_key:
+            return None
+        vectors: list[list[float]] = []
+        for start in range(0, len(cleaned), self.BATCH_SIZE):
+            shard = cleaned[start : start + self.BATCH_SIZE]
+            shard_vectors = self._call_with_retry(shard)
+            if shard_vectors is None or len(shard_vectors) != len(shard):
+                return None
+            vectors.extend(shard_vectors)
+        return vectors
+
+    def _call_with_retry(self, texts: list[str]) -> list[list[float]] | None:
+        result = self._call_api(texts)
+        if result is not None:
+            return result
+        return self._call_api(texts)  # 单次重试
+
+    def _call_api(self, texts: list[str]) -> list[list[float]] | None:
+        try:
+            if self._httpx is None:
+                import httpx
+
+                self._httpx = httpx
+            if self._provider == "dashscope" and not self._base_url:
+                return self._post(
+                    "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings",
+                    {"model": self._model, "input": texts, "encoding_format": "float"},
+                )
+            base = self._base_url.rstrip("/") if self._base_url else "https://api.openai.com/v1"
+            return self._post(f"{base}/embeddings", {"model": self._model, "input": texts})
+        except Exception as e:
+            logger.error(f"Embedding API call failed: {e}")
+            return None
+
+    def _post(self, url: str, payload: dict) -> list[list[float]] | None:
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        if self._dimensions:
+            payload["dimensions"] = self._dimensions
+        resp = self._httpx.post(url, json=payload, headers=headers, timeout=self.TIMEOUT_SECONDS)
+        resp.raise_for_status()
+        data = resp.json()
+        return [item["embedding"] for item in data["data"]]
+
 
 # =========================================================================
 # API Embedding Backend (optional)
@@ -221,13 +336,18 @@ class APIEmbeddingBackend:
         api_key: str = "",
         model: str = "",
         dimensions: int = 1024,
+        base_url: str = "",
     ) -> None:
         self._storage = storage
-        self._provider = provider
         self._api_key = api_key
-        self._model = model or self._default_model(provider)
-        self._dimensions = dimensions
-        self._httpx = None
+        # 自定义 Base URL：适配 OpenAI 兼容网关（如百炼 compatible-mode），留空回落官方端点
+        self._client = EmbeddingAPIClient(
+            provider=provider,
+            api_key=api_key,
+            model=model or self._default_model(provider),
+            base_url=base_url,
+            dimensions=dimensions,
+        )
 
     @property
     def available(self) -> bool:
@@ -293,72 +413,19 @@ class APIEmbeddingBackend:
         if not text.strip():
             return None
 
-        content_hash = hashlib.sha256(f"{self._model}:{text}".encode()).hexdigest()
+        content_hash = hashlib.sha256(f"{self._client.model}:{text}".encode()).hexdigest()
 
         cached = self._storage.get_cached_embedding(content_hash)
         if cached is not None:
             return self._bytes_to_floats(cached)
 
-        embedding = self._call_api(text)
-        if embedding is not None:
-            blob = self._floats_to_bytes(embedding)
-            self._storage.save_cached_embedding(content_hash, blob, self._model, len(embedding))
-        return embedding
-
-    def _call_api(self, text: str) -> list[float] | None:
-        try:
-            if self._httpx is None:
-                import httpx
-
-                self._httpx = httpx
-
-            if self._provider == "dashscope":
-                return self._call_dashscope(text)
-            elif self._provider == "openai":
-                return self._call_openai(text)
-            else:
-                logger.warning(f"Unknown embedding provider: {self._provider}")
-                return None
-        except Exception as e:
-            logger.error(f"Embedding API call failed: {e}")
+        vectors = self._client.embed([text])
+        if not vectors:
             return None
-
-    def _call_dashscope(self, text: str) -> list[float] | None:
-        url = "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings"
-        headers = {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": self._model,
-            "input": [text],
-            "encoding_format": "float",
-        }
-        if self._dimensions:
-            payload["dimensions"] = self._dimensions
-
-        resp = self._httpx.post(url, json=payload, headers=headers, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["data"][0]["embedding"]
-
-    def _call_openai(self, text: str) -> list[float] | None:
-        url = "https://api.openai.com/v1/embeddings"
-        headers = {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": self._model,
-            "input": text,
-        }
-        if self._dimensions:
-            payload["dimensions"] = self._dimensions
-
-        resp = self._httpx.post(url, json=payload, headers=headers, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["data"][0]["embedding"]
+        embedding = vectors[0]
+        blob = self._floats_to_bytes(embedding)
+        self._storage.save_cached_embedding(content_hash, blob, self._client.model, len(embedding))
+        return embedding
 
     @staticmethod
     def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -395,6 +462,7 @@ def create_search_backend(
     api_key: str = "",
     api_model: str = "",
     api_dimensions: int = 1024,
+    api_base_url: str = "",
 ) -> SearchBackend:
     """Create a search backend by type, with automatic fallback to FTS5."""
 
@@ -412,6 +480,7 @@ def create_search_backend(
             api_key=api_key,
             model=api_model,
             dimensions=api_dimensions,
+            base_url=api_base_url,
         )
         if backend.available:
             logger.info(f"[SearchBackend] Using API Embedding backend ({api_provider})")

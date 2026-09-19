@@ -22,6 +22,33 @@ _sentence_transformers_available = None
 _chromadb = None
 
 
+def _lazy_import_chromadb() -> bool:
+    """延迟导入 chromadb（api embedding 模式无需 sentence-transformers）。"""
+    global _chromadb
+
+    if _chromadb is not None:
+        return True
+    try:
+        # 在导入前禁用 chromadb 遥测，避免因 posthog 缺失导致 ImportError
+        # chromadb 在 import 时会检查这些环境变量
+        import os
+
+        os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+        os.environ.setdefault("CHROMA_TELEMETRY", "False")
+
+        import chromadb
+
+        _chromadb = chromadb
+        return True
+    except ImportError as e:
+        from newsclaw.tools._import_helper import import_or_hint
+
+        hint = import_or_hint("chromadb")
+        logger.info(f"[VectorStore] ChromaDB 未启用: {hint}")
+        logger.debug(f"chromadb ImportError 详情: {e}", exc_info=True)
+        return False
+
+
 def _lazy_import():
     """延迟导入依赖"""
     global _sentence_transformers_available, _chromadb
@@ -100,6 +127,11 @@ class VectorStore:
         model_name: str | None = None,
         device: str = "cpu",
         download_source: str = "auto",
+        embedding_source: str = "local",
+        api_provider: str = "",
+        api_key: str = "",
+        api_model: str = "",
+        api_base_url: str = "",
     ):
         """
         初始化向量存储
@@ -109,13 +141,21 @@ class VectorStore:
             model_name: embedding 模型名称 (默认 shibing624/text2vec-base-chinese)
             device: 设备 (cpu 或 cuda)
             download_source: 下载源 ("auto" | "huggingface" | "hf-mirror" | "modelscope")
+            embedding_source: 向量来源 ("local" 本地模型 | "api" 在线 embedding API)
+            api_provider/api_key/api_model/api_base_url: embedding_source="api" 时的网关配置
         """
         self.data_dir = Path(data_dir)
         self.model_name = model_name or self.DEFAULT_MODEL
         self.device = device
         self.download_source = download_source
+        self.embedding_source = (embedding_source or "local").strip().lower()
+        self._api_provider = api_provider
+        self._api_key = api_key
+        self._api_model = api_model
+        self._api_base_url = api_base_url
 
         self._model = None
+        self._api_client = None
         self._client = None
         self._collection = None
         self._enabled = False
@@ -155,71 +195,84 @@ class VectorStore:
             pass  # 错误已在 inner 中处理
 
     def _do_initialize_inner(self) -> None:
-        """初始化核心逻辑，包含模型下载和 ChromaDB 初始化。"""
+        """初始化核心逻辑：embedding 就绪（本地模型或在线 API 客户端）+ ChromaDB。"""
         import time as _time
 
-        # ── 关键：在导入 sentence_transformers 之前就配置好 HF_ENDPOINT ──
-        # sentence_transformers 导入时会触发 huggingface_hub 导入，
-        # 而 huggingface_hub 在模块级缓存 HF_ENDPOINT。
-        # 如果不提前设置，缓存值会是 https://huggingface.co，
-        # 即使后续改了 os.environ 也不会生效。
+        if self.embedding_source == "api":
+            # api 模式：向量经在线 embedding API 计算，本地只需 chromadb 索引
+            if not _lazy_import_chromadb():
+                with self._lock:
+                    self._enabled = False
+                    self._init_state = "failed"
+                    self._init_failed = True
+                    self._import_missing = True
+                    self._init_fail_time = _time.monotonic()
+                    self._retry_count += 1
+                return
+        else:
+            # ── 关键：在导入 sentence_transformers 之前就配置好 HF_ENDPOINT ──
+            # sentence_transformers 导入时会触发 huggingface_hub 导入，
+            # 而 huggingface_hub 在模块级缓存 HF_ENDPOINT。
+            # 如果不提前设置，缓存值会是 https://huggingface.co，
+            # 即使后续改了 os.environ 也不会生效。
+            try:
+                from .model_hub import _apply_source_env, _resolve_source
+
+                resolved = _resolve_source(self.download_source)
+                if resolved.value == "auto":
+                    from .model_hub import detect_best_source
+
+                    resolved = detect_best_source()
+                _apply_source_env(resolved)
+                logger.info(f"[VectorStore] 预配置 HF_ENDPOINT (源={resolved.value})")
+            except Exception as e:
+                logger.debug(f"[VectorStore] 预配置 HF_ENDPOINT 失败 (非致命): {e}")
+
+            if not _lazy_import():
+                with self._lock:
+                    self._enabled = False
+                    self._init_state = "failed"
+                    self._init_failed = True
+                    self._import_missing = True
+                    self._init_fail_time = _time.monotonic()
+                    self._retry_count += 1
+                return
+
         try:
-            from .model_hub import _apply_source_env, _resolve_source
+            model = None
+            api_client = None
+            if self.embedding_source == "api":
+                from .search_backends import EmbeddingAPIClient
 
-            resolved = _resolve_source(self.download_source)
-            if resolved.value == "auto":
-                from .model_hub import detect_best_source
+                api_client = EmbeddingAPIClient(
+                    provider=self._api_provider or "openai",
+                    api_key=self._api_key,
+                    model=self._api_model,
+                    base_url=self._api_base_url,
+                )
+                logger.info(
+                    f"[VectorStore] api embedding 模式 (model={self._api_model}, 索引=本地 ChromaDB)"
+                )
+            else:
+                # 初始化 embedding 模型（支持多源下载）
+                from .model_hub import load_embedding_model
 
-                resolved = detect_best_source()
-            _apply_source_env(resolved)
-            logger.info(f"[VectorStore] 预配置 HF_ENDPOINT (源={resolved.value})")
-        except Exception as e:
-            logger.debug(f"[VectorStore] 预配置 HF_ENDPOINT 失败 (非致命): {e}")
+                logger.info(
+                    f"[VectorStore] 正在加载 embedding 模型: {self.model_name} "
+                    f"(source={self.download_source})"
+                )
+                model = load_embedding_model(
+                    model_name=self.model_name,
+                    source=self.download_source,
+                    device=self.device,
+                )
 
-        if not _lazy_import():
-            with self._lock:
-                self._enabled = False
-                self._init_state = "failed"
-                self._init_failed = True
-                self._import_missing = True
-                self._init_fail_time = _time.monotonic()
-                self._retry_count += 1
-            return
-
-        try:
-            # 初始化 embedding 模型（支持多源下载）
-            from .model_hub import load_embedding_model
-
-            logger.info(
-                f"[VectorStore] 正在加载 embedding 模型: {self.model_name} "
-                f"(source={self.download_source})"
-            )
-            model = load_embedding_model(
-                model_name=self.model_name,
-                source=self.download_source,
-                device=self.device,
-            )
-
-            # 初始化 ChromaDB
-            chromadb_dir = self.data_dir / "chromadb"
-            chromadb_dir.mkdir(parents=True, exist_ok=True)
-
-            from chromadb.config import Settings
-
-            client = _chromadb.PersistentClient(
-                path=str(chromadb_dir),
-                settings=Settings(anonymized_telemetry=False),
-            )
-
-            # 获取或创建 collection
-            collection = client.get_or_create_collection(
-                name="memories",
-                metadata={"hnsw:space": "cosine"},
-            )
+            client, collection = self._open_collection()
 
             # 全部成功，原子性地设置状态
             with self._lock:
                 self._model = model
+                self._api_client = api_client
                 self._client = client
                 self._collection = collection
                 self._enabled = True
@@ -250,6 +303,55 @@ class VectorStore:
                 self._init_failed = True
                 self._init_fail_time = _time.monotonic()
                 self._retry_count += 1
+
+    def _embedding_fingerprint(self) -> str:
+        """当前 embedding 配置指纹：换来源/模型即失效，防止混用不同维度的向量。"""
+        if self.embedding_source == "api":
+            return f"api:{self._api_model or 'default'}"
+        return f"local:{self.model_name}"
+
+    def _open_collection(self):
+        """打开（或按指纹守卫重建）collection，返回 (client, collection)。"""
+        chromadb_dir = self.data_dir / "chromadb"
+        chromadb_dir.mkdir(parents=True, exist_ok=True)
+
+        from chromadb.config import Settings
+
+        client = _chromadb.PersistentClient(
+            path=str(chromadb_dir),
+            settings=Settings(anonymized_telemetry=False),
+        )
+
+        fingerprint = self._embedding_fingerprint()
+        collection = client.get_or_create_collection(
+            name="memories",
+            metadata={"hnsw:space": "cosine", "embedding_fingerprint": fingerprint},
+        )
+        stored = (collection.metadata or {}).get("embedding_fingerprint")
+        if stored and stored != fingerprint:
+            # 换 embedding 模型后旧向量的维度/语义空间不兼容，余弦结果不可信 → 清空待回填
+            client.delete_collection("memories")
+            collection = client.get_or_create_collection(
+                name="memories",
+                metadata={"hnsw:space": "cosine", "embedding_fingerprint": fingerprint},
+            )
+            logger.warning(
+                f"[VectorStore] embedding 指纹变更 ({stored} → {fingerprint})，已清空向量索引待回填"
+            )
+        return client, collection
+
+    def _embed(self, texts: list[str]) -> list[list[float]]:
+        """统一编码入口：local 走本地模型，api 走在线客户端；失败抛异常由调用方兜底。"""
+        if self.embedding_source == "api":
+            if self._api_client is None:
+                raise RuntimeError("api embedding 客户端未就绪")
+            vectors = self._api_client.embed(texts)
+            if vectors is None or len(vectors) != len(texts):
+                raise RuntimeError("embedding API 调用失败")
+            return vectors
+        if self._model is None:
+            raise RuntimeError("本地 embedding 模型未加载")
+        return self._model.encode(texts).tolist()
 
     def _ensure_initialized(self) -> bool:
         """检查是否已初始化就绪。
@@ -329,7 +431,7 @@ class VectorStore:
             return False
 
         try:
-            embedding = self._model.encode(content).tolist()
+            embedding = self._embed([content])[0]
 
             with self._lock:
                 self._collection.add(
@@ -376,7 +478,7 @@ class VectorStore:
             return []
 
         try:
-            query_embedding = self._model.encode(query).tolist()
+            query_embedding = self._embed([query])[0]
 
             with self._lock:
                 where = None
@@ -474,7 +576,7 @@ class VectorStore:
             return False
 
         try:
-            embedding = self._model.encode(content).tolist()
+            embedding = self._embed([content])[0]
 
             with self._lock:
                 self._collection.update(
@@ -507,7 +609,8 @@ class VectorStore:
             return {
                 "enabled": True,
                 "count": self._collection.count(),
-                "model": self.model_name,
+                "model": self._api_model if self.embedding_source == "api" else self.model_name,
+                "embedding_source": self.embedding_source,
                 "device": self.device,
             }
 
@@ -551,7 +654,7 @@ class VectorStore:
 
         try:
             contents = [m["content"] for m in memories]
-            embeddings = self._model.encode(contents).tolist()
+            embeddings = self._embed(contents)
 
             ids = [m["id"] for m in memories]
             metadatas = [

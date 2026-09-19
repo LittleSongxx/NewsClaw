@@ -231,6 +231,10 @@ class MemoryManager:
         embedding_api_provider: str = "",
         embedding_api_key: str = "",
         embedding_api_model: str = "",
+        embedding_api_base_url: str = "",
+        embedding_source: str = "local",
+        memory_rerank_enabled: bool = False,
+        memory_rerank_model: str = "qwen3.7-text-rerank",
         agent_id: str = "",
         identity_dir: Path | None = None,
         desktop_owner_alignment: bool = False,
@@ -263,6 +267,11 @@ class MemoryManager:
                 model_name=embedding_model,
                 device=embedding_device,
                 download_source=model_download_source,
+                embedding_source=embedding_source,
+                api_provider=embedding_api_provider,
+                api_key=embedding_api_key,
+                api_model=embedding_api_model,
+                api_base_url=embedding_api_base_url,
             )
         else:
             self.vector_store = None
@@ -337,9 +346,20 @@ class MemoryManager:
                 api_provider=embedding_api_provider,
                 api_key=embedding_api_key,
                 api_model=embedding_api_model,
+                api_base_url=embedding_api_base_url,
             )
             # v2: Retrieval Engine (with brain for LLM query decomposition)
-            self.retrieval_engine = RetrievalEngine(self.store, brain=brain)
+            # 可选 cross-encoder 重排：走 embedding 同一网关，fail-open 由引擎内部兜底
+            reranker = None
+            if memory_rerank_enabled and embedding_api_key and embedding_api_base_url:
+                from .rerank import GatewayReranker
+
+                reranker = GatewayReranker(
+                    base_url=embedding_api_base_url,
+                    api_key=embedding_api_key,
+                    model=memory_rerank_model or "qwen3.7-text-rerank",
+                )
+            self.retrieval_engine = RetrievalEngine(self.store, brain=brain, reranker=reranker)
             # Subscribe to DB write events: every successful save/update/delete
             # going through ``self.store`` now keeps ``self._memories`` coherent
             # automatically — including writes from LifecycleManager, API
@@ -353,6 +373,7 @@ class MemoryManager:
             self._load_memories()
             self._align_desktop_owner()
             self._maybe_schedule_snapshot()
+            self._maybe_backfill_vector_index()
         except MemoryStorageUnavailable as e:
             from .noop_store import NoopRetrievalEngine, NoopUnifiedStore
 
@@ -449,6 +470,66 @@ class MemoryManager:
                         self._memories.pop(mem_id, None)
         except Exception as exc:  # noqa: BLE001
             logger.debug("[Manager] _on_store_event %s failed: %s", kind, exc)
+
+    def _maybe_backfill_vector_index(self) -> None:
+        """启动时把存量语义记忆回填进向量索引（后台线程，不阻塞启动）。
+
+        仅 chromadb 后端生效（换 embedding 模型清空索引后也靠它重建）；
+        api embedding 模式下按批调用网关、批间小睡防限流。向量就绪前
+        检索走 FTS5 通道（RRF union 兜底），可用性不受影响。
+        """
+        if self.vector_store is None:
+            return
+
+        def _worker() -> None:
+            try:
+                import time as _time
+
+                deadline = _time.monotonic() + 120  # 等待向量库后台初始化（api 模式秒级）
+                while not self.vector_store.enabled and _time.monotonic() < deadline:
+                    _time.sleep(2)
+                if not self.vector_store.enabled:
+                    logger.debug("[MemoryManager] vector store 未就绪，跳过启动回填")
+                    return
+                backend = getattr(self.store, "search", None)
+                if not hasattr(backend, "existing_ids"):
+                    return
+                all_mems = self.store.load_all_memories()
+                if len(all_mems) > 5000:
+                    logger.warning(
+                        f"[MemoryManager] 存量记忆 {len(all_mems)} 条超过自动回填上限 5000，"
+                        "本次跳过（由每日归纳的向量同步逐步补全）"
+                    )
+                    return
+                existing = backend.existing_ids()
+                if existing is None:
+                    return
+                missing = [m for m in all_mems if m.id not in existing]
+                if not missing:
+                    return
+                added = 0
+                for start in range(0, len(missing), 50):
+                    chunk = missing[start : start + 50]
+                    items = [
+                        {
+                            "id": m.id,
+                            "content": m.content,
+                            "type": m.type.value,
+                            "priority": m.priority.value,
+                            "importance": m.importance_score,
+                            "tags": m.tags,
+                        }
+                        for m in chunk
+                    ]
+                    added += backend.batch_add(items) or 0
+                    _time.sleep(0.2)  # api embedding 模式下防限流
+                logger.info(f"[MemoryManager] 启动回填向量索引: {added}/{len(missing)} 条")
+            except Exception as e:
+                logger.debug(f"[MemoryManager] 向量索引启动回填跳过: {e}")
+
+        threading.Thread(
+            target=_worker, name="MemoryManager-vector-backfill", daemon=True
+        ).start()
 
     def _maybe_schedule_snapshot(self) -> None:
         try:

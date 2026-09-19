@@ -187,9 +187,11 @@ class RetrievalEngine:
         "只输出 JSON，不要其他内容。"
     )
 
-    def __init__(self, store: UnifiedStore, brain=None) -> None:
+    def __init__(self, store: UnifiedStore, brain=None, reranker=None) -> None:
         self.store = store
         self.brain = brain
+        # 可选 cross-encoder 重排器（None = 纯公式排序，行为与历史版本一致）
+        self._reranker = reranker
         self._decompose_cache: dict[str, dict] = {}
         self._external_sources: list = []
         self._plugin_hooks = None
@@ -1013,6 +1015,9 @@ class RetrievalEngine:
         query: str,
         persona: str | None = None,
     ) -> list[RetrievalCandidate]:
+        # 第二阶段精排（可选）：用重排模型的统一相关性覆写各通道不可比的原始分
+        self._apply_model_rerank(candidates, query)
+
         focus_terms = [t.lower() for t in self._focus_terms if t]
         for c in candidates:
             c.score = (
@@ -1037,6 +1042,28 @@ class RetrievalEngine:
         # 冷启动豁免：刚写入 1 小时内的记忆（recency_score >= 0.99 ≈ 1 小时），
         # 即便综合分低于 MIN_RERANK_SCORE 也保留，避免新加事实被一刀切。
         return [c for c in ranked if c.score >= self.MIN_RERANK_SCORE or c.recency_score >= 0.99]
+
+    # 参与精排的候选上限与触发下限：候选太少时精排无区分度，纯耗一次网关调用
+    RERANK_TOP_N = 20
+    RERANK_MIN_CANDIDATES = 4
+
+    def _apply_model_rerank(self, candidates: list[RetrievalCandidate], query: str) -> None:
+        """可选 cross-encoder 精排：以重排分数覆写候选的 relevance。
+
+        覆写发生在公式计分之前，使 0.40×relevance 项的来源从「各通道原始分
+        /手工常数」升级为「重排模型对 query-文档的统一判断」；新近度/重要性/
+        访问频率等记忆管理信号仍由后续公式保留。
+        fail-open：重排器不可用或调用失败时原样返回，公式路径完全不变。
+        """
+        reranker = self._reranker
+        if reranker is None or len(candidates) < self.RERANK_MIN_CANDIDATES:
+            return
+        picked = candidates[: self.RERANK_TOP_N]
+        scores = reranker.rerank(query, [c.content for c in picked])
+        if not scores:
+            return
+        for cand, score in zip(picked, scores, strict=False):
+            cand.relevance = score
 
     # ==================================================================
     # Scoring Helpers

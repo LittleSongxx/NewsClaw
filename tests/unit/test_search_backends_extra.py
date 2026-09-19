@@ -95,11 +95,11 @@ class TestAPIEmbeddingBackend:
 
     def test_default_model_dashscope(self, tmp_storage):
         backend = APIEmbeddingBackend(storage=tmp_storage, provider="dashscope", api_key="k")
-        assert backend._model == "text-embedding-v3"
+        assert backend._client.model == "text-embedding-v3"
 
     def test_default_model_openai(self, tmp_storage):
         backend = APIEmbeddingBackend(storage=tmp_storage, provider="openai", api_key="k")
-        assert backend._model == "text-embedding-3-small"
+        assert backend._client.model == "text-embedding-3-small"
 
     def test_search_empty_text_returns_none(self, tmp_storage):
         backend = APIEmbeddingBackend(storage=tmp_storage, api_key="sk-test")
@@ -115,12 +115,12 @@ class TestAPIEmbeddingBackend:
         tmp_storage.save_cached_embedding(content_hash, blob, "test-model", 3)
 
         backend = APIEmbeddingBackend(storage=tmp_storage, api_key="sk-test")
-        with patch.object(backend, "_call_api", return_value=None) as mock_api:
+        with patch.object(backend._client, "embed", return_value=None) as mock_embed:
             cached = tmp_storage.get_cached_embedding(content_hash)
             assert cached is not None
             recovered = backend._bytes_to_floats(cached)
             assert len(recovered) == 3
-            mock_api.assert_not_called()
+            mock_embed.assert_not_called()
 
     def test_cosine_similarity(self, tmp_storage):
         a = [1.0, 0.0, 0.0]

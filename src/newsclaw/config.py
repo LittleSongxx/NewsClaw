@@ -533,7 +533,12 @@ class Settings(BaseSettings):
     # === 搜索后端配置 (v2) ===
     search_backend: str = Field(
         default="fts5",
-        description="记忆搜索后端: fts5(默认,零依赖) | chromadb(可选,本地向量) | api_embedding(可选,在线API)",
+        description="记忆搜索后端: fts5(默认,零依赖) | chromadb(本地向量 ANN+BM25 混合) "
+        "| api_embedding(在线 API 逐条比对,仅小库)",
+    )
+    embedding_source: str = Field(
+        default="local",
+        description="chromadb 后端的向量来源: local(本地模型,默认) | api(在线 embedding API,索引仍在本地)",
     )
     embedding_api_provider: str = Field(
         default="",
@@ -546,6 +551,18 @@ class Settings(BaseSettings):
     embedding_api_model: str = Field(
         default="text-embedding-v3",
         description="在线 Embedding 模型名称 (如 text-embedding-v3, text-embedding-3-small)",
+    )
+    embedding_api_base_url: str = Field(
+        default="",
+        description="在线 Embedding API Base URL (留空用官方端点; 适配 OpenAI 兼容网关, 如百炼 compatible-mode)",
+    )
+    memory_rerank_enabled: bool = Field(
+        default=False,
+        description="记忆检索是否启用重排模型精排 (fail-open: 失败自动回退公式排序)",
+    )
+    memory_rerank_model: str = Field(
+        default="qwen3.7-text-rerank",
+        description="重排模型名称 (走 embedding API 同一网关的 DashScope 原生 rerank 端点)",
     )
 
     # === 记忆系统配置 ===
