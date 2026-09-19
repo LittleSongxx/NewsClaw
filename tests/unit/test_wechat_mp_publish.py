@@ -341,6 +341,24 @@ class TestWeChatMPPublishHandler:
         assert receipt["url"] == "https://mp.weixin.qq.com/s/abc"
 
     @pytest.mark.asyncio
+    async def test_publish_permission_error_degrades_to_draft(self, handler, tmp_path):
+        """发布接口无权限（如未认证订阅号 48001）时降级为草稿，草稿不丢。"""
+        h, fake = handler
+        article = tmp_path / "wechat.md"
+        article.write_text(_SAMPLE_ARTICLE, encoding="utf-8")
+
+        async def denied(media_id: str) -> str:
+            raise WeChatMPError(48001, "api unauthorized")
+
+        fake.submit_publish = denied  # type: ignore[method-assign]
+        receipt = json.loads(await h.handle("wechat_mp_publish", {"content_path": str(article)}))
+        assert receipt["ok"] is True
+        assert receipt["mode"] == "draft"
+        assert receipt["draft_media_id"] == "draft-1"
+        assert "48001" in receipt["publish_error"]
+        assert "草稿箱" in receipt["note"]
+
+    @pytest.mark.asyncio
     async def test_inline_image_rewritten_to_mp_url(self, handler, tmp_path):
         h, fake = handler
         image = _tmp_image(tmp_path)
