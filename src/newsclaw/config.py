@@ -692,6 +692,20 @@ class Settings(BaseSettings):
     wechat_enabled: bool = Field(default=False, description="是否启用微信个人号")
     wechat_token: str = Field(default="", description="微信 iLink Bot Token（扫码登录获取）")
 
+    # 微信公众号（Official Account 服务端发布 API；与上面的个人号通道无关）
+    wechat_mp_app_id: str = Field(default="", description="微信公众号 AppID（mp.weixin.qq.com）")
+    wechat_mp_app_secret: str = Field(default="", description="微信公众号 AppSecret")
+    wechat_mp_author: str = Field(
+        default="", description="公众号文章默认作者署名（工具参数可覆盖）"
+    )
+    wechat_mp_auto_publish: bool = Field(
+        default=True,
+        description=(
+            "每日早报公众号稿的发布方式：true=创建草稿后立即调发布接口；"
+            "false=仅存草稿箱，人工在公众号后台确认后再发。"
+        ),
+    )
+
     # === 会话配置 ===
     session_storage_path: str = Field(default="data/sessions", description="会话存储路径")
 

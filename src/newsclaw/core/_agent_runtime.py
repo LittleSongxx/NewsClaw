@@ -1794,6 +1794,15 @@ class Agent:
 
         self.handler_registry.register("feishu_doc", create_feishu_doc_handler(self))
 
+        # 微信公众号发布（NewsClaw 自研：公众号稿 → 草稿箱/发布接口）
+        from ..tools.handlers.wechat_mp import (
+            create_handler as create_wechat_mp_handler,
+        )
+
+        self.handler_registry.register(
+            "wechat_mp_publish", create_wechat_mp_handler(self)
+        )
+
         # 本地 Wiki 知识库（NewsClaw 自研：主题/公司原子页 + 幂等日期章节 + MOC）
         from ..tools.handlers.wiki import create_handler as create_wiki_handler
 

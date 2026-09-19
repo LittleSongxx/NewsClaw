@@ -3,6 +3,7 @@
 在调度器上运行两条长期定时任务::
 
     newsroom_daily_pipeline   每日：采集 AI 圈新闻 → 三产物 → Wiki 沉淀 → 自评
+                              → 投递（飞书私聊推送 / 云文档归档 / 公众号发布可选）
     newsroom_weekly_review    每周：复盘近 7 期自评与反馈 → 结构化提案（人审 apply）
 
 全部状态收敛在工作区 ``data/newsroom/`` 目录::
@@ -33,7 +34,7 @@
     seed       定时任务幂等播种 + 等待调度器的后台钩子
     feedback   逐期反馈的 aiosqlite 存储与只读导出
     status     主线健康总览（只读聚合，API 直出）
-    delivery   投递门：未 ready 的产物不准走 deliver_artifacts
+    delivery   投递门：未 ready 的产物不准走 deliver_artifacts / wechat_mp_publish
 
 不变量（与 tests/unit/test_newsroom_invariants.py 的 TestI1–TestI9 一一
 对应，两边必须一起改）：
