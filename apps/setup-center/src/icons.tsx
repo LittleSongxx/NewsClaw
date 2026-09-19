@@ -606,14 +606,10 @@ export function IconPlug(p: IconProps = {}) {
 
 // ── IM Platform Logos (from AstrBot resource files) ──
 
-import telegramLogoUrl from "./assets/platform_logos/telegram.svg";
 import discordLogoUrl from "./assets/platform_logos/discord.svg";
-import dingtalkLogoUrl from "./assets/platform_logos/dingtalk.svg";
 import slackLogoUrl from "./assets/platform_logos/slack.svg";
 import larkLogoUrl from "./assets/platform_logos/lark.png";
-import wecomLogoUrl from "./assets/platform_logos/wecom.png";
 import qqLogoUrl from "./assets/platform_logos/qq.png";
-import onebotLogoUrl from "./assets/platform_logos/onebot.png";
 import lineLogoUrl from "./assets/platform_logos/line.png";
 import wechatLogoUrl from "./assets/platform_logos/wechat.png";
 
@@ -623,20 +619,8 @@ function PlatformLogo({ src, alt, size = 20 }: { src: string; alt: string; size?
   return <img src={src} alt={alt} width={size} height={size} style={{ borderRadius: 4, objectFit: "contain", display: "block" }} />;
 }
 
-export function LogoTelegram({ size = 20 }: LogoProps) {
-  return <PlatformLogo src={telegramLogoUrl} alt="Telegram" size={size} />;
-}
-
 export function LogoFeishu({ size = 20 }: LogoProps) {
   return <PlatformLogo src={larkLogoUrl} alt="Feishu" size={size} />;
-}
-
-export function LogoWework({ size = 20 }: LogoProps) {
-  return <PlatformLogo src={wecomLogoUrl} alt="WeCom" size={size} />;
-}
-
-export function LogoDingtalk({ size = 20 }: LogoProps) {
-  return <PlatformLogo src={dingtalkLogoUrl} alt="DingTalk" size={size} />;
 }
 
 export function LogoQQ({ size = 20 }: LogoProps) {
@@ -649,10 +633,6 @@ export function LogoDiscord({ size = 20 }: LogoProps) {
 
 export function LogoSlack({ size = 20 }: LogoProps) {
   return <PlatformLogo src={slackLogoUrl} alt="Slack" size={size} />;
-}
-
-export function LogoOneBot({ size = 20 }: LogoProps) {
-  return <PlatformLogo src={onebotLogoUrl} alt="OneBot" size={size} />;
 }
 
 export function LogoLine({ size = 20 }: LogoProps) {
@@ -673,16 +653,10 @@ export function LogoWhatsApp({ size = 20 }: LogoProps) {
 }
 
 export const IM_LOGO_MAP: Record<string, (p: { size?: number }) => React.JSX.Element> = {
-  telegram: LogoTelegram,
   feishu: LogoFeishu,
   lark: LogoFeishu,
-  wework: LogoWework,
-  wework_ws: LogoWework,
-  dingtalk: LogoDingtalk,
   qq: LogoQQ,
   qqbot: LogoQQ,
-  onebot: LogoOneBot,
-  onebot_reverse: LogoOneBot,
   discord: LogoDiscord,
   slack: LogoSlack,
   line: LogoLine,

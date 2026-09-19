@@ -219,14 +219,6 @@ def _enabled_channels_from_settings() -> list[str]:
     enabled: list[str] = []
     if settings.feishu_enabled:
         enabled.append("feishu")
-    if settings.dingtalk_enabled:
-        enabled.append("dingtalk")
-    if settings.wework_enabled:
-        enabled.append("wework")
-    if settings.wework_ws_enabled:
-        enabled.append("wework_ws")
-    if settings.onebot_enabled:
-        enabled.append("onebot")
     if settings.qqbot_enabled:
         enabled.append("qqbot")
     if settings.wechat_enabled:

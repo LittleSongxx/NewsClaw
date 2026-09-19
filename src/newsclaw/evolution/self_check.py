@@ -1172,7 +1172,7 @@ class SelfChecker:
 
         # 追加环境标识，让 LLM 知道当前环境类型
         env_hint = (
-            "production" if settings.selfcheck_autofix else "development（自动修复已关闭，仅分析）"
+            "report-only（自动修复已移除，自检只分析报告）"
         )
         system_prompt += f"\n\n当前环境: {env_hint}"
 
