@@ -194,7 +194,19 @@ class WeChatMPPublishHandler:
                 result["warnings"] = warnings
 
             if auto_publish:
-                publish_id = await client.submit_publish(draft_media_id)
+                try:
+                    publish_id = await client.submit_publish(draft_media_id)
+                except RuntimeError as exc:
+                    # 发布接口被拒（常见：未认证订阅号无 freepublish 权限）时
+                    # 降级为仅草稿——草稿已建成，如实带出原因，不整体报错，
+                    # 交给人工在公众号后台点发布。
+                    result["mode"] = "draft"
+                    result["publish_error"] = str(exc)
+                    result["note"] = (
+                        "草稿已创建，但 API 发布未成功（多为账号无发布接口权限，"
+                        "如未认证订阅号）。请到公众号后台「草稿箱」人工确认发布。"
+                    )
+                    return json.dumps(result, ensure_ascii=False)
                 result["publish_id"] = publish_id
                 status = await client.poll_publish(publish_id)
                 result["published"] = status["published"]
