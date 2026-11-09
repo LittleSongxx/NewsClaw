@@ -126,7 +126,7 @@ src/newsclaw/
 apps/setup-center/   desktop + web frontend (Tauri + React)
 skills/              71 system skills + 11 curated external skills
 identity/            agent identity (SOUL / AGENT / POLICIES / personas)
-tests/               6,000+ tests (6,046 collected; unit / component / integration / e2e / eval)
+tests/               6,000+ tests (6,055 collected; unit / component / integration / e2e / eval)
 ```
 
 ---
