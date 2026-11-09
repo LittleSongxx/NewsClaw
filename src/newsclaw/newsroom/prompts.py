@@ -26,7 +26,7 @@ from newsclaw.newsroom.editorial import load_editorial_policy
 from newsclaw.newsroom.items import format_seen_items_for_prompt
 from newsclaw.newsroom.sources import load_sources, sources_path
 
-PROMPT_VERSION = 24
+PROMPT_VERSION = 25
 
 #: 每日任务运行时注入块的起止标记。播种缓存的 prompt 可能含旧块，
 #: 调度触发时会剥掉再拼当期 sources / 方针。
@@ -375,6 +375,14 @@ def build_review_prompt(config: NewsroomConfig | None = None) -> str:
 改 {sources_path()} 或整份覆盖 {root / "editorial-policy.md"} 会被拒绝。
 
 工作目录：{root}
+
+【执行预算（硬约束）】
+- 整个任务最多 25 轮工具调用：证据读够就写提案与报告，然后交付，禁止反复翻同一文件；
+- 只读 data/newsroom/ 下的数据文件（config.yaml / sources.yaml / editorial-policy.md /
+  issues/*/manifest.json / feedback-export.json / reviews/*.md / 现有 review-proposal.*）。
+  **禁止读 src/ 源码、tests/ 与 git 历史**：提案 JSON 字段以上面的 schema 为准，
+  不需要去源码里确认解析规则；
+- 每期 manifest 只读一次（一次 read_file 读全量即可，不要换 offset 反复读）。
 
 【第 1 步 · 收集证据】
 - 列出 issues/ 下最近 7 期有 manifest.json 的期次，读取全部 manifest：
