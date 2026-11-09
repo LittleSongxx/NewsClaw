@@ -108,6 +108,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -333,6 +334,60 @@ class ChainVerifyResult:
     truncated_tail_recovered: bool
     first_bad_line: int | None
     reason: str | None
+
+
+# ---------------------------------------------------------------------------
+# Archive ordering
+# ---------------------------------------------------------------------------
+#
+# Rotation archives are ordered by the rotation stamp embedded in their
+# filename, NOT by ``st_mtime``. ``Path.rename`` preserves the source
+# file's mtime, and Linux filesystem timestamps only have jiffy
+# granularity, so two rapid rotations can share one mtime; an mtime-only
+# sort is then non-deterministic and a chain walk (verify / prune) may
+# pick a wrong order and report a false tamper. The stamp is the
+# authoritative ordering signal: daily archives carry ``YYYY-MM-DD``,
+# size archives ``YYYYMMDDTHHMMSS`` (+ ``%f`` when a same-second
+# collision had to be disambiguated).
+_SIZE_STAMP_RE = re.compile(r"^(?P<base>\d{8}T\d{6})(?P<frac>\d{1,6})?$")
+_DAILY_STAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _archive_rotation_timestamp(path: Path) -> float | None:
+    """Return the UTC rotation timestamp encoded in an archive name, or None."""
+    stem = path.stem
+    if "." not in stem:
+        return None
+    stamp = stem.rsplit(".", 1)[-1]
+
+    size_match = _SIZE_STAMP_RE.fullmatch(stamp)
+    if size_match is not None:
+        # ``%f`` in ``strptime`` accepts a bare digit run and would silently
+        # parse a second-only stamp ("...T121054") as 12:10:05.4 — the
+        # explicit regex above decides whether a fractional part exists.
+        fmt = "%Y%m%dT%H%M%S%f" if size_match.group("frac") else "%Y%m%dT%H%M%S"
+    elif _DAILY_STAMP_RE.fullmatch(stamp):
+        fmt = "%Y-%m-%d"
+    else:
+        return None
+
+    try:
+        parsed = datetime.strptime(stamp, fmt).replace(tzinfo=UTC)
+    except ValueError:
+        return None
+    return parsed.timestamp()
+
+
+def _archive_sort_key(path: Path, mtime: float) -> tuple[float, float, str]:
+    """Sort key for rotation archives: rotation stamp first, mtime as tie-break.
+
+    Unparseable names (e.g. archives written by a pre-stamp deployment)
+    fall back to mtime, then the name, so ordering stays total and stable.
+    """
+    stamp_ts = _archive_rotation_timestamp(path)
+    if stamp_ts is None:
+        return (mtime, mtime, path.name)
+    return (stamp_ts, mtime, path.name)
 
 
 class ChainedJsonlWriter:
@@ -611,14 +666,15 @@ class ChainedJsonlWriter:
 
         Pattern: same parent dir, basename matches
         ``<stem>.<anything>.jsonl`` AND is NOT ``self.path`` itself.
-        Returned list is sorted by ``st_mtime`` ascending (oldest
-        first), which is the verification + prune order.
+        Returned list is sorted by the rotation stamp encoded in the
+        archive name (oldest first), with mtime as a tie-break — see
+        :func:`_archive_sort_key`. This is the verification + prune order.
         """
         parent = self.path.parent
         stem = self.path.stem  # e.g. "policy_decisions" for ".jsonl"
         if not parent.exists():
             return []
-        results: list[tuple[float, Path]] = []
+        results: list[tuple[tuple[float, float, str], Path]] = []
         active_resolved = self.path.resolve()
         for entry in parent.iterdir():
             if not entry.is_file():
@@ -638,8 +694,8 @@ class ChainedJsonlWriter:
                 mtime = entry.stat().st_mtime
             except OSError:
                 continue
-            results.append((mtime, entry))
-        results.sort(key=lambda t: t[0])
+            results.append((_archive_sort_key(entry, mtime), entry))
+        results.sort(key=lambda item: item[0])
         return [p for _, p in results]
 
     def _prune_archives(self, keep_count: int) -> None:
@@ -915,14 +971,17 @@ def _list_rotation_archives(active_path: Path) -> list[Path]:
 
     Pattern: same parent dir, basename starts with
     ``<active_stem>.`` + ends with ``.jsonl``, NOT the active file
-    itself, NOT a ``.lock`` sidecar. Result sorted by mtime ascending
-    (oldest first — natural chain walk order).
+    itself, NOT a ``.lock`` sidecar. Result sorted by the rotation stamp
+    encoded in the archive name (oldest first — natural chain walk
+    order), with mtime as a tie-break: jiffy-granularity filesystem
+    timestamps make an mtime-only sort non-deterministic for rapid
+    rotations.
     """
     parent = active_path.parent
     stem = active_path.stem
     if not parent.exists():
         return []
-    results: list[tuple[float, Path]] = []
+    results: list[tuple[tuple[float, float, str], Path]] = []
     try:
         active_resolved = active_path.resolve()
     except OSError:
@@ -944,16 +1003,16 @@ def _list_rotation_archives(active_path: Path) -> list[Path]:
             mtime = entry.stat().st_mtime
         except OSError:
             continue
-        results.append((mtime, entry))
-    results.sort(key=lambda t: t[0])
+        results.append((_archive_sort_key(entry, mtime), entry))
+    results.sort(key=lambda item: item[0])
     return [p for _, p in results]
 
 
 def verify_chain_with_rotation(active_path: Path | str) -> ChainVerifyResult:
     """Verify the hash chain across rotated archives + the active file.
 
-    Walks every ``<stem>.<suffix>.jsonl`` archive in mtime order,
-    followed by the active file ``<stem>.jsonl``. Maintains
+    Walks every ``<stem>.<suffix>.jsonl`` archive in rotation-stamp
+    order, followed by the active file ``<stem>.jsonl``. Maintains
     ``expected_prev`` across file boundaries — so a chain that was
     rotated mid-life still verifies cleanly end-to-end.
 

@@ -344,9 +344,16 @@ class TestChainHeadCarryOver:
             writer.append({"epoch": epoch, "n": 1, "blob": big})
             writer.append({"epoch": epoch, "n": 2, "blob": "small"})
 
+        # Order archives by their rotation stamp (the filename), not mtime.
+        # ``Path.rename`` preserves the source file's mtime, and Linux
+        # timestamps only have jiffy granularity, so two rotations that land
+        # in the same clock tick share an identical mtime and an mtime sort
+        # becomes non-deterministic. The archive name embeds the rotation
+        # timestamp and is strictly chronological, which is what the
+        # concatenated chain walk needs.
         archives = sorted(
             (p for p in tmp_path.iterdir() if p.name != log.name and p.name.endswith(".jsonl")),
-            key=lambda p: p.stat().st_mtime,
+            key=lambda p: p.name,
         )
         # Expect at least 2 archives (size mode produces an archive each
         # time the threshold is crossed; exact count depends on timing).
@@ -739,9 +746,11 @@ class TestVerifyChainWithRotation:
         assert result.ok
         assert result.total == 3
 
-    def test_archives_listed_in_mtime_order(self, tmp_path: Path, install_audit_config) -> None:
-        """_list_rotation_archives sorts by mtime ascending. Critical
-        for chain walking — wrong order = false-positive tamper."""
+    def test_archives_listed_oldest_first(self, tmp_path: Path, install_audit_config) -> None:
+        """_list_rotation_archives sorts by rotation stamp ascending. Critical
+        for chain walking — wrong order = false-positive tamper. mtime is only
+        a tie-break: jiffy-granularity timestamps can collide across rapid
+        rotations (see TestArchiveOrderingDeterminism)."""
         install_audit_config(
             {
                 "rotation_mode": "size",
@@ -760,9 +769,12 @@ class TestVerifyChainWithRotation:
 
         archives = _list_rotation_archives(log)
         assert len(archives) >= 2
+        assert [p.name for p in archives] == sorted(p.name for p in archives), (
+            "archives must be ordered by rotation stamp (oldest first) for the chain walk"
+        )
         mtimes = [p.stat().st_mtime for p in archives]
         assert mtimes == sorted(mtimes), (
-            "archives must be ordered oldest-first for chain walk to work"
+            "rotation-stamp order must also be chronological for real rotations"
         )
 
     def test_active_file_absent_still_verifies_archives(
@@ -816,6 +828,82 @@ class TestVerifyChainWithRotation:
         result = verify_chain_with_rotation(log)
         assert result.ok is False
         assert result.first_bad_line == 3
+
+
+class TestArchiveOrderingDeterminism:
+    """Archives are ordered by rotation stamp, not mtime.
+
+    ``Path.rename`` preserves the source file's mtime and Linux timestamps
+    only have jiffy granularity, so rapid rotations can share one mtime.
+    An mtime-only sort then makes the chain walk order non-deterministic —
+    observed as an intermittent chain-break in
+    ``test_chain_continuous_across_multiple_rotations``.
+    """
+
+    def test_same_mtime_archives_listed_in_stamp_order(self, tmp_path: Path) -> None:
+        import os
+
+        # Fabricate two archives that share one mtime; only the stamp
+        # embedded in their names can order them deterministically.
+        stale = tmp_path / "audit.20200101T000002.jsonl"
+        older = tmp_path / "audit.20200101T000001.jsonl"
+        stale.write_text("", encoding="utf-8")
+        older.write_text("", encoding="utf-8")
+        fixed = time.time() - 3600
+        os.utime(stale, (fixed, fixed))
+        os.utime(older, (fixed, fixed))
+
+        ordered = _list_rotation_archives(tmp_path / "audit.jsonl")
+        assert [p.name for p in ordered] == [
+            "audit.20200101T000001.jsonl",
+            "audit.20200101T000002.jsonl",
+        ]
+
+    def test_stamp_parser_reads_second_and_subsecond_names(self, tmp_path: Path) -> None:
+        from datetime import UTC, datetime
+
+        from newsclaw.core.policy_v2.audit_chain import _archive_rotation_timestamp
+
+        second_only = _archive_rotation_timestamp(tmp_path / "audit.20260101T000001.jsonl")
+        subsecond = _archive_rotation_timestamp(tmp_path / "audit.20260101T000001500000.jsonl")
+        daily = _archive_rotation_timestamp(tmp_path / "audit.2026-01-01.jsonl")
+        assert second_only == datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC).timestamp()
+        assert subsecond == datetime(2026, 1, 1, 0, 0, 1, 500000, tzinfo=UTC).timestamp()
+        assert daily == datetime(2026, 1, 1, tzinfo=UTC).timestamp()
+        assert second_only < subsecond
+
+    def test_chain_verifies_across_same_mtime_archives(
+        self, tmp_path: Path, install_audit_config
+    ) -> None:
+        import os
+
+        install_audit_config({"rotation_mode": "size", "rotation_size_mb": 1})
+        log = tmp_path / "audit.jsonl"
+        writer = get_writer(log)
+        big = "x" * (600 * 1024)
+        for epoch in range(3):
+            writer.append({"epoch": epoch, "n": 0, "blob": big})
+            writer.append({"epoch": epoch, "n": 1, "blob": big})
+            writer.append({"epoch": epoch, "n": 2, "blob": "small"})
+
+        archives = [
+            p for p in tmp_path.iterdir() if p.name != log.name and p.name.endswith(".jsonl")
+        ]
+        assert len(archives) >= 2
+        # Collapse every archive onto one mtime — exactly what
+        # jiffy-granularity timestamps can do under rapid rotations.
+        fixed = time.time() - 3600
+        for p in archives:
+            os.utime(p, (fixed, fixed))
+
+        ordered = _list_rotation_archives(log)
+        assert [p.name for p in ordered] == sorted(p.name for p in archives)
+
+        result = verify_chain_with_rotation(log)
+        assert result.ok, result.reason
+        total_rows = sum(len(p.read_text(encoding="utf-8").splitlines()) for p in ordered)
+        total_rows += len(log.read_text(encoding="utf-8").splitlines())
+        assert result.total == total_rows
 
 
 class TestRotationDoesNotBreakRecordShape:
