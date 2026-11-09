@@ -287,12 +287,24 @@ class ContextManager:
     def pre_request_cleanup(self, messages: list[dict]) -> list[dict]:
         """请求前轻量清理 (microcompact)。
 
-        零 LLM 调用成本: 过期工具结果清空、大结果预览、旧 thinking 移除。
-        在 compress_if_needed 之前调用。
+        零 LLM 调用成本: 按数量压缩历史工具结果（主力）、过期结果清空、
+        重复结果合并、旧 thinking 移除。在 compress_if_needed 之前调用。
         """
+        from ..config import settings as _settings
         from .microcompact import microcompact
 
-        return microcompact(messages)
+        return microcompact(
+            messages,
+            keep_recent_tool_results=int(
+                getattr(_settings, "context_tool_result_keep_recent", 8) or 8
+            ),
+            min_compact_chars=int(
+                getattr(_settings, "context_tool_result_min_compact_chars", 1200) or 1200
+            ),
+            compact_preview_chars=int(
+                getattr(_settings, "context_tool_result_preview_chars", 400) or 400
+            ),
+        )
 
     def project_tools_for_request(self, tools: list | None) -> list:
         """Project registered definitions to the tools the provider will receive.

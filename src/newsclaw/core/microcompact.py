@@ -2,12 +2,13 @@
 Microcompact — 请求前轻量上下文清理
 
 零 LLM 调用成本的上下文瘦身策略，在发送 API 请求前执行:
-1. 过期工具结果清空（按时间阈值）
-2. 大工具结果替换为摘要预览
-3. 旧 thinking 块移除
-4. 旧 tool_use 参数裁剪
+1. 按「保留最近 N 条」压缩历史工具结果（本模块的主力，见 2026-11-09 实跑复盘）
+2. 过期工具结果清空（块带 ``_timestamp`` 时生效）
+3. 重复/相似工具结果合并
+4. 旧 thinking 块移除
+5. 旧 tool_use 参数裁剪
 
-参考 Claude Code 的 microcompact 策略。
+参考 Claude Code 的 microcompact / tool-result clearing 策略。
 """
 
 from __future__ import annotations
@@ -19,28 +20,39 @@ import time
 logger = logging.getLogger(__name__)
 
 TOOL_RESULT_EXPIRY_SECONDS = 600  # 10 分钟
-LARGE_RESULT_PREVIEW_CHARS = 500
-LARGE_RESULT_THRESHOLD_CHARS = 8000
+#: 最近 N 个工具结果原样保留。工具结果是最占上下文的部分，但最近几条通常
+#: 正在被决策使用；更早的结果只留预览，需要时 Agent 可以重新调用工具。
+KEEP_RECENT_TOOL_RESULTS = 8
+#: 旧工具结果短于该字符数时不压缩（压缩收益低于碎片化成本）。
+COMPACT_MIN_CHARS = 1200
+#: 旧工具结果压缩后保留的开头字符数。
+COMPACT_PREVIEW_CHARS = 400
 
 
 def microcompact(
     messages: list[dict],
     *,
     tool_result_expiry_s: float = TOOL_RESULT_EXPIRY_SECONDS,
-    large_result_threshold: int = LARGE_RESULT_THRESHOLD_CHARS,
-    preview_chars: int = LARGE_RESULT_PREVIEW_CHARS,
+    keep_recent_tool_results: int = KEEP_RECENT_TOOL_RESULTS,
+    min_compact_chars: int = COMPACT_MIN_CHARS,
+    compact_preview_chars: int = COMPACT_PREVIEW_CHARS,
     current_time: float | None = None,
 ) -> list[dict]:
-    """对消息列表执行轻量清理。
+    """对消息列表执行轻量清理（零 LLM 成本，原地修改）。
 
-    注意：这是浅拷贝操作，会修改传入的消息列表。
-    调用方应在需要时提前深拷贝。
+    2026-11-09 的真实运行暴露了旧策略的盲区：单条结果 8000 字符的阈值挡不住
+    「每条 2–3KB、累计 100+ 条」的情形——51 轮 ReAct 里历史工具结果把消息
+    上下文从 3.2k 推到 99.6k token，而且每轮都要重发一遍（单期 461 万输入
+    token 的主要来源）。现在按**数量**保留最近 N 条工具结果，更早的一律压成
+    预览；这是 tool-result clearing 的思路，不依赖时间戳（内部消息没有可靠
+    时间戳），也不做 LLM 摘要。
 
     Args:
         messages: 消息列表
-        tool_result_expiry_s: 工具结果过期秒数
-        large_result_threshold: 大结果阈值字符数
-        preview_chars: 预览保留字符数
+        tool_result_expiry_s: 工具结果过期秒数（仅在块带 ``_timestamp`` 时生效）
+        keep_recent_tool_results: 原样保留的最近工具结果条数（最少 1）
+        min_compact_chars: 超过该字符数的旧结果才压缩
+        compact_preview_chars: 旧结果压缩后保留的开头字符数
         current_time: 当前时间（测试用）
 
     Returns:
@@ -49,84 +61,95 @@ def microcompact(
     now = current_time or time.time()
     cleaned = 0
     total_messages = len(messages)
-    seen_cache_refs: set[str] = set()
-    seen_tool_fingerprints: dict[str, int] = {}
 
-    for i, msg in enumerate(messages):
-        # Only process messages not in the last 3 (keep recent context intact)
-        is_recent = i >= total_messages - 3
-
+    blocks: list[tuple[int, dict]] = []
+    for index, msg in enumerate(messages):
         content = msg.get("content")
         if not isinstance(content, list):
             continue
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                blocks.append((index, block))
 
+    cutoff = max(0, len(blocks) - max(1, int(keep_recent_tool_results)))
+    seen_cache_refs: set[str] = set()
+    seen_tool_fingerprints: dict[str, int] = {}
+
+    # Pass 1: 重复/缓存结果合并（对全部历史生效）。保留首次出现的副本，后续
+    # 副本（含最近窗口内的）替换为短标记——内容完全相同，模型已经看过第一份。
+    for _, block in blocks:
+        result_content = block.get("content", "")
+        if not isinstance(result_content, str) or not result_content:
+            continue
+
+        cache_key = str(block.get("cache_key", "") or "")
+        if not cache_key and result_content.startswith("[系统缓存:"):
+            cache_key = result_content.split("]", 1)[0]
+        if cache_key:
+            if cache_key in seen_cache_refs:
+                block["content"] = f"[cached tool result duplicate merged: {cache_key}]"
+                cleaned += 1
+                continue
+            seen_cache_refs.add(cache_key)
+
+        tool_name = str(block.get("tool_name", "") or "")
+        fingerprint = hashlib.md5(
+            result_content[:4000].encode("utf-8", errors="ignore")
+        ).hexdigest()[:12]
+        semantic_key = f"{tool_name}:{fingerprint}"
+        if seen_tool_fingerprints.get(semantic_key):
+            block["content"] = (
+                f"[tool result merged] 重复/相似的 {tool_name or 'tool'} 结果已合并；"
+                f"保留首次出现的副本，历史副本 fingerprint={fingerprint}。"
+            )
+            cleaned += 1
+            continue
+        seen_tool_fingerprints[semantic_key] = 1
+
+    # Pass 2: 只对「超出最近 N 条」的历史结果做过期清理与预览压缩。
+    for order, (_, block) in enumerate(blocks):
+        if order >= cutoff:
+            continue
+        result_content = block.get("content", "")
+        if not isinstance(result_content, str) or not result_content:
+            continue
+        if result_content.startswith(
+            ("[cached tool result duplicate merged", "[tool result merged]")
+        ):
+            continue
+
+        timestamp = block.get("_timestamp", 0)
+        if timestamp and (now - timestamp) > tool_result_expiry_s and len(result_content) > 100:
+            block["content"] = "[expired tool result]"
+            cleaned += 1
+            continue
+
+        if len(result_content) > min_compact_chars:
+            block["content"] = (
+                f"{result_content[:compact_preview_chars]}\n\n"
+                f"...[旧工具结果已压缩：原始 {len(result_content)} 字符，"
+                f"仅保留前 {compact_preview_chars} 字符；需要完整内容请重新调用该工具]"
+            )
+            cleaned += 1
+
+    for index, msg in enumerate(messages):
+        if index >= total_messages - 2:
+            continue
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
         for block in content:
             if not isinstance(block, dict):
                 continue
-
-            block_type = block.get("type", "")
-
-            if block_type == "tool_result" and not is_recent:
-                result_content = block.get("content", "")
-                cache_key = str(block.get("cache_key", "") or "")
-                if (
-                    not cache_key
-                    and isinstance(result_content, str)
-                    and result_content.startswith("[系统缓存:")
-                ):
-                    cache_key = result_content.split("]", 1)[0]
-                if cache_key:
-                    if cache_key in seen_cache_refs:
-                        block["content"] = f"[cached tool result duplicate merged: {cache_key}]"
-                        cleaned += 1
-                        continue
-                    seen_cache_refs.add(cache_key)
-
-                tool_name = str(block.get("tool_name", "") or "")
-                if isinstance(result_content, str) and result_content:
-                    fp = hashlib.md5(
-                        result_content[:4000].encode("utf-8", errors="ignore")
-                    ).hexdigest()[:12]
-                    semantic_key = f"{tool_name}:{fp}"
-                    previous = seen_tool_fingerprints.get(semantic_key, 0)
-                    if previous >= 1:
-                        block["content"] = (
-                            f"[tool result merged] 重复/相似的 {tool_name or 'tool'} 结果已合并；"
-                            f"保留最近结果，历史副本 fingerprint={fp}。"
-                        )
-                        cleaned += 1
-                        continue
-                    seen_tool_fingerprints[semantic_key] = previous + 1
-
-            # 1. Clear expired tool results (except recent ones)
-            if block_type == "tool_result" and not is_recent:
-                ts = block.get("_timestamp", 0)
-                if ts > 0 and (now - ts) > tool_result_expiry_s:
-                    original_content = block.get("content", "")
-                    if isinstance(original_content, str) and len(original_content) > 100:
-                        block["content"] = "[expired tool result]"
-                        cleaned += 1
-
-            # 2. Truncate large tool results to preview
-            if block_type == "tool_result" and not is_recent:
-                result_content = block.get("content", "")
-                if isinstance(result_content, str) and len(result_content) > large_result_threshold:
-                    preview = result_content[:preview_chars]
-                    total = len(result_content)
-                    block["content"] = (
-                        f"{preview}\n\n... [{total} chars total, truncated by microcompact]"
-                    )
-                    cleaned += 1
-
-            # 3. Remove old thinking blocks (except last 2 messages)
-            if block_type in ("thinking", "redacted_thinking") and not is_recent:
-                if len(block.get("thinking", "")) > 200:
-                    block["thinking"] = "[thinking removed by microcompact]"
-                    cleaned += 1
+            if (
+                block.get("type") in ("thinking", "redacted_thinking")
+                and len(str(block.get("thinking", ""))) > 200
+            ):
+                block["thinking"] = "[thinking removed by microcompact]"
+                cleaned += 1
 
     if cleaned > 0:
         logger.debug("microcompact: cleaned %d blocks in %d messages", cleaned, total_messages)
-
     return messages
 
 

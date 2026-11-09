@@ -944,6 +944,26 @@ class Settings(BaseSettings):
         default=5000,
         description="触发单条工具结果独立压缩的 token 阈值",
     )
+    context_tool_result_keep_recent: int = Field(
+        default=8,
+        ge=1,
+        le=50,
+        description=(
+            "最近 N 条工具结果原样保留；更早的结果压成预览（零 LLM 成本）。"
+            "2026-11-09 实跑：100+ 条 2-3KB 结果累积把消息上下文推到 99.6k token"
+        ),
+    )
+    context_tool_result_min_compact_chars: int = Field(
+        default=1200,
+        ge=200,
+        description="旧工具结果短于该字符数时不压缩（避免碎片化占位）",
+    )
+    context_tool_result_preview_chars: int = Field(
+        default=400,
+        ge=100,
+        le=4000,
+        description="旧工具结果压缩后保留的开头字符数",
+    )
     context_real_usage_decay: float = Field(
         default=0.9,
         ge=0.1,
