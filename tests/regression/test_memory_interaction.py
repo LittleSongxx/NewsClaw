@@ -149,7 +149,7 @@ class MemoryInteractionTester:
         """测试搜索相关性"""
         results = self.vs.search("Python 语言", limit=3)
         # 检查是否有 Python 相关的结果
-        has_python = any("python" in str(r).lower() for r in results)
+        any("python" in str(r).lower() for r in results)
         self.log("向量搜索-相关性", len(results) > 0 or True, f"结果数: {len(results)}")
 
     def test_vector_search_limit(self):
@@ -179,7 +179,7 @@ class MemoryInteractionTester:
     def test_injection_with_task(self):
         """测试带任务的注入"""
         context = self.mm.get_injection_context(task_description="编写 Python 代码")
-        has_related = "相关记忆" in context or "语义匹配" in context or len(context) > 100
+        "相关记忆" in context or "语义匹配" in context or len(context) > 100
         self.log("记忆注入-带任务", len(context) > 0, "任务: 编写 Python 代码")
 
     def test_injection_code_task(self):

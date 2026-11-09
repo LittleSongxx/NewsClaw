@@ -163,7 +163,6 @@ class TestTurnIndexContinuity:
         for i in range(3):
             store.save_turn(session_id="s1", turn_index=i, role="user", content=f"old{i}")
 
-        from unittest.mock import MagicMock as _MM
         from newsclaw.memory.manager import MemoryManager
 
         mm = MemoryManager.__new__(MemoryManager)
@@ -190,7 +189,6 @@ class TestTurnIndexContinuity:
         store = _make_unified_store(tmp_path)
         store.save_turn(session_id="s1", turn_index=0, role="user", content="original")
 
-        
         from newsclaw.memory.manager import MemoryManager
 
         mm = MemoryManager.__new__(MemoryManager)
@@ -385,7 +383,7 @@ class TestSearchMemorySemantic:
         agent.memory_manager = mm
 
         handler = MemoryHandler(agent)
-        result = handler._search_memory({"query": "test", "type": "fact"})
+        handler._search_memory({"query": "test", "type": "fact"})
         engine.retrieve_candidates.assert_not_called()
         mm.search_memories.assert_called_once()
 

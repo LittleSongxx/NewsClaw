@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 
 from newsclaw.api.routes.memory import router as memory_router
 from newsclaw.memory.manager import MemoryManager
-from newsclaw.memory.relational.types import MemoryNode, NodeType
 from newsclaw.memory.storage import MemoryStorage
 from newsclaw.memory.types import MemoryPriority, MemoryType, SemanticMemory
 
@@ -220,5 +219,3 @@ def test_explicit_none_user_id_does_not_reuse_previous_user(tmp_path):
     manager.start_session("session-a2", user_id="user-a")
     user_results = manager.search_memories("住在", scope="user")
     assert [m.content for m in user_results] == ["用户住在苏州"]
-
-

@@ -389,10 +389,6 @@ async def tc_12_same_conv_reuse_agent(c: httpx.AsyncClient) -> tuple[bool, str]:
     s2 = {s["session_id"]: s for s in stats2.get("sessions", [])}
 
     in_both = cid in s1 and cid in s2
-    total_unchanged = (
-        stats1.get("total", -1) == stats2.get("total", -2)
-        or stats2.get("total", 0) <= stats1.get("total", 0) + 1
-    )  # allow for other tests
 
     detail = (
         f"After 1st: {s1.get(cid)}\n"

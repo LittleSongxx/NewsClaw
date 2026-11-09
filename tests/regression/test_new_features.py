@@ -149,9 +149,7 @@ class TestSessionManager:
         # 重新加载
         manager2 = SessionManager(storage_path=temp_storage)
         assert manager2._sessions == {}
-        restored = manager2.get_session(
-            "telegram", "chat_001", "user_001", create_if_missing=False
-        )
+        restored = manager2.get_session("telegram", "chat_001", "user_001", create_if_missing=False)
         assert restored is not None
         assert restored.context.messages[0]["content"] == "测试持久化"
 
@@ -586,169 +584,6 @@ class TestMessageTypes:
 # ============================================================
 
 
-class TestTelegramAdapter:
-    """Telegram 适配器测试"""
-
-    # 使用用户提供的 Bot Token
-    BOT_TOKEN = "7617214188:AAHYqpnX1k70SUmD4vqP6S2O-Kyp8NIr4cE"
-
-    @pytest.mark.asyncio
-    async def test_telegram_connection(self):
-        """测试 Telegram Bot 连接"""
-        try:
-            from telegram import Bot
-
-            bot = Bot(token=self.BOT_TOKEN)
-            me = await bot.get_me()
-
-            print("✅ Telegram Bot 连接成功!")
-            print(f"   Bot ID: {me.id}")
-            print(f"   Bot Name: {me.first_name}")
-            print(f"   Bot Username: @{me.username}")
-
-            return True
-
-        except ImportError:
-            print("⚠️ python-telegram-bot 未安装，跳过 Telegram 测试")
-            print("   运行: pip install python-telegram-bot")
-            return False
-        except Exception as e:
-            print(f"❌ Telegram 连接失败: {e}")
-            return False
-
-    @pytest.mark.asyncio
-    async def test_telegram_send_message(self):
-        """测试发送消息"""
-        try:
-            from telegram import Bot
-
-            bot = Bot(token=self.BOT_TOKEN)
-            me = await bot.get_me()
-
-            # 注意：Bot 不能给自己发消息
-            # 这里只测试 API 是否正常
-            print("✅ Telegram 发送 API 可用")
-            print("   要测试发送消息，请先在 Telegram 中给 Bot 发送 /start")
-
-            return True
-
-        except ImportError:
-            print("⚠️ python-telegram-bot 未安装")
-            return False
-        except Exception as e:
-            print(f"⚠️ 发送测试: {e}")
-            return False
-
-    @pytest.mark.asyncio
-    async def test_telegram_adapter_init(self):
-        """测试 TelegramAdapter 初始化"""
-        try:
-            from newsclaw.channels.adapters import TelegramAdapter
-
-            adapter = TelegramAdapter(
-                bot_token=self.BOT_TOKEN,
-            )
-
-            assert adapter.channel_name == "telegram"
-            assert adapter.bot_token == self.BOT_TOKEN
-
-            print("✅ TelegramAdapter 初始化正常")
-            return True
-
-        except ImportError as e:
-            print(f"⚠️ 依赖缺失: {e}")
-            return False
-
-    @pytest.mark.asyncio
-    async def test_telegram_adapter_start(self):
-        """测试 TelegramAdapter 启动"""
-        try:
-            from newsclaw.channels.adapters import TelegramAdapter
-
-            adapter = TelegramAdapter(
-                bot_token=self.BOT_TOKEN,
-            )
-
-            # 启动适配器
-            await adapter.start()
-
-            assert adapter.is_running
-            assert adapter._bot is not None
-
-            # 获取 Bot 信息
-            me = await adapter._bot.get_me()
-            print("✅ TelegramAdapter 启动成功")
-            print(f"   连接到: @{me.username}")
-
-            # 停止
-            await adapter.stop()
-            assert not adapter.is_running
-
-            print("✅ TelegramAdapter 停止正常")
-            return True
-
-        except ImportError as e:
-            print(f"⚠️ 依赖缺失: {e}")
-            return False
-        except Exception as e:
-            print(f"❌ 启动失败: {e}")
-            return False
-
-
-class TestTelegramIntegration:
-    """Telegram 集成测试 (需要手动交互)"""
-
-    BOT_TOKEN = "7617214188:AAHYqpnX1k70SUmD4vqP6S2O-Kyp8NIr4cE"
-
-    @pytest.mark.asyncio
-    async def test_telegram_full_flow(self):
-        """完整流程测试 (需要手动给 Bot 发消息)"""
-        try:
-            from newsclaw.channels import UnifiedMessage
-            from newsclaw.channels.adapters import TelegramAdapter
-
-            received_messages = []
-
-            adapter = TelegramAdapter(bot_token=self.BOT_TOKEN)
-
-            # 注册消息回调
-            async def on_message(msg: UnifiedMessage):
-                received_messages.append(msg)
-                print(f"  📨 收到消息: {msg.text[:50]}..." if msg.text else "  📨 收到非文本消息")
-
-            adapter.on_message(on_message)
-
-            await adapter.start()
-
-            print("\n" + "=" * 50)
-            print("Telegram 集成测试")
-            print("=" * 50)
-            print("请在 Telegram 中给 @Jarvisuen_bot 发送消息")
-            print("等待 10 秒接收消息...")
-            print("=" * 50 + "\n")
-
-            # 等待消息
-            await asyncio.sleep(10)
-
-            await adapter.stop()
-
-            if received_messages:
-                print(f"\n✅ 成功接收 {len(received_messages)} 条消息")
-                for msg in received_messages:
-                    print(f"   - 来自 {msg.channel_user_id}: {msg.text or '[非文本]'}")
-            else:
-                print("\n⚠️ 未收到消息 (请确保在测试期间发送了消息)")
-
-            return True
-
-        except ImportError as e:
-            print(f"⚠️ 依赖缺失: {e}")
-            return False
-        except Exception as e:
-            print(f"❌ 测试失败: {e}")
-            return False
-
-
 # ============================================================
 # 5. 媒体处理测试
 # ============================================================
@@ -840,8 +675,8 @@ class TestMediaStorage:
         media1 = MediaFile.create(filename="file1.bin", mime_type="application/octet-stream")
         media2 = MediaFile.create(filename="file2.bin", mime_type="application/octet-stream")
 
-        path1 = await storage.store(media1, "test", data)
-        path2 = await storage.store(media2, "test", data)
+        await storage.store(media1, "test", data)
+        await storage.store(media2, "test", data)
 
         # 应该复用同一文件
         assert media1.local_path == media2.local_path
@@ -1027,24 +862,7 @@ async def run_all_tests():
         print(f"❌ 消息类型测试失败: {e}")
         results["failed"] += 1
 
-    # 8. Telegram 测试 (重点)
-    print("\n📦 8. Telegram 适配器测试 (重点)")
-    print("-" * 40)
-
-    try:
-        test = TestTelegramAdapter()
-        connected = await test.test_telegram_connection()
-        if connected:
-            await test.test_telegram_adapter_init()
-            await test.test_telegram_adapter_start()
-            results["passed"] += 3
-        else:
-            results["skipped"] += 3
-    except Exception as e:
-        print(f"❌ Telegram 测试失败: {e}")
-        results["failed"] += 1
-
-    # 9. 媒体处理测试
+    # 8. 媒体处理测试
     print("\n📦 9. 媒体处理测试")
     print("-" * 40)
 
@@ -1085,28 +903,5 @@ async def run_all_tests():
     return results
 
 
-async def run_telegram_interactive_test():
-    """运行 Telegram 交互测试"""
-    print("\n" + "=" * 60)
-    print("Telegram 交互测试")
-    print("=" * 60)
-
-    test = TestTelegramIntegration()
-    await test.test_telegram_full_flow()
-
-
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="NewsClaw 新功能测试")
-    parser.add_argument(
-        "--telegram-interactive", action="store_true", help="运行 Telegram 交互测试"
-    )
-    parser.add_argument("--all", action="store_true", help="运行所有测试")
-
-    args = parser.parse_args()
-
-    if args.telegram_interactive:
-        asyncio.run(run_telegram_interactive_test())
-    else:
-        asyncio.run(run_all_tests())
+    asyncio.run(run_all_tests())

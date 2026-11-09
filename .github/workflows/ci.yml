@@ -29,7 +29,7 @@ jobs:
       - name: Check version consistency
         run: python scripts/version.py check
       - name: Lint with ruff
-        run: ruff check src/
+        run: ruff check src/ && ruff check tests/ --select E9,F
       - name: Run tests
         run: pytest tests/unit tests/component tests/integration tests/eval -q --cov=src/newsclaw --cov-report=term-missing --cov-fail-under=45
       - name: Build wheel

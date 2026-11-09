@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import pytest
 
@@ -22,8 +21,14 @@ def test_v7_columns_roundtrip(isolated):
     store = MemoryStorage(isolated / "m.db")
     occurred = "2026-08-01T10:00:00"
     store.save_memory(
-        {"id": "f1", "content": "他上个月住在苏州", "type": "FACT",
-         "priority": "LONG_TERM", "occurred_at": occurred, "valid_until": None}
+        {
+            "id": "f1",
+            "content": "他上个月住在苏州",
+            "type": "FACT",
+            "priority": "LONG_TERM",
+            "occurred_at": occurred,
+            "valid_until": None,
+        }
     )
     got = store.get_memory("f1")
     assert got["occurred_at"] == occurred
@@ -32,8 +37,12 @@ def test_v7_columns_roundtrip(isolated):
 
 def test_valid_until_soft_invalidates(isolated):
     store = MemoryStorage(isolated / "m.db")
-    store.save_memory({"id": "old", "content": "用户 32 岁", "type": "FACT", "priority": "LONG_TERM"})
-    store.save_memory({"id": "new", "content": "用户 33 岁", "type": "FACT", "priority": "LONG_TERM"})
+    store.save_memory(
+        {"id": "old", "content": "用户 32 岁", "type": "FACT", "priority": "LONG_TERM"}
+    )
+    store.save_memory(
+        {"id": "new", "content": "用户 33 岁", "type": "FACT", "priority": "LONG_TERM"}
+    )
     expired = (datetime.now() - timedelta(days=1)).isoformat()
     store.update_memory("old", {"valid_until": expired})
     visible = [m["id"] for m in store.load_all(active_only=True)]
@@ -43,7 +52,9 @@ def test_valid_until_soft_invalidates(isolated):
 
 def test_valid_until_null_stays_active(isolated):
     store = MemoryStorage(isolated / "m.db")
-    store.save_memory({"id": "k", "content": "用户是素食者", "type": "FACT", "priority": "LONG_TERM"})
+    store.save_memory(
+        {"id": "k", "content": "用户是素食者", "type": "FACT", "priority": "LONG_TERM"}
+    )
     visible = [m["id"] for m in store.load_all(active_only=True)]
     assert "k" in visible
 
@@ -74,9 +85,7 @@ async def test_supersedes_verdict_soft_invalidates_old_fact(isolated):
     mm._conflict_verdict_with_llm = fake_verdict
     # FTS 对整句 CJK 的召回依赖分词；单测直接把种子喂给 L2 搜索，
     # 聚焦验证「likely → SUPERSEDES → 软失效」的裁决接线本身。
-    with patch.object(
-        mm.store, "search_semantic", return_value=[seed]
-    ):
+    with patch.object(mm.store, "search_semantic", return_value=[seed]):
         item = {
             "type": "fact",
             "content": "用户已搬到上海，不再住在苏州工业园区",

@@ -1,20 +1,9 @@
-import asyncio
-import sys
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
 
 from newsclaw.api.routes.agents import (
-    BotCreateRequest,
-    BotToggleRequest,
-    BotUpdateRequest,
-    _bot_apply_tasks,
     _runtime_bot_view,
-    _validate_bot_credentials,
-    create_bot,
-    toggle_bot,
-    update_bot,
 )
 
 
@@ -28,7 +17,6 @@ def _default_profile_store(monkeypatch):
         get=lambda profile_id: default_profile if profile_id == "default" else None
     )
     monkeypatch.setattr(profile_module, "get_profile_store", lambda: store)
-
 
 
 def test_runtime_status_reports_missing_credentials() -> None:

@@ -1,7 +1,5 @@
 """L2 Component Tests: ReasoningEngine decision routing and loop detection."""
 
-
-
 from newsclaw.agent.reasoning import DecisionType
 from newsclaw.core.agent_state import AgentState, TaskState, TaskStatus
 
@@ -103,7 +101,7 @@ class TestAgentState:
 
     def test_cancel_task(self):
         state = AgentState()
-        ts = state.begin_task(session_id="s1")
+        state.begin_task(session_id="s1")
         state.cancel_task("user stopped")
         assert state.is_task_cancelled is True
         assert state.task_cancel_reason == "user stopped"
