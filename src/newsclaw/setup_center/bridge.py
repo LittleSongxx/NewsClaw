@@ -795,28 +795,6 @@ async def feishu_validate(app_id: str, app_secret: str, domain: str) -> None:
     _json_print(result)
 
 
-async def wecom_onboard_start() -> None:
-    """生成企微扫码配置二维码，返回 auth_url + scode"""
-    from newsclaw.setup.wecom_onboard import WecomOnboard
-
-    ob = WecomOnboard()
-    data = await ob.generate()
-    result = {
-        "auth_url": data.get("auth_url", ""),
-        "scode": data.get("scode", ""),
-    }
-    _json_print(result)
-
-
-async def wecom_onboard_poll(scode: str) -> None:
-    """单次轮询企微扫码配置结果"""
-    from newsclaw.setup.wecom_onboard import WecomOnboard
-
-    ob = WecomOnboard()
-    result = await ob.poll(scode)
-    _json_print(result)
-
-
 async def qqbot_onboard_start() -> None:
     """创建 QQ 登录会话，返回 session_id 和 QR URL"""
     from newsclaw.setup.qqbot_onboard import QQBotOnboard
@@ -1769,11 +1747,6 @@ def main(argv: list[str] | None = None) -> None:
     p_fv.add_argument("--app-secret", required=True, help="飞书 App Secret")
     p_fv.add_argument("--domain", default="feishu", help="feishu | lark")
 
-    sub.add_parser("wecom-onboard-start", help="生成企微扫码配置二维码（JSON）")
-
-    p_wop = sub.add_parser("wecom-onboard-poll", help="轮询企微扫码配置结果（JSON）")
-    p_wop.add_argument("--scode", required=True, help="generate 返回的 scode")
-
     sub.add_parser("qqbot-onboard-start", help="创建 QQ 登录会话（JSON）")
 
     p_qop = sub.add_parser("qqbot-onboard-poll", help="轮询 QQ 扫码登录状态（JSON）")
@@ -1865,14 +1838,6 @@ def main(argv: list[str] | None = None) -> None:
                 domain=args.domain,
             )
         )
-        return
-
-    if args.cmd == "wecom-onboard-start":
-        asyncio.run(wecom_onboard_start())
-        return
-
-    if args.cmd == "wecom-onboard-poll":
-        asyncio.run(wecom_onboard_poll(scode=args.scode))
         return
 
     if args.cmd == "qqbot-onboard-start":

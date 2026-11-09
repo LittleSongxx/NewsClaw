@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 
 from newsclaw.runtime_channel_deps import (
+    _enabled_channels_from_env,
     _parse_pip_progress_line,
     _purge_incompatible_websockets,
     _run_pip_command,
@@ -54,7 +55,7 @@ def test_purge_incompatible_websockets_removes_16_keeps_15(tmp_path):
     (tmp_path / "websockets").mkdir()
     (tmp_path / "websockets" / "__init__.py").write_text("# package", encoding="utf-8")
     (tmp_path / "lark_oapi-1.6.5.dist-info").mkdir()
-    (tmp_path / "dingtalk_stream-0.24.3.dist-info").mkdir()
+    (tmp_path / "unrelated_pkg-1.0.dist-info").mkdir()
 
     removed = _purge_incompatible_websockets(tmp_path)
 
@@ -64,7 +65,7 @@ def test_purge_incompatible_websockets_removes_16_keeps_15(tmp_path):
     assert (tmp_path / "websockets-15.0.1.dist-info").exists()
     assert (tmp_path / "websockets" / "__init__.py").exists()
     assert (tmp_path / "lark_oapi-1.6.5.dist-info").exists()
-    assert (tmp_path / "dingtalk_stream-0.24.3.dist-info").exists()
+    assert (tmp_path / "unrelated_pkg-1.0.dist-info").exists()
 
 
 def test_purge_incompatible_websockets_missing_dir_is_noop(tmp_path):
@@ -214,3 +215,27 @@ def test_ensure_channel_deps_returns_install_errors(monkeypatch, tmp_path):
     assert (
         "Could not find a version" in result["errors"]["definitely-missing-newsclaw-dep-for-test"]
     )
+
+
+def test_channel_maps_only_cover_three_real_channels():
+    """IM 收敛后只保留 feishu/lark、qqbot、wechat 三套真实适配器依赖。"""
+    from newsclaw.channels.deps import CHANNEL_DEPS, CHANNEL_EXTRAS
+
+    assert set(CHANNEL_DEPS) == {"feishu", "lark", "qqbot", "wechat"}
+    assert set(CHANNEL_EXTRAS) == {"feishu", "lark", "qqbot", "wechat"}
+
+
+def test_removed_channel_env_flags_are_ignored():
+    """已裁通道的旧 *_ENABLED 环境变量不再触发依赖安装。"""
+    enabled = _enabled_channels_from_env(
+        {
+            "FEISHU_ENABLED": "true",
+            "QQBOT_ENABLED": "true",
+            "WECHAT_ENABLED": "true",
+            "DINGTALK_ENABLED": "true",
+            "WEWORK_ENABLED": "true",
+            "WEWORK_WS_ENABLED": "true",
+            "ONEBOT_ENABLED": "true",
+        }
+    )
+    assert enabled == ["feishu", "qqbot", "wechat"]

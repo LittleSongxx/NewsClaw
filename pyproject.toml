@@ -66,9 +66,6 @@ dependencies = [
     "fastapi>=0.110.0,<1",
     "uvicorn>=0.27.0",
 
-    # IM Channels - Telegram (default)
-    "python-telegram-bot>=22.7",
-
     # Browser automation (built-in)
     "playwright>=1.40.0",
 
@@ -87,28 +84,6 @@ dependencies = [
 feishu = [
     "lark-oapi>=1.6.2",         # 2026 上游版本，含消息/事件/卡片 API 更新
     "qrcode>=8.0",
-]
-
-# 钉钉 IM 通道 (Stream 模式)
-dingtalk = [
-    "dingtalk-stream>=0.24.3",
-]
-
-# 企业微信 IM 通道
-wework = [
-    "aiohttp>=3.13.0",          # 多个 CVE 修复 + 性能改进
-    "pycryptodome>=3.23.0",     # ARM64 wheel + AES-GCM 性能 + 安全更新
-]
-
-# 企业微信 WebSocket 长连接通道
-wework_ws = [
-    "websockets>=15.0,<16.0",   # 兼容 lark-oapi(<16) 且保留 additional_headers API
-    "cryptography>=46.0.7",     # 补丁级安全更新
-]
-
-# OneBot 协议通道 (NapCat/Lagrange 等)
-onebot = [
-    "websockets>=15.0,<16.0",
 ]
 
 # QQ 官方机器人
@@ -170,7 +145,6 @@ desktop = [
 all = [
     # -- IM 通道 --
     "lark-oapi>=1.6.2",
-    "dingtalk-stream>=0.24.3",
     "aiohttp>=3.13.0",
     "pycryptodome>=3.23.0",
     "websockets>=15.0,<16.0",
@@ -296,10 +270,6 @@ path = "hatch_build.py"
 conflicts = [
     [
         { extra = "all" },
-        { extra = "finance-auto" },
-    ],
-    [
-        { extra = "wework-ws" },
         { extra = "finance-auto" },
     ],
 ]

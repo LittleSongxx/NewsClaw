@@ -10,11 +10,6 @@
 CHANNEL_DEPS: dict[str, list[tuple[str, str]]] = {
     "feishu": [("lark_oapi", "lark-oapi"), ("Crypto", "pycryptodome")],
     "lark": [("lark_oapi", "lark-oapi"), ("Crypto", "pycryptodome")],
-    "dingtalk": [("dingtalk_stream", "dingtalk-stream")],
-    "wework": [("aiohttp", "aiohttp"), ("Crypto", "pycryptodome")],
-    "wework_ws": [("websockets", "websockets"), ("cryptography", "cryptography")],
-    "onebot": [("websockets", "websockets")],
-    "onebot_reverse": [("websockets", "websockets")],
     "qqbot": [("websockets", "websockets")],
     "wechat": [("httpx", "httpx"), ("Crypto", "pycryptodome")],
 }
@@ -23,11 +18,6 @@ CHANNEL_DEPS: dict[str, list[tuple[str, str]]] = {
 CHANNEL_EXTRAS: dict[str, str] = {
     "feishu": "feishu",
     "lark": "feishu",
-    "dingtalk": "dingtalk",
-    "wework": "wework",
-    "wework_ws": "wework_ws",
-    "onebot": "onebot",
-    "onebot_reverse": "onebot",
     "qqbot": "qqbot",
     "wechat": "wechat",
 }

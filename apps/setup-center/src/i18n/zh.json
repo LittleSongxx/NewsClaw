@@ -981,9 +981,6 @@
     "log": "服务日志",
     "noLog": "暂无日志",
     "feishu": "飞书",
-    "wework": "企业微信",
-    "weworkWs": "企业微信(WS)",
-    "dingtalk": "钉钉",
     "qqbot": "QQ",
     "wechat": "微信",
     "needServiceRunning": "需要先启动或连接服务才能进行检测"
@@ -1370,9 +1367,6 @@
     "imTypeSmartBot": "智能机器人 (HTTP 回调)",
     "imTypeSmartBotWs": "智能机器人 (WebSocket)",
     "imTypeInternalApp": "企业内部应用 (Stream)",
-    "imTypeOneBot": "OneBot (WebSocket)",
-    "imTypeOneBotReverse": "OneBot (反向WS)",
-    "imTypeOneBotForward": "OneBot (正向WS)",
     "imTypeQQBot": "官方机器人",
     "imQQBotMode": "接入模式",
     "imQQBotModeWsHint": "WebSocket 模式：无需公网 IP，自动连接 QQ Gateway（推荐）",
@@ -1684,8 +1678,6 @@
     "botConfigInvalid": "配置不完整",
     "botMissingCredentials": "缺少必填凭据：{{fields}}",
     "botTypeFeishu": "飞书",
-    "botTypeWework": "企业微信",
-    "botTypeOnebot": "OneBot",
     "botTypeQQBot": "QQ",
     "botTypeWechat": "微信",
     "adapterStartFailed": "通道 {{name}} 启动失败"
@@ -1956,7 +1948,7 @@
     },
     "im": {
       "title": "IM 通道（可选）",
-      "desc": "连接 Telegram、飞书、钉钉等即时通讯平台，让 AI 直接在聊天中为你服务。",
+      "desc": "连接飞书、QQ 官方机器人与微信，让 AI 直接在聊天中为你服务。",
       "skip": "跳过，稍后设置",
       "skipShort": "跳过"
     },

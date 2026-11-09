@@ -134,9 +134,8 @@ type AgentProfile = {
 
 const DEFAULT_API = "http://127.0.0.1:18900";
 
-// NewsClaw fork：新建入口仅保留 微信 / 飞书 / QQ 官方机器人。
-// 被裁通道（企微/钉钉/Telegram/OneBot）的后端适配器与旧配置渲染分支保留，
-// 已存在的机器人仍可正常显示与管理，只是不再提供新建入口。
+// NewsClaw fork：IM 已收敛为 微信 / 飞书 / QQ 官方机器人三个真实适配器。
+// 新建入口与配置渲染只覆盖这三类，其余通道已从后端删除。
 const BOT_TYPES = ["wechat", "feishu", "qqbot"] as const;
 
 const BOT_TYPE_LABEL_KEYS: Record<string, string> = {
@@ -1658,11 +1657,7 @@ export function BotConfigTab({ apiBase, venvDir, apiBaseUrl }: { apiBase: string
               </Select>
             </div>
 
-            {/* 4a. OneBot mode selector */}
-
-            {/* 4b. WeWork mode selector */}
-
-            {/* 4c. QQ Bot mode selector */}
+            {/* 4. QQ Bot mode selector */}
             {editingBot.type === "qqbot" && (
               <div className="space-y-1.5">
                 <Label>{t("config.imQQBotMode")}</Label>

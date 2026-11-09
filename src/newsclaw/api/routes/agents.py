@@ -29,20 +29,8 @@ AGENT_ICON_MAX_SIZE = 4 * 1024 * 1024
 AGENT_ICON_MAX_FIELD_LENGTH = 1000
 AGENT_ICON_ALLOWED_LABEL = "BMP, GIF, JPG, PNG, WebP"
 
-# Valid IM bot types
-VALID_BOT_TYPES = frozenset(
-    {
-        "feishu",
-        "telegram",
-        "dingtalk",
-        "wework",
-        "wework_ws",
-        "onebot",
-        "onebot_reverse",
-        "qqbot",
-        "wechat",
-    }
-)
+# Valid IM bot types (NewsClaw fork: only the three adapted channels).
+VALID_BOT_TYPES = frozenset({"feishu", "qqbot", "wechat"})
 VALID_PROFILE_LIST_MODES = frozenset({"all", "inclusive", "exclusive"})
 
 

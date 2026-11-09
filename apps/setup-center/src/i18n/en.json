@@ -979,9 +979,6 @@
     "log": "Service Log",
     "noLog": "No log available",
     "feishu": "Feishu",
-    "wework": "WeCom",
-    "weworkWs": "WeCom (WS)",
-    "dingtalk": "DingTalk",
     "qqbot": "QQ",
     "wechat": "WeChat",
     "needServiceRunning": "Start or connect to a service before running health checks"
@@ -1368,9 +1365,6 @@
     "imTypeSmartBot": "Smart Bot (HTTP Callback)",
     "imTypeSmartBotWs": "Smart Bot (WebSocket)",
     "imTypeInternalApp": "Internal App (Stream)",
-    "imTypeOneBot": "OneBot (WebSocket)",
-    "imTypeOneBotReverse": "OneBot (Reverse WS)",
-    "imTypeOneBotForward": "OneBot (Forward WS)",
     "imTypeQQBot": "Official Bot",
     "imQQBotMode": "Connection Mode",
     "imQQBotModeWsHint": "WebSocket: No public IP needed, connects to QQ Gateway automatically (recommended)",
@@ -1682,8 +1676,6 @@
     "botConfigInvalid": "Incomplete config",
     "botMissingCredentials": "Missing required credentials: {{fields}}",
     "botTypeFeishu": "Feishu",
-    "botTypeWework": "WeCom",
-    "botTypeOnebot": "OneBot",
     "botTypeQQBot": "QQ",
     "botTypeWechat": "WeChat",
     "adapterStartFailed": "Channel {{name}} failed to start"
@@ -1954,7 +1946,7 @@
     },
     "im": {
       "title": "IM Channels (Optional)",
-      "desc": "Connect Telegram, Feishu, DingTalk and other messaging platforms to let AI serve you directly in chat.",
+      "desc": "Connect Feishu, QQ official bot and WeChat so the AI can serve you directly in chat.",
       "skip": "Skip, set up later",
       "skipShort": "Skip"
     },

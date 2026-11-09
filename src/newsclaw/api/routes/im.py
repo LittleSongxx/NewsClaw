@@ -816,24 +816,4 @@ async def set_owner_allowlist(request: Request, body: OwnerAllowlistRequest):
     return JSONResponse(content={"ok": True})
 
 
-("/api/im/telegram/pairing-code")
-async def get_telegram_pairing_code(request: Request):
-    """Return the current Telegram pairing code (from running adapter or file)."""
-    gateway = _get_gateway(request)
-    if gateway:
-        adapters_dict = getattr(gateway, "_adapters", None) or {}
-        for adapter in adapters_dict.values():
-            pm = getattr(adapter, "pairing_manager", None)
-            if pm and hasattr(pm, "pairing_code"):
-                return JSONResponse(content={"code": pm.pairing_code})
 
-    code_file = Path("data/telegram/pairing/pairing_code.txt")
-    if code_file.exists():
-        try:
-            code = code_file.read_text(encoding="utf-8").strip()
-            if code:
-                return JSONResponse(content={"code": code})
-        except Exception:
-            pass
-
-    return JSONResponse(content={"code": None})

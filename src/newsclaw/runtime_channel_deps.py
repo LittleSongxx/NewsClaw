@@ -235,11 +235,6 @@ def _enabled_channels_from_settings() -> list[str]:
 def _enabled_channels_from_env(env: dict[str, str]) -> list[str]:
     enabled_key_map = {
         "feishu": "FEISHU_ENABLED",
-        "dingtalk": "DINGTALK_ENABLED",
-        "wework": "WEWORK_ENABLED",
-        "wework_ws": "WEWORK_WS_ENABLED",
-        "onebot": "ONEBOT_ENABLED",
-        "onebot_reverse": "ONEBOT_ENABLED",
         "qqbot": "QQBOT_ENABLED",
         "wechat": "WECHAT_ENABLED",
     }
@@ -553,9 +548,8 @@ def ensure_channel_dependencies(
             logger.debug("failed to inject module paths after channel deps install", exc_info=True)
 
     # 安装前先清掉 channel-deps 里残留的不兼容 websockets 16.x dist-info。
-    # 即使本轮没指定 lark-oapi（例如只装钉钉），残留也无害；命中时只是把
-    # 由 wework_ws / qqbot / onebot 在新版本约束下重装的 websockets 15.x
-    # 升回干净状态。
+    # 即使本轮没指定 lark-oapi（例如只装 QQ 机器人），残留也无害；命中时只是把
+    # 由 qqbot 在新版本约束下重装的 websockets 15.x 升回干净状态。
     purged = _purge_incompatible_websockets(target_dir)
     if purged and print_fn:
         print_fn(
