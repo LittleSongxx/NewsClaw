@@ -48,7 +48,7 @@ SCHEDULED_TOOLS = [
 
 ## 📡 target_channel（通常不需要设置！）
 - 默认不传！系统自动用当前 IM 通道
-- 仅当用户明确要求时才设置（如 wework/telegram/dingtalk/feishu/slack）""",
+- 仅当用户明确要求时才设置（如 feishu/wechat/qqbot）""",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -79,7 +79,7 @@ SCHEDULED_TOOLS = [
                 },
                 "target_channel": {
                     "type": "string",
-                    "description": "指定推送到哪个已配置的 IM 通道（如 wework/telegram/dingtalk/feishu/slack）。不传则自动使用当前会话通道。⚠️ 不需要 Webhook URL，通道已在系统中配置好！",
+                    "description": "指定推送到哪个已配置的 IM 通道（如 feishu/wechat/qqbot）。不传则自动使用当前会话通道。⚠️ 不需要 Webhook URL，通道已在系统中配置好！",
                 },
                 "notify_on_start": {
                     "type": "boolean",
@@ -171,12 +171,12 @@ reminder 任务的唯一作用就是发送提醒消息。
 - notify_on_start: 开始时是否通知（仅控制执行开始/完成的状态通知，不影响 reminder 消息！）
 - notify_on_complete: 完成时是否通知（同上）
 - enabled: 是否启用（false=暂停，true=恢复）
-- target_channel: 修改推送通道（如 wework/telegram/dingtalk/feishu/slack）
+- target_channel: 修改推送通道（如 feishu/wechat/qqbot）
 
 **常见用法**：
 - "暂停任务" → enabled=false
 - "恢复任务" → enabled=true
-- "改推送到企业微信" → target_channel="wework"
+- "改推送到飞书" → target_channel="feishu"
 - ⚠️ 不需要 Webhook URL，通道已在系统中配置好！
 
 ⚠️ **不要用此工具来 "关闭提醒"！**
@@ -195,7 +195,7 @@ reminder 任务的唯一作用就是发送提醒消息。
                 "enabled": {"type": "boolean", "description": "启用/暂停任务？不传=不修改"},
                 "target_channel": {
                     "type": "string",
-                    "description": "修改推送通道（如 wework/telegram/dingtalk/feishu/slack）。不传=不修改。⚠️ 不需要 Webhook URL！",
+                    "description": "修改推送通道（如 feishu/wechat/qqbot）。不传=不修改。⚠️ 不需要 Webhook URL！",
                 },
             },
             "required": ["task_id"],

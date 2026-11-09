@@ -25,7 +25,7 @@ IM_CHANNEL_TOOLS = [
   - path: 本地文件路径
   - caption: 说明文字（可选）
   - mime/name/dedupe_key: 预留字段（可选）
-- target_channel（可选）: 目标 IM 通道名。指定后会将附件发送到该通道（如从桌面端发送文件到 telegram）。
+- target_channel（可选）: 目标 IM 通道名。指定后会将附件发送到该通道（如从桌面端发送文件到飞书）。
   不填则默认发送到当前通道（IM 模式）或返回文件 URL（桌面模式）。
 - prefer_chat_type（可选，默认 "private"）: 跨通道发送时偏好的聊天类型。
   - "private": 优先发送到私聊窗口（默认，适合截图、文件等个人交付）
@@ -43,7 +43,7 @@ IM_CHANNEL_TOOLS = [
 示例：
 - 发送截图：deliver_artifacts(artifacts=[{"type":"image","path":"data/temp/s.png","caption":"这是截图"}])
 - 发送文件：deliver_artifacts(artifacts=[{"type":"file","path":"data/out/report.md"}])
-- 跨通道发送：deliver_artifacts(artifacts=[{"type":"file","path":"data/out/report.docx"}], target_channel="telegram")
+- 跨通道发送：deliver_artifacts(artifacts=[{"type":"file","path":"data/out/report.docx"}], target_channel="feishu")
 - 从桌面发图到飞书：deliver_artifacts(artifacts=[{"type":"image","path":"data/temp/chart.png","caption":"图表"}], target_channel="feishu")
 - 发到飞书群聊：deliver_artifacts(artifacts=[{"type":"file","path":"data/out/report.md"}], target_channel="feishu", prefer_chat_type="group")""",
         "input_schema": {
@@ -80,7 +80,7 @@ IM_CHANNEL_TOOLS = [
                 },
                 "target_channel": {
                     "type": "string",
-                    "description": "目标 IM 通道名（如 telegram/wework/feishu/dingtalk）。留空或不填则发送到当前通道（IM 模式）或桌面端（Desktop 模式）。",
+                    "description": "目标 IM 通道名（如 feishu/wechat/qqbot）。留空或不填则发送到当前通道（IM 模式）或桌面端（Desktop 模式）。",
                 },
                 "prefer_chat_type": {
                     "type": "string",

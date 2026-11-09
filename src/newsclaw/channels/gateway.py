@@ -1468,14 +1468,7 @@ class MessageGateway:
             "feishu": "飞书",
             "lark": "飞书",
             "wechat": "微信",
-            "wework": "企微",
-            "wework_ws": "企微",
-            "telegram": "Telegram",
-            "dingtalk": "钉钉",
             "qqbot": "QQ",
-            "onebot": "OneBot",
-            "onebot_reverse": "OneBot",
-            "whatsapp": "WhatsApp",
         }.get(platform.lower(), platform)
         chat_label = session.chat_name or session.display_name or session.chat_id or "会话"
         chat_type = "群聊" if session.chat_type == "group" else "私聊"
@@ -1886,7 +1879,7 @@ class MessageGateway:
         """Load persisted IM owner allowlist from JSON and apply to adapters.
 
         Storage：``data/sessions/im_owner_allowlist.json`` =
-        ``{"telegram": {"owners": ["123", "456"]}, ...}``。
+        ``{"feishu": {"owners": ["ou_xxx"]}, ...}``。
         独立于 ``group_policy.json``，因为 owner 是 user-level ACL（CONTROL_PLANE
         工具的最后一道闸），group_policy 是 chat-level（哪些群可以接消息）；
         两者 §9.3 是 AND 关系，但配置面分离。
@@ -4502,18 +4495,12 @@ class MessageGateway:
         return (reply_text, ok)
 
     # 各渠道单条消息最大字符数（留余量）
-    # - telegram: API 硬限制 4096，留余量 → 4000
-    # - wework:   流式/response_url 模式下 send_message 会覆写而非追加，不应分片
-    # - dingtalk:  Webhook 文本/Markdown ≈20000
-    # - feishu:    卡片消息 ≈30000
-    # - onebot/qqbot: 一般无严格限制
+    # - feishu: 卡片消息 ≈30000
+    # - qqbot:  官方机器人接口无严格文本上限，保守取 20000
+    # - wechat: 个人微信长文本由网关分片，取 4000
     _CHANNEL_MAX_LENGTH: dict[str, int] = {
-        "telegram": 4000,
-        "wework": 0,  # 0 = 不分片，整条发送
-        "dingtalk": 18000,
         "feishu": 28000,
         "lark": 28000,
-        "onebot": 20000,
         "qqbot": 20000,
         "wechat": 4000,
     }
@@ -4557,18 +4544,16 @@ class MessageGateway:
 
     # 分片间发送间隔（秒），避免触发平台限流
     _SPLIT_SEND_INTERVAL: dict[str, float] = {
-        "telegram": 0.5,
         "wechat": 2.5,
         "feishu": 0.4,
     }
     _DEFAULT_SPLIT_INTERVAL = 0.15
 
     # 进度消息节流间隔（秒）— 不支持卡片更新的平台需要更高的节流间隔
-    # QQ/OneBot 设置较高节流：减少刷屏，降低 msg_id 被动回复窗口的消耗速度
+    # QQ 官方机器人设置较高节流：减少刷屏，降低 msg_id 被动回复窗口的消耗速度
     _CHANNEL_PROGRESS_THROTTLE: dict[str, float] = {
         "wechat": 12.0,
         "qqbot": 10.0,
-        "onebot": 10.0,
         "feishu": 3.0,
     }
 

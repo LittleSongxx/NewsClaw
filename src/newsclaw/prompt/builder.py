@@ -1211,12 +1211,11 @@ def _build_session_metadata_section(
         _channel_display = {
             "desktop": "桌面端",
             "cli": "CLI 终端",
-            "telegram": "Telegram",
             "feishu": "飞书",
-            "dingtalk": "钉钉",
-            "wecom": "企业微信",
+            "lark": "飞书",
+            "wechat": "微信",
             "qq": "QQ",
-            "onebot": "OneBot",
+            "qq_official": "QQ 官方机器人",
         }
         sid = session_context.get("session_id", "")
         channel = session_context.get("channel", "unknown")

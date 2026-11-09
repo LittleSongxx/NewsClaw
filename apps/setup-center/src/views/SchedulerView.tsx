@@ -131,19 +131,9 @@ const defaultForm: TaskForm = {
 function pad2(n: number): string { return n.toString().padStart(2, "0"); }
 
 const CHANNEL_LABELS: Record<string, string> = {
-  telegram: "Telegram",
-  dingtalk: "钉钉",
   feishu: "飞书",
-  wework: "企业微信",
-  wework_ws: "企业微信",
-  wework_bot: "企业微信",
   qqbot: "QQ",
-  onebot: "QQ(OneBot)",
-  onebot_reverse: "QQ(OneBot)",
   wechat: "微信",
-  discord: "Discord",
-  slack: "Slack",
-  whatsapp: "WhatsApp",
   web: "Web",
 };
 

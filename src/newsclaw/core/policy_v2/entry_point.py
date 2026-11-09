@@ -82,21 +82,16 @@ class EntryClassification:
     reason: str
 
 
-# Channels known to originate from IM webhooks. Centralized so future
-# adapters (Discord, Slack, Matrix, ...) only need to be added once.
+# Channels known to originate from IM webhooks. Only the three adapters the
+# project actually ships (Feishu / WeChat / QQ official) plus their aliases —
+# announcing channels without an adapter here would misclassify legacy
+# session ids as unattended IM traffic.
 IM_WEBHOOK_CHANNELS: frozenset[str] = frozenset(
     {
-        "telegram",
         "feishu",
-        "dingtalk",
-        "wecom",
-        "wework_ws",
+        "lark",
         "qq",
         "qq_official",
-        "onebot",
-        "discord",
-        "slack",
-        "matrix",
         "wechat",
     }
 )

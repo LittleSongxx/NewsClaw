@@ -175,7 +175,7 @@ def test_force_unattended_overrides_sse_channels():
 
 
 def test_channel_normalization_handles_case_and_whitespace():
-    c = classify_entry("  TELEGRAM  ")
+    c = classify_entry("  FEISHU  ")
     assert c.is_unattended is True
     assert "im-webhook" in c.reason
 
@@ -265,12 +265,12 @@ def test_classifier_integrates_with_real_session():
     from newsclaw.sessions.session import Session, SessionConfig
 
     sess = Session.create(
-        channel="telegram",
+        channel="feishu",
         chat_id="chat123",
         user_id="user42",
         config=SessionConfig(),
     )
-    apply_classification_to_session(sess, classify_entry("telegram"))
+    apply_classification_to_session(sess, classify_entry("feishu"))
     assert sess.is_unattended is True
     assert sess.unattended_strategy == "deny"
 
@@ -386,7 +386,7 @@ def test_apply_classification_swallows_getattr_failure():
     here would 500 the user's IM message or HTTP POST.
     """
     bad = _SessionRaisingOnGet()
-    cls = classify_entry("telegram")
+    cls = classify_entry("feishu")
     mutated = apply_classification_to_session(bad, cls)
     assert mutated is False, "broken session must not be reported as mutated"
 
@@ -444,7 +444,7 @@ def test_build_policy_context_session_strategy_overrides_param():
     from newsclaw.sessions.session import Session, SessionConfig
 
     sess = Session.create(
-        channel="telegram",
+        channel="feishu",
         chat_id="c1",
         user_id="u1",
         config=SessionConfig(),
@@ -455,7 +455,7 @@ def test_build_policy_context_session_strategy_overrides_param():
     ctx = build_policy_context(
         session=sess,
         session_id="t",
-        channel="telegram",
+        channel="feishu",
         is_unattended=True,
         unattended_strategy="ask_owner",  # param value, but session wins
         user_message="msg",
