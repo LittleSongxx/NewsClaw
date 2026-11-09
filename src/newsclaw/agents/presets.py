@@ -136,8 +136,11 @@ SYSTEM_PRESETS: list[AgentProfile] = [
         tools=["web_search", "news_search", "web_fetch", "get_skill_info"],
         tools_mode="inclusive",
         custom_prompt=_newsroom_collector_directive(),
-        # 采集是「搜 → 抓 → 交差」短循环；默认 20 轮会在格式化阶段空转很久。
-        max_turns=12,
+        # 采集是「搜 → 抓 → 交差」短循环，但 2026-11-09 实跑证明 12 轮不够：
+        # 3 个采集子 Agent 全部在「搜索 + 核验」阶段撞上限、返回 0 条，主 Agent
+        # 只能回退到自己逐条核验（51 轮 / 461 万输入 token）。给到 24 轮，
+        # 仍然远低于默认 100，够「搜 → 抓原文 → 交差」且不鼓励空转。
+        max_turns=24,
         icon="🔎",
         color="#2A9D8F",
         category="content",
