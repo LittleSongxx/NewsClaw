@@ -1,0 +1,41 @@
+{
+  "issue_date": "2026-09-17",
+  "title": "AI 早报 #1｜OpenAI 估值冲 1.2 万亿美元，GPT-5.5 官宣下线，语音大模型进入边想边说时代",
+  "status": "partial",
+  "sources_used": [
+    "AI 综合搜索",
+    "前沿模型动态",
+    "公司与融资",
+    "开源项目热点"
+  ],
+  "wiki_entries": [
+    "主题/大模型.md",
+    "主题/公司动态.md",
+    "主题/开源项目.md",
+    "主题/研究与论文.md",
+    "主题/政策与监管.md",
+    "公司/OpenAI.md"
+  ],
+  "feishu_doc_url": "https://feishu.cn/docx/HYHidhXD1otYHWxc10xcZ23inRd",
+  "feedback": {},
+  "scores": {
+    "source_hit": {
+      "score": 5,
+      "rationale": "sources.yaml 中 4 个信源全部产出可用条目，且无信源被空跑。"
+    },
+    "dedup": {
+      "score": 3,
+      "rationale": "首期无往期 manifest 可对标，跨期去重无法验证；仅完成组间同一事件（OpenAI 1.2 万亿融资）合并与旧闻剔除。"
+    },
+    "headline": {
+      "score": 4,
+      "rationale": "标题含估值、下线、语音三个具体钩子且与正文一致，但信息量偏满，略欠凝练。"
+    },
+    "structure": {
+      "score": 4,
+      "rationale": "按模型/资本/开源/规则四线分节，重点加粗与来源列齐备，仅研究条目的限定语可再前置更醒目。"
+    }
+  },
+  "created_at": "",
+  "generator": "ai-news-editor"
+}

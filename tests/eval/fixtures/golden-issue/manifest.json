@@ -1,0 +1,43 @@
+{
+  "issue_date": "2026-09-18",
+  "title": "AI 早报 #2｜开源量子模型、万亿估值与代码审查工具",
+  "status": "ready",
+  "sources_used": [
+    "AI 综合搜索",
+    "前沿模型动态",
+    "公司与融资"
+  ],
+  "items": [
+    {
+      "title": "英伟达发布开源量子 AI 模型家族",
+      "url": "https://example.com/news/2026-09-18/nvidia-quantum",
+      "source_name": "前沿模型动态",
+      "one_liner": "权重与训练数据全部开源，纠错速度最高提升 2.5 倍。"
+    },
+    {
+      "title": "OpenAI 洽谈新一轮融资，估值破万亿",
+      "url": "https://example.com/news/2026-09-18/openai-funding",
+      "source_name": "公司与融资",
+      "one_liner": "据报目标估值约 1 万亿美元，谈判仍处早期。"
+    },
+    {
+      "title": "阿里开源代码审查工具登顶 GitHub",
+      "url": "https://example.com/news/2026-09-18/alibaba-review",
+      "source_name": "AI 综合搜索",
+      "one_liner": "当日新增约 3200 star，采用确定性流水线混合架构。"
+    }
+  ],
+  "wiki_entries": [
+    "主题/大模型.md"
+  ],
+  "feishu_doc_url": "",
+  "feedback": {},
+  "scores": {
+    "source_hit": {"score": 4, "rationale": "三条素材覆盖三个信源，无空跑信源。"},
+    "dedup": {"score": 4, "rationale": "与窗口内期次无 URL/标题重复。"},
+    "headline": {"score": 4, "rationale": "标题含具体钩子，与正文一致。"},
+    "structure": {"score": 4, "rationale": "按模型/资本/开源三线分节。"}
+  },
+  "created_at": "2026-09-18T08:30:00",
+  "generator": "ai-news-editor"
+}

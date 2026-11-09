@@ -31,7 +31,7 @@ jobs:
       - name: Lint with ruff
         run: ruff check src/
       - name: Run tests
-        run: pytest tests/unit tests/component tests/integration -q
+        run: pytest tests/unit tests/component tests/integration tests/eval -q --cov=src/newsclaw --cov-report=term-missing --cov-fail-under=45
       - name: Build wheel
         # Also validates that the packaged skill list matches skills/catalog.json:
         # a mismatch fails here with "Forced include not found".
