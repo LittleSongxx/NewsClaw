@@ -65,7 +65,7 @@ class TestCountBasedCompaction:
 
         kept = contents[-KEEP_RECENT_TOOL_RESULTS:]
         assert all(len(c) == 2500 for c in kept), "最近 N 条必须原样保留"
-        old = contents[: -KEEP_RECENT_TOOL_RESULTS]
+        old = contents[:-KEEP_RECENT_TOOL_RESULTS]
         assert old, "应有旧结果被压缩"
         assert all("旧工具结果已压缩" in c for c in old)
         assert all(len(c) < 700 for c in old)
@@ -159,3 +159,25 @@ class TestPreservesContract:
         microcompact(messages)
         assert messages[0]["content"][0]["thinking"] == "[thinking removed by microcompact]"
         assert messages[3]["content"][0]["thinking"] == recent_thinking
+
+
+class TestFingerprintPrecision:
+    def test_long_results_with_same_prefix_are_not_merged(self):
+        """只哈希前 4000 字符会把同站点不同页的样板开头误判成重复。"""
+        prefix = "nav-boilerplate " * 300  # > 4000 chars，两条共享
+        first = prefix + "REAL-CONTENT-A " * 200
+        second = prefix + "REAL-CONTENT-B " * 200
+        messages = [
+            _tool_msg("t1", first),
+            _assistant_msg(),
+            _tool_msg("t2", second),
+            _assistant_msg(),
+            _tool_msg("t3", "recent result " * 100),
+        ]
+        microcompact(messages, keep_recent_tool_results=1)
+        contents = _contents(messages)
+        assert "已合并" not in contents[0]
+        assert "已合并" not in contents[1]
+        # 两条都应走「预览压缩」而不是被替换成合并标记
+        assert "旧工具结果已压缩" in contents[0]
+        assert "旧工具结果已压缩" in contents[1]

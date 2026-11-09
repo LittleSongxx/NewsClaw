@@ -93,8 +93,10 @@ def microcompact(
             seen_cache_refs.add(cache_key)
 
         tool_name = str(block.get("tool_name", "") or "")
+        # 用全文哈希：只哈希前 4000 字符会把「同站点不同页、开头样板相同」
+        # 的长结果误判成重复并合并，丢掉其中一份真实内容。
         fingerprint = hashlib.md5(
-            result_content[:4000].encode("utf-8", errors="ignore")
+            result_content.encode("utf-8", errors="ignore")
         ).hexdigest()[:12]
         semantic_key = f"{tool_name}:{fingerprint}"
         if seen_tool_fingerprints.get(semantic_key):
