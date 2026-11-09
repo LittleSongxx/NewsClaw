@@ -200,6 +200,11 @@ class CurrentTurnInput:
     recent_objects: tuple[TurnObject, ...] = ()
     browser_current_url: str = ""
     urls_grounded: bool = False
+    #: True = 机器生成的会话（调度任务 / 子 Agent）。这类会话的“用户消息”
+    #: 是任务简报而不是人类输入，里面的 URL 往往是模板占位符，不能作为
+    #: 引用接地对象（2026-11-09 实测：采集子 Agent 的 web_fetch 被
+    #: “应使用的 URL: https://...原始报道页”拦到全部返回空）。
+    automated: bool = False
     warnings: list[str] = field(default_factory=list)
 
     @classmethod
@@ -212,6 +217,7 @@ class CurrentTurnInput:
         pending_audio: Any = None,
         pending_files: Any = None,
         attachments: Any = None,
+        automated: bool = False,
     ) -> CurrentTurnInput:
         """Build current-turn state from text plus Desktop/IM attachment shapes."""
         text_value = text if isinstance(text, str) else ""
@@ -264,6 +270,7 @@ class CurrentTurnInput:
 
         return cls(
             text=text_value,
+            automated=automated,
             urls=tuple(_dedupe_objects(urls)),
             images=tuple(_dedupe_objects(images)),
             files=tuple(_dedupe_objects(files)),
@@ -315,6 +322,8 @@ class CurrentTurnInput:
 
     def prompt_block(self) -> str:
         """Render a compact, model-visible description of current-turn objects."""
+        if self.automated:
+            return ""
         if not self.has_objects and not self.has_resolved_references:
             return ""
 
@@ -374,6 +383,8 @@ class CurrentTurnInput:
 
     def validate_tool_call(self, tool_name: str, tool_input: dict[str, Any]) -> str | None:
         """Return an instructional block if a tool call is grounded to stale objects."""
+        if self.automated:
+            return None
         if not self.has_objects and not self.has_resolved_references:
             return None
         if self.has_objects and self.allows_history_reference:
@@ -575,11 +586,28 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _is_placeholder_url(url: str) -> bool:
+    """判断是否是提示词模板里的示例/占位 URL。
+
+    2026-11-09 实测：采集子 Agent 的任务包里带 ``https://...原始报道页``
+    这条输出示例，它被当成「用户明确引用的 URL」，于是真实 web_fetch 全被
+    接地守卫拦掉，三个采集子 Agent 全部返回空。占位符没有可解析的真实
+    host：含省略号、host 里带中日韩字符、或 host 不含点号。
+    """
+    parsed = safe_urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if not host or "." not in host or "..." in host:
+        return True
+    if any(_CJK_CHAR_RE.match(char) for char in host):
+        return True
+    return False
+
+
 def _url_objects_from_text(text: str) -> list[TurnObject]:
     objects: list[TurnObject] = []
     for match in _URL_RE.finditer(text or ""):
         normalized = _normalize_url(match.group(0))
-        if not normalized:
+        if not normalized or _is_placeholder_url(normalized):
             continue
         objects.append(TurnObject(kind="url", value=normalized, label=normalized))
     return objects

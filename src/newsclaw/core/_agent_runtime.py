@@ -184,6 +184,16 @@ def _ensure_desktop():
 logger = logging.getLogger(__name__)
 
 
+def _is_automated_session(session_id: str | None) -> bool:
+    """调度任务 / 子 Agent 会话的“用户消息”是机器生成的简报。
+
+    这类会话不做“当前轮对象接地”：任务简报里常带提示词模板的示例 URL，
+    当成用户引用会拦死真实 web_fetch（2026-11-09 实测 bug）。
+    """
+    sid = session_id or ""
+    return ":sub:" in sid or sid.startswith("scheduler_")
+
+
 def _resolve_force_tool_policy(intent: Any) -> tuple[int | None, bool]:
     """Return (force_tool_retries, tool_evidence_required) for the reasoning engine.
 
@@ -5060,6 +5070,7 @@ class Agent:
             pending_audio=pending_audio,
             pending_files=pending_files,
             attachments=attachments,
+            automated=_is_automated_session(session_id),
         )
         object_registry = (
             session.get_metadata("_session_object_registry") if session is not None else None

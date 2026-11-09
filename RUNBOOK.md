@@ -131,7 +131,50 @@ apply 的保证：只落勾选且未应用的 op → 内存构造新状态并校
 
 ---
 
-## 7. 安全边界
+## 7. 成本调优（单期 token）
+
+单期成本几乎全部来自 ReAct 每轮重发上下文。2026-11-09 实测一期：51 轮、输入
+**461 万** token——其中约 100+ 条检索/抓取结果（每条 2–3KB）一直留在历史里被
+反复重发。现在的默认策略是**按数量清理历史工具结果**（零 LLM 成本）：
+
+| 配置（`src/newsclaw/config.py`） | 默认 | 含义 |
+|---|---|---|
+| `context_tool_result_keep_recent` | 8 | 最近 N 条工具结果原样保留 |
+| `context_tool_result_min_compact_chars` | 1200 | 旧结果超过该字符数才压 |
+| `context_tool_result_preview_chars` | 400 | 压成前 N 字符 + 「需要请重查」标记 |
+
+配套的提示词约束（`PROMPT_VERSION=21`）：采集子 Agent 最多 3 次搜索 + 4 次抓取
+必须交差；主 Agent 在子 Agent 返回后**不得逐条重抓核验**，只抽查 ≤2 条。
+
+**实测 A/B（同日四跑，均为 ready；第 2–4 跑禁用外部投递）**：
+
+| 跑次 | 改动 | 轮次 | 输入 token | 观察 |
+|---|---|---|---|---|
+| 1 | 基线 | 51 | 4,616,970 | 采集员全撞 12 轮上限→主 Agent 自己采集 |
+| 2 | + 工具结果按数量清理 | 68 | 4,092,007 | 每轮上下文从 ~99k 降到 ~47k，但模型完全跳过委派、自己搜 64 次 |
+| 3 | + 采集预算/强制委派/禁逐条复核 | 53 | 2,890,599 | 已委派，但子 Agent 的 `web_fetch` 被占位 URL 生成接地拦死→返回空 |
+| 4 | + 修 URL 接地（子 Agent 能抓原文） | 69 | 3,587,828 | 委派与采集都通了（9 条 ready），但主 Agent 仍逐个抓 59 次复核 |
+
+结论：**上下文清理确实生效**（消息 token 峰值 99.6k → 23–41k），**URL 接地是真 bug 已修**；
+但**总 token 仍被「主 Agent 不信任委派结果、自己逐个抓取」主导**，prompt 约束不足以强制。
+下一步应做运行时级采集预算（delegate 成功后禁止 `web_search`、`web_fetch` 限 2 次），
+而不是继续加 prompt。
+
+看每期实际花费：
+
+```bash
+# ReAct trace 里有逐轮 tokens / context_pressure，可直接看
+python - <<'PY'
+import json, pathlib
+p = sorted(pathlib.Path("data/react_traces").glob("*/trace_*.json"))[-1]
+d = json.loads(p.read_text(encoding="utf-8"))
+print(p, d["total_tokens"], d["total_iterations"])
+PY
+# 或看 LLM/工具 span 汇总
+.venv/bin/python -m newsclaw trace-report --date <YYYY-MM-DD>
+```
+
+## 8. 安全边界
 
 - 默认：loopback 直连免鉴权（桌面/本机 CLI 场景），CORS 只放行本机 / Tauri / Capacitor 来源。
 - 收紧：`NEWSCLAW_REQUIRE_LOCAL_AUTH=1` 后，loopback 也必须带 `Authorization: Bearer <token>`；远程访问另需 `NEWSCLAW_WEB_PASSWORD` + 登录。
