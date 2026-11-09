@@ -894,6 +894,12 @@ def archive_pending_proposal_if_needed() -> Path | None:
     md_path = proposal_md_path()
     if md_path.is_file():
         dest.with_suffix(".md").write_bytes(md_path.read_bytes())
+    # state 文件的 fingerprint 与旧提案绑定；提案被归档后它已成孤儿，
+    # 若留在原处，下一次新提案会读到一个永不匹配的 applied/rejected 记录。
+    state_path = proposal_state_path()
+    if state_path.is_file():
+        dest.with_suffix(".state.json").write_bytes(state_path.read_bytes())
+        state_path.unlink(missing_ok=True)
     logger.warning(
         "[Newsroom] archived pending proposal %s (%d ops still open) → %s",
         snapshot.fingerprint[:10],

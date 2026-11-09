@@ -584,6 +584,28 @@ class TestDailyInjectionAtTrigger:
         assert dest.is_file()
         assert "待审源" in dest.read_text(encoding="utf-8")
 
+    def test_archive_moves_matching_state_file(self, isolated_newsroom):
+        """归档旧提案时 state 文件要一起走，否则新提案会撞上旧 fingerprint。"""
+        from newsclaw.newsroom.proposal import (
+            archive_pending_proposal_if_needed,
+            proposal_state_path,
+        )
+
+        _write_proposal(_add_source_payload("待审源"))
+        apply_proposal(selected_op_ids=["src-add-arxiv"])
+        state_path = proposal_state_path()
+        assert state_path.is_file()
+
+        # 复盘 Agent 重写提案 → fingerprint 变化，旧 state 成为孤儿
+        next_payload = _add_source_payload("另一个待审源", op_id="src-add-next")
+        _write_proposal(next_payload)
+        dest = archive_pending_proposal_if_needed()
+        assert dest is not None
+
+        archived_state = dest.with_suffix(".state.json")
+        assert archived_state.is_file()
+        assert not state_path.exists()
+
 
 class TestProposalAPI:
     @pytest.fixture
