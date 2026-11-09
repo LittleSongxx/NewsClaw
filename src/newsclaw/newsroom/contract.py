@@ -128,10 +128,49 @@ def _feedback_blocks_ready(feedback: dict[str, Any]) -> bool:
 _HEADING_RE = re.compile(r"^#{2,6}\s")
 _LIST_ITEM_RE = re.compile(r"^(?:\d+[.、)]\s*|[-*]\s+)(.+)$")
 _WECHAT_TITLE_RE = re.compile(r"^[-*]?\s*标题[：:]\s*(.+)$")
+_TITLE_PREFIX_RE = re.compile(r"^标题[：:]\s*")
+_TITLE_WRAPPER_CHARS = "《》\"'“”‘’「」"
+
+
+def _strip_trailing_annotations(title: str) -> str:
+    """剥掉标题尾部成对括号注解（支持嵌套，如 ``（推荐（编辑注））``）。"""
+    for _ in range(3):
+        text = title.rstrip()
+        if not text or text[-1] not in ")）":
+            return text
+        depth = 0
+        opening = -1
+        for index in range(len(text) - 1, -1, -1):
+            char = text[index]
+            if char in ")）":
+                depth += 1
+            elif char in "(（":
+                depth -= 1
+                if depth == 0:
+                    opening = index
+                    break
+        if opening <= 0:
+            return text
+        title = text[:opening].strip()
+    return title
+
+
+def _clean_title_candidate(raw: str) -> str:
+    """把 Agent 的自由写法归一成「可量字数的纯标题」。
+
+    真实产物里标题常写成 ``1. `AI圈这周真的疯了🤯`（推荐，9 字）``：列表符、
+    行内代码反引号、尾部字数/手法注解都不属于标题本体。格式钉只量标题本体
+    的长度，所以先归一化再量——语义（≤20 字）本身不放水。
+    """
+    title = raw.replace("`", "").replace("**", "").strip()
+    title = _strip_trailing_annotations(title)
+    title = _TITLE_PREFIX_RE.sub("", title).strip()
+    title = title.strip(_TITLE_WRAPPER_CHARS).strip()
+    return title
 
 
 def _section_lines(text: str, section: str) -> list[str]:
-    """取 ``### <section>`` 小节内的行（到下一个同级/更高级标题为止）。"""
+    """取 ``## <section>`` 小节内的行（到下一个同级/更高级标题为止）。"""
     lines: list[str] = []
     inside = False
     for raw_line in text.splitlines():
@@ -145,24 +184,36 @@ def _section_lines(text: str, section: str) -> list[str]:
 
 
 def _xhs_title_candidates(text: str) -> list[str]:
-    """小红书稿 `### 标题方案` 下的候选标题列表（去列表符与强调符）。"""
+    """小红书稿 `### 标题方案` 下的候选标题列表（归一化后去空）。"""
     candidates: list[str] = []
     for line in _section_lines(text, "标题方案"):
         match = _LIST_ITEM_RE.match(line)
         if not match:
             continue
-        title = match.group(1).replace("**", "").strip()
+        title = _clean_title_candidate(match.group(1))
         if title:
             candidates.append(title)
     return candidates
 
 
 def _wechat_title(text: str) -> str | None:
-    """公众号稿 `### 基础信息` 下的 `- 标题：` 行（存在性机验用）。"""
+    """公众号稿标题（存在性机验用）。
+
+    主路径：``### 基础信息`` 下的 ``- 标题：`` 行（技能模板）；
+    兼容路径：``## 标题`` / ``## 文章标题`` 小节首个非空行——历史期次用过
+    这种写法，读旧期次不应因模板演进而变成 invalid。
+    """
     for line in _section_lines(text, "基础信息"):
         match = _WECHAT_TITLE_RE.match(line)
         if match:
-            return match.group(1).strip()
+            title = _clean_title_candidate(match.group(1))
+            if title:
+                return title
+    for section in ("标题", "文章标题"):
+        for line in _section_lines(text, section):
+            title = _clean_title_candidate(line.lstrip("#>-* ").strip())
+            if title:
+                return title
     return None
 
 
