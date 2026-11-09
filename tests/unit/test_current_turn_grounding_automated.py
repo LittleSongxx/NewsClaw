@@ -33,9 +33,12 @@ class TestPlaceholderUrls:
     def test_collector_brief_does_not_ground_web_fetch(self):
         turn = CurrentTurnInput.from_inputs(COLLECTOR_BRIEF)
         assert turn.urls == ()
-        assert turn.validate_tool_call(
-            "web_fetch", {"url": "https://www.qbitai.com/2026/11/508694.html"}
-        ) is None
+        assert (
+            turn.validate_tool_call(
+                "web_fetch", {"url": "https://www.qbitai.com/2026/11/508694.html"}
+            )
+            is None
+        )
 
     def test_real_urls_are_still_extracted(self):
         turn = CurrentTurnInput.from_inputs("读这个 https://www.qbitai.com/2026/11/a.html")
@@ -45,15 +48,11 @@ class TestPlaceholderUrls:
 
 class TestAutomatedSessions:
     def test_automated_turn_skips_grounding(self):
-        turn = CurrentTurnInput.from_inputs(
-            "读这个 https://example.com/new", automated=True
-        )
+        turn = CurrentTurnInput.from_inputs("读这个 https://example.com/new", automated=True)
         assert turn.validate_tool_call("web_fetch", {"url": "https://example.com/old"}) is None
 
     def test_automated_turn_injects_no_prompt_block(self):
-        turn = CurrentTurnInput.from_inputs(
-            "读这个 https://example.com/new", automated=True
-        )
+        turn = CurrentTurnInput.from_inputs("读这个 https://example.com/new", automated=True)
         assert turn.prompt_block() == ""
         assert turn.inject_into_message("hi") == "hi"
 

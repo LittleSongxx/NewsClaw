@@ -61,12 +61,10 @@ _PACKAGE_MODULE_MAP: dict[str, tuple[str | None, str | None, str]] = {
     "static_ffmpeg": ("whisper", "Whisper 语音识别", "static-ffmpeg"),
     # -- IM 通道适配器 (已直接打包) --
     "lark_oapi": (None, None, "lark-oapi"),
-    "dingtalk_stream": (None, None, "dingtalk-stream"),
     "Crypto": (None, None, "pycryptodome"),
     "Cryptodome": (None, None, "pycryptodome"),
     "pilk": (None, None, "pilk"),
     # -- 其他 --
-    "telegram": (None, None, "python-telegram-bot"),
     "pytesseract": (None, None, "pytesseract"),
     "nacl": (None, None, "PyNaCl"),
     "modelscope": (None, None, "modelscope"),

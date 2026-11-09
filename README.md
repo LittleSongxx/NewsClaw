@@ -147,7 +147,7 @@ src/newsclaw/
 apps/setup-center/   桌面端与 Web 前端（Tauri + React）
 skills/              系统技能 77 + 精选外部技能 11
 identity/            Agent 身份（SOUL / AGENT / POLICIES / 人格库）
-tests/               6,000+ 测试（实测 6,027 收集；unit / component / integration / e2e / eval）
+tests/               6,000+ 测试（实测 6,046 收集；unit / component / integration / e2e / eval）
 ```
 
 ---

@@ -69,9 +69,7 @@ def _install_issue(source: Path, target_date: str) -> Path:
     day = contract.issue_dir(target_date)
     day.mkdir(parents=True, exist_ok=True)
     for name in (*ARTIFACTS, contract.MANIFEST_FILENAME):
-        (day / name).write_text(
-            (source / name).read_text(encoding="utf-8"), encoding="utf-8"
-        )
+        (day / name).write_text((source / name).read_text(encoding="utf-8"), encoding="utf-8")
     return day
 
 
@@ -168,9 +166,7 @@ class TestE3GoldenIssueSatisfiesReadyContract:
         )
         assert errors == []
 
-    def test_golden_manifest_roundtrips_through_write_manifest(
-        self, isolated_newsroom
-    ) -> None:
+    def test_golden_manifest_roundtrips_through_write_manifest(self, isolated_newsroom) -> None:
         _install_issue(GOLDEN_ISSUE, GOLDEN_DATE)
         manifest = _golden_manifest()
         written = contract.write_manifest(manifest)
@@ -189,18 +185,14 @@ class TestE4UnderfilledLedgerIsRejected:
         day = _install_issue(GOLDEN_ISSUE, GOLDEN_DATE)
         full = _golden_manifest()
         manifest = dataclasses.replace(full, items=full.items[:2])
-        errors = manifest.validate(
-            artifact_dir=day, require_item_ledger=True, strict_quality=True
-        )
+        errors = manifest.validate(artifact_dir=day, require_item_ledger=True, strict_quality=True)
         assert any("only 2 item(s)" in error for error in errors), errors
 
 
 class TestE5UrlOutsideLedgerIsRejected:
     """E5：稿里出现账本外 URL 必须被反向 ⊆ 机验拦住。"""
 
-    def test_extra_url_in_daily_brief_fails_reverse_ledger(
-        self, isolated_newsroom
-    ) -> None:
+    def test_extra_url_in_daily_brief_fails_reverse_ledger(self, isolated_newsroom) -> None:
         day = _install_issue(GOLDEN_ISSUE, GOLDEN_DATE)
         brief = day / ARTIFACT_DAILY_BRIEF
         brief.write_text(
@@ -211,9 +203,9 @@ class TestE5UrlOutsideLedgerIsRejected:
         errors = _golden_manifest().validate(
             artifact_dir=day, require_item_ledger=True, strict_quality=True
         )
-        assert any(
-            "outside items[]" in error and "outside.example" in error for error in errors
-        ), errors
+        assert any("outside items[]" in error and "outside.example" in error for error in errors), (
+            errors
+        )
 
 
 class TestE6TitleCollisionIsRejected:
@@ -245,9 +237,7 @@ class TestE6TitleCollisionIsRejected:
             require_item_ledger=True,
             strict_quality=True,
         )
-        assert any(
-            f"item title already used on {OLD_DATE}" in error for error in errors
-        ), errors
+        assert any(f"item title already used on {OLD_DATE}" in error for error in errors), errors
         assert any("同题重发" in error for error in errors), errors
 
 
@@ -279,8 +269,7 @@ class TestE7DeterministicRubric:
                 f"xhs 候选全部 <= {XIAOHONGSHU_TITLE_MAX_CHARS} 字",
                 bool(candidates)
                 and all(
-                    sum(1 for ch in title if not ch.isspace())
-                    <= XIAOHONGSHU_TITLE_MAX_CHARS
+                    sum(1 for ch in title if not ch.isspace()) <= XIAOHONGSHU_TITLE_MAX_CHARS
                     for title in candidates
                 ),
                 20,
@@ -295,9 +284,7 @@ class TestE7DeterministicRubric:
         total = sum(points for _name, ok, points in rows if ok)
         lines = ["E7 确定性 rubric（fixtures/golden-issue）", "-" * 52]
         for name, ok, points in rows:
-            lines.append(
-                f"{'PASS' if ok else 'FAIL'} | {name} | {points if ok else 0}/{points}"
-            )
+            lines.append(f"{'PASS' if ok else 'FAIL'} | {name} | {points if ok else 0}/{points}")
         lines.append("-" * 52)
         lines.append(f"TOTAL {total}/100")
         table = "\n".join(lines)
