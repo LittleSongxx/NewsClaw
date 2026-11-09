@@ -26,7 +26,7 @@ from newsclaw.newsroom.editorial import load_editorial_policy
 from newsclaw.newsroom.items import format_seen_items_for_prompt
 from newsclaw.newsroom.sources import load_sources, sources_path
 
-PROMPT_VERSION = 20
+PROMPT_VERSION = 23
 
 #: 每日任务运行时注入块的起止标记。播种缓存的 prompt 可能含旧块，
 #: 调度触发时会剥掉再拼当期 sources / 方针。
@@ -51,7 +51,7 @@ _MANIFEST_SCHEMA = """\
   "items": [
     {
       "title": "入选标题",
-      "url": "https://...（必须出现在三份稿里）",
+      "url": "<原始报道页链接，必须出现在三份稿里>",
       "source_name": "sources.yaml 里的 name",
       "one_liner": "一句话要点"
     }
@@ -225,6 +225,12 @@ def build_daily_prompt(config: NewsroomConfig | None = None) -> str:
   用 list_directory + read_file 两步即可得到。
 
 【第 1 步 · 采集（并行委派）】
+- **硬性顺序（契约，不是建议）**：本步必须先调用 `delegate_parallel`。在至少一次
+  成功的 `delegate_parallel` 之前，**禁止**调用 `web_search` / `web_fetch` 自行采集。
+  只有两种情况允许自己采集：① `delegate_parallel` 返回失败/不可用；② 子 Agent
+  返回空或明显不合格。自己采集时每个信源最多 2 次搜索，全程 `web_search` ≤6 次。
+  （2026-11-09 两次实测：模型跳过委派自己搜了 64 次 → 68 轮 / 409 万 token；
+  正常委派路径是 3 个子 Agent 各 1–2 轮，主上下文只收 JSON 条目。）
 - 把 sources.yaml 的信源按 weight 分成 2–3 组，用 **delegate_parallel** 一次性派出
   并行采集（子 Agent 用 agent_id="news-collector"，不要用 content-creator）。
   分组原则：同一主题/同一语种放一组，组间规模均衡。
@@ -244,6 +250,10 @@ def build_daily_prompt(config: NewsroomConfig | None = None) -> str:
 - 子 Agent 全部返回后：你在内存里合并，按规范化 URL 去重（同一链接只留一条），
   再按主题聚类、剔营销稿，得到**入选短名单**。写作只能用这份短名单，
   禁止把未入账的链接写进三产物。
+- 子 Agent 已经打开过原文核验：合并阶段**禁止**逐条重新 web_fetch 复核；
+  只对无链接、自相矛盾或明显过期的条目抽查，且合计 ≤2 条。
+  （2026-11-09 实跑：采集子 Agent 撞上限返回空后主 Agent 自己逐条核验，
+  51 轮 ReAct / 461 万输入 token——这一步是主要浪费来源。）
 
 【第 2 步 · 整理产物】在 {root / "issues"} 下建**注入块 issue_date** 的目录
 （不要用你自己的「今天」——跨午夜运行时两者可能不同），依次写出
@@ -428,4 +438,5 @@ COLLECTOR_DIRECTIVE = (
     "不要写小红书/公众号终稿，不要写文件，不要再委派别人。"
     "营销通稿、标题党和任务包里的已见 URL 直接丢弃。"
     "核验够数或确认无结果后立刻输出，禁止无工具调用的空转推理。"
+    "预算有限：最多 3 次 web_search + 4 次 web_fetch（含失败），到上限必须交差。"
 )
