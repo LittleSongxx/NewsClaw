@@ -181,6 +181,21 @@ class TaskExecutor:
             f"TaskExecutor: executing task {task.id} ({task.name}) [type={task.task_type.value}]"
         )
 
+        # 早报每日管线：显式激活采集预算（进程内状态见
+        # newsroom/collection_budget.py）。工具执行层按会话前缀判断是否
+        # 属于本次任务的主 Agent，因此这里必须显式 activate/deactivate，
+        # 不依赖 ContextVar 传播。
+        _task_meta = task.metadata if isinstance(task.metadata, dict) else {}
+        _budget_task_id: str | None = None
+        if _task_meta.get("newsroom") == "daily":
+            try:
+                from ..newsroom.collection_budget import activate as _activate_budget
+
+                _activate_budget(task.id)
+                _budget_task_id = str(task.id)
+            except Exception:  # noqa: BLE001 - 预算激活失败不应阻断任务
+                logger.debug("TaskExecutor: collection budget activate skipped", exc_info=True)
+
         # Resolve chat_id at runtime if the task has a channel but no chat_id
         if task.channel_id and not task.chat_id and self.gateway:
             sm = getattr(self.gateway, "session_manager", None)
@@ -206,6 +221,14 @@ class TaskExecutor:
                 error_msg,
             )
             return False, f"{CHANNEL_UNAVAILABLE_MARKER} {error_msg}"
+        finally:
+            if _budget_task_id is not None:
+                try:
+                    from ..newsroom.collection_budget import deactivate as _deactivate_budget
+
+                    _deactivate_budget(_budget_task_id)
+                except Exception:  # noqa: BLE001
+                    logger.debug("TaskExecutor: collection budget deactivate skipped", exc_info=True)
 
     async def _execute_reminder(self, task: ScheduledTask) -> tuple[bool, str]:
         """

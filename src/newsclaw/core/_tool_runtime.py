@@ -508,6 +508,10 @@ class ToolExecutor:
         if grounding_block:
             return grounding_block, None
 
+        newsroom_block = self._check_newsroom_collection_budget(tool_name, session_id)
+        if newsroom_block:
+            return newsroom_block, None
+
         # v1.28 S3 + S4 (plan: conversation concurrency v1.28).
         #
         # S3 — per-tool AbortScope so subprocesses, nested awaits, and
@@ -1139,6 +1143,10 @@ class ToolExecutor:
         if grounding_block:
             return grounding_block, None
 
+        newsroom_block = self._check_newsroom_collection_budget(tool_name, session_id)
+        if newsroom_block:
+            return newsroom_block, None
+
         if getattr(policy_result, "metadata", {}).get("needs_checkpoint"):
             try:
                 from .checkpoint import get_checkpoint_manager
@@ -1709,6 +1717,25 @@ class ToolExecutor:
             return current_turn.validate_tool_call(tool_name, tool_input or {})
         except Exception as exc:
             logger.debug("[CurrentTurn] grounding check skipped: %s", exc)
+            return None
+
+    def _check_newsroom_collection_budget(
+        self, tool_name: str, session_id: str | None = None
+    ) -> str | None:
+        """早报每日管线的采集预算闸门（见 newsroom.collection_budget）。
+
+        只对 ``newsroom == "daily"`` 的主 Agent 生效（采集子 Agent 的会话 id
+        带 ``:sub:``，不受限）；预算用完时返回可解释的拒绝文本（作为
+        tool_result 回给模型），不抛异常、不阻断其它任务。
+        """
+        if tool_name not in {"delegate_parallel", "web_search", "web_fetch"}:
+            return None
+        try:
+            from ..newsroom.collection_budget import consume
+
+            return consume(tool_name, session_id=session_id)
+        except Exception as exc:  # noqa: BLE001 - fail-open
+            logger.debug("[ToolExec] newsroom budget check skipped: %s", exc)
             return None
 
     def _observe_current_turn_tool_result(

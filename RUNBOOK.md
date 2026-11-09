@@ -176,6 +176,24 @@ PY
 .venv/bin/python -m newsclaw trace-report --date <YYYY-MM-DD>
 ```
 
+**运行时采集预算（v1.31.0，不靠 prompt 自觉）**
+
+`newsroom/collection_budget.py` 在工具执行层兜底，只作用于 `newsroom == daily`
+的调度任务、且只约束主 Agent（`:sub:` 采集子 Agent 不受限）：
+
+| 阶段 | web_search 上限 | web_fetch 上限 |
+|---|---|---|
+| 未委派（探索） | 8 | 10 |
+| 已尝试 delegate_parallel 后 | 2 | 6 |
+
+超限时工具调用直接返回可解释的拒绝文案（写进 tool_result，模型能看到并转去写作），
+不是抛异常。可用环境变量临时调小/调大复现问题：
+`NEWSCLAW_NEWSROOM_SEARCH_BUDGET_BEFORE` / `NEWSCLAW_NEWSROOM_FETCH_BUDGET_BEFORE` /
+`NEWSCLAW_NEWSROOM_SEARCH_BUDGET_AFTER` / `NEWSCLAW_NEWSROOM_FETCH_BUDGET_AFTER`。
+
+实测（2026-11-09，同日四跑）：既有 prompt 约束把输入 token 从 461 万降到 359 万；
+prompt + 运行时预算后单期 28 轮 / 103 万输入 token / 4.9 分钟（见 `data/react_traces/`）。
+
 ## 8. 安全边界
 
 - 默认：loopback 直连免鉴权（桌面/本机 CLI 场景），CORS 只放行本机 / Tauri / Capacitor 来源。
