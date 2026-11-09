@@ -96,6 +96,55 @@ async def test_user_handoff_reply_skips_completion_verify():
 
 
 @pytest.mark.asyncio
+async def test_unattended_task_does_not_skip_verify_for_handoff_wording(monkeypatch):
+    """无人值守任务的「待人审 apply」不是用户交接，必须继续走完成度复核。
+
+    回归背景：周复盘 prompt 要求最终回复写「待人审 apply」，TaskVerify 误判为
+    等用户回复 → 跳过 verify → 任务被判 waiting_user/failed，而产物其实已写盘、
+    文件已推送。
+    """
+    from newsclaw.core import _reasoning_runtime
+
+    monkeypatch.setattr(_reasoning_runtime, "_is_unattended_execution", lambda: True)
+    response_handler = AsyncMock()
+    response_handler.verify_task_completion = AsyncMock(return_value=False)
+    engine = ReasoningEngine(
+        brain=None,
+        tool_executor=None,
+        context_manager=None,
+        response_handler=response_handler,
+        agent_state=AgentState(),
+    )
+    reply = (
+        "复盘已完成，三份文件都已推送到飞书（deliver_artifacts 回执为 3/3 delivered）。"
+        "两个提案路径已给出，待人审 apply。"
+    )
+    result = await engine._handle_final_answer(
+        decision=Decision(type=DecisionType.FINAL_ANSWER, text_content=reply),
+        working_messages=[],
+        original_messages=[{"role": "user", "content": "[定时任务执行] 每周复盘"}],
+        tools_executed_in_task=True,
+        executed_tool_names=["write_file", "deliver_artifacts"],
+        delivery_receipts=[{"status": "delivered"}],
+        all_tool_results=[
+            {"type": "tool_result", "tool_use_id": "t1", "content": "ok", "is_error": False}
+        ],
+        no_tool_call_count=0,
+        verify_incomplete_count=0,
+        no_confirmation_text_count=0,
+        max_no_tool_retries=1,
+        max_verify_retries=2,
+        max_confirmation_text_retries=1,
+        base_force_retries=1,
+        conversation_id="c1",
+    )
+
+    assert engine._last_exit_reason != "waiting_user"
+    response_handler.verify_task_completion.assert_awaited_once()
+    assert result
+
+
+@pytest.mark.asyncio
 async def test_recoverable_tool_error_does_not_become_user_handoff():
     response_handler = AsyncMock()
     response_handler.verify_task_completion = AsyncMock(return_value=False)

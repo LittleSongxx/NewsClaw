@@ -236,6 +236,23 @@ def _select_task_final_response(current: str, candidates: list[str]) -> str:
     )
 
 
+def _is_unattended_execution() -> bool:
+    """当前是否在无人值守执行里（调度任务）——这类执行没有「等用户回复」语义。
+
+    TaskVerify 会把「请你确认 / 待人工处理」当成用户交接并跳过完成度复核；
+    但定时任务的最终回复本来就常以「待人审 apply」收尾，跳过复核会让任务被判
+    waiting_user 而失败。无人值守上下文（PolicyContext.is_unattended）里不启用
+    该快捷路径，交给正常 verify / ArtifactValidator 判定。
+    """
+    try:
+        from .policy_v2.context import get_current_context
+
+        ctx = get_current_context()
+    except Exception:  # noqa: BLE001 - 检测失败按 attended 处理（保持旧行为）
+        return False
+    return bool(getattr(ctx, "is_unattended", False)) if ctx is not None else False
+
+
 def _unpack_tool_result_payload(value: Any) -> tuple[str, ConfigHint | None, dict[str, Any]]:
     raw_payload, hint = value
     content, metadata = split_tool_result_payload(raw_payload)
@@ -3925,13 +3942,7 @@ class ReasoningEngine:
                         # 交付回执收集（与 run() 一致）：直接交付、子节点提交、
                         # 父节点验收中继交付，三种 receipts 都算 TaskVerify
                         # 眼里的有效交付证据。
-                        if (
-                            tool_name
-                            in (
-                                "deliver_artifacts",
-                            )
-                            and result_text
-                        ):
+                        if tool_name in ("deliver_artifacts",) and result_text:
                             try:
                                 _rt = result_text
                                 _lm = "\n\n[执行日志]"
@@ -5925,9 +5936,11 @@ class ReasoningEngine:
             _, cleaned_text = parse_intent_tag(cleaned_text)
             if cleaned_text and len(cleaned_text.strip()) > 0:
                 last_user_request = ResponseHandler.get_last_user_request(original_messages)
-                if _looks_like_waiting_for_user_response(
-                    cleaned_text
-                ) and not _has_recoverable_tool_issue(all_tool_results):
+                if (
+                    _looks_like_waiting_for_user_response(cleaned_text)
+                    and not _has_recoverable_tool_issue(all_tool_results)
+                    and not _is_unattended_execution()
+                ):
                     logger.info(
                         "[TaskVerify] Skipping completion verify because response "
                         "hands control back to user."
