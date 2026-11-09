@@ -1,4 +1,7 @@
+import shutil
 from pathlib import Path
+
+import pytest
 
 from scripts.build_cache_key import INPUTS, fingerprint
 
@@ -16,6 +19,10 @@ def test_rust_cache_tracks_frontend_assets_embedded_by_tauri() -> None:
     assert "apps/setup-center/vite.config.ts" in INPUTS["rust"]
 
 
+@pytest.mark.skipif(
+    shutil.which("rustc") is None,
+    reason="rustc is not installed locally; fingerprint() shells out to `rustc -Vv`",
+)
 def test_fingerprints_are_stable_sha256_values() -> None:
     for kind in INPUTS:
         value = fingerprint(kind)

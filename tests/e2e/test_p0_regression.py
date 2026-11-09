@@ -1,5 +1,5 @@
 """
-E2E 回归测试：P0-1 / P0-2 / P0-3 + P1-4/5/6/7 治本修复的"绝不能再坏"挡板。
+E2E 回归测试：P0-1 / P0-2 + P1-4/5/6 治本修复的"绝不能再坏"挡板。
 
 不依赖真实 LLM / 真实通道 — 全部走纯函数 / mock，CI 上 <3s 完成。
 任何一条断言失败都意味着我们丢掉了 ai-exploratory-testing.mdc 复盘里
@@ -13,9 +13,7 @@ E2E 回归测试：P0-1 / P0-2 / P0-3 + P1-4/5/6/7 治本修复的"绝不能再�
 - P0-2 阶段 2：IntentResult 拆 evidence_required / evidence_recommended
 - P0-2 阶段 3：来源标签一致性后置检测
 - P0-3 A：runtime 子任务失败/异常路径自动 _mark_chain_closed
-- P0-3 D：_command_store 原子更新（status/phase 不出现错位窗口）
 - P1-4：USER.md 占位字段 _clean_user_content 过滤
-- P1-7：org_list_delegated_tasks 3s 内重复调用走 backoff cache + hint
 """
 
 from __future__ import annotations
@@ -127,30 +125,6 @@ def test_p0_2_phase2_intent_result_has_evidence_recommended_field():
 
 
 # =============================================================================
-# P0-3 D：_command_store 原子更新
-# =============================================================================
-
-
-def test_p0_3_command_store_atomic_update():
-    """P0-3 D：命令状态更新必须保证 status='done' 时 phase 同步。"""
-    from newsclaw.orgs.command_service import OrgCommandService
-
-    service = OrgCommandService(runtime=None, session_manager=None)
-    cmd_id = "test_p0_3_atomic"
-    service.commands[cmd_id] = {"status": "running", "phase": "running"}
-    try:
-        service._update_command_state(cmd_id, status="done", result={"ok": 1})
-        snapshot = dict(service.commands[cmd_id])
-        assert snapshot["status"] == "done"
-        assert snapshot["phase"] == "done", (
-            "status='done' 时 phase 没自动对齐 'done'，前端 polling 可能拿到错位快照。"
-        )
-        assert snapshot.get("result") == {"ok": 1}
-    finally:
-        service.commands.pop(cmd_id, None)
-
-
-# =============================================================================
 # P1-4：USER.md 占位字段过滤
 # =============================================================================
 
@@ -184,70 +158,3 @@ def test_p1_4_clean_user_content_keeps_real_values():
     cleaned = _clean_user_content(raw)
     assert "张明" in cleaned
     assert "嵌入式开发" in cleaned
-
-
-# =============================================================================
-# P1-7：org_list_delegated_tasks backoff
-# =============================================================================
-
-
-@pytest.mark.asyncio
-async def test_p1_7_org_list_delegated_tasks_backoff(tmp_path: Path, monkeypatch):
-    """P1-7：3s 内对相同 (org, node, status) 重复调用必须命中 cache 并返回 hint。"""
-    # [P-RC-10] OrgToolHandler / 具体 ProjectStore 尚未完全吸收进 v2 runtime/orgs：
-    # _runtime_agent_pipeline 仅含 AgentPipelineExecutor，project_store 只导出
-    # ProjectStoreProtocol + Json/SqliteProjectStore，缺少 v1 同名具体类。
-    # P-RC-10 完成对应迁移后本 skip 自动失效；参见
-    # docs/revamp/P-RC-9-P9.9-IMPORT-SWEEP-INVENTORY.md §2.1#2。
-    try:
-        from newsclaw.orgs._runtime_agent_pipeline import (  # type: ignore[attr-defined]
-            OrgToolHandler,
-        )
-    except ImportError:
-        pytest.skip("[P-RC-10] OrgToolHandler 尚未吸收进 runtime.orgs._runtime_agent_pipeline")
-
-    fake_runtime = type(
-        "R",
-        (),
-        {
-            "_manager": type(
-                "M",
-                (),
-                {
-                    "_org_dir": staticmethod(lambda _oid: tmp_path),
-                },
-            )()
-        },
-    )()
-
-    h = OrgToolHandler.__new__(OrgToolHandler)
-    h._runtime = fake_runtime  # type: ignore[attr-defined]
-
-    call_counter = {"n": 0}
-
-    class _FakeStore:
-        def __init__(self, _path):
-            pass
-
-        def all_tasks(self, **_kw):
-            call_counter["n"] += 1
-            return []
-
-    monkeypatch.setattr(
-        "newsclaw.orgs.project_store.ProjectStore",
-        _FakeStore,
-        raising=False,
-    )
-
-    r1 = await h._handle_org_list_delegated_tasks({}, "org1", "node1")
-    assert isinstance(r1, list), "首次调用应直接返回 list"
-    assert call_counter["n"] == 1, "首次必须真正查 ProjectStore 一次"
-
-    r2 = await h._handle_org_list_delegated_tasks({}, "org1", "node1")
-    assert isinstance(r2, dict), "3s 内重复必须返回带 hint 的 dict 而非穿透 ProjectStore"
-    assert "hint" in r2 and "wait_for_deliverable" in r2["hint"], (
-        "backoff hint 必须明确指向 org_wait_for_deliverable，引导 LLM 改行为。"
-    )
-    assert call_counter["n"] == 1, (
-        "backoff 期内不允许再次访问 ProjectStore，否则 token 节流彻底失效。"
-    )

@@ -1,43 +1,31 @@
 """
-记忆系统完整测试套件
+记忆系统回归测试（v2 单路径架构）
 
-覆盖所有记忆系统改动的功能测试，共 50+ 个测试用例
+v2 起 SQLite (conversation_turns / memories) 是唯一真相源，v1 的
+``memories.json`` 双写、``MemoryManager.consolidator``、以及同步初始化的
+``VectorStore`` 直连 API 都已删除。本文件只覆盖仍然存在的 v2 契约：
 
-运行方式:
-    uv run pytest tests/regression/test_memory_system.py -v
-    uv run pytest tests/regression/test_memory_system.py -v -k "vector"  # 只运行向量相关测试
+- MemoryExtractor：同步/异步提取、JSON 解析、去重（未变）。
+- MemoryManager：add / delete / 检索 / 统计 / 跨实例持久化。
+- 对话轮次：写入 SQLite ``conversation_turns``，可按关键词回查。
+- 边界条件：超长 / Unicode / 空 MEMORY.md。
+
+历史 v1 用例（VectorStore 同步 add/search/get_stats、memories.json 加载、
+MEMORY.md 直接注入）已随架构删除；等效 v2 覆盖见
+``tests/unit/test_vector_store_retry.py``、``tests/unit/test_memory_*``
+与 ``tests/component/test_prompt_retriever.py``。
 """
 
-import json
 import shutil
-import sys
 import tempfile
-from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 from newsclaw.memory.extractor import MemoryExtractor
 from newsclaw.memory.manager import MemoryManager
 from newsclaw.memory.types import ConversationTurn, Memory, MemoryPriority, MemoryType
-from newsclaw.memory.vector_store import VectorStore
-
-try:
-    import chromadb  # noqa: F401
-    import sentence_transformers  # noqa: F401
-
-    _VECTOR_DEPS_AVAILABLE = True
-except ImportError:
-    _VECTOR_DEPS_AVAILABLE = False
-
-_skip_no_vector = pytest.mark.skipif(
-    not _VECTOR_DEPS_AVAILABLE,
-    reason="sentence-transformers and/or chromadb not installed",
-)
-
 
 # ============================================================
 # Fixtures
@@ -121,230 +109,6 @@ def mock_brain():
     brain = Mock()
     brain.think = AsyncMock(return_value="NONE")
     return brain
-
-
-# ============================================================
-# VectorStore 测试 (15 个)
-# ============================================================
-
-
-@_skip_no_vector
-class TestVectorStore:
-    """向量存储测试"""
-
-    # --- 初始化测试 ---
-
-    def test_01_init_creates_directory(self, temp_data_dir):
-        """测试初始化创建目录"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        # 延迟初始化，访问 enabled 触发
-        _ = vs.enabled
-        chromadb_dir = temp_data_dir / "chromadb"
-        assert chromadb_dir.exists()
-
-    def test_02_init_with_custom_model(self, temp_data_dir):
-        """测试使用自定义模型初始化"""
-        vs = VectorStore(
-            data_dir=temp_data_dir, model_name="shibing624/text2vec-base-chinese", device="cpu"
-        )
-        assert vs.model_name == "shibing624/text2vec-base-chinese"
-        assert vs.device == "cpu"
-
-    def test_03_enabled_property(self, temp_data_dir):
-        """测试 enabled 属性"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        # 首次访问触发初始化
-        assert vs.enabled == True
-        # 再次访问应该返回缓存值
-        assert vs.enabled == True
-
-    # --- 添加记忆测试 ---
-
-    def test_04_add_memory_success(self, temp_data_dir, sample_memory):
-        """测试成功添加记忆"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        result = vs.add_memory(
-            memory_id=sample_memory.id,
-            content=sample_memory.content,
-            memory_type=sample_memory.type.value,
-            priority=sample_memory.priority.value,
-            importance=sample_memory.importance_score,
-            tags=sample_memory.tags,
-        )
-        assert result == True
-        assert vs.get_stats()["count"] == 1
-
-    def test_05_add_memory_with_empty_content(self, temp_data_dir):
-        """测试添加空内容记忆"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        result = vs.add_memory(
-            memory_id="test_empty",
-            content="",  # 空内容
-            memory_type="fact",
-            priority="short_term",
-            importance=0.5,
-        )
-        # 空内容也应该能添加（ChromaDB 会处理）
-        assert result == True
-
-    def test_06_add_memory_with_special_chars(self, temp_data_dir):
-        """测试添加包含特殊字符的记忆"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        result = vs.add_memory(
-            memory_id="test_special",
-            content="路径: D:\\code\\项目\\测试.py 包含 'quotes' 和 \"double quotes\"",
-            memory_type="fact",
-            priority="long_term",
-            importance=0.7,
-        )
-        assert result == True
-
-    # --- 搜索测试 ---
-
-    def test_07_search_returns_results(self, temp_data_dir, sample_memories):
-        """测试搜索返回结果"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        for m in sample_memories:
-            vs.add_memory(
-                m.id, m.content, m.type.value, m.priority.value, m.importance_score, m.tags
-            )
-
-        results = vs.search("Python 编程", limit=3)
-        assert len(results) > 0
-        assert len(results) <= 3
-
-    def test_08_search_with_type_filter(self, temp_data_dir, sample_memories):
-        """测试按类型过滤搜索"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        for m in sample_memories:
-            vs.add_memory(
-                m.id, m.content, m.type.value, m.priority.value, m.importance_score, m.tags
-            )
-
-        results = vs.search("用户", limit=10, filter_type="preference")
-        # 所有结果应该是 preference 类型
-        for mid, _ in results:
-            # 验证通过 - 只要有结果返回即可
-            pass
-        assert isinstance(results, list)
-
-    def test_09_search_with_min_importance(self, temp_data_dir, sample_memories):
-        """测试按最小重要性过滤"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        for m in sample_memories:
-            vs.add_memory(
-                m.id, m.content, m.type.value, m.priority.value, m.importance_score, m.tags
-            )
-
-        results = vs.search("测试", limit=10, min_importance=0.8)
-        # 结果应该只包含重要性 >= 0.8 的记忆
-        assert isinstance(results, list)
-
-    def test_10_search_empty_query(self, temp_data_dir, sample_memories):
-        """测试空查询"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        for m in sample_memories:
-            vs.add_memory(
-                m.id, m.content, m.type.value, m.priority.value, m.importance_score, m.tags
-            )
-
-        results = vs.search("", limit=3)
-        # 空查询应该返回结果（基于向量相似度）
-        assert isinstance(results, list)
-
-    # --- 删除和更新测试 ---
-
-    def test_11_delete_memory(self, temp_data_dir, sample_memory):
-        """测试删除记忆"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        vs.add_memory(
-            sample_memory.id,
-            sample_memory.content,
-            sample_memory.type.value,
-            sample_memory.priority.value,
-            sample_memory.importance_score,
-            sample_memory.tags,
-        )
-
-        assert vs.get_stats()["count"] == 1
-        result = vs.delete_memory(sample_memory.id)
-        assert result == True
-        assert vs.get_stats()["count"] == 0
-
-    def test_12_update_memory(self, temp_data_dir, sample_memory):
-        """测试更新记忆"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        vs.add_memory(
-            sample_memory.id,
-            sample_memory.content,
-            sample_memory.type.value,
-            sample_memory.priority.value,
-            sample_memory.importance_score,
-            sample_memory.tags,
-        )
-
-        result = vs.update_memory(
-            memory_id=sample_memory.id,
-            content="更新后的内容",
-            memory_type="fact",
-            priority="permanent",
-            importance=0.95,
-        )
-        assert result == True
-
-    # --- 批量操作测试 ---
-
-    def test_13_batch_add(self, temp_data_dir, sample_memories):
-        """测试批量添加"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        batch_data = [
-            {
-                "id": m.id,
-                "content": m.content,
-                "type": m.type.value,
-                "priority": m.priority.value,
-                "importance": m.importance_score,
-                "tags": m.tags,
-            }
-            for m in sample_memories
-        ]
-
-        added = vs.batch_add(batch_data)
-        assert added == len(sample_memories)
-        assert vs.get_stats()["count"] == len(sample_memories)
-
-    def test_14_clear_all(self, temp_data_dir, sample_memories):
-        """测试清空所有记忆"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        for m in sample_memories:
-            vs.add_memory(
-                m.id, m.content, m.type.value, m.priority.value, m.importance_score, m.tags
-            )
-
-        assert vs.get_stats()["count"] > 0
-        result = vs.clear()
-        assert result == True
-        assert vs.get_stats()["count"] == 0
-
-    def test_15_get_stats(self, temp_data_dir, sample_memories):
-        """测试获取统计信息"""
-        vs = VectorStore(data_dir=temp_data_dir)
-        for m in sample_memories:
-            vs.add_memory(
-                m.id, m.content, m.type.value, m.priority.value, m.importance_score, m.tags
-            )
-
-        stats = vs.get_stats()
-        assert "enabled" in stats
-        assert "count" in stats
-        assert "model" in stats
-        assert "device" in stats
-        assert stats["count"] == len(sample_memories)
-
-
-# ============================================================
-# MemoryExtractor 测试 (12 个)
-# ============================================================
 
 
 class TestMemoryExtractor:
@@ -480,45 +244,38 @@ class TestMemoryExtractor:
         assert unique == []
 
 
-# ============================================================
-# MemoryManager 测试 (12 个)
-# ============================================================
-
-
-@_skip_no_vector
 class TestMemoryManager:
     """记忆管理器测试"""
 
     # --- 初始化测试 ---
 
     def test_28_init_creates_components(self, temp_data_dir, temp_memory_md):
-        """测试初始化创建所有组件"""
+        """v2：初始化创建 store / retrieval / extractor；v1 consolidator 已删。"""
         mm = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
         assert mm.extractor is not None
-        assert mm.consolidator is not None
-        assert mm.vector_store is not None
+        assert mm.retrieval_engine is not None
+        assert mm.store is not None
+        assert not hasattr(mm, "consolidator"), "v1 consolidator 已从 v2 架构删除"
 
-    def test_29_init_loads_existing_memories(self, temp_data_dir, temp_memory_md, sample_memories):
-        """测试初始化加载现有记忆"""
-        # 先保存一些记忆
-        memories_file = temp_data_dir / "memories.json"
-        with open(memories_file, "w", encoding="utf-8") as f:
-            json.dump([m.to_dict() for m in sample_memories], f)
-
+    def test_29_init_loads_existing_memories(self, temp_data_dir, temp_memory_md, sample_memory):
+        """v2：记忆持久化在 SQLite，新实例初始化时从库回填缓存。"""
         mm = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
-        assert len(mm._memories) == len(sample_memories)
+        memory_id = mm.add_memory(sample_memory)
+        assert memory_id != ""
 
-    # --- 添加记忆测试 ---
+        reopened = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
+        assert memory_id in reopened._memories
+        assert len(reopened.store.load_all_memories()) == 1
 
-    def test_30_add_memory_to_both_stores(self, temp_data_dir, temp_memory_md, sample_memory):
-        """测试添加记忆同时存入 JSON 和向量库"""
+    def test_30_add_memory_to_sqlite_and_cache(self, temp_data_dir, temp_memory_md, sample_memory):
+        """v2：add_memory 写 SQLite 并同步内存缓存（不再有独立 JSON 文件）。"""
         mm = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
         memory_id = mm.add_memory(sample_memory)
 
         assert memory_id != ""
         assert memory_id in mm._memories
-        # 向量库也应该有
-        assert mm.vector_store.get_stats()["count"] == 1
+        assert len(mm.store.load_all_memories()) == 1
+        assert mm.get_memory(memory_id) is not None
 
     def test_31_add_memory_deduplicates(self, temp_data_dir, temp_memory_md, sample_memory):
         """测试添加重复记忆时去重"""
@@ -534,45 +291,22 @@ class TestMemoryManager:
         result = mm.add_memory(duplicate)
         assert result == ""  # 去重，返回空
 
-    # --- 删除记忆测试 ---
-
-    def test_32_delete_memory_from_both_stores(self, temp_data_dir, temp_memory_md, sample_memory):
-        """测试删除记忆同时从 JSON 和向量库删除"""
+    def test_32_delete_memory_removes_from_store_and_cache(
+        self, temp_data_dir, temp_memory_md, sample_memory
+    ):
+        """v2：删除同时清 SQLite 与内存缓存。"""
         mm = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
         memory_id = mm.add_memory(sample_memory)
 
-        result = mm.delete_memory(memory_id)
-        assert result == True
+        assert mm.delete_memory(memory_id) is True
         assert memory_id not in mm._memories
-        assert mm.vector_store.get_stats()["count"] == 0
+        assert mm.store.load_all_memories() == []
 
     def test_33_delete_nonexistent_memory(self, temp_data_dir, temp_memory_md):
-        """测试删除不存在的记忆"""
+        """v2：删除不存在的 id 是幂等成功（返回 True），不再报错。"""
         mm = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
-        result = mm.delete_memory("nonexistent_id")
-        assert result == False
-
-    # --- 记忆注入测试 ---
-
-    def test_34_get_injection_context_includes_memory_md(self, temp_data_dir, temp_memory_md):
-        """测试注入上下文包含 MEMORY.md"""
-        mm = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
-        context = mm.get_injection_context()
-        assert "Core Memory" in context
-        assert "测试偏好" in context
-
-    def test_35_get_injection_context_with_task(
-        self, temp_data_dir, temp_memory_md, sample_memories
-    ):
-        """测试带任务描述的注入上下文"""
-        mm = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
-        for m in sample_memories:
-            mm.add_memory(m)
-
-        context = mm.get_injection_context(task_description="Python 编程")
-        assert "Core Memory" in context
-        # 应该包含相关记忆
-        assert "相关记忆" in context or "语义匹配" in context
+        assert mm.delete_memory("nonexistent_id") is True
+        assert mm.get_memory("nonexistent_id") is None
 
     def test_36_keyword_search_fallback(self, temp_data_dir, temp_memory_md, sample_memories):
         """测试关键词搜索降级"""
@@ -582,8 +316,6 @@ class TestMemoryManager:
 
         results = mm._keyword_search("Python", limit=3)
         assert len(results) > 0
-
-    # --- 搜索测试 ---
 
     def test_37_search_memories_by_type(self, temp_data_dir, temp_memory_md, sample_memories):
         """测试按类型搜索记忆"""
@@ -615,7 +347,6 @@ class TestMemoryManager:
         assert "by_priority" in stats
 
 
-# ============================================================
 class TestSessionTaskManagement:
     """Session 任务管理测试"""
 
@@ -674,59 +405,46 @@ class TestSessionTaskManagement:
 
         session = Session.create(channel="test", chat_id="123", user_id="user1")
 
-        assert session.has_active_task() == False
+        assert not session.has_active_task()
 
         session.set_task("task_001", "测试")
-        assert session.has_active_task() == True
+        assert session.has_active_task()
 
         session.complete_task()
-        assert session.has_active_task() == False
+        assert not session.has_active_task()
 
 
-# ============================================================
-# 集成测试 (5 个)
-# ============================================================
-
-
-@_skip_no_vector
 class TestIntegration:
     """集成测试"""
 
     def test_58_end_to_end_memory_flow(self, temp_data_dir, temp_memory_md, sample_memory):
-        """测试端到端记忆流程"""
-        # 1. 创建 MemoryManager
+        """v2 端到端：add -> search -> delete。"""
         mm = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
 
-        # 2. 添加记忆
         memory_id = mm.add_memory(sample_memory)
         assert memory_id != ""
 
-        # 3. 搜索记忆
         results = mm.search_memories(query="Python")
         assert len(results) > 0
 
-        # 4. 获取注入上下文
+        # Prompt 注入（MEMORY.md / 三层拼装）已迁到 prompt/builder.py，
+        # MemoryManager.get_injection_context 仅返回检索片段，可能为空。
         context = mm.get_injection_context(task_description="Python 开发")
-        assert len(context) > 0
+        assert isinstance(context, str)
 
-        # 5. 删除记忆
-        result = mm.delete_memory(memory_id)
-        assert result == True
+        assert mm.delete_memory(memory_id) is True
 
     def test_59_conversation_history_flow(self, temp_data_dir, temp_memory_md):
-        """测试对话历史流程"""
+        """v2：对话轮次写入 SQLite conversation_turns，可按关键词回查。"""
         mm = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
 
-        # 1. 开始会话
         mm.start_session("test_session_001")
-
-        # 2. 记录对话
         mm.record_turn("user", "你好")
         mm.record_turn("assistant", "你好！有什么可以帮助你的？")
 
-        # 3. 检查历史文件
-        history_files = list((temp_data_dir / "conversation_history").glob("*.jsonl"))
-        assert len(history_files) >= 1
+        turns = mm.store.search_turns("你好")
+        assert len(turns) >= 1
+        assert any("你好" in str(turn.get("content", "")) for turn in turns)
 
     def test_60_memory_persistence(self, temp_data_dir, temp_memory_md, sample_memory):
         """测试记忆持久化"""
@@ -738,11 +456,10 @@ class TestIntegration:
         mm2 = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
         assert len(mm2._memories) == 1
 
-    def test_61_vector_search_relevance(self, temp_data_dir, temp_memory_md):
-        """测试向量搜索相关性"""
+    def test_61_retrieval_returns_relevant_memory(self, temp_data_dir, temp_memory_md):
+        """v2：FTS5 关键词召回把相关内容排进结果（无向量后端时的默认路径）。"""
         mm = MemoryManager(data_dir=temp_data_dir, memory_md_path=temp_memory_md)
 
-        # 添加不同主题的记忆
         mm.add_memory(
             Memory(
                 type=MemoryType.FACT,
@@ -760,9 +477,9 @@ class TestIntegration:
             )
         )
 
-        # 搜索应该返回相关结果
-        context = mm.get_injection_context(task_description="写 Python 代码")
-        assert "Python" in context
+        results = mm.search_memories(query="Python")
+        assert len(results) > 0
+        assert any("Python" in m.content for m in results)
 
     def test_62_concurrent_operations(self, temp_data_dir, temp_memory_md):
         """测试并发操作"""
@@ -780,11 +497,6 @@ class TestIntegration:
             mm.add_memory(m)
 
         assert len(mm._memories) == 10
-
-
-# ============================================================
-# 边界条件测试 (3 个)
-# ============================================================
 
 
 class TestEdgeCases:
@@ -832,7 +544,3 @@ class TestEdgeCases:
 
         # 应该不会崩溃
         assert isinstance(context, str)
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
