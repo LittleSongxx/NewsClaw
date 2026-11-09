@@ -1,6 +1,7 @@
 """Shared instructions remain stable while current-turn context stays fresh."""
 
 from copy import deepcopy
+from dataclasses import replace
 
 import pytest
 
@@ -10,6 +11,8 @@ from newsclaw.llm.cache import (
     build_cached_system_blocks,
 )
 from newsclaw.llm.converters.messages import convert_messages_to_openai
+from newsclaw.llm.providers import anthropic
+from newsclaw.llm.providers.anthropic import AnthropicProvider
 from newsclaw.llm.providers.openai import OpenAIProvider
 from newsclaw.llm.types import EndpointConfig, LLMRequest, Message, ToolResultBlock, ToolUseBlock
 from newsclaw.prompt import builder
@@ -160,3 +163,65 @@ def test_final_request_body_keeps_authority_and_context_separate(build_prompt):
     assert "MEMORY-A" not in wire[0]["content"]
     assert "MEMORY-A" in wire[1]["content"]
     assert wire[2]["content"] == "hello"
+
+
+_LEGACY_DEVELOPER_BOUNDARY = "\n\n---\n\n## Developer"
+
+
+def _anthropic_provider() -> AnthropicProvider:
+    return AnthropicProvider(
+        EndpointConfig(
+            name="test",
+            provider="anthropic",
+            api_type="anthropic",
+            model="claude-sonnet-4-20250514",
+            api_key="test",
+            base_url="https://example.invalid",
+        )
+    )
+
+
+def _patch_anthropic_cache_capability(monkeypatch, *, supports_cache: bool) -> None:
+    caps = anthropic.get_model_capabilities("claude-sonnet-4-20250514")
+    monkeypatch.setattr(
+        anthropic,
+        "get_model_capabilities",
+        lambda _: replace(caps, supports_cache=supports_cache),
+    )
+
+
+def _anthropic_system_body(system: str) -> dict:
+    return _anthropic_provider()._build_request_body(
+        LLMRequest(
+            messages=[Message(role="user", content="hello")],
+            system=system,
+            max_tokens=100,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "system",
+    [
+        "static<!-- DYNAMIC_BOUNDARY -->dynamic",
+        "static" + _LEGACY_DEVELOPER_BOUNDARY + " legacy dynamic",
+        "static only",
+    ],
+)
+def test_anthropic_wire_system_matches_shared_boundary_contract(monkeypatch, system):
+    _patch_anthropic_cache_capability(monkeypatch, supports_cache=True)
+    assert _anthropic_system_body(system)["system"] == build_cached_system_blocks(system)
+
+
+def test_anthropic_empty_system_is_omitted(monkeypatch):
+    _patch_anthropic_cache_capability(monkeypatch, supports_cache=True)
+    assert "system" not in _anthropic_system_body("")
+    assert build_cached_system_blocks("") == []
+
+
+def test_anthropic_without_cache_capability_keeps_plain_system(monkeypatch):
+    _patch_anthropic_cache_capability(monkeypatch, supports_cache=False)
+    prompt = "static<!-- DYNAMIC_BOUNDARY -->dynamic"
+    body = _anthropic_system_body(prompt)
+    assert body["system"] == prompt
+    assert "cache_control" not in str(body)
