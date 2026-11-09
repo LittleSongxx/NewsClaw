@@ -8,7 +8,6 @@ Python backend for the NewsClaw multi-agent AI assistant.
 |--------|---------|
 | `agent/core.py` | Main Agent class — orchestrates brain, tools, identity, memory |
 | `agent/brain.py` | LLM interaction layer (streaming, tool calls, retries) |
-| `agent/ralph.py` | Ralph Loop — never-give-up execution with failure analysis |
 | `agent/reasoning.py` | ReAct reasoning engine (stream-based) |
 | `agent/identity.py` | Loads SOUL.md, AGENT.md, USER.md, MEMORY.md |
 | `prompt/builder.py` | Assembles system prompt in layers (identity → runtime → catalogs → memory) |
@@ -19,7 +18,7 @@ Python backend for the NewsClaw multi-agent AI assistant.
 | `tools/handlers/` | Tool implementations (one file per tool or tool group) |
 | `tools/definitions/` | Tool JSON schemas for LLM function calling |
 | `channels/gateway.py` | MessageGateway — unified IM message routing |
-| `channels/adapters/` | IM platform adapters (telegram, feishu, dingtalk, etc.) |
+| `channels/adapters/` | IM adapters (feishu, qq_official, wechat — the three real adapters) |
 | `memory/unified_store.py` | Three-layer memory: core, semantic, conversation traces |
 | `skills/loader.py` | Discovers and loads SKILL.md files from multiple directories |
 | `api/server.py` | FastAPI app setup |

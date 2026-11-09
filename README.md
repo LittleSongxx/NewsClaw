@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/FastAPI-asyncio-009688?style=flat-square&logo=fastapi&logoColor=white" />
   <img src="https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react&logoColor=white" />
   <img src="https://img.shields.io/badge/Tauri-2-ffc131?style=flat-square&logo=tauri&logoColor=white" />
-  <img src="https://img.shields.io/badge/134_tools-88_skills-8b5cf6?style=flat-square" />
+  <img src="https://img.shields.io/badge/115_tools-82_skills-8b5cf6?style=flat-square" />
   <img src="https://img.shields.io/badge/tests-5900%2B_passing-2ea44f?style=flat-square" />
   <img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue?style=flat-square" />
 </p>
@@ -87,13 +87,13 @@ review_cron: "0 20 * * 0"    # 每周日 20:00 复盘
 │                                   FastAPI（HTTP + 事件流）                                │
 │                                                                                          │
 │   scheduler ──► Agent 运行时 ──► 工具 → 落盘契约 ──► REST API ──► 前端                    │
-│   定时任务        ReAct 循环      134 个工具    Markdown/SQLite                           │
+│   定时任务        ReAct 循环      115 个工具    Markdown/SQLite                           │
 │        │               │                                                                 │
 │        │               ├── 策略矩阵（Policy V2）—— 放行 / 确认 / 拒绝，无人值守默认拒绝     │
 │        │               │                                                                 │
 │        ▼               ▼                                                                 │
 │   newsroom 主线    wiki 知识库     memory 三层记忆     skills 技能     channels IM 通道   │
-│   期次契约/信源/    主题页/公司页   工作记忆/长期/向量   88 个技能      8 个 IM 适配器      │
+│   期次契约/信源/    主题页/公司页   工作记忆/长期/向量   82 个技能      3 个 IM 适配器      │
 │   提示词/反馈库     互链/索引      检索                 渐进式披露      扫码绑定            │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -130,14 +130,14 @@ Python 只负责**契约与调度**（期次目录、manifest 校验、任务播
 | **桌面** | Tauri 2（Rust 外壳，自带 Python 运行时引导） |
 | **存储** | SQLite（会话 / 记忆 / 审计）+ Markdown（知识库 / 记忆 / 期次产物） |
 | **模型** | 32 家 provider 预设（Anthropic / OpenAI 兼容 / 国内模型 / 本地 ollama） |
-| **规模** | 134 个工具定义 · 88 个技能 · 8 个 IM 适配器 · 37 个前端视图 |
+| **规模** | 115 个工具定义 · 82 个技能 · 3 个 IM 适配器 · 34 个前端视图 |
 
 ```
 src/newsclaw/
   newsroom/      AI 早报主线：期次契约 · 信源 · 配置 · 提示词 · 播种 · 反馈
   wiki/          本地 Markdown 知识库（主题页 / 公司页 / 互链 / 索引）
   integrations/  飞书 OAuth 与文档归档 · 市场安装器
-  core/          Agent 运行时 · Ralph 执行循环 · ReasoningEngine · Policy V2
+  core/          Agent 运行时（ReAct 循环）· ReasoningEngine · Policy V2
   agents/        多 Agent：编排 · 工厂 · 预设 · 打包
   tools/         工具系统（handlers / definitions）与搜索号池
   prompt/        提示词分层拼装（身份 → 人格 → 运行时 → 规则 → 目录 → 记忆）
@@ -147,7 +147,7 @@ src/newsclaw/
 apps/setup-center/   桌面端与 Web 前端（Tauri + React）
 skills/              系统技能 77 + 精选外部技能 11
 identity/            Agent 身份（SOUL / AGENT / POLICIES / 人格库）
-tests/               5900+ 测试（unit / component / integration / e2e）
+tests/               6,000+ 测试（实测 6,027 收集；unit / component / integration / e2e / eval）
 ```
 
 ---
@@ -192,3 +192,24 @@ python -m build --wheel                 # 打包（同时校验技能清单与�
 ## 这个仓库里没有的东西
 
 为了保持主线清晰，以下内容**不在**本仓库发布（本地开发副本仍保留，见 `.gitignore`）：上游的示例插件与媒体类插件集、已移出主线的技能归档、内部改版计划与发布流水线（签名安装包 / 应用商店 / 容器镜像等需要私有凭据的流程）、以及上游的产品文档站。
+
+---
+
+## 这个项目里哪些是我写的
+
+这是 [OpenAkita](https://github.com/openakita/openakita) 的二次开发分支（AGPL-3.0）：平台层继承自上游，**主线（AI 早报）是我写的**。
+
+| 我写的（约 1 万行） | 继承自上游（平台层） |
+|---|---|
+| `src/newsclaw/newsroom/`：期次契约、机验不变量 I1–I9、提案 apply、播种、反馈、投递门 | Agent 运行时、工具系统、策略矩阵、多 Agent 编排 |
+| `src/newsclaw/wiki/` 与 `wiki_upsert` 工具：页面结构 / 双链 / MOC 由代码维护 | LLM provider 抽象、记忆系统、提示词管线 |
+| 早报相关技能与任务 prompt、`NewsroomView` 工作台 | FastAPI 路由骨架、IM 适配器、桌面/Web 前端外壳 |
+| 2026-09 起的收敛：删掉 orgs v2 / marketplace / hub / 5 个 IM 适配器（−13.4 万行） | 测试框架与 CI |
+
+主线的设计边界写在 [`src/newsclaw/newsroom/__init__.py`](src/newsclaw/newsroom/__init__.py)：**Python 只管契约与 apply，采集/写作/复盘交给 Agent**——只有把「不能出错的部分」钉进代码，Agent 的自由创作才敢无人值守。
+
+## 运行与安全边界
+
+- 完整操作手册见 [RUNBOOK.md](RUNBOOK.md)：跑每日管线、写反馈、触发周复盘、人审 apply、故障排查。
+- 默认只信任本机：loopback 直连免鉴权、CORS 只放行本机/桌面/Capacitor 来源；要收紧到「loopback 也要 token」，设 `NEWSCLAW_REQUIRE_LOCAL_AUTH=1`。
+- 已知限制：无 OS 级沙箱、无出网白名单，不要把服务暴露到公网。

@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/FastAPI-asyncio-009688?style=flat-square&logo=fastapi&logoColor=white" />
   <img src="https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react&logoColor=white" />
   <img src="https://img.shields.io/badge/Tauri-2-ffc131?style=flat-square&logo=tauri&logoColor=white" />
-  <img src="https://img.shields.io/badge/134_tools-88_skills-8b5cf6?style=flat-square" />
+  <img src="https://img.shields.io/badge/115_tools-82_skills-8b5cf6?style=flat-square" />
   <img src="https://img.shields.io/badge/tests-5900%2B_passing-2ea44f?style=flat-square" />
   <img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue?style=flat-square" />
 </p>
@@ -68,12 +68,12 @@ review_cron: "0 20 * * 0"    # Sunday 20:00 review
 │                                  FastAPI (HTTP + event stream)                          │
 │                                                                                         │
 │   scheduler ──► agent runtime ──► tools → contract writes ──► REST API ──► clients      │
-│   cron tasks     ReAct loop       134 tools   Markdown/SQLite                           │
+│   cron tasks     ReAct loop       115 tools   Markdown/SQLite                           │
 │        │              │                                                                 │
 │        │              ├── policy matrix (Policy V2): allow / confirm / deny             │
 │        │              │   — unattended runs deny confirmations instead of hanging        │
 │        ▼              ▼                                                                 │
-│   newsroom line   wiki KB       memory (3 layers)  skills (88)   IM channels (8)        │
+│   newsroom line   wiki KB       memory (3 layers)  skills (82)   IM channels (3)        │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -109,14 +109,14 @@ Python owns **contracts and scheduling** (issue layout, manifest validation, tas
 | **Desktop** | Tauri 2 (Rust shell with its own Python runtime bootstrap) |
 | **Storage** | SQLite (sessions / memory / audit) + Markdown (wiki / memory / issue artifacts) |
 | **Models** | 32 provider presets (Anthropic / OpenAI-compatible / regional / local ollama) |
-| **Scale** | 134 tool definitions · 88 skills · 8 IM adapters · 37 frontend views |
+| **Scale** | 115 tool definitions · 82 skills · 3 IM adapters · 34 frontend views |
 
 ```
 src/newsclaw/
   newsroom/      briefing line: issue contract · sources · config · prompts · seeding · feedback
   wiki/          local Markdown knowledge base (topic/company pages, backlinks, index)
   integrations/  Feishu OAuth + document archival · marketplace installer
-  core/          agent runtime · Ralph loop · ReasoningEngine · Policy V2
+  core/          agent runtime (ReAct loop) · ReasoningEngine · Policy V2
   agents/        multi-agent: orchestration · factory · presets · packaging
   tools/         tool system (handlers / definitions) and search key pools
   prompt/        layered prompt assembly (identity → persona → runtime → rules → catalogs → memory)
@@ -124,9 +124,9 @@ src/newsclaw/
   skills/        skill loading · registry · marketplace · i18n
   scheduler/     cron tasks        channels/  IM adapters       api/  REST + WebSocket
 apps/setup-center/   desktop + web frontend (Tauri + React)
-skills/              77 system skills + 11 curated external skills
+skills/              71 system skills + 11 curated external skills
 identity/            agent identity (SOUL / AGENT / POLICIES / personas)
-tests/               5900+ tests (unit / component / integration / e2e)
+tests/               6,000+ tests (6,027 collected; unit / component / integration / e2e / eval)
 ```
 
 ---

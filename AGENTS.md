@@ -57,7 +57,7 @@ src/newsclaw/
   newsroom/     AI 早报主线（契约 / 信源 / 配置 / 提示词 / 播种 / 反馈）
   wiki/         本地 Markdown 知识库（主题页 / 公司页 / 互链 / 索引）
   integrations/ 飞书 OAuth 与文档归档、市场安装器
-  core/         Agent 运行时、Ralph 循环、ReasoningEngine、Policy V2
+  core/         Agent 运行时（ReAct 循环）、ReasoningEngine、Policy V2
   agents/       多 Agent：编排、工厂、预设、打包
   tools/        工具系统（handlers/ + definitions/）与搜索号池
   prompt/       提示词编译与分层拼装
