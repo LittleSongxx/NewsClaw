@@ -71,7 +71,6 @@ from .routes import (
     token_stats,
     upload,
     wechat_onboard,
-    wecom_onboard,
     wiki,
     workspace_io,
     workspaces,
@@ -104,6 +103,49 @@ logger = logging.getLogger(__name__)
 # at import time, which is too early (``.env`` may not be loaded yet) and
 # made the resolution logic invisible to tests.
 API_PORT = int(os.environ.get("API_PORT", "18900"))
+
+#: 未配置 ``CORS_ORIGINS`` 时使用的默认 Origin 白名单（``re.fullmatch`` 语义）。
+#:
+#: 只放行三类来源：本机 Web（``localhost`` / ``127.0.0.1`` / ``[::1]`` 任意
+#: 端口）、Tauri 桌面壳（``tauri://localhost`` 与 ``http(s)://tauri.localhost``）、
+#: Capacitor 移动壳（``capacitor://localhost``）。历史上这里是 ``.*``——任意
+#: 网站都能带凭据跨域打本地 API，等于把 loopback 鉴权豁免交给浏览器里的
+#: 任意页面。
+DEFAULT_CORS_ORIGIN_REGEX = (
+    r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$"
+    r"|^https?://tauri\.localhost(:\d+)?$"
+    r"|^tauri://localhost$"
+    r"|^capacitor://localhost$"
+)
+
+#: Capacitor 移动壳来源：即使用户显式配置了 ``CORS_ORIGINS`` 也始终追加，
+#: 否则手机端 App 会因缺 CORS 头而白屏。
+CAPACITOR_CORS_ORIGINS = ("http://localhost", "capacitor://localhost")
+
+
+def build_cors_kwargs(cors_origins: str) -> dict[str, Any]:
+    """把 ``CORS_ORIGINS`` 环境变量解析成 ``CORSMiddleware`` 的 kwargs。
+
+    - 未配置（空串 / 只有分隔符）：用 :data:`DEFAULT_CORS_ORIGIN_REGEX` 白名单；
+    - 显式配置：按逗号切分并追加 Capacitor 来源，完全接管默认白名单
+      （保留历史行为，也允许用户放开到局域网 Web / 反代域名）。
+    """
+    cors_kwargs: dict[str, Any] = {
+        "allow_credentials": True,
+        "allow_methods": ["*"],
+        "allow_headers": ["*"],
+    }
+    origins = [o.strip() for o in cors_origins.split(",") if o.strip()]
+    if not origins:
+        cors_kwargs["allow_origin_regex"] = DEFAULT_CORS_ORIGIN_REGEX
+        return cors_kwargs
+    # Always include Capacitor mobile origins so mobile apps work
+    # regardless of what the user configured in CORS_ORIGINS.
+    for cap_origin in CAPACITOR_CORS_ORIGINS:
+        if cap_origin not in origins:
+            origins.append(cap_origin)
+    cors_kwargs["allow_origins"] = origins
+    return cors_kwargs
 
 
 def get_api_host_for_health_display(app_state: Any | None = None) -> str:
@@ -794,26 +836,14 @@ def create_app(
 
     # CORS configuration (outermost middleware — added last)
     # NOTE: allow_origins=["*"] is incompatible with allow_credentials=True per
-    # the browser spec.  When no explicit origins are configured we fall back to
-    # allow_origin_regex which matches any origin, achieving the same permissive
-    # behaviour while satisfying the spec.
-    cors_origins = os.environ.get("CORS_ORIGINS", "").strip()
-    cors_kwargs: dict[str, Any] = {
-        "allow_credentials": True,
-        "allow_methods": ["*"],
-        "allow_headers": ["*"],
-    }
-    if cors_origins:
-        origins = [o.strip() for o in cors_origins.split(",") if o.strip()]
-        # Always include Capacitor mobile origins so mobile apps work
-        # regardless of what the user configured in CORS_ORIGINS.
-        for cap_origin in ("http://localhost", "capacitor://localhost"):
-            if cap_origin not in origins:
-                origins.append(cap_origin)
-        cors_kwargs["allow_origins"] = origins
-    else:
-        cors_kwargs["allow_origin_regex"] = r".*"
-    app.add_middleware(CORSMiddleware, **cors_kwargs)
+    # the browser spec, so the default branch uses allow_origin_regex instead.
+    # That regex is a loopback/desktop/Capacitor allowlist — NOT ``.*``: any
+    # website could otherwise send credentialed cross-origin requests to the
+    # local API and inherit the loopback auth bypass.
+    app.add_middleware(
+        CORSMiddleware,
+        **build_cors_kwargs(os.environ.get("CORS_ORIGINS", "")),
+    )
 
     # Store references in app state
     app.state.agent = agent
@@ -854,7 +884,6 @@ def create_app(
     app.include_router(feishu_onboard.router, tags=["飞书扫码"])
     app.include_router(qqbot_onboard.router, tags=["QQ扫码"])
     app.include_router(wechat_onboard.router, tags=["微信扫码"])
-    app.include_router(wecom_onboard.router, tags=["企微扫码"])
     app.include_router(files.router, tags=["文件"])
     app.include_router(health.router, tags=["健康检查"])
     app.include_router(im.router, tags=["即时通讯"])

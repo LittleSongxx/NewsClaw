@@ -36,6 +36,14 @@ REFRESH_TOKEN_TTL = 90 * 24 * 3600  # 90 days
 REFRESH_COOKIE_NAME = "newsclaw_refresh"
 PASSWORD_ENV_VAR = "NEWSCLAW_WEB_PASSWORD"
 
+#: 让本机（loopback）请求也走鉴权的 opt-in 开关。默认关闭——桌面端 WebView、
+#: 同机 curl 与本地脚本都直连 ``127.0.0.1:18900``，默认强制鉴权会打碎
+#: 「装好就能用」的体验；共享主机 / 不可信同机进程场景再显式打开。
+LOCAL_AUTH_ENV_VAR = "NEWSCLAW_REQUIRE_LOCAL_AUTH"
+
+#: 判定开关为「开」的取值（与项目其它布尔环境变量保持一致）。
+_TRUTHY_VALUES = frozenset({"1", "true", "yes"})
+
 AUTH_EXEMPT_PATHS = frozenset(
     {
         "/",
@@ -426,7 +434,10 @@ def is_trusted_local(request: Request) -> bool:
 
     Shared by :func:`create_auth_middleware` and
     :mod:`newsclaw.api.setup_state` — keep them aligned by going through
-    this single helper.
+    this single helper. This helper answers "is this a direct local
+    connection"; whether such a connection may skip authentication is a
+    separate decision — the auth middleware additionally consults
+    :func:`local_auth_required` before granting the bypass.
     """
     if not _is_local_request(request):
         return False
@@ -450,6 +461,22 @@ def _is_public_plugin_ui_asset(request: Request) -> bool:
     )
 
 
+def local_auth_required() -> bool:
+    """本机（loopback）请求是否也必须通过鉴权。
+
+    默认 ``False``：桌面端（Tauri WebView）、同机 curl、本地脚本直连
+    ``127.0.0.1:18900`` 时保持零配置可用。把 ``NEWSCLAW_REQUIRE_LOCAL_AUTH``
+    置为 ``1/true/yes`` 后，loopback 请求也必须带合法 ``Authorization: Bearer``
+    或 ``X-API-Key``；适用共享主机、同机不可信进程、需要最小权限的自动化。
+
+    刻意每次调用都重新读环境变量（不缓存）：一次 ``os.environ`` 查找的成本
+    可忽略，却让测试和运维能在不重启进程的情况下观察开关效果。注意本函数
+    **只影响认证中间件的直通分支**；:func:`is_trusted_local` 与 setup gate
+    的语义不变，避免首装流程被这个开关锁死。
+    """
+    return os.environ.get(LOCAL_AUTH_ENV_VAR, "").strip().lower() in _TRUTHY_VALUES
+
+
 def create_auth_middleware(config: WebAccessConfig):
     """Create the authentication middleware function."""
 
@@ -467,10 +494,12 @@ def create_auth_middleware(config: WebAccessConfig):
             return await call_next(request)
 
         # Direct local connections bypass auth (Tauri desktop, curl on the
-        # same host). Reverse-proxy-forwarded requests still need a token even
-        # when they originate from 127.0.0.1, because the proxy itself always
-        # connects from loopback. See :func:`is_trusted_local`.
-        if is_trusted_local(request):
+        # same host) unless ``NEWSCLAW_REQUIRE_LOCAL_AUTH`` opts this machine
+        # into "even loopback needs a token". Reverse-proxy-forwarded requests
+        # still need a token even when they originate from 127.0.0.1, because
+        # the proxy itself always connects from loopback. See
+        # :func:`is_trusted_local`.
+        if is_trusted_local(request) and not local_auth_required():
             return await call_next(request)
 
         # Check Authorization header

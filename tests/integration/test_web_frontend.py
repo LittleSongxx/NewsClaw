@@ -6,7 +6,7 @@
 3. 根路径 / 重定向到 /web/
 4. SPA 路由回退（任意子路径返回 index.html）
 5. API health endpoint 可达
-6. CORS 头正确返回
+6. CORS 头按 loopback/desktop 白名单返回（默认拒绝任意站点）
 7. /web/ 路径免认证
 8. 受保护 API 在未认证时返回 401
 9. 登录流程（密码验证 → token 获取 → token 访问受保护 API）
@@ -148,10 +148,30 @@ class TestHealthEndpoint:
 
 
 # ── 6. CORS 头 ──
+#
+# 契约变更（安全加固）：``api/server.py`` 的默认 CORS 不再是
+# ``allow_origin_regex=".*"``，而是 ``DEFAULT_CORS_ORIGIN_REGEX`` 白名单
+# （localhost / 127.0.0.1 / [::1] / Tauri / Capacitor）。未配置
+# ``CORS_ORIGINS`` 时，任意站点不得再带凭据跨域访问本机 API；显式配置
+# ``CORS_ORIGINS`` 仍可覆盖默认白名单。以下用例按新契约断言。
 
 
 class TestCORSHeaders:
-    async def test_preflight_returns_cors_headers(self, client):
+    async def test_preflight_allows_loopback_origin(self, client):
+        origin = "http://localhost:5173"
+        resp = await client.options(
+            "/api/health",
+            headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
+        )
+        assert resp.status_code == 200
+        assert resp.headers.get("access-control-allow-origin") == origin
+
+    async def test_normal_request_allows_loopback_origin(self, client):
+        origin = "http://127.0.0.1:5173"
+        resp = await client.get("/api/health", headers={"Origin": origin})
+        assert resp.headers.get("access-control-allow-origin") == origin
+
+    async def test_preflight_rejects_foreign_origin(self, client):
         resp = await client.options(
             "/api/health",
             headers={
@@ -159,15 +179,36 @@ class TestCORSHeaders:
                 "Access-Control-Request-Method": "GET",
             },
         )
-        assert resp.status_code == 200
-        assert "access-control-allow-origin" in resp.headers
+        # CORSMiddleware answers a disallowed preflight with 400 and no
+        # allow-origin header (never with a wildcard).
+        assert resp.status_code == 400
+        assert "access-control-allow-origin" not in resp.headers
 
-    async def test_normal_request_returns_cors_headers(self, client):
-        resp = await client.get(
-            "/api/health",
-            headers={"Origin": "http://example.com"},
-        )
-        assert "access-control-allow-origin" in resp.headers
+    async def test_normal_request_omits_cors_headers_for_foreign_origin(self, client):
+        resp = await client.get("/api/health", headers={"Origin": "http://example.com"})
+        assert resp.status_code == 200
+        assert "access-control-allow-origin" not in resp.headers
+
+    async def test_explicit_cors_origins_env_overrides_default_allowlist(
+        self, web_dist, monkeypatch
+    ):
+        """显式配置 CORS_ORIGINS 必须完全接管默认白名单（历史行为保留）。"""
+        monkeypatch.setenv("CORS_ORIGINS", "http://example.com")
+        with patch("newsclaw.api.server._find_web_dist", return_value=web_dist):
+            app = create_app()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as c:
+            resp = await c.options(
+                "/api/health",
+                headers={
+                    "Origin": "http://example.com",
+                    "Access-Control-Request-Method": "GET",
+                },
+            )
+        assert resp.status_code == 200
+        assert resp.headers.get("access-control-allow-origin") == "http://example.com"
 
 
 # ── 7. /web/ 路径免认证 ──
