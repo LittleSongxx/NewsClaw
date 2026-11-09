@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -188,7 +189,10 @@ async def test_start_notification_channel_unavailable_skips_before_agent_creatio
 
     assert execution is not None
     assert execution.status == "failed"
-    assert execution.error == "IM 通道不可投递：微信会话或 context_token 已失效，请在微信中发送一条新消息刷新会话，或重新扫码登录。"
+    assert (
+        execution.error
+        == "IM 通道不可投递：微信会话或 context_token 已失效，请在微信中发送一条新消息刷新会话，或重新扫码登录。"
+    )
     assert factory_calls == 0
     stored = scheduler.get_task(task_id)
     assert stored is not None
@@ -210,7 +214,10 @@ async def test_successful_task_with_channel_unavailable_result_does_not_incremen
 
     assert execution is not None
     assert execution.status == "failed"
-    assert execution.error == "IM 通道不可投递：微信会话或 context_token 已失效，请在微信中发送一条新消息刷新会话，或重新扫码登录。"
+    assert (
+        execution.error
+        == "IM 通道不可投递：微信会话或 context_token 已失效，请在微信中发送一条新消息刷新会话，或重新扫码登录。"
+    )
     assert gateway.start_calls == 1
     assert gateway.reliable_calls == 1
     stored = scheduler.get_task(task_id)
@@ -353,3 +360,36 @@ async def test_owner_scoped_reminder_without_target_uses_desktop_not_global_im(
     assert success is True
     assert "桌面通知" in message
     assert gateway.calls == []
+
+
+@pytest.mark.asyncio
+async def test_scheduled_task_emits_span_trace(tmp_path):
+    """调度任务执行窗口必须产出 span trace（trace-report 的数据来源）。
+
+    回归背景：`AgentTracer` 只有被 begin_trace/end_trace 包裹时才导出 trace；
+    此前没有任何生产调用点，`data/traces/` 永远为空，`newsclaw trace-report`
+    对无人值守任务查不到任何数据。
+    """
+    from newsclaw.tracing.exporter import FileExporter
+    from newsclaw.tracing.tracer import AgentTracer, set_tracer
+
+    trace_dir = tmp_path / "traces"
+    tracer = AgentTracer(enabled=True)
+    tracer.add_exporter(FileExporter(trace_dir))
+    set_tracer(tracer)
+    try:
+        executor = TaskExecutor(agent_factory=lambda: _SuccessfulAgent())
+        scheduler = await _make_scheduler(tmp_path, executor=executor.execute)
+        task = _make_task()
+        task_id = await scheduler.add_task(task)
+
+        execution = await scheduler.trigger_now(task_id)
+        assert execution is not None
+
+        files = list(trace_dir.rglob("trace-*.json"))
+        assert files, "调度任务没有导出 span trace"
+        payload = json.loads(files[0].read_text(encoding="utf-8"))
+        assert payload["session_id"] == f"schedule:{task_id}"
+        assert payload["metadata"]["task_id"] == task_id
+    finally:
+        set_tracer(AgentTracer(enabled=False))

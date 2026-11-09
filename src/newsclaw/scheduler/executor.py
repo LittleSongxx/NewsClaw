@@ -658,6 +658,21 @@ class TaskExecutor:
                 metadata=_newsroom_meta,
             )
             _ctx_token = set_current_context(_policy_ctx)
+            # 调度任务是本地 trace 的主要生产者：AgentTracer 只有在
+            # begin_trace/end_trace 包裹的窗口内才会把 span 落到 data/traces/，
+            # 否则 _reasoning_runtime/_tool_runtime 里的 span 全部丢弃
+            # （trace-report 命令因此看不到任何无人值守任务）。
+            from ..tracing.tracer import get_tracer
+
+            _tracer = get_tracer()
+            _tracer.begin_trace(
+                f"schedule:{task.id}",
+                metadata={
+                    "task_id": task.id,
+                    "task_name": task.name,
+                    "entry": "scheduler",
+                },
+            )
             try:
                 agent_success, result = await asyncio.wait_for(
                     self._run_agent(agent, prompt), timeout=task_timeout
@@ -747,6 +762,15 @@ class TaskExecutor:
                     await self._send_end_notification(task, success=False, message=error_msg)
             return False, error_msg
         finally:
+            # 导出本次调度任务的 span trace；无活动 trace 时（早退路径）跳过。
+            _trace_tracer = locals().get("_tracer")
+            if _trace_tracer is not None:
+                _trace_tracer.end_trace(
+                    metadata={
+                        "task_id": task.id,
+                        "agent_success": bool(locals().get("agent_success", False)),
+                    }
+                )
             # 清理 IM 上下文
             if agent and im_context_set:
                 self._cleanup_im_context(agent)

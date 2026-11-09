@@ -107,6 +107,8 @@ apply 的保证：只落勾选且未应用的 op → 内存构造新状态并校
 
 输出 Markdown：每个 trace 的 span 树（按 `parent_id` 缩进）、最慢 span Top10、错误列表、token 汇总——用来定位「第几步、哪个工具、哪次模型调用」出问题。
 
+数据来源：调度任务执行窗口内由 `AgentTracer` 导出到 `data/traces/<date>/trace-*.json`（当前只包了调度任务；对话的逐轮明细在 `data/react_traces/`，按第 7 节的片段直接读）。空目录时报告会明确提示「当天没有 trace」，不会静默输出空报告。
+
 常见问题：
 
 | 症状 | 原因 | 处置 |
@@ -183,7 +185,7 @@ PY
 
 ---
 
-## 8. 质量门（改代码后必跑）
+## 9. 质量门（改代码后必跑）
 
 ```bash
 .venv/bin/ruff check src/
