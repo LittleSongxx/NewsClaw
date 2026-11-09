@@ -183,6 +183,8 @@ indentity_compiler.txt
 create_report*.py
 fix_report.py
 !src/newsclaw/api/routes/bug_report.py
+!scripts/trace_report.py
+!tests/unit/test_trace_report.py
 !plugins/**/test_report_*.py
 !plugins/**/report_generator.py
 !plugins/**/report_routes.py

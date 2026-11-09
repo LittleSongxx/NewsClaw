@@ -744,7 +744,7 @@ async def stop_im_channels(*, graceful: bool = True, drain_timeout: float = 30.0
 
     v33 backend_run1.log 时序证据：MessageGateway stopped → Orchestrator complete
     → SessionManager stopped 三者间隔 ~0.001s + ~0.041s，主刀仍在 gateway 内部
-    wework_ws WS adapter 收尸（见 c2 commit）。
+    已裁通道的 WS adapter 收尸（见 c2 commit）。
 
     Args:
         graceful: True 时先排空进行中任务再停止，False 时立即停止
@@ -2892,6 +2892,28 @@ def reset_password(
         )
     else:
         console.print("[dim]下次启动 newsclaw 时会进入 setup 流程。[/dim]")
+
+
+@app.command(name="trace-report")
+def trace_report(
+    date: str = typer.Option("", "--date", help="日期 YYYY-MM-DD（默认今天）"),
+    out: str = typer.Option(
+        "", "--out", "-o", help="输出 Markdown 文件路径（默认打印到终端）"
+    ),
+    base_dir: str = typer.Option("data/traces", "--dir", help="trace 根目录（默认 data/traces）"),
+):
+    """生成某天的 Agent Trace Markdown 报告（总览 / span 树 / 慢 span / 错误）。"""
+    from scripts.trace_report import build_report, default_date
+
+    day = date.strip() or default_date()
+    report = build_report(day, Path(base_dir))
+    if out.strip():
+        target = Path(out).expanduser()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(report, encoding="utf-8", newline="\n")
+        console.print(f"[green]✓[/green] Trace 报告已写入 {target}")
+    else:
+        console.print(report)
 
 
 if __name__ == "__main__":
