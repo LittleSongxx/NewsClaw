@@ -26,7 +26,7 @@ from newsclaw.newsroom.editorial import load_editorial_policy
 from newsclaw.newsroom.items import format_seen_items_for_prompt
 from newsclaw.newsroom.sources import load_sources, sources_path
 
-PROMPT_VERSION = 23
+PROMPT_VERSION = 24
 
 #: 每日任务运行时注入块的起止标记。播种缓存的 prompt 可能含旧块，
 #: 调度触发时会剥掉再拼当期 sources / 方针。
@@ -125,19 +125,14 @@ def build_daily_injection_block() -> str:
     cfg = load_config()
     today = date.today().isoformat()
     lines.append(f"## 近 {cfg.issue_history_days} 天已见 URL（代码注入，精确去重用）")
-    lines.append(
-        format_seen_items_for_prompt(before_date=today, days=cfg.issue_history_days)
-    )
+    lines.append(format_seen_items_for_prompt(before_date=today, days=cfg.issue_history_days))
     lines.append("")
     lines.append("## 编辑方针全文")
     policy_text = load_editorial_policy().to_text().strip()
     lines.append(policy_text if policy_text else "（尚未制定，按默认品味）")
     lines.append("")
     lines.append("## 渠道状态")
-    lines.append(
-        "- 微信公众号发布（第 7 步，wechat_mp_publish）："
-        + _wechat_mp_channel_status()
-    )
+    lines.append("- 微信公众号发布（第 7 步，wechat_mp_publish）：" + _wechat_mp_channel_status())
     lines.append(INJECTION_END)
     return "\n".join(lines)
 
@@ -420,6 +415,11 @@ review-proposal.json schema::
 - 反馈与选题的对应分析；
 - 本轮提案（review-proposal.md / .json）摘要与预期效果（尚未 apply）；
 - 下周观察点（给下次复盘的问题清单）。
+
+【第 4 步 · 交付】用 **deliver_artifacts** 把 review-proposal.md、review-proposal.json、
+reviews/YYYY-MM-DD.md 三个文件推给 owner（target_channel="feishu"，
+prefer_chat_type="private"）。deliver_artifacts 是本次任务的交付证据：平台侧
+没有交付回执时任务会被判为未完成。推送失败不要重试，如实说明原因。
 
 最终回复：两个提案路径 + 「待人审 apply」+ 报告路径。"""
 
