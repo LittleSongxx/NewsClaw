@@ -243,9 +243,7 @@ def _parse_evidence(raw: Any) -> Evidence | None:
         try:
             date.fromisoformat(issue_date)
         except ValueError as exc:
-            raise ProposalError(
-                f"evidence.issue_date 不是 YYYY-MM-DD: {issue_date!r}"
-            ) from exc
+            raise ProposalError(f"evidence.issue_date 不是 YYYY-MM-DD: {issue_date!r}") from exc
     return Evidence(issue_date=issue_date, dimension=dimension, note=note)
 
 
@@ -525,6 +523,31 @@ def _apply_source_ops(book: SourceBook, ops: list[SourceOp]) -> SourceBook:
                 result.excluded_keywords.append(keyword)
             continue
         if op.action == "add":
+            existing = _find_source(result, op.name)
+            if existing is not None:
+                # 幂等：提案文件可能在上次 apply 之后被复盘 Agent 重写
+                # （fingerprint 变化会让 applied_op_ids 归零），此时再次勾选
+                # 同一条 add 不应把同名信源加两遍。
+                desired = (
+                    op.kind or "search",
+                    op.query.strip(),
+                    op.url.strip(),
+                    3 if op.weight is None else op.weight,
+                    tuple(sorted(op.topics)),
+                )
+                current = (
+                    existing.kind,
+                    existing.query.strip(),
+                    existing.url.strip(),
+                    existing.weight,
+                    tuple(sorted(existing.topics)),
+                )
+                if desired == current:
+                    continue
+                raise ProposalError(
+                    f"source {op.name!r} already exists with a different definition; "
+                    "use update / set_query / set_weight instead of add"
+                )
             result.sources.append(
                 NewsSource(
                     name=op.name,

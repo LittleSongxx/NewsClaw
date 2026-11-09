@@ -696,9 +696,7 @@ class TestProposalAPI:
                 "issue_date": "2026-09-16",
                 "rating": 0,
                 "comment": "",
-                "items": [
-                    {"url": "https://example.com/a", "rating": -1, "comment": "这条水"}
-                ],
+                "items": [{"url": "https://example.com/a", "rating": -1, "comment": "这条水"}],
             },
         )
         assert res.status_code == 200
@@ -749,3 +747,33 @@ class TestProposalAPI:
         assert body["proposal"]["status"] == STATUS_NONE
         assert body["feedback"]["down"] == 0
         assert isinstance(body["dedup_pool"]["seen_urls"], int)
+
+
+class TestSourceAddIdempotency:
+    """apply 后提案被重写（fingerprint 变化）时，同一条 add 不能把信源加两遍。"""
+
+    def test_reapplying_same_add_is_a_noop(self, isolated_newsroom):
+        payload = _add_source_payload(name="arXiv 日更")
+        _write_proposal(payload)
+        apply_proposal(selected_op_ids=["src-add-arxiv"])
+        assert [s.name for s in load_sources().sources].count("arXiv 日更") == 1
+
+        rewritten = json.loads(json.dumps(payload))
+        rewritten["sources"][0]["note"] = "复盘重写后的备注（笔记变化不影响 op 定义）"
+        _write_proposal(rewritten)  # 模拟复盘 Agent 重写提案文件（fingerprint 变化）
+        result = apply_proposal(selected_op_ids=["src-add-arxiv"])
+        names = [s.name for s in load_sources().sources]
+        assert names.count("arXiv 日更") == 1
+        assert result.applied_op_ids == ["src-add-arxiv"]
+
+    def test_conflicting_add_raises_actionable_error(self, isolated_newsroom):
+        _write_proposal(_add_source_payload(name="arXiv 日更"))
+        apply_proposal(selected_op_ids=["src-add-arxiv"])
+
+        conflicting = _add_source_payload(name="arXiv 日更")
+        conflicting["sources"][0]["query"] = "completely different query"
+        _write_proposal(conflicting)
+        with pytest.raises(ProposalError, match="already exists"):
+            apply_proposal(selected_op_ids=["src-add-arxiv"])
+        names = [s.name for s in load_sources().sources]
+        assert names.count("arXiv 日更") == 1
