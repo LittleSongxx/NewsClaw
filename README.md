@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react&logoColor=white" />
   <img src="https://img.shields.io/badge/Tauri-2-ffc131?style=flat-square&logo=tauri&logoColor=white" />
   <img src="https://img.shields.io/badge/115_tools-82_skills-8b5cf6?style=flat-square" />
-  <img src="https://img.shields.io/badge/tests-5900%2B_passing-2ea44f?style=flat-square" />
+  <img src="https://img.shields.io/badge/tests-6000%2B_passing-2ea44f?style=flat-square" />
   <img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue?style=flat-square" />
 </p>
 
@@ -25,9 +25,9 @@
 
 ---
 
-**NewsClaw 是一个跑在自己机器上的多 Agent AI 助手，主线只有一件事：把 AI 圈的信息变成可以直接发布的稿件。** 它不需要你每天去催——定时任务到点自己采集、自己写、自己归档、自己打分，每周再根据你的反馈改自己的选题口味。
+**NewsClaw 是一个跑在自己机器上的多 Agent AI 助手，主线只有一件事：把 AI 圈的信息变成可以直接发布的稿件。** 它不需要你每天去催——定时任务到点自己采集、自己写、自己归档、自己打分，每周再根据你的反馈提出选题口味的调整提案（人审后生效）。
 
-所有数据都在本地（`~/.newsclaw` + 工作区 `data/`），模型走你自己的 Key（内置 32 家 provider）。桌面端、Web、移动端共用一个后端。
+所有数据都在本地（`~/.newsclaw` + 工作区 `data/`），模型走你自己的 Key（内置 32 家 provider）。桌面端与 Web 共用一个后端（移动端 Capacitor 壳的构建工程只保留在本地，不随仓库发布）。
 
 ---
 
@@ -39,7 +39,7 @@
 
 **① 采集**
 
-四条信源（AI 综合搜索 / 前沿模型动态 / 公司与融资 / 开源项目热点）并发抓取，去重、打分、挑选当日 10+ 条。
+四类默认信源（AI 综合搜索 / 前沿模型动态 / 公司与融资 / 开源项目热点；周复盘可通过提案增删）并发抓取，去重、打分，挑出当日 7–12 条（契约下限：至少 3 条带链接；好稿不足时宁可少发）。
 
 </td>
 <td width="33%" valign="top">
@@ -64,7 +64,7 @@
   <em>本地 Markdown 知识库：既是应用内的浏览 / 检索 / 关系图，也是标准 Obsidian 库（同一份文件，两种形态）。</em>
 </p>
 
-**④ 复盘（自进化）** 每周日，复盘 Agent 读最近 7 期的自评分和你的逐期反馈，然后去改三样东西：`sources.yaml`（信源质量）、`editorial-policy.md`（选题口味 / 文风 / 结构模板）、记忆（经验与规则）。第二天的管线立刻用上新配置——这才是"自进化"真正落地的地方。
+**④ 复盘（自进化）** 每周日，复盘 Agent 读最近 7 期（必要时回看前 7 期）的自评分和你的逐期反馈，产出结构化提案：`sources.yaml`（信源质量）、`editorial-policy.md`（选题口味 / 文风 / 结构模板）、记忆（经验与规则），并把提案文件交付到飞书。**它不会直接改配置**——你在 WebUI 勾选后由代码 apply，第二天的管线立刻用上新配置，这才是"自进化"真正落地的地方。
 
 ```yaml
 # data/newsroom/config.yaml（字段名与代码一致）
@@ -107,7 +107,7 @@ Python 只负责**契约与调度**（期次目录、manifest 校验、任务播
 <table>
 <tr>
 <td width="50%"><img src="docs/assets/screenshots/chat.png" /><br/><b>对话</b> — 多 Agent 委派、并行子任务、计划模式、中断与降级</td>
-<td width="50%"><img src="docs/assets/screenshots/skills.png" /><br/><b>技能</b> — SKILL.md 声明式技能，渐进式披露；11 个精选 + 77 个系统技能</td>
+<td width="50%"><img src="docs/assets/screenshots/skills.png" /><br/><b>技能</b> — SKILL.md 声明式技能，渐进式披露；11 个精选 + 71 个系统技能</td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/assets/screenshots/scheduler.png" /><br/><b>调度</b> — 长期定时任务，管线与复盘都在这里跑</td>
@@ -136,18 +136,18 @@ Python 只负责**契约与调度**（期次目录、manifest 校验、任务播
 src/newsclaw/
   newsroom/      AI 早报主线：期次契约 · 信源 · 配置 · 提示词 · 播种 · 反馈
   wiki/          本地 Markdown 知识库（主题页 / 公司页 / 互链 / 索引）
-  integrations/  飞书 OAuth 与文档归档 · 市场安装器
+  integrations/  飞书 OAuth / 文档归档 / 公众号发布 / 集成适配器骨架
   core/          Agent 运行时（ReAct 循环）· ReasoningEngine · Policy V2
   agents/        多 Agent：编排 · 工厂 · 预设 · 打包
   tools/         工具系统（handlers / definitions）与搜索号池
   prompt/        提示词分层拼装（身份 → 人格 → 运行时 → 规则 → 目录 → 记忆）
   memory/        三层记忆（存储 / 向量 / 检索）
-  skills/        技能加载 · 注册 · 市场 · 国际化
+  skills/        技能加载 / 注册 / 分类 / i18n
   scheduler/     定时任务         channels/ IM 通道        api/ REST + WebSocket
 apps/setup-center/   桌面端与 Web 前端（Tauri + React）
-skills/              系统技能 77 + 精选外部技能 11
+skills/              系统技能 71 + 精选外部技能 11（catalog.json 为准）
 identity/            Agent 身份（SOUL / AGENT / POLICIES / 人格库）
-tests/               6,000+ 测试（实测 6,055 收集；unit / component / integration / e2e / eval）
+tests/               6,000+ 测试（实测 6,056 收集；unit / component / integration / e2e / eval）
 ```
 
 ---
@@ -174,10 +174,11 @@ cd apps/setup-center && npm install && npm run tauri dev
 pytest                                  # 全量测试
 pytest tests/unit                       # 单元
 ruff check src/                         # lint
-python -m build --wheel                 # 打包（同时校验技能清单与打包清单一一致）
+ruff check tests/ --select E9,F         # 测试语法 / 未定义名门禁（CI 同步）
+python -m build --wheel                 # 打包；技能清单与 force-include 不一致会失败
 ```
 
-仓库自带 CI（lint · 测试 · 打包 · 前端类型检查），绿色才算改动完成。
+仓库自带 CI（版本一致性 · lint（含测试语法门禁）· 测试 + 覆盖率下限 · 打包 · 前端类型检查与单测），绿色才算改动完成。
 
 ---
 
@@ -187,11 +188,11 @@ python -m build --wheel                 # 打包（同时校验技能清单与�
 
 本项目是 [OpenAkita](https://github.com/openakita/openakita) 的**二次开发、非官方分支**（上游同为 AGPL-3.0-only）。产品定位、功能范围与代码由本仓库改造；**上游的版权、许可与归属声明按要求保留**：见 [NOTICE](NOTICE)、[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[identity/CREDITS.md](identity/CREDITS.md)、[TRADEMARK.md](TRADEMARK.md)。
 
-本仓库**没有独立 NewsClaw 云**，也不提供官方账户 / 应用市场域名。`NEWSCLAW_ACCOUNT_MODE` 默认 `disabled`；账户或市场必须自己填显式 URL。插件开发用的 `openakita_plugin_sdk`（PyPI 名保留上游包名，便于既有插件 import）是**独立 MIT 许可**的从属 SDK：你写的插件可以按 MIT 分发调用代码，但嵌入本仓库运行时仍受主仓 AGPL-3.0-only 约束。
+本仓库**没有独立 NewsClaw 云**，也不提供官方账户 / 应用市场域名。`NEWSCLAW_ACCOUNT_MODE` 默认 `disabled`；账户或市场必须自己填显式 URL。插件开发用的 `openakita_plugin_sdk`（PyPI 名保留上游包名，便于既有插件 import）是不随本仓库分发的独立从属 SDK（MIT 许可）：你写的插件可以按 MIT 分发调用代码，但嵌入本仓库运行时仍受主仓 AGPL-3.0-only 约束。
 
 ## 这个仓库里没有的东西
 
-为了保持主线清晰，以下内容**不在**本仓库发布（本地开发副本仍保留，见 `.gitignore`）：上游的示例插件与媒体类插件集、已移出主线的技能归档、内部改版计划与发布流水线（签名安装包 / 应用商店 / 容器镜像等需要私有凭据的流程）、以及上游的产品文档站。
+为了保持主线清晰，以下内容**不在**本仓库发布（本地开发副本仍保留，见 `.gitignore`）：示例插件（`examples/plugins/`）与媒体类插件集、已移出主线的技能归档（`attic/`）、内部改版计划与本地规格（`specs/`、`research/`）、上游产品文档站（`docs-site/`）。发版工作流与脚本（`.github/workflows/release*.yml`、`scripts/`）在仓库内，但签名安装包 / 应用商店 / 容器镜像发布需要私有凭据，默认不会执行。
 
 ---
 
@@ -199,12 +200,12 @@ python -m build --wheel                 # 打包（同时校验技能清单与�
 
 这是 [OpenAkita](https://github.com/openakita/openakita) 的二次开发分支（AGPL-3.0）：平台层继承自上游，**主线（AI 早报）是我写的**。
 
-| 我写的（约 1 万行） | 继承自上游（平台层） |
+| 我写的（约 9.8k 行：newsroom + wiki + 早报技能 + 相关测试） | 继承自上游（平台层） |
 |---|---|
 | `src/newsclaw/newsroom/`：期次契约、机验不变量 I1–I9、提案 apply、播种、反馈、投递门 | Agent 运行时、工具系统、策略矩阵、多 Agent 编排 |
 | `src/newsclaw/wiki/` 与 `wiki_upsert` 工具：页面结构 / 双链 / MOC 由代码维护 | LLM provider 抽象、记忆系统、提示词管线 |
 | 早报相关技能与任务 prompt、`NewsroomView` 工作台 | FastAPI 路由骨架、IM 适配器、桌面/Web 前端外壳 |
-| 2026-09 起的收敛：删掉 orgs v2 / marketplace / hub / 5 个 IM 适配器（−13.4 万行） | 测试框架与 CI |
+| 2026-09 起的收敛：删掉 orgs v2 / marketplace / hub / 5 个 IM 适配器（fork 导入以来累计 −13.6 万行） | 测试框架与 CI |
 
 主线的设计边界写在 [`src/newsclaw/newsroom/__init__.py`](src/newsclaw/newsroom/__init__.py)：**Python 只管契约与 apply，采集/写作/复盘交给 Agent**——只有把「不能出错的部分」钉进代码，Agent 的自由创作才敢无人值守。
 

@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react&logoColor=white" />
   <img src="https://img.shields.io/badge/Tauri-2-ffc131?style=flat-square&logo=tauri&logoColor=white" />
   <img src="https://img.shields.io/badge/115_tools-82_skills-8b5cf6?style=flat-square" />
-  <img src="https://img.shields.io/badge/tests-5900%2B_passing-2ea44f?style=flat-square" />
+  <img src="https://img.shields.io/badge/tests-6000%2B_passing-2ea44f?style=flat-square" />
   <img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue?style=flat-square" />
 </p>
 
@@ -27,9 +27,9 @@
 
 ---
 
-**NewsClaw is a local, multi-agent AI assistant with a single main line of work: turning the AI-news firehose into publishable copy.** It does not wait to be asked. A scheduled task collects the day's stories, writes them up, deposits the research into a local knowledge base, archives it to Feishu, and once a week reviews its own output and rewrites its editorial policy.
+**NewsClaw is a local, multi-agent AI assistant with a single main line of work: turning the AI-news firehose into publishable copy.** It does not wait to be asked. A scheduled task collects the day's stories, writes them up, deposits the research into a local knowledge base, archives it to Feishu, and once a week reviews its own output and proposes editorial-policy changes (applied only after human approval).
 
-Everything stays on your machine (`~/.newsclaw` plus the workspace `data/`), and models run on your own keys (32 provider presets built in). Desktop, web and mobile clients share one backend.
+Everything stays on your machine (`~/.newsclaw` plus the workspace `data/`), and models run on your own keys (32 provider presets built in). Desktop and web clients share one backend (the Capacitor mobile shell is kept local and is not published with this repository).
 
 ---
 
@@ -38,14 +38,14 @@ Everything stays on your machine (`~/.newsclaw` plus the workspace `data/`), and
 | | | |
 |---|---|---|
 | **① Collect** | **② Draft** | **③ Deposit & archive** |
-| Four source families (AI search, frontier-model news, funding, open source) fetched concurrently, deduplicated, scored, then narrowed to 10+ items. | One agent produces three deliverables per issue: an internal brief, a WeChat article draft, and a Xiaohongshu post with hashtags and image suggestions. | Research lands in a local Markdown knowledge base (topic/company pages, backlinks, index) and is archived to Feishu cloud docs. |
+| Four default source families (AI search, frontier-model news, funding, open source; extendable via weekly proposals) fetched concurrently, deduplicated, scored, then narrowed to 7–12 items (contract floor: at least 3 with links; fewer is acceptable on a thin day). | One agent produces three deliverables per issue: an internal brief, a WeChat article draft, and a Xiaohongshu post with hashtags and image suggestions. | Research lands in a local Markdown knowledge base (topic/company pages, backlinks, index) and is archived to Feishu cloud docs. |
 
 <p align="center">
   <img src="docs/assets/screenshots/wiki.png" alt="Local knowledge base" width="100%" />
   <em>Local Markdown knowledge base: browsable and searchable in the app, and a valid Obsidian vault at the same time — one set of files, two professional forms.</em>
 </p>
 
-**④ Review (self-evolution).** Every Sunday a review agent reads the last seven issues' scores and your per-issue feedback, then edits three things: `sources.yaml` (source quality), `editorial-policy.md` (topic taste, voice, structure templates) and memory (rules and experience). The next day's pipeline picks the changes up — that is where "self-evolving" actually lands.
+**④ Review (self-evolution).** Every Sunday a review agent reads the last seven issues' scores (looking back up to 14 when needed) and your per-issue feedback, and produces structured proposals for three things: `sources.yaml` (source quality), `editorial-policy.md` (topic taste, voice, structure templates) and memory (rules and experience), delivering the proposal files to Feishu. It never edits the config directly — you approve the ops in the web UI and code applies them; the next day's pipeline picks the changes up, which is where "self-evolving" actually lands.
 
 ```yaml
 # data/newsroom/config.yaml (field names match the code)
@@ -86,7 +86,7 @@ Python owns **contracts and scheduling** (issue layout, manifest validation, tas
 <table>
 <tr>
 <td width="50%"><img src="docs/assets/screenshots/chat.png" /><br/><b>Chat</b> — multi-agent delegation, parallel subtasks, plan mode, interrupt & degrade</td>
-<td width="50%"><img src="docs/assets/screenshots/skills.png" /><br/><b>Skills</b> — declarative SKILL.md with progressive disclosure; 11 curated + 77 system skills</td>
+<td width="50%"><img src="docs/assets/screenshots/skills.png" /><br/><b>Skills</b> — declarative SKILL.md with progressive disclosure; 11 curated + 71 system skills</td>
 </tr>
 <tr>
 <td width="50%"><img src="docs/assets/screenshots/scheduler.png" /><br/><b>Scheduling</b> — long-lived cron tasks; the pipeline and the review both live here</td>
@@ -115,18 +115,18 @@ Python owns **contracts and scheduling** (issue layout, manifest validation, tas
 src/newsclaw/
   newsroom/      briefing line: issue contract · sources · config · prompts · seeding · feedback
   wiki/          local Markdown knowledge base (topic/company pages, backlinks, index)
-  integrations/  Feishu OAuth + document archival · marketplace installer
+  integrations/  Feishu OAuth / document archival / WeChat article publishing / integration adapter scaffolding
   core/          agent runtime (ReAct loop) · ReasoningEngine · Policy V2
   agents/        multi-agent: orchestration · factory · presets · packaging
   tools/         tool system (handlers / definitions) and search key pools
   prompt/        layered prompt assembly (identity → persona → runtime → rules → catalogs → memory)
   memory/        three-layer memory (storage / vectors / retrieval)
-  skills/        skill loading · registry · marketplace · i18n
+  skills/        skill loading / registry / categories / i18n
   scheduler/     cron tasks        channels/  IM adapters       api/  REST + WebSocket
 apps/setup-center/   desktop + web frontend (Tauri + React)
 skills/              71 system skills + 11 curated external skills
 identity/            agent identity (SOUL / AGENT / POLICIES / personas)
-tests/               6,000+ tests (6,055 collected; unit / component / integration / e2e / eval)
+tests/               6,000+ tests (6,056 collected; unit / component / integration / e2e / eval)
 ```
 
 ---
@@ -153,10 +153,11 @@ cd apps/setup-center && npm install && npm run tauri dev
 pytest                                  # full suite
 pytest tests/unit                       # unit only
 ruff check src/                         # lint
-python -m build --wheel                 # packaging (also validates the skill list against the packaging list)
+ruff check tests/ --select E9,F         # test-file syntax / undefined-name gate (CI parity)
+python -m build --wheel                 # packaging; a force-include mismatch fails the build
 ```
 
-CI runs lint, tests, the wheel build and a frontend type check; green is the bar for a change.
+CI runs version consistency, lint (including the test-file gate), tests with a coverage floor, the wheel build and frontend typecheck + unit tests; green is the bar for a change.
 
 ---
 
@@ -166,8 +167,8 @@ CI runs lint, tests, the wheel build and a frontend type check; green is the bar
 
 This project is an **unofficial fork** of [OpenAkita](https://github.com/openakita/openakita) (also AGPL-3.0-only). Product positioning, feature scope and code were reworked here; **upstream copyright, licence and attribution notices are preserved as required**: see [NOTICE](NOTICE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [identity/CREDITS.md](identity/CREDITS.md) and [TRADEMARK.md](TRADEMARK.md).
 
-There is **no standalone NewsClaw cloud** and no official account / marketplace hostname. `NEWSCLAW_ACCOUNT_MODE` defaults to `disabled`; account or marketplace integrations need an explicit URL. The plugin UI SDK (`openakita_plugin_sdk`, upstream PyPI name kept so existing plugins keep importing) is a **separate MIT-licensed** companion: plugin authors may ship call-site code under MIT, but running it inside this repository remains bound by the host AGPL-3.0-only.
+There is **no standalone NewsClaw cloud** and no official account / marketplace hostname. `NEWSCLAW_ACCOUNT_MODE` defaults to `disabled`; account or marketplace integrations need an explicit URL. The plugin UI SDK (`openakita_plugin_sdk`, upstream PyPI name kept so existing plugins keep importing) is a separate MIT-licensed companion that is **not shipped in this repository**: plugin authors may ship call-site code under MIT, but running it inside this repository remains bound by the host AGPL-3.0-only.
 
 ## What is not in this repository
 
-To keep the main line readable, the following are deliberately not published here (the local development copy keeps them; see `.gitignore`): upstream's sample and media plugin sets, the archive of skills moved off the main line, internal revamp plans and the release pipeline (signed installers, store packages, container images — all needing private credentials), and upstream's product documentation site.
+To keep the main line readable, the following are deliberately not published here (the local development copy keeps them; see `.gitignore`): example plugins (`examples/plugins/`) and media plugin sets, the archive of skills moved off the main line (`attic/`), internal revamp plans and local specs (`specs/`, `research/`), and upstream's product documentation site (`docs-site/`). The release workflows and scripts (`.github/workflows/release*.yml`, `scripts/`) are in the repository, but signed installers, store packages and container images need private credentials and do not run by default.

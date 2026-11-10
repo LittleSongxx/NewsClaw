@@ -17,6 +17,7 @@ Fixes #(issue number)
 
 ## 测试检查清单
 
+- [ ] 通过 lint 门禁：`ruff check src/` 与 `ruff check tests/ --select E9,F`
 - [ ] 新增了哪些测试文件/测试用例?
 - [ ] 纯逻辑部分是否有 L1 单元测试? (`tests/unit/`)
 - [ ] 组件交互是否有 L2 测试? (`tests/component/`, Mock LLM)

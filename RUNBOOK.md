@@ -48,7 +48,7 @@ curl -s -X POST http://127.0.0.1:18900/api/newsroom/generate        # 202 + exec
 curl -s http://127.0.0.1:18900/api/newsroom/issues | head -c 600    # 轮询产物
 ```
 
-一期大约 10–40 分钟（取决于信源与模型）。完成判据：
+一期基线 10–40 分钟；启用运行时采集预算后实测约 5 分钟（28 轮 ReAct）。完成判据：
 
 - `data/newsroom/issues/<今天>/` 下出现 `manifest.json` + 三份 `.md`；
 - `manifest.status` ∈ {`ready`, `partial`}。**partial 不是失败**，表示某步诚实收尾（预算耗尽/无结果日/未达质量下限），但会触发 owner 告警；
@@ -127,7 +127,7 @@ apply 的保证：只落勾选且未应用的 op → 内存构造新状态并校
 
 | 日期 | 状态 | 条目数 | 信源数 | 自评均分 | token/耗时 | 人工反馈 | 备注 |
 |---|---|---|---|---|---|---|---|
-| 2026-11-09 | ready | 12 | 4 | 4.25 | 见 trace summary | 👍 | — |
+| 2026-11-09 | ready | 7 | 4 | 4.0 | 28 轮 / 103 万输入 token / 4.9 分钟 | 👍 | 首期真实上线：飞书文档已归档 + 私聊推送 |
 
 周末做一次：写 1–2 条反馈 → 触发周复盘 → 勾 1–2 条 op apply → 保留 `audit/apply.jsonl` 与提案文件。若某天 partial，保留日志与根因，**不要手工改 manifest 洗成 ready**（契约会校验账本，且诚实记录本身比全绿更有说服力）。
 
@@ -145,8 +145,9 @@ apply 的保证：只落勾选且未应用的 op → 内存构造新状态并校
 | `context_tool_result_min_compact_chars` | 1200 | 旧结果超过该字符数才压 |
 | `context_tool_result_preview_chars` | 400 | 压成前 N 字符 + 「需要请重查」标记 |
 
-配套的提示词约束（`PROMPT_VERSION=21`）：采集子 Agent 最多 3 次搜索 + 4 次抓取
-必须交差；主 Agent 在子 Agent 返回后**不得逐条重抓核验**，只抽查 ≤2 条。
+配套的提示词约束（见 `src/newsclaw/newsroom/prompts.py` 的 `PROMPT_VERSION`，当前 25）：
+采集子 Agent 最多 3 次搜索 + 4 次抓取必须交差；主 Agent 在子 Agent 返回后
+**不得逐条重抓核验**，只抽查 ≤2 条。
 
 **实测 A/B（同日四跑，均为 ready；第 2–4 跑禁用外部投递）**：
 
@@ -156,17 +157,17 @@ apply 的保证：只落勾选且未应用的 op → 内存构造新状态并校
 | 2 | + 工具结果按数量清理 | 68 | 4,092,007 | 每轮上下文从 ~99k 降到 ~47k，但模型完全跳过委派、自己搜 64 次 |
 | 3 | + 采集预算/强制委派/禁逐条复核 | 53 | 2,890,599 | 已委派，但子 Agent 的 `web_fetch` 被占位 URL 生成接地拦死→返回空 |
 | 4 | + 修 URL 接地（子 Agent 能抓原文） | 69 | 3,587,828 | 委派与采集都通了（9 条 ready），但主 Agent 仍逐个抓 59 次复核 |
+| 5 | + 运行时采集预算（见本节末） | **28** | **1,034,694** | 委派后不再逐条重抓，三产物 + 投递一次通过；ready |
 
 结论：**上下文清理确实生效**（消息 token 峰值 99.6k → 23–41k），**URL 接地是真 bug 已修**；
-但**总 token 仍被「主 Agent 不信任委派结果、自己逐个抓取」主导**，prompt 约束不足以强制。
-下一步应做运行时级采集预算（delegate 成功后禁止 `web_search`、`web_fetch` 限 2 次），
-而不是继续加 prompt。
+第 4 跑的总 token 仍被「主 Agent 不信任委派结果、自己逐个抓取」主导，prompt 约束不足以强制。
+这一结论已落地为**运行时采集预算**（见本节末）：第 5 跑降到 28 轮 / 103 万 token。
 
 看每期实际花费：
 
 ```bash
 # ReAct trace 里有逐轮 tokens / context_pressure，可直接看
-python - <<'PY'
+.venv/bin/python - <<'PY'
 import json, pathlib
 p = sorted(pathlib.Path("data/react_traces").glob("*/trace_*.json"))[-1]
 d = json.loads(p.read_text(encoding="utf-8"))
@@ -178,7 +179,7 @@ PY
 
 **运行时采集预算（v1.31.0，不靠 prompt 自觉）**
 
-`newsroom/collection_budget.py` 在工具执行层兜底，只作用于 `newsroom == daily`
+`src/newsclaw/newsroom/collection_budget.py` 在工具执行层兜底，只作用于 `newsroom == daily`
 的调度任务、且只约束主 Agent（`:sub:` 采集子 Agent 不受限）：
 
 | 阶段 | web_search 上限 | web_fetch 上限 |
@@ -191,8 +192,8 @@ PY
 `NEWSCLAW_NEWSROOM_SEARCH_BUDGET_BEFORE` / `NEWSCLAW_NEWSROOM_FETCH_BUDGET_BEFORE` /
 `NEWSCLAW_NEWSROOM_SEARCH_BUDGET_AFTER` / `NEWSCLAW_NEWSROOM_FETCH_BUDGET_AFTER`。
 
-实测（2026-11-09，同日四跑）：既有 prompt 约束把输入 token 从 461 万降到 359 万；
-prompt + 运行时预算后单期 28 轮 / 103 万输入 token / 4.9 分钟（见 `data/react_traces/`）。
+实测（2026-11-09，同日五跑）：基线 51 轮 / 461 万，prompt 约束 69 轮 / 359 万，
+prompt + 运行时预算 **28 轮 / 103.5 万输入 token / 4.9 分钟**（见 `data/react_traces/`）。
 
 ## 8. 安全边界
 
@@ -207,6 +208,7 @@ prompt + 运行时预算后单期 28 轮 / 103 万输入 token / 4.9 分钟（�
 
 ```bash
 .venv/bin/ruff check src/
+.venv/bin/ruff check tests/ --select E9,F   # 测试语法 / 未定义名（CI 同步）
 .venv/bin/python -m pytest tests/unit tests/component tests/integration tests/eval -q
 .venv/bin/python -m pytest -q                     # 全量，必须 0 failed
 .venv/bin/python scripts/version.py check

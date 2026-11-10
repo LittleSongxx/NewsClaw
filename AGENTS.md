@@ -25,6 +25,8 @@ cd apps/setup-center && npm install                 # 只在改前端时
 newsclaw                       # 交互式 CLI
 newsclaw run "任务"             # 单次任务；无人值守对 CONFIRM 默认拒绝（deny），不会挂起等审批
 newsclaw serve                 # 服务模式：IM 通道 + HTTP API（127.0.0.1:18900）
+newsclaw selfcheck [--fix]      # 自检 / 修复（含记忆库）
+newsclaw trace-report --date YYYY-MM-DD  # 导出调度任务的 span 报告
 newsclaw plugin-validate <目录> # 校验插件 manifest
 python -m newsclaw <子命令>      # 与 newsclaw 等价
 
@@ -34,9 +36,10 @@ cd apps/setup-center && npm run tauri dev   # 桌面端
 ## 测试与质量门
 
 ```bash
-pytest                          # 全量（asyncio_mode=auto；testpaths=tests）
+pytest -q                       # 全量（asyncio_mode=auto；testpaths=tests）
 pytest tests/unit               # 单元
 ruff check src/                 # lint（line-length=100，target py311）
+ruff check tests/ --select E9,F  # 测试语法 / 未定义名门禁（CI 同步）
 mypy src/newsclaw              # 类型检查（宽松、尽力而为：pyproject ignore_errors=true，不守发布门）
 python -m build --wheel         # 打包；技能清单与 pyproject force-include 不一致会直接失败
 npx tsc --noEmit -p tsconfig.json && npx vitest run   # 前端（在 apps/setup-center）
@@ -56,7 +59,7 @@ npx tsc --noEmit -p tsconfig.json && npx vitest run   # 前端（在 apps/setup-
 src/newsclaw/
   newsroom/     AI 早报主线（契约 / 信源 / 配置 / 提示词 / 播种 / 反馈）
   wiki/         本地 Markdown 知识库（主题页 / 公司页 / 互链 / 索引）
-  integrations/ 飞书 OAuth 与文档归档、市场安装器
+  integrations/ 飞书 OAuth / 文档归档 / 公众号发布 / 集成适配器骨架（marketplace 后台未随仓库发布）
   core/         Agent 运行时（ReAct 循环）、ReasoningEngine、Policy V2
   agents/       多 Agent：编排、工厂、预设、打包
   tools/        工具系统（handlers/ + definitions/）与搜索号池
@@ -67,7 +70,7 @@ src/newsclaw/
 apps/setup-center/  桌面端与 Web 前端（Tauri + React）
 skills/             系统技能 + 精选外部技能（catalog.json 为准）
 identity/           Agent 身份（SOUL / AGENT / POLICIES / 人格库）
-tests/              unit / component / integration / e2e
+tests/              unit / component / integration / e2e / eval
 ```
 
 ## 架构要点

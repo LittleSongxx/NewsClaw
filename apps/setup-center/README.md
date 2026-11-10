@@ -1,36 +1,41 @@
 ## NewsClaw Setup Center
 
-这是 NewsClaw 的可视化安装与配置中心（跨平台：Windows / macOS / Linux）。
+NewsClaw 的桌面端 / Web 前端（Tauri 2 + React 18）：首次安装向导 + 日常工作台。
 
-### 目标（分阶段）
-
-- **v0（已打通主链路）**：多工作区、创建/选择工作区、生成工作区文件（`.env`/`data/llm_endpoints.json`/`identity/SOUL.md`）、检测内置 Python、创建 venv、pip 安装 newsclaw、按 OpenAI/Anthropic 协议拉取模型列表、写入端点配置、写入 IM/代理等 env。
-- **v1**：完善 bundled Python + venv 契约校验与修复流程，可选组件安装（Playwright/Whisper/浏览器等）。
-- **v2**：一键打包发布（Windows `.exe`、macOS `.app`，可选签名/公证）
+工作台覆盖：早报工作台（期次 / 条目级反馈 / 提案人审）、知识库 Wiki、对话（多 Agent 委派）、技能、调度任务、审批队列、设置与诊断。
 
 ### 目录结构
 
-- `src/`：前端（React + Vite）
-- `src-tauri/`：Tauri 后端（Rust），负责文件/进程/网络等本地能力
+- `src/`：前端源码（React 18 + TypeScript strict、Vite 6、Tailwind CSS v4、i18next）
+- `src-tauri/`：Tauri 2 后端（Rust），负责文件 / 进程 / 网络等本地能力
+- `src-tauri/resources/bootstrap/`：桌面端 Python 运行时引导资源（uv / CPython seed / wheel）
+- 构建产物：`dist/`（桌面）、`dist-web/`（Web；git-ignore，打包 wheel 时由 `scripts/stage_package_assets.py` 暂存）
 
-### 运行（开发）
+### 开发
 
 在 `apps/setup-center/` 下：
 
 ```bash
 npm install
-npm run tauri dev
+npm run dev:web                     # 纯 Web 开发（Vite；后端另跑 newsclaw serve）
+npm run tauri dev                   # 桌面端（Tauri 自动拉起后端）
+npm run tauri:dev:external-backend  # 桌面端连接已经启动的后端
 ```
 
-如果后端已通过 `newsclaw serve` 单独启动，优先使用外部后端开发模式：
+后端已通过 `newsclaw serve` 单独启动时优先用 external-backend 模式：它不会复制
+`src-tauri/resources/bootstrap`，桌面端只连接 `http://127.0.0.1:18900`。
+
+质量门：
 
 ```bash
-npm run tauri:dev:external-backend
+npx tsc --noEmit -p tsconfig.json
+npx vitest run
+npm run lint
 ```
-
-该模式不会把 `src-tauri/resources/bootstrap` 复制到 Tauri debug 资源目录；
-桌面端只连接已经运行的 `http://127.0.0.1:18900`。
 
 ### 说明
 
-- **Windows 图标**：为避免开发环境因缺少 `src-tauri/icons/icon.ico` 导致构建失败，`src-tauri/build.rs` 会在缺失时自动生成一个透明占位 `icon.ico`。正式发布请用 `tauri icon` 生成完整图标集。
+- 后端默认端口 **18900**；Tauri 会按工作区配置注入端口。
+- `dist-web/` 是构建产物（不提交）；发布打包时在仓库根目录用 `python scripts/stage_package_assets.py` 暂存进 wheel。
+- 移动端：`cap:android` / `cap:ios` / `cap:sync` 脚本与 `android/`、`ios/`、`capacitor.config.ts` 只保留在本地（git-ignore），不随仓库发布。
+- Windows 图标：`src-tauri/build.rs` 在缺 `src-tauri/icons/icon.ico` 时生成透明占位；正式发布用 `tauri icon` 生成完整图标集。

@@ -1,21 +1,15 @@
 # Example Plugins
 
-This directory contains example plugins demonstrating the NewsClaw Plugin 2.0 system.
-Copy any plugin folder into `data/plugins/` to install it.
+本仓库**不发布**示例插件：`examples/plugins/` 已被 `.gitignore` 排除，本地开发副本可能保留上游的示例插件集（echo-channel / hello-tool / message-logger 等）。
 
-| Plugin | Type | Description |
-|--------|------|-------------|
-| [echo-channel](plugins/echo-channel/) | Channel | Stub echo channel adapter for testing |
-| [echo-llm](plugins/echo-llm/) | LLM Provider | Echo LLM provider that mirrors input back |
-| [github-mcp](plugins/github-mcp/) | MCP | GitHub MCP server integration via `npx` |
-| [hello-tool](plugins/hello-tool/) | Tool | Minimal tool plugin — good starting template |
-| [lark-cli-tool](plugins/lark-cli-tool/) | Tool | Lark/Feishu CLI tool integration |
-| [message-logger](plugins/message-logger/) | Hook | Logs all messages to `messages.jsonl` |
-| [obsidian-kb](plugins/obsidian-kb/) | Knowledge Base | Obsidian vault RAG integration |
-| [ollama-provider](plugins/ollama-provider/) | LLM Provider | Local Ollama model provider |
-| [qdrant-memory](plugins/qdrant-memory/) | Memory | Qdrant vector memory backend |
-| [sqlite-memory](plugins/sqlite-memory/) | Memory | SQLite-based memory backend |
-| [translate-skill](plugins/translate-skill/) | Skill | Translation skill with SKILL.md example |
-| [whatsapp-channel](plugins/whatsapp-channel/) | Channel | WhatsApp adapter (Cloud API + Baileys 7.x) |
+仓库里只保留 `examples/.env.example` 作为环境变量参考。
 
-See [`.env.example`](.env.example) for environment variable reference.
+插件系统（Plugin 2.0）支持 Channel / LLM Provider / MCP / Tool / Hook / Knowledge Base / Memory / Skill 等类型，入口在 `src/newsclaw/plugins/`。自己写插件：
+
+```bash
+newsclaw plugin-scaffold <目录>   # 生成插件骨架
+newsclaw plugin-validate <目录>   # 校验 manifest
+# 通过校验后，把插件目录拷进 data/plugins/ 即完成本地安装
+```
+
+插件 manifest 与 API 细节以 `newsclaw plugins --help`、`src/newsclaw/plugins/` 为准。

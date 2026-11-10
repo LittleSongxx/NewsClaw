@@ -27,7 +27,7 @@ terms. No endorsement by Anthropic is implied.
 
 ## Browser Automation
 
-The following packages are bundled for browser automation:
+The following optional dependencies power browser automation (declared in `pyproject.toml` extras and `requirements.txt`):
 
 ### Playwright
 
@@ -63,23 +63,24 @@ within the browser automation module.
 The following skills are inspired by or adapted from the
 [Agent Skills](https://agentskills.io) community ecosystem:
 
-- `changelog-generator` — Changelog generation from git history
-- `code-review` — Code review for local changes and pull requests
 - `content-research-writer` — Research-driven content writing assistant
-- `video-downloader` — YouTube video downloader
+- `chinese-writing` — Chinese editorial writing (adapted from miantiao-me/aigc-weekly, MIT)
+- `obsidian-skills` — Obsidian vault authoring helpers (kepano/obsidian-skills)
+- `wechat-article` — WeChat article publishing (iamzifei/wechat-article-publisher-skill)
+- `xiaohongshu-creator` — Xiaohongshu post formatting (comeonzhj/auto-redbook-skills, MIT)
+
+See `skills/ATTRIBUTION.md` for the canonical upstream/license table.
 
 ---
 
 ## NewsClaw Original Skills
 
-All skills under `skills/system/` and the following are original to this
-project, licensed under the same [AGPL-3.0-only](LICENSE) terms as the main project:
+All skills under `skills/system/` (71 skills) and the following curated skills
+are original to this project, licensed under the same [AGPL-3.0-only](LICENSE)
+terms as the main project:
 
-- `datetime-tool` — Date/time utilities
-- `file-manager` — File system operations
-- `github-automation` — GitHub automation via Composio MCP
-- `gmail-automation` — Gmail automation via Composio MCP
-- `google-calendar-automation` — Google Calendar automation via Composio MCP
+- `newsroom-editor` — AI briefing editing workflow (collection → writing → review)
+- `feishu-cli` — Feishu CLI wrapper for document/archive operations
 
 ---
 

@@ -6,6 +6,8 @@ Python backend for the NewsClaw multi-agent AI assistant.
 
 | Module | Purpose |
 |--------|---------|
+| `newsroom/` | AI briefing main line: issue contract & invariants, sources, config, prompts, seeding, feedback, proposal apply |
+| `wiki/` | Local Markdown knowledge base: topic/company pages, backlinks, MOC/index |
 | `agent/core.py` | Main Agent class — orchestrates brain, tools, identity, memory |
 | `agent/brain.py` | LLM interaction layer (streaming, tool calls, retries) |
 | `agent/reasoning.py` | ReAct reasoning engine (stream-based) |
@@ -16,8 +18,9 @@ Python backend for the NewsClaw multi-agent AI assistant.
 | `agents/factory.py` | Creates Agent instances from AgentProfile, manages instance pool |
 | `agents/profile.py` | AgentProfile dataclass, ProfileStore persistence |
 | `tools/handlers/` | Tool implementations (one file per tool or tool group) |
-| `tools/definitions/` | Tool JSON schemas for LLM function calling |
+| `tools/definitions/` | Tool definitions as Python modules (`TOOL_*_TOOLS` lists, aggregated in `__init__.py`; 115 tools total) |
 | `channels/gateway.py` | MessageGateway — unified IM message routing |
+| `scheduler/` | Cron scheduler, task executor, system jobs (backup, memory consolidation) |
 | `channels/adapters/` | IM adapters (feishu, qq_official, wechat — the three real adapters) |
 | `memory/unified_store.py` | Three-layer memory: core, semantic, conversation traces |
 | `skills/loader.py` | Discovers and loads SKILL.md files from multiple directories |
@@ -27,9 +30,9 @@ Python backend for the NewsClaw multi-agent AI assistant.
 ## Adding a New Tool
 
 1. Create handler in `tools/handlers/your_tool.py` — implement the async function
-2. Create definition in `tools/definitions/your_tool.json` — JSON schema for LLM
-3. Register in `tools/catalog.py` if not auto-discovered
-4. Create SKILL.md in `skills/system/your-tool/SKILL.md` with description and examples
+2. Create/extend a definitions module in `tools/definitions/` (Python `ToolDefinition` objects exported as `YOUR_TOOLS`) and register it in `tools/definitions/__init__.py` (`_ALL_TOOLS`)
+3. Register the handler so the executor can resolve the tool name (see `tools/handlers/__init__.py`)
+4. Optional: add `skills/system/your-tool/SKILL.md` for progressive disclosure
 
 ## Adding a New API Route
 
@@ -45,7 +48,7 @@ Python backend for the NewsClaw multi-agent AI assistant.
 
 ## Multi-Agent System
 
-- **Preset agents** are defined in `agents/presets.py` (default, office-doc, code-assistant, browser-agent, data-analyst)
+- **Preset agents** are defined in `agents/presets.py`: default (小小宋), ai-news-editor (早报编辑), news-collector (早报采集员), content-creator (自媒体达人), office-doc (文助)
 - Sub-agents get an empty context (isolated session `:sub:<run_id>`) plus the task package
 - Sub-agents get a "子 Agent 工作模式" prompt section that disables delegation tools
 - Agent profiles are persisted as JSON in `data/agents/profiles/`
