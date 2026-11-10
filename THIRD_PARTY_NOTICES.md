@@ -76,8 +76,7 @@ See `skills/ATTRIBUTION.md` for the canonical upstream/license table.
 ## NewsClaw Original Skills
 
 All skills under `skills/system/` (71 skills) and the following curated skills
-are original to this project, licensed under the same [AGPL-3.0-only](LICENSE)
-terms as the main project:
+are original to this project:
 
 - `newsroom-editor` — AI briefing editing workflow (collection → writing → review)
 - `feishu-cli` — Feishu CLI wrapper for document/archive operations

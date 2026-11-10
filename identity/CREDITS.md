@@ -1,8 +1,5 @@
 # NewsClaw Credits
 
-> NewsClaw is a local fork of [OpenAkita](https://github.com/openakita/openakita) (AGPL-3.0-only). Upstream attributions below are preserved as required by the license.
-
-
 The identity files in this directory were designed with reference to the following
 open-source projects and public documentation, and have been customized and
 rewritten specifically for NewsClaw.

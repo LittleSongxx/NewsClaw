@@ -3,16 +3,11 @@ name = "newsclaw"
 version = "1.31.0"
 description = "本地优先的多 Agent AI 助手，主循环是 ReAct"
 readme = "README.md"
-license = { text = "AGPL-3.0-only" }
 requires-python = ">=3.11"
-authors = [
-    { name = "OpenAkita", email = "zacon365@gmail.com" }
-]
 keywords = ["ai", "agent", "claude", "autonomous", "self-evolving"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -200,7 +195,6 @@ include = [
     "VERSION",
     "pyproject.toml",
     "README.md",
-    "LICENSE",
 ]
 
 [tool.hatch.build.targets.wheel]

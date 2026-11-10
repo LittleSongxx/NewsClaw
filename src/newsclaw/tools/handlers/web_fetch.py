@@ -272,10 +272,7 @@ class WebFetchHandler:
                 **get_httpx_client_kwargs(timeout=30),
                 follow_redirects=False,
                 headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (compatible; NewsClaw/1.0; "
-                        "+https://github.com/openakita/openakita)"
-                    ),
+                    "User-Agent": "Mozilla/5.0 (compatible; NewsClaw/1.0)",
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 },
             ) as client:

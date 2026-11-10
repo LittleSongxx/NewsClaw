@@ -16,7 +16,6 @@
   <img src="https://img.shields.io/badge/Tauri-2-ffc131?style=flat-square&logo=tauri&logoColor=white" />
   <img src="https://img.shields.io/badge/115_tools-82_skills-8b5cf6?style=flat-square" />
   <img src="https://img.shields.io/badge/tests-6000%2B_passing-2ea44f?style=flat-square" />
-  <img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue?style=flat-square" />
 </p>
 
 <p align="center">
@@ -161,14 +160,8 @@ CI runs version consistency, lint (including the test-file gate), tests with a c
 
 ---
 
-## License
-
-**AGPL-3.0-only** — see [LICENSE](LICENSE). Do not relicense to MIT or strip LICENSE / NOTICE / TRADEMARK / copyright lines.
-
-This project is an **unofficial fork** of [OpenAkita](https://github.com/openakita/openakita) (also AGPL-3.0-only). Product positioning, feature scope and code were reworked here; **upstream copyright, licence and attribution notices are preserved as required**: see [NOTICE](NOTICE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [identity/CREDITS.md](identity/CREDITS.md) and [TRADEMARK.md](TRADEMARK.md).
-
-There is **no standalone NewsClaw cloud** and no official account / marketplace hostname. `NEWSCLAW_ACCOUNT_MODE` defaults to `disabled`; account or marketplace integrations need an explicit URL. The plugin UI SDK (`openakita_plugin_sdk`, upstream PyPI name kept so existing plugins keep importing) is a separate MIT-licensed companion that is **not shipped in this repository**: plugin authors may ship call-site code under MIT, but running it inside this repository remains bound by the host AGPL-3.0-only.
-
 ## What is not in this repository
 
-To keep the main line readable, the following are deliberately not published here (the local development copy keeps them; see `.gitignore`): example plugins (`examples/plugins/`) and media plugin sets, the archive of skills moved off the main line (`attic/`), internal revamp plans and local specs (`specs/`, `research/`), and upstream's product documentation site (`docs-site/`). The release workflows and scripts (`.github/workflows/release*.yml`, `scripts/`) are in the repository, but signed installers, store packages and container images need private credentials and do not run by default.
+To keep the main line readable, the following are deliberately not published here (the local development copy keeps them; see `.gitignore`): example plugins (`examples/plugins/`) and media plugin sets, the archive of skills moved off the main line (`attic/`), internal revamp plans and local specs (`specs/`, `research/`), and the product documentation site (`docs-site/`). The release workflows and scripts (`.github/workflows/release*.yml`, `scripts/`) are in the repository, but signed installers, store packages and container images need private credentials and do not run by default.
+
+There is no standalone NewsClaw cloud and no official account / marketplace hostname; `NEWSCLAW_ACCOUNT_MODE` defaults to `disabled` and any account or marketplace integration needs an explicit URL. The plugin SDK (`openakita_plugin_sdk`) is a separately distributed companion, not shipped in this repository.

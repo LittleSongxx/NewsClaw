@@ -16,7 +16,6 @@
   <img src="https://img.shields.io/badge/Tauri-2-ffc131?style=flat-square&logo=tauri&logoColor=white" />
   <img src="https://img.shields.io/badge/115_tools-82_skills-8b5cf6?style=flat-square" />
   <img src="https://img.shields.io/badge/tests-6000%2B_passing-2ea44f?style=flat-square" />
-  <img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue?style=flat-square" />
 </p>
 
 <p align="center">
@@ -182,30 +181,20 @@ python -m build --wheel                 # 打包；技能清单与 force-include
 
 ---
 
-## 许可
-
-**AGPL-3.0-only** — 见 [LICENSE](LICENSE)。不能改成 MIT，也不能删 LICENSE / NOTICE / TRADEMARK / 版权行。
-
-本项目是 [OpenAkita](https://github.com/openakita/openakita) 的**二次开发、非官方分支**（上游同为 AGPL-3.0-only）。产品定位、功能范围与代码由本仓库改造；**上游的版权、许可与归属声明按要求保留**：见 [NOTICE](NOTICE)、[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[identity/CREDITS.md](identity/CREDITS.md)、[TRADEMARK.md](TRADEMARK.md)。
-
-本仓库**没有独立 NewsClaw 云**，也不提供官方账户 / 应用市场域名。`NEWSCLAW_ACCOUNT_MODE` 默认 `disabled`；账户或市场必须自己填显式 URL。插件开发用的 `openakita_plugin_sdk`（PyPI 名保留上游包名，便于既有插件 import）是不随本仓库分发的独立从属 SDK（MIT 许可）：你写的插件可以按 MIT 分发调用代码，但嵌入本仓库运行时仍受主仓 AGPL-3.0-only 约束。
-
 ## 这个仓库里没有的东西
 
-为了保持主线清晰，以下内容**不在**本仓库发布（本地开发副本仍保留，见 `.gitignore`）：示例插件（`examples/plugins/`）与媒体类插件集、已移出主线的技能归档（`attic/`）、内部改版计划与本地规格（`specs/`、`research/`）、上游产品文档站（`docs-site/`）。发版工作流与脚本（`.github/workflows/release*.yml`、`scripts/`）在仓库内，但签名安装包 / 应用商店 / 容器镜像发布需要私有凭据，默认不会执行。
+为了保持主线清晰，以下内容**不在**本仓库发布（本地开发副本仍保留，见 `.gitignore`）：示例插件（`examples/plugins/`）与媒体类插件集、已移出主线的技能归档（`attic/`）、内部改版计划与本地规格（`specs/`、`research/`）、产品文档站（`docs-site/`）。发版工作流与脚本（`.github/workflows/release*.yml`、`scripts/`）在仓库内，但签名安装包 / 应用商店 / 容器镜像发布需要私有凭据，默认不会执行。
+
+本仓库没有独立 NewsClaw 云，也不提供官方账户 / 应用市场域名；`NEWSCLAW_ACCOUNT_MODE` 默认 `disabled`，账户或市场需要自己填显式 URL。插件开发用的 `openakita_plugin_sdk` 是独立分发的从属 SDK（不在本仓库内）。
 
 ---
 
-## 这个项目里哪些是我写的
+## 主线模块
 
-这是 [OpenAkita](https://github.com/openakita/openakita) 的二次开发分支（AGPL-3.0）：平台层继承自上游，**主线（AI 早报）是我写的**。
-
-| 我写的（约 9.8k 行：newsroom + wiki + 早报技能 + 相关测试） | 继承自上游（平台层） |
-|---|---|
-| `src/newsclaw/newsroom/`：期次契约、机验不变量 I1–I9、提案 apply、播种、反馈、投递门 | Agent 运行时、工具系统、策略矩阵、多 Agent 编排 |
-| `src/newsclaw/wiki/` 与 `wiki_upsert` 工具：页面结构 / 双链 / MOC 由代码维护 | LLM provider 抽象、记忆系统、提示词管线 |
-| 早报相关技能与任务 prompt、`NewsroomView` 工作台 | FastAPI 路由骨架、IM 适配器、桌面/Web 前端外壳 |
-| 2026-09 起的收敛：删掉 orgs v2 / marketplace / hub / 5 个 IM 适配器（fork 导入以来累计 −13.6 万行） | 测试框架与 CI |
+- `src/newsclaw/newsroom/`：期次契约、机验不变量 I1–I9、提案 apply、播种、反馈、投递门
+- `src/newsclaw/wiki/` 与 `wiki_upsert` 工具：页面结构 / 双链 / MOC 由代码维护
+- 早报相关技能与任务 prompt、`NewsroomView` 工作台
+- 2026-09 起的收敛：删掉 orgs v2 / marketplace / hub / 5 个 IM 适配器（累计 −13.6 万行）
 
 主线的设计边界写在 [`src/newsclaw/newsroom/__init__.py`](src/newsclaw/newsroom/__init__.py)：**Python 只管契约与 apply，采集/写作/复盘交给 Agent**——只有把「不能出错的部分」钉进代码，Agent 的自由创作才敢无人值守。
 
