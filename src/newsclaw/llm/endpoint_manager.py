@@ -438,7 +438,14 @@ class EndpointManager:
         for list_key in _ENDPOINT_LISTS:
             for ep in config.get(list_key, []):
                 env_var = ep.get("api_key_env", "")
-                key_present = bool(env_var and env.get(env_var, "").strip())
+                # Docker deployments provide credentials through the process
+                # environment (compose env_file) and often have no workspace
+                # .env file; fall back to os.environ so the status card does
+                # not report "key missing" for a working endpoint.
+                key_value = env.get(env_var, "") if env_var else ""
+                if env_var and not key_value.strip():
+                    key_value = os.environ.get(env_var, "")
+                key_present = bool(env_var and key_value.strip())
                 result.append(
                     {
                         "name": ep.get("name", ""),
