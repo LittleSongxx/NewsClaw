@@ -26,6 +26,39 @@ class _InstallProcess:
         self.killed = True
 
 
+def test_configure_playwright_driver_tolerates_private_api_drift(monkeypatch) -> None:
+    """Playwright removed playwright._impl._transport in newer releases.
+
+    Configuring the bundled driver must keep working (and stay testable) when
+    one of the private modules disappears; only the modules that exist get
+    patched.
+    """
+    import importlib
+    import sys
+
+    from newsclaw import optional_features
+
+    monkeypatch.setattr(
+        optional_features,
+        "resolve_playwright_driver",
+        lambda: ("/fake/node", "/fake/cli.js"),
+    )
+    fake_driver_module = SimpleNamespace(compute_driver_executable=None)
+    monkeypatch.setitem(sys.modules, "playwright._impl._driver", fake_driver_module)
+
+    def fake_import(name):
+        if name == "playwright._impl._driver":
+            return fake_driver_module
+        if name == "playwright._impl._transport":
+            raise ImportError("cannot import name '_transport' from 'playwright._impl'")
+        return importlib.import_module(name)
+
+    monkeypatch.setattr(importlib, "import_module", fake_import)
+
+    assert optional_features.configure_playwright_driver() == ("/fake/node", "/fake/cli.js")
+    assert callable(fake_driver_module.compute_driver_executable)
+
+
 def test_managed_browsers_dir_respects_newsclaw_root(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
     monkeypatch.setenv("NEWSCLAW_ROOT", str(tmp_path))

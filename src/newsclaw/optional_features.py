@@ -191,13 +191,21 @@ def configure_playwright_driver() -> tuple[str, str] | None:
     if resolved is None:
         return None
 
-    from playwright._impl import _driver, _transport
-
     def compute() -> tuple[str, str]:
         return resolved
 
-    _driver.compute_driver_executable = compute
-    _transport.compute_driver_executable = compute
+    # Playwright 的私有模块布局会随版本漂移：新版本不再在
+    # ``playwright._impl`` 里暴露 ``_transport``，而旧版本需要两处都打补丁。
+    # 逐个尝试补上存在的模块；缺失的那个不影响 driver 配置——上面的
+    # bundled node/cli 路径仍然可用。
+    import importlib
+
+    for module_path in ("playwright._impl._driver", "playwright._impl._transport"):
+        try:
+            module = importlib.import_module(module_path)
+        except Exception:  # noqa: BLE001 - 私有 API 随版本漂移，缺一个不算错误
+            continue
+        module.compute_driver_executable = compute
     return resolved
 
 
